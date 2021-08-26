@@ -67,22 +67,48 @@ Result for PG_SimpleCorridor_0de4e686:
 """
 
 import argparse
+import os
 
 import ray
 from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--no-custom-eval", action="store_true")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=50,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=20000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=0.7,
+    help="Reward at which we stop training.")
 
 
 def custom_eval_function(trainer, eval_workers):
     """Example of a custom evaluation function.
 
-    Arguments:
+    Args:
         trainer (Trainer): trainer class to evaluate.
         eval_workers (WorkerSet): evaluation workers.
 
@@ -137,7 +163,9 @@ if __name__ == "__main__":
             "corridor_length": 10,
         },
         "horizon": 20,
-        "log_level": "INFO",
+
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
 
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two
@@ -162,13 +190,19 @@ if __name__ == "__main__":
                 "corridor_length": 5,
             },
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {
-        "training_iteration": 10,
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
-    tune.run("PG", config=config, stop=stop)
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
+    # Check eval results (from eval workers using the custom function),
+    # not results from the regular workers.
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward, evaluation=True)
     ray.shutdown()

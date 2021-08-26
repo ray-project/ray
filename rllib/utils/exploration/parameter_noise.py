@@ -1,19 +1,26 @@
 from gym.spaces import Box, Discrete
 import numpy as np
+from typing import Optional, TYPE_CHECKING, Union
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.framework import get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf, \
+    try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
+from ray.rllib.utils.typing import TensorType
 
-tf = try_import_tf()
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
+
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -36,9 +43,9 @@ class ParameterNoise(Exploration):
                  framework: str,
                  policy_config: dict,
                  model: ModelV2,
-                 initial_stddev=1.0,
-                 random_timesteps=10000,
-                 sub_exploration=None,
+                 initial_stddev: float = 1.0,
+                 random_timesteps: int = 10000,
+                 sub_exploration: Optional[dict] = None,
                  **kwargs):
         """Initializes a ParameterNoise Exploration object.
 
@@ -65,7 +72,7 @@ class ParameterNoise(Exploration):
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
         self.model_variables = [
-            v for k, v in self.model.variables(as_dict=True).items()
+            v for k, v in self.model.trainable_variables(as_dict=True).items()
             if "LayerNorm" not in k
         ]
         # Our noise to be added to the weights. Each item in `self.noise`
@@ -91,9 +98,9 @@ class ParameterNoise(Exploration):
             self.tf_remove_noise_op = \
                 self._tf_remove_noise_op()
             # Create convenience sample+add op for tf.
-            with tf.control_dependencies([self.tf_sample_new_noise_op]):
+            with tf1.control_dependencies([self.tf_sample_new_noise_op]):
                 add_op = self._tf_add_stored_noise_op()
-            with tf.control_dependencies([add_op]):
+            with tf1.control_dependencies([add_op]):
                 self.tf_sample_new_noise_and_add_op = tf.no_op()
 
         # Whether the Model's weights currently have noise added or not.
@@ -139,9 +146,9 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def before_compute_actions(self,
                                *,
-                               timestep=None,
-                               explore=None,
-                               tf_sess=None):
+                               timestep: Optional[int] = None,
+                               explore: bool = None,
+                               tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
 
@@ -158,11 +165,10 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution,
-                               timestep,
-                               explore=True):
+    def get_exploration_action(self, *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[TensorType, int],
+                               explore: Union[TensorType, bool]):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
@@ -172,11 +178,11 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def on_episode_start(self,
-                         policy,
+                         policy: "Policy",
                          *,
-                         environment=None,
-                         episode=None,
-                         tf_sess=None):
+                         environment: BaseEnv = None,
+                         episode: int = None,
+                         tf_sess: Optional["tf.Session"] = None):
         # We have to delay the noise-adding step by one forward call.
         # This is due to the fact that the optimizer does it's step right
         # after the episode was reset (and hence the noise was already added!).
@@ -204,7 +210,10 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def postprocess_trajectory(self,
+                               policy: "Policy",
+                               sample_batch: SampleBatch,
+                               tf_sess: Optional["tf.Session"] = None):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
@@ -260,7 +269,7 @@ class ParameterNoise(Exploration):
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
                            (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_info(
+            current_epsilon = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_epsilon"]
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
@@ -268,7 +277,7 @@ class ParameterNoise(Exploration):
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_info(
+            current_scale = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_scale"]
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
                 current_scale
@@ -279,40 +288,37 @@ class ParameterNoise(Exploration):
         else:
             self.stddev_val /= 1.01
 
-        # Set self.stddev to calculated value.
-        if self.framework == "tf":
-            self.stddev.load(self.stddev_val, session=tf_sess)
-        else:
-            self.stddev = self.stddev_val
+        # Update our state (self.stddev and self.stddev_val).
+        self.set_state(self.get_state(), sess=tf_sess)
 
         return sample_batch
 
     def _sample_new_noise(self, *, tf_sess=None):
         """Samples new noise and stores it in `self.noise`."""
         if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_sample_new_noise_op()
-            else:
-                tf_sess.run(self.tf_sample_new_noise_op)
+            tf_sess.run(self.tf_sample_new_noise_op)
+        elif self.framework in ["tfe", "tf2"]:
+            self._tf_sample_new_noise_op()
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    mean=torch.zeros(self.noise[i].size()), std=self.stddev)
+                    mean=torch.zeros(self.noise[i].size()),
+                    std=self.stddev).to(self.device)
 
     def _tf_sample_new_noise_op(self):
         added_noises = []
         for noise in self.noise:
             added_noises.append(
-                tf.assign(
+                tf1.assign(
                     noise,
-                    tf.random_normal(
+                    tf.random.normal(
                         shape=noise.shape,
                         stddev=self.stddev,
                         dtype=tf.float32)))
         return tf.group(*added_noises)
 
     def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
-        if self.framework == "tf" and not tf.executing_eagerly():
+        if self.framework == "tf":
             if override and self.weights_are_currently_noisy:
                 tf_sess.run(self.tf_remove_noise_op)
             tf_sess.run(self.tf_sample_new_noise_and_add_op)
@@ -338,16 +344,17 @@ class ParameterNoise(Exploration):
         # Make sure we only add noise to currently noise-free weights.
         assert self.weights_are_currently_noisy is False
 
-        if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_add_stored_noise_op()
-            else:
-                tf_sess.run(self.tf_add_stored_noise_op)
         # Add stored noise to the model's parameters.
+        if self.framework == "tf":
+            tf_sess.run(self.tf_add_stored_noise_op)
+        elif self.framework in ["tf2", "tfe"]:
+            self._tf_add_stored_noise_op()
         else:
-            for i in range(len(self.noise)):
+            for var, noise in zip(self.model_variables, self.noise):
                 # Add noise to weights in-place.
-                self.model_variables[i].add_(self.noise[i])
+                var.requires_grad = False
+                var.add_(noise)
+                var.requires_grad = True
 
         self.weights_are_currently_noisy = True
 
@@ -361,9 +368,9 @@ class ParameterNoise(Exploration):
         """
         add_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            add_noise_ops.append(tf.assign_add(var, noise))
+            add_noise_ops.append(tf1.assign_add(var, noise))
         ret = tf.group(*tuple(add_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     def _remove_noise(self, *, tf_sess=None):
@@ -377,16 +384,17 @@ class ParameterNoise(Exploration):
         # Make sure we only remove noise iff currently noisy.
         assert self.weights_are_currently_noisy is True
 
+        # Removes the stored noise from the model's parameters.
         if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_remove_noise_op()
-            else:
-                tf_sess.run(self.tf_remove_noise_op)
+            tf_sess.run(self.tf_remove_noise_op)
+        elif self.framework in ["tf2", "tfe"]:
+            self._tf_remove_noise_op()
         else:
-            # Removes the stored noise from the model's parameters.
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
+                var.requires_grad = False
                 var.add_(-noise)
+                var.requires_grad = True
 
         self.weights_are_currently_noisy = False
 
@@ -400,11 +408,21 @@ class ParameterNoise(Exploration):
         """
         remove_noise_ops = list()
         for var, noise in zip(self.model_variables, self.noise):
-            remove_noise_ops.append(tf.assign_add(var, -noise))
+            remove_noise_ops.append(tf1.assign_add(var, -noise))
         ret = tf.group(*tuple(remove_noise_ops))
-        with tf.control_dependencies([ret]):
+        with tf1.control_dependencies([ret]):
             return tf.no_op()
 
     @override(Exploration)
-    def get_info(self, sess=None):
+    def get_state(self, sess=None):
         return {"cur_stddev": self.stddev_val}
+
+    @override(Exploration)
+    def set_state(self, state: dict,
+                  sess: Optional["tf.Session"] = None) -> None:
+        self.stddev_val = state["cur_stddev"]
+        # Set self.stddev to calculated value.
+        if self.framework == "tf":
+            self.stddev.load(self.stddev_val, session=sess)
+        else:
+            self.stddev = self.stddev_val

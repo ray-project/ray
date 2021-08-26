@@ -11,7 +11,8 @@ def f(config, reporter):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(num_cpus=2)
+
     register_trainable("my_class", f)
     run_experiments({
         "test": {
@@ -22,3 +23,4 @@ if __name__ == "__main__":
         }
     })
     assert "ray.rllib" not in sys.modules, "RLlib should not be imported"
+    assert "mlflow" not in sys.modules, "MLflow should not be imported"

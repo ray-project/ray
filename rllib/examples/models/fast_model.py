@@ -5,7 +5,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -25,11 +25,11 @@ class FastModel(TFModelV2):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
-            bias = tf.get_variable(
+        with tf1.variable_scope("model", reuse=tf1.AUTO_REUSE):
+            bias = tf1.get_variable(
                 dtype=tf.float32,
                 name="bias",
-                initializer=tf.zeros_initializer,
+                initializer=tf.keras.initializers.Zeros(),
                 shape=())
             output = bias + \
                 tf.zeros([tf.shape(input_dict["obs"])[0], self.num_outputs])
@@ -37,8 +37,8 @@ class FastModel(TFModelV2):
 
         if not self._registered:
             self.register_variables(
-                tf.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
+                tf1.get_collection(
+                    tf1.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
             self._registered = True
 
         return output, []
@@ -57,8 +57,8 @@ class TorchFastModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        self.bias = torch.tensor(
-            [0.0], dtype=torch.float32, requires_grad=True)
+        self.bias = nn.Parameter(
+            torch.tensor([0.0], dtype=torch.float32, requires_grad=True))
 
         # Only needed to give some params to the optimizer (even though,
         # they are never used anywhere).
@@ -67,8 +67,9 @@ class TorchFastModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        self._output = self.bias + \
-            torch.zeros(size=(input_dict["obs"].shape[0], self.num_outputs))
+        self._output = self.bias + torch.zeros(
+            size=(input_dict["obs"].shape[0], self.num_outputs)).to(
+                self.bias.device)
         return self._output, []
 
     @override(ModelV2)

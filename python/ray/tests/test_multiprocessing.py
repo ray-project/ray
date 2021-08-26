@@ -8,7 +8,7 @@ from collections import defaultdict
 import queue
 
 import ray
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError
 
 
@@ -47,7 +47,7 @@ def test_ray_init(shutdown_only):
     # Check that starting a pool starts ray if not initialized.
     pool = Pool(processes=2)
     assert ray.is_initialized()
-    assert int(ray.state.cluster_resources()["CPU"]) == 2
+    assert int(ray.cluster_resources()["CPU"]) == 2
     check_pool_size(pool, 2)
     pool.terminate()
     pool.join()
@@ -58,7 +58,7 @@ def test_ray_init(shutdown_only):
     ray.init(num_cpus=3)
     assert ray.is_initialized()
     pool = Pool(processes=2)
-    assert int(ray.state.cluster_resources()["CPU"]) == 3
+    assert int(ray.cluster_resources()["CPU"]) == 3
     check_pool_size(pool, 2)
     pool.terminate()
     pool.join()
@@ -70,7 +70,7 @@ def test_ray_init(shutdown_only):
     assert ray.is_initialized()
     with pytest.raises(ValueError):
         Pool(processes=2)
-    assert int(ray.state.cluster_resources()["CPU"]) == 1
+    assert int(ray.cluster_resources()["CPU"]) == 1
     ray.shutdown()
 
 
@@ -98,7 +98,7 @@ def test_connect_to_ray(ray_start_cluster):
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
     pool = Pool(processes=init_cpus)
     assert ray.is_initialized()
-    assert int(ray.state.cluster_resources()["CPU"]) == init_cpus
+    assert int(ray.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
     pool.terminate()
     pool.join()
@@ -108,7 +108,7 @@ def test_connect_to_ray(ray_start_cluster):
     # ray_address is passed in.
     pool = Pool(ray_address=address)
     assert ray.is_initialized()
-    assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
+    assert int(ray.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
     pool.terminate()
     pool.join()
@@ -121,7 +121,7 @@ def test_connect_to_ray(ray_start_cluster):
     # RAY_ADDRESS is set.
     pool = Pool()
     assert ray.is_initialized()
-    assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
+    assert int(ray.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
     pool.terminate()
     pool.join()
@@ -131,7 +131,7 @@ def test_connect_to_ray(ray_start_cluster):
     # error if there aren't enough CPUs for the number of processes.
     with pytest.raises(Exception):
         Pool(processes=start_cpus + 1)
-    assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
+    assert int(ray.cluster_resources()["CPU"]) == start_cpus
     ray.shutdown()
 
 
@@ -232,7 +232,7 @@ def test_apply_async(pool):
     with pytest.raises(Exception):
         pool.apply_async(f, (1, 2), {"kwarg1": 3}).get()
 
-    # Won't return until the input ObjectID is fulfilled.
+    # Won't return until the input ObjectRef is fulfilled.
     def ten_over(args):
         signal, val = args
         ray.get(signal.wait.remote())
@@ -245,7 +245,7 @@ def test_apply_async(pool):
     with pytest.raises(TimeoutError):
         result.get(timeout=0.01)
 
-    # Fulfill the ObjectID.
+    # Fulfill the ObjectRef.
     ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()
@@ -257,7 +257,7 @@ def test_apply_async(pool):
     with pytest.raises(ValueError, match="not ready"):
         result.successful()
 
-    # Fulfill the ObjectID with 0, causing the task to fail (divide by zero).
+    # Fulfill the ObjectRef with 0, causing the task to fail (divide by zero).
     ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()
@@ -340,6 +340,7 @@ def test_starmap(pool):
 
     args = [tuple(range(i)) for i in range(100)]
     assert pool.starmap(f, args) == args
+    assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
 def test_callbacks(pool_4_processes):

@@ -7,9 +7,7 @@ import org.aeonbits.owner.ConfigFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Streaming job master config.
- */
+/** Streaming job master config. */
 public class StreamingMasterConfig extends StreamingGlobalConfig {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingMasterConfig.class);

@@ -2,8 +2,8 @@ aiohttp
 blist
 boto3
 cython==0.29.0
-dataclasses
-dm-tree
+dataclasses; python_version < '3.7'
+dm-tree==0.1.5
 feather-format
 flask
 grpcio
@@ -12,14 +12,14 @@ kubernetes
 lxml
 networkx
 numba
-opencv-python-headless
+scikit-image
 openpyxl
 pandas==0.24.2
 Pillow
 prometheus_client
 py-spy
 pygments
-pytest
+pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar

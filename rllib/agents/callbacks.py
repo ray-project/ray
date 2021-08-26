@@ -1,11 +1,20 @@
-from typing import Dict
+import os
+import tracemalloc
+from typing import Dict, Optional, TYPE_CHECKING
 
 from ray.rllib.env import BaseEnv
-from ray.rllib.policy import Policy, PolicyID, AgentID
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.typing import AgentID, PolicyID
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 
 @PublicAPI
@@ -26,9 +35,14 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, **kwargs):
+                         episode: MultiAgentEpisode,
+                         env_index: Optional[int] = None,
+                         **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -41,6 +55,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -51,9 +67,14 @@ class DefaultCallbacks:
                 "episode": episode,
             })
 
-    def on_episode_step(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_step(self,
+                        *,
+                        worker: "RolloutWorker",
+                        base_env: BaseEnv,
                         policies: Dict[PolicyID, Policy],
-                        episode: MultiAgentEpisode, **kwargs):
+                        episode: MultiAgentEpisode,
+                        env_index: Optional[int] = None,
+                        **kwargs) -> None:
         """Runs on each episode step.
 
         Args:
@@ -66,6 +87,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -75,9 +98,14 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, **kwargs):
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
@@ -90,6 +118,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -101,10 +131,10 @@ class DefaultCallbacks:
             })
 
     def on_postprocess_trajectory(
-            self, worker: RolloutWorker, episode: MultiAgentEpisode,
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
             agent_id: AgentID, policy_id: PolicyID,
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch], **kwargs):
+            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
         """Called immediately after a policy's postprocess_fn is called.
 
         You can use this callback to do additional postprocessing for a policy,
@@ -135,9 +165,9 @@ class DefaultCallbacks:
                 "all_pre_batches": original_batches,
             })
 
-    def on_sample_end(self, worker: RolloutWorker, samples: SampleBatch,
-                      **kwargs):
-        """Called at the end RolloutWorker.sample().
+    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
+                      **kwargs) -> None:
+        """Called at the end of RolloutWorker.sample().
 
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
@@ -152,7 +182,24 @@ class DefaultCallbacks:
                 "samples": samples,
             })
 
-    def on_train_result(self, trainer, result: dict, **kwargs):
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          result: dict, **kwargs) -> None:
+        """Called at the beginning of Policy.learn_on_batch().
+
+        Note: This is called before 0-padding via
+        `pad_batch_to_sequences_of_same_size`.
+
+        Args:
+            policy (Policy): Reference to the current Policy object.
+            train_batch (SampleBatch): SampleBatch to be trained on. You can
+                mutate this object to modify the samples generated.
+            result (dict): A results dict to add custom metrics to.
+            kwargs: Forward compatibility placeholder.
+        """
+
+        pass
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
@@ -167,3 +214,172 @@ class DefaultCallbacks:
                 "trainer": trainer,
                 "result": result,
             })
+
+
+class MemoryTrackingCallbacks(DefaultCallbacks):
+    """MemoryTrackingCallbacks can be used to trace and track memory usage
+    in rollout workers.
+
+    The Memory Tracking Callbacks uses tracemalloc and psutil to track
+    python allocations during rollouts,
+    in training or evaluation.
+
+    The tracking data is logged to the custom_metrics of an episode and
+    can therefore be viewed in tensorboard
+    (or in WandB etc..)
+
+    Add MemoryTrackingCallbacks callback to the tune config
+    e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+
+    Note:
+        This class is meant for debugging and should not be used
+        in production code as tracemalloc incurs
+        a significant slowdown in execution speed.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Will track the top 10 lines where memory is allocated
+        tracemalloc.start(10)
+
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
+        snapshot = tracemalloc.take_snapshot()
+        top_stats = snapshot.statistics("lineno")
+
+        for stat in top_stats[:10]:
+            count = stat.count
+            size = stat.size
+
+            trace = str(stat.traceback)
+
+            episode.custom_metrics[f"tracemalloc/{trace}/size"] = size
+            episode.custom_metrics[f"tracemalloc/{trace}/count"] = count
+
+        process = psutil.Process(os.getpid())
+        worker_rss = process.memory_info().rss
+        worker_data = process.memory_info().data
+        worker_vms = process.memory_info().vms
+        episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
+        episode.custom_metrics["tracemalloc/worker/data"] = worker_data
+        episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
+
+
+class MultiCallbacks(DefaultCallbacks):
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
+
+    Example:
+
+        .. code-block:: python
+
+            'callbacks': MultiCallbacks([
+                MyCustomStatsCallbacks,
+                MyCustomVideoCallbacks,
+                MyCustomTraceCallbacks,
+                ....
+            ])
+    """
+
+    def __init__(self, callback_class_list):
+        super().__init__()
+        self._callback_class_list = callback_class_list
+
+        self._callback_list = []
+
+    def __call__(self, *args, **kwargs):
+        self._callback_list = [
+            callback_class() for callback_class in self._callback_class_list
+        ]
+
+        return self
+
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
+                         policies: Dict[PolicyID, Policy],
+                         episode: MultiAgentEpisode,
+                         env_index: Optional[int] = None,
+                         **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_start(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_episode_step(self,
+                        *,
+                        worker: "RolloutWorker",
+                        base_env: BaseEnv,
+                        episode: MultiAgentEpisode,
+                        env_index: Optional[int] = None,
+                        **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_step(
+                worker=worker,
+                base_env=base_env,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_end(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_postprocess_trajectory(
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            agent_id: AgentID, policy_id: PolicyID,
+            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_postprocess_trajectory(
+                worker=worker,
+                episode=episode,
+                agent_id=agent_id,
+                policy_id=policy_id,
+                policies=policies,
+                postprocessed_batch=postprocessed_batch,
+                original_batches=original_batches,
+                **kwargs)
+
+    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
+                      **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_sample_end(worker=worker, samples=samples, **kwargs)
+
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          result: dict, **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_learn_on_batch(
+                policy=policy,
+                train_batch=train_batch,
+                result=result,
+                **kwargs)
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_train_result(trainer=trainer, result=result, **kwargs)

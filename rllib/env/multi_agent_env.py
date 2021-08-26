@@ -1,4 +1,8 @@
-from ray.rllib.utils.annotations import PublicAPI
+from typing import Tuple, Dict, List
+import gym
+
+from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.typing import MultiAgentDict, AgentID
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -44,7 +48,7 @@ class MultiAgentEnv:
     """
 
     @PublicAPI
-    def reset(self):
+    def reset(self) -> MultiAgentDict:
         """Resets the env and returns observations from ready agents.
 
         Returns:
@@ -53,27 +57,39 @@ class MultiAgentEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def step(self, action_dict):
+    def step(
+            self, action_dict: MultiAgentDict
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         """Returns observations from ready agents.
 
         The returns are dicts mapping from agent_id strings to values. The
         number of agents in the env can vary over time.
 
-        Returns
-        -------
-            obs (dict): New observations for each ready agent.
-            rewards (dict): Reward values for each ready agent. If the
-                episode is just started, the value will be None.
-            dones (dict): Done values for each ready agent. The special key
+        Returns:
+            Tuple[dict, dict, dict, dict]: Tuple with 1) new observations for
+                each ready agent, 2) reward values for each ready agent. If
+                the episode is just started, the value will be None.
+                3) Done values for each ready agent. The special key
                 "__all__" (required) is used to indicate env termination.
-            infos (dict): Optional info values for each agent id.
+                4) Optional info values for each agent id.
         """
         raise NotImplementedError
+
+    @PublicAPI
+    def render(self, mode=None) -> None:
+        """Tries to render the environment."""
+
+        # By default, do nothing.
+        pass
 
 # yapf: disable
 # __grouping_doc_begin__
     @PublicAPI
-    def with_agent_groups(self, groups, obs_space=None, act_space=None):
+    def with_agent_groups(
+            self,
+            groups: Dict[str, List[AgentID]],
+            obs_space: gym.Space = None,
+            act_space: gym.Space = None) -> "MultiAgentEnv":
         """Convenience method for grouping together agents in this env.
 
         An agent group is a list of agent ids that are mapped to a single
@@ -90,7 +106,7 @@ class MultiAgentEnv:
 
         This API is experimental.
 
-        Arguments:
+        Args:
             groups (dict): Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
                 value, it will be left ungrouped.
@@ -107,7 +123,75 @@ class MultiAgentEnv:
             ... })
         """
 
-        from ray.rllib.env.group_agents_wrapper import _GroupAgentsWrapper
-        return _GroupAgentsWrapper(self, groups, obs_space, act_space)
+        from ray.rllib.env.wrappers.group_agents_wrapper import \
+            GroupAgentsWrapper
+        return GroupAgentsWrapper(self, groups, obs_space, act_space)
 # __grouping_doc_end__
 # yapf: enable
+
+
+def make_multi_agent(env_name_or_creator):
+    """Convenience wrapper for any single-agent env to be converted into MA.
+
+    Agent IDs are int numbers starting from 0 (first agent).
+
+    Args:
+        env_name_or_creator (Union[str, Callable[]]: String specifier or
+            env_maker function.
+
+    Returns:
+        Type[MultiAgentEnv]: New MultiAgentEnv class to be used as env.
+            The constructor takes a config dict with `num_agents` key
+            (default=1). The reset of the config dict will be passed on to the
+            underlying single-agent env's constructor.
+
+    Examples:
+         >>> # By gym string:
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> # Create a 2 agent multi-agent cartpole.
+         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
+         >>> obs = ma_cartpole.reset()
+         >>> print(obs)
+         ... {0: [...], 1: [...]}
+
+         >>> # By env-maker callable:
+         >>> ma_stateless_cartpole_cls = make_multi_agent(
+         ...    lambda config: StatelessCartPole(config))
+         >>> # Create a 2 agent multi-agent stateless cartpole.
+         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
+         ...    {"num_agents": 2})
+    """
+
+    class MultiEnv(MultiAgentEnv):
+        def __init__(self, config):
+            num = config.pop("num_agents", 1)
+            if isinstance(env_name_or_creator, str):
+                self.agents = [
+                    gym.make(env_name_or_creator) for _ in range(num)
+                ]
+            else:
+                self.agents = [env_name_or_creator(config) for _ in range(num)]
+            self.dones = set()
+            self.observation_space = self.agents[0].observation_space
+            self.action_space = self.agents[0].action_space
+
+        @override(MultiAgentEnv)
+        def reset(self):
+            self.dones = set()
+            return {i: a.reset() for i, a in enumerate(self.agents)}
+
+        @override(MultiAgentEnv)
+        def step(self, action_dict):
+            obs, rew, done, info = {}, {}, {}, {}
+            for i, action in action_dict.items():
+                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+                if done[i]:
+                    self.dones.add(i)
+            done["__all__"] = len(self.dones) == len(self.agents)
+            return obs, rew, done, info
+
+        @override(MultiAgentEnv)
+        def render(self, mode=None):
+            return self.agents[0].render(mode)
+
+    return MultiEnv

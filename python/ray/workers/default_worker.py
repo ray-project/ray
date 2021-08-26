@@ -1,12 +1,18 @@
 import argparse
+import base64
 import json
+import time
+import sys
+import os
 
 import ray
 import ray.actor
 import ray.node
 import ray.ray_constants as ray_constants
-import ray.utils
-from ray.parameter import RayParams
+import ray._private.utils
+from ray._private.parameter import RayParams
+from ray._private.ray_logging import (get_worker_log_file_name,
+                                      configure_log_file)
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -59,12 +65,6 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
-    "--config-list",
-    required=False,
-    type=str,
-    default=None,
-    help="Override internal config options for the worker process.")
-parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
@@ -80,20 +80,93 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if cloudpickle should be used for serialization.")
+parser.add_argument(
+    "--worker-type",
+    required=False,
+    type=str,
+    default="WORKER",
+    help="Specify the type of the worker process")
+parser.add_argument(
+    "--metrics-agent-port",
+    required=True,
+    type=int,
+    help="the port of the node's metric agent.")
+parser.add_argument(
+    "--object-spilling-config",
+    required=False,
+    type=str,
+    default="",
+    help="The configuration of object spilling. Only used by I/O workers.")
+parser.add_argument(
+    "--logging-rotate-bytes",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BYTES,
+    help="Specify the max bytes for rotating "
+    "log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+parser.add_argument(
+    "--logging-rotate-backup-count",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    help="Specify the backup count of rotated log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+parser.add_argument(
+    "--runtime-env-hash",
+    required=False,
+    type=int,
+    default=0,
+    help="The computed hash of the runtime env for this worker.")
+parser.add_argument(
+    "--worker-shim-pid",
+    required=False,
+    type=int,
+    default=0,
+    help="The PID of the process for setup worker runtime env.")
+parser.add_argument(
+    "--serialized-runtime-env",
+    type=str,
+    default="{}",
+    help="The serialized and validated runtime env json.")
+parser.add_argument(
+    "--ray-debugger-external",
+    default=False,
+    action="store_true",
+    help="True if Ray debugger is made available externally.")
 
 if __name__ == "__main__":
+    # NOTE(sang): For some reason, if we move the code below
+    # to a separate function, tensorflow will capture that method
+    # as a step function. For more details, check out
+    # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
+    ray._private.ray_logging.setup_logger(args.logging_level,
+                                          args.logging_format)
 
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    if args.worker_type == "WORKER":
+        mode = ray.WORKER_MODE
+    elif args.worker_type == "SPILL_WORKER":
+        mode = ray.SPILL_WORKER_MODE
+    elif args.worker_type == "RESTORE_WORKER":
+        mode = ray.RESTORE_WORKER_MODE
+    elif args.worker_type == "UTIL_WORKER":
+        mode = ray.UTIL_WORKER_MODE
+    else:
+        raise ValueError("Unknown worker type: " + args.worker_type)
 
-    internal_config = {}
-    if args.config_list is not None:
-        config_list = args.config_list.split(",")
-        if len(config_list) > 1:
-            i = 0
-            while i < len(config_list):
-                internal_config[config_list[i]] = config_list[i + 1]
-                i += 2
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
+        from ray import external_storage
+        if args.object_spilling_config:
+            object_spilling_config = base64.b64decode(
+                args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.setup_external_storage(object_spilling_config)
 
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
@@ -108,8 +181,7 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
-        load_code_from_local=args.load_code_from_local,
-        _internal_config=json.dumps(internal_config),
+        metrics_agent_port=args.metrics_agent_port,
     )
 
     node = ray.node.Node(
@@ -119,5 +191,38 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=ray.WORKER_MODE)
-    ray.worker.global_worker.main_loop()
+    ray.worker.connect(
+        node,
+        mode=mode,
+        runtime_env_hash=args.runtime_env_hash,
+        runtime_env_json=args.serialized_runtime_env,
+        worker_shim_pid=args.worker_shim_pid,
+        ray_debugger_external=args.ray_debugger_external)
+
+    # Add code search path to sys.path, set load_code_from_local.
+    core_worker = ray.worker.global_worker.core_worker
+    code_search_path = core_worker.get_job_config().code_search_path
+    load_code_from_local = False
+    if code_search_path:
+        load_code_from_local = True
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Setup log file.
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name(args.worker_type))
+    configure_log_file(out_file, err_file)
+
+    if mode == ray.WORKER_MODE:
+        ray.worker.global_worker.main_loop()
+    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
+          or mode == ray.UTIL_WORKER_MODE):
+        # It is handled by another thread in the C++ core worker.
+        # We just need to keep the worker alive.
+        while True:
+            time.sleep(100000)
+    else:
+        raise ValueError(f"Unexcepted worker mode: {mode}")

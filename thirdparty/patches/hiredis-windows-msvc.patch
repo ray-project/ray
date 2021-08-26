@@ -1,0 +1,23 @@
+diff --git sds.h sds.h
+--- sds.h
++++ sds.h
+@@ -43,1 +43,6 @@
+ 
++#if defined(_MSC_VER) && !defined(__clang__)
++#pragma pack(push, 1)
++#pragma push_macro("__attribute__")
++#define __attribute__(A)
++#endif
+@@ -74,1 +78,5 @@
++#if defined(_MSC_VER) && !defined(__clang__)
++#pragma pop_macro("__attribute__")
++#pragma pack(pop)
++#endif
+ 
+diff --git fmacros.h fmacros.h
+--- fmacros.h
++++ fmacros.h
+@@ -12,0 +12,3 @@
++#if defined(_MSC_VER) && !defined(__clang__) && !defined(strdup)
++#define strdup _strdup
++#endif

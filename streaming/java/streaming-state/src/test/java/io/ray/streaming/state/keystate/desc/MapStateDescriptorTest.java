@@ -25,12 +25,11 @@ public class MapStateDescriptorTest {
 
   @Test
   public void test() {
-    MapStateDescriptor<String, Integer> descriptor = MapStateDescriptor
-        .build("msdTest", String.class, Integer.class);
+    MapStateDescriptor<String, Integer> descriptor =
+        MapStateDescriptor.build("msdTest", String.class, Integer.class);
 
     descriptor.setTableName("table");
     Assert.assertEquals(descriptor.getTableName(), "table");
     Assert.assertEquals(descriptor.getName(), "msdTest");
   }
-
 }

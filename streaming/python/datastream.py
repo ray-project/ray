@@ -94,6 +94,18 @@ class Stream(ABC):
     def get_language(self):
         pass
 
+    def forward(self):
+        """Set the partition function of this {@link Stream} so that output
+         elements are forwarded to next operator locally."""
+        self._gateway_client().call_method(self._j_stream, "forward")
+        return self
+
+    def disable_chain(self):
+        """Disable chain for this stream so that it will be run in a separate
+         task."""
+        self._gateway_client().call_method(self._j_stream, "disableChain")
+        return self
+
     def _gateway_client(self):
         return self.get_streaming_context()._gateway_client
 

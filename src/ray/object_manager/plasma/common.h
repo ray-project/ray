@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_COMMON_H
-#define PLASMA_COMMON_H
+#pragma once
 
 #include <stddef.h>
 
@@ -24,104 +23,113 @@
 #include <string>
 #include <unordered_map>
 
+#include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"
-
-#include "arrow/status.h"
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-#endif
+#include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/macros.h"
 
 namespace plasma {
 
+using ray::NodeID;
 using ray::ObjectID;
+using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
-
-enum class PlasmaErrorCode : int8_t {
-  PlasmaObjectExists = 1,
-  PlasmaObjectNonexistent = 2,
-  PlasmaStoreFull = 3,
-  PlasmaObjectAlreadySealed = 4,
-};
-
-ARROW_EXPORT arrow::Status MakePlasmaError(PlasmaErrorCode code, std::string message);
-/// Return true iff the status indicates an already existing Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectExists(const arrow::Status& status);
-/// Return true iff the status indicates a non-existent Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectNonexistent(const arrow::Status& status);
-/// Return true iff the status indicates an already sealed Plasma object.
-ARROW_EXPORT bool IsPlasmaObjectAlreadySealed(const arrow::Status& status);
-/// Return true iff the status indicates the Plasma store reached its capacity limit.
-ARROW_EXPORT bool IsPlasmaStoreFull(const arrow::Status& status);
-
-/// Size of object hash digests.
-constexpr int64_t kDigestSize = sizeof(uint64_t);
 
 enum class ObjectState : int {
   /// Object was created but not sealed in the local Plasma Store.
   PLASMA_CREATED = 1,
   /// Object is sealed and stored in the local Plasma Store.
   PLASMA_SEALED = 2,
-  /// Object is evicted to external store.
-  PLASMA_EVICTED = 3,
 };
 
-namespace internal {
+// Represents a chunk of allocated memory.
+struct Allocation {
+  /// Pointer to the allocated memory.
+  void *address;
+  /// Num bytes of the allocated memory.
+  int64_t size;
+  /// The file descriptor of the memory mapped file where the memory allocated.
+  MEMFD_TYPE fd;
+  /// The offset in bytes in the memory mapped file of the allocated memory.
+  ptrdiff_t offset;
+  /// Device number of the allocated memory.
+  int device_num;
+  /// the total size of this mapped memory.
+  int64_t mmap_size;
 
-struct CudaIpcPlaceholder {};
+  // only allow moves.
+  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(Allocation &&) noexcept = default;
+  Allocation &operator=(Allocation &&) noexcept = default;
 
-}  //  namespace internal
+ private:
+  // Only created by Allocator
+  Allocation(void *address, int64_t size, MEMFD_TYPE fd, ptrdiff_t offset, int device_num,
+             int64_t mmap_size)
+      : address(address),
+        size(size),
+        fd(std::move(fd)),
+        offset(offset),
+        device_num(device_num),
+        mmap_size(mmap_size) {}
+
+  // Test only
+  Allocation()
+      : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
+
+  friend class PlasmaAllocator;
+  friend class DummyAllocator;
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(EvictionPolicyTest, Test);
+};
 
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
-struct ObjectTableEntry {
-  ObjectTableEntry();
+class LocalObject {
+ public:
+  LocalObject(Allocation allocation);
 
-  ~ObjectTableEntry();
+  RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
 
-  /// Memory mapped file containing the object.
-  int fd;
-  /// Device number.
-  int device_num;
-  /// Size of the underlying map.
-  int64_t map_size;
-  /// Offset from the base of the mmap.
-  ptrdiff_t offset;
-  /// Pointer to the object data. Needed to free the object.
-  uint8_t* pointer;
-  /// Size of the object in bytes.
-  int64_t data_size;
-  /// Size of the object metadata in bytes.
-  int64_t metadata_size;
+  int64_t GetObjectSize() const { return object_info.GetObjectSize(); }
+
+  bool Sealed() const { return state == ObjectState::PLASMA_SEALED; }
+
+  int32_t GetRefCount() const { return ref_count; }
+
+  const ray::ObjectInfo &GetObjectInfo() const { return object_info; }
+
+  const Allocation &GetAllocation() const { return allocation; }
+
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+
+ private:
+  friend class ObjectStore;
+  friend class ObjectLifecycleManager;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+  friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(EvictionPolicyTest, Test);
+
+  /// Allocation Info;
+  Allocation allocation;
+  /// Ray object info;
+  ray::ObjectInfo object_info;
   /// Number of clients currently using this object.
-  int ref_count;
+  /// TODO: ref_count probably shouldn't belong to LocalObject.
+  mutable int32_t ref_count;
   /// Unix epoch of when this object was created.
   int64_t create_time;
   /// How long creation of this object took.
   int64_t construct_duration;
-
   /// The state of the object, e.g., whether it is open or sealed.
   ObjectState state;
-  /// The digest of the object. Used to see if two objects are the same.
-  unsigned char digest[kDigestSize];
-
-#ifdef PLASMA_CUDA
-  /// IPC GPU handle to share with clients.
-  std::shared_ptr<::arrow::cuda::CudaIpcMemHandle> ipc_handle;
-#else
-  std::shared_ptr<internal::CudaIpcPlaceholder> ipc_handle;
-#endif
+  /// The source of the object. Used for debugging purposes.
+  plasma::flatbuf::ObjectSource source;
 };
-
-/// Mapping from ObjectIDs to information about the object.
-typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTable;
-
-/// Globally accessible reference to plasma store configuration.
-/// TODO(pcm): This can be avoided with some refactoring of existing code
-/// by making it possible to pass a context object through dlmalloc.
-struct PlasmaStoreInfo;
-extern const PlasmaStoreInfo* plasma_config;
 }  // namespace plasma
-
-#endif  // PLASMA_COMMON_H

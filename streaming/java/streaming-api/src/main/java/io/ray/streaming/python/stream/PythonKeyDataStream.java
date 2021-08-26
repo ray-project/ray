@@ -2,14 +2,13 @@ package io.ray.streaming.python.stream;
 
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.KeyDataStream;
+import io.ray.streaming.operator.ChainStrategy;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 
-/**
- * Represents a python DataStream returned by a key-by operation.
- */
+/** Represents a python DataStream returned by a key-by operation. */
 @SuppressWarnings("unchecked")
 public class PythonKeyDataStream extends PythonDataStream implements PythonStream {
 
@@ -18,8 +17,8 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   }
 
   /**
-   * Create a python stream that reference passed python stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a python stream that reference passed python stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public PythonKeyDataStream(DataStream referencedStream) {
     super(referencedStream);
@@ -37,16 +36,17 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
    */
   public PythonDataStream reduce(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
-    return new PythonDataStream(this, new PythonOperator(func));
+    PythonDataStream stream = new PythonDataStream(this, new PythonOperator(func));
+    stream.withChainStrategy(ChainStrategy.HEAD);
+    return stream;
   }
 
   /**
-   * Convert this stream as a java stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a java stream. The converted stream and this stream are the same logical
+   * stream, which has same stream id. Changes in converted stream will be reflected in this stream
+   * and vice versa.
    */
   public KeyDataStream<Object, Object> asJavaStream() {
     return new KeyDataStream(this);
   }
-
 }

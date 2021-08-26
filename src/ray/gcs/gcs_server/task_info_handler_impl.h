@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TASK_INFO_HANDLER_IMPL_H
-#define RAY_GCS_TASK_INFO_HANDLER_IMPL_H
+#pragma once
 
-#include "gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -36,9 +34,6 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
   void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
                      SendReplyCallback send_reply_callback) override;
 
-  void HandleDeleteTasks(const DeleteTasksRequest &request, DeleteTasksReply *reply,
-                         SendReplyCallback send_reply_callback) override;
-
   void HandleAddTaskLease(const AddTaskLeaseRequest &request, AddTaskLeaseReply *reply,
                           SendReplyCallback send_reply_callback) override;
 
@@ -49,12 +44,23 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
                                        AttemptTaskReconstructionReply *reply,
                                        SendReplyCallback send_reply_callback) override;
 
+  std::string DebugString() const;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
+
+  // Debug info.
+  enum CountType {
+    ADD_TASK_REQUEST = 0,
+    GET_TASK_REQUEST = 1,
+    ADD_TASK_LEASE_REQUEST = 3,
+    GET_TASK_LEASE_REQUEST = 4,
+    ATTEMPT_TASK_RECONSTRUCTION_REQUEST = 5,
+    CountType_MAX = 6,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_GCS_TASK_INFO_HANDLER_IMPL_H

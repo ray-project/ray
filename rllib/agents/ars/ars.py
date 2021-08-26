@@ -5,11 +5,11 @@
 from collections import namedtuple
 import logging
 import numpy as np
+import random
 import time
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
-
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.agents.es import optimizers, utils
 from ray.rllib.agents.es.es import validate_config
@@ -17,6 +17,7 @@ from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.torch_ops import set_torch_seed
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,14 @@ DEFAULT_CONFIG = with_common_config({
     "eval_prob": 0.03,  # probability of evaluating the parameter rewards
     "report_length": 10,  # how many of the last rewards we average over
     "offset": 0,
+    # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+    # Therefore, we must be careful not to use more than 1 env per eval worker
+    # (would break ARSPolicy's compute_action method) and to not do obs-
+    # filtering.
+    "evaluation_config": {
+        "num_envs_per_worker": 1,
+        "observation_filter": "NoFilter"
+    },
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -77,6 +86,18 @@ class Worker:
                  noise,
                  worker_index,
                  min_task_runtime=0.2):
+
+        # Set Python random, numpy, env, and torch/tf seeds.
+        seed = config.get("seed")
+        if seed is not None:
+            # Python random module.
+            random.seed(seed)
+            # Numpy.
+            np.random.seed(seed)
+            # Torch.
+            if config.get("framework") == "torch":
+                set_torch_seed(seed)
+
         self.min_task_runtime = min_task_runtime
         self.config = config
         self.config["single_threaded"] = True
@@ -84,6 +105,13 @@ class Worker:
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
         self.env = env_creator(env_context)
+        # Seed the env, if gym.Env.
+        if not hasattr(self.env, "seed"):
+            logger.info("Env doesn't support env.seed(): {}".format(self.env))
+        # Gym.env.
+        else:
+            self.env.seed(seed)
+
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
@@ -183,9 +211,9 @@ class ARSTrainer(Trainer):
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
-        policy_cls = get_policy_class(config)
-        self.policy = policy_cls(env.observation_space, env.action_space,
-                                 config)
+        self._policy_class = get_policy_class(config)
+        self.policy = self._policy_class(env.observation_space,
+                                         env.action_space, config)
         self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
         self.rollouts_used = config["rollouts_used"]
@@ -216,7 +244,7 @@ class ARSTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def _train(self):
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -313,17 +341,26 @@ class ARSTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def _stop(self):
+    def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        action = self.policy.compute_actions(observation, update=True)[0]
+        action, _, _ = self.policy.compute_actions([observation], update=True)
         if kwargs.get("full_fetch"):
-            return action, [], {}
-        return action
+            return action[0], [], {}
+        return action[0]
+
+    @override(Trainer)
+    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
+        # Broadcast the new policy weights to all evaluation workers.
+        assert worker_set is not None
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.policy.get_flat_weights())
+        worker_set.foreach_policy(
+            lambda p, pid: p.set_flat_weights(ray.get(weights)))
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0

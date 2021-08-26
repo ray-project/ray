@@ -1,42 +1,82 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
+#include <ray/api/ray_runtime.h>
+
+#include <msgpack.hpp>
 #include <mutex>
 
-#include <ray/api/ray_config.h>
-#include <ray/api/ray_runtime.h>
-#include <msgpack.hpp>
+#include "../config_internal.h"
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
-#include "ray/core.h"
+#include "ray/common/id.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
+using ray::core::WorkerContext;
+
+class RayIntentionalSystemExitException : public RayException {
+ public:
+  RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
+};
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
 
+  void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
+
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
-  ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
+  void Put(ray::rpc::ErrorType type, const ObjectID &object_id);
 
-  std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id);
+  std::string Put(std::shared_ptr<msgpack::sbuffer> data);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID> &ids);
+  std::shared_ptr<msgpack::sbuffer> Get(const std::string &id);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids);
 
-  ObjectID Call(RemoteFunctionPtrHolder &fptr, std::shared_ptr<msgpack::sbuffer> args);
+  std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+                         int timeout_ms);
 
-  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
-                      std::shared_ptr<msgpack::sbuffer> args);
+  std::string Call(const RemoteFunctionHolder &remote_function_holder,
+                   std::vector<ray::internal::TaskArg> &args,
+                   const CallOptions &task_options);
 
-  ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
-                     std::shared_ptr<msgpack::sbuffer> args);
+  std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
+                          std::vector<ray::internal::TaskArg> &args,
+                          const ActorCreationOptions &create_options);
 
-  ActorID GetNextActorID();
+  std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
+                        const std::string &actor,
+                        std::vector<ray::internal::TaskArg> &args,
+                        const CallOptions &call_options);
+
+  void AddLocalReference(const std::string &id);
+
+  void RemoveLocalReference(const std::string &id);
+
+  std::string GetActorId(bool global, const std::string &actor_name);
+
+  void KillActor(const std::string &str_actor_id, bool no_restart);
+
+  void ExitActor();
 
   const TaskID &GetCurrentTaskId();
 
@@ -44,19 +84,20 @@ class AbstractRayRuntime : public RayRuntime {
 
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
+  static std::shared_ptr<AbstractRayRuntime> GetInstance();
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
+
+  static void DoShutdown();
+
  protected:
-  std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
   std::unique_ptr<ObjectStore> object_store_;
 
  private:
-  static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
-
+  static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
   void Execute(const TaskSpecification &task_spec);
-
-  friend class Ray;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

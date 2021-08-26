@@ -24,7 +24,6 @@ import org.testng.annotations.Test;
 
 public class KeyGroupAssignmentTest {
 
-
   @Test
   public void testComputeKeyGroupRangeForOperatorIndex() throws Exception {
     KeyGroup keyGroup = KeyGroupAssignment.getKeyGroup(4096, 1, 0);
@@ -52,5 +51,4 @@ public class KeyGroupAssignmentTest {
     assertEquals(keyGroup3.getEndIndex(), 4095);
     assertEquals(keyGroup3.size(), 1365);
   }
-
 }

@@ -1,10 +1,8 @@
 import logging
 import json
 import os
-import numpy as np
 
 import ray
-import ray.services
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -140,13 +138,6 @@ class TFRunner:
         self.model = self.model_creator(self.config)
         self.epoch = state["epoch"]
         self.model.set_weights(state["weights"])
-        # This part is due to ray.get() changing scalar np.int64 object to int
-        state["optimizer_weights"][0] = np.array(
-            state["optimizer_weights"][0], dtype=np.int64)
-
-        if self.model.optimizer.weights == []:
-            self.model._make_train_function()
-        self.model.optimizer.set_weights(state["optimizer_weights"])
 
     def shutdown(self):
         """Attempts to shut down the worker."""
@@ -156,7 +147,7 @@ class TFRunner:
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
-        return ray.services.get_node_ip_address()
+        return ray.util.get_node_ip_address()
 
     def find_free_port(self):
         """Finds a free port on the current node."""

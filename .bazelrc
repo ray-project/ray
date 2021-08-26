@@ -1,36 +1,55 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 ###############################################################################
-# On       Windows, provide: USE_CLANG_CL=1, CC=clang, BAZEL_LLVM, BAZEL_SH
+# On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
-build --experimental_ui_deduplicate
+build:linux --cxxopt="-std=c++14"
+build:macos --cxxopt="-std=c++14"
+build:clang-cl --cxxopt="-std=c++14"
+build:msvc --cxxopt="/std:c++14"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
+build:clang-cl --compiler=clang-cl
+build:msvc --compiler=msvc-cl
+# `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
+# If we don't add them, python's `click` library will raise an error.
+build --action_env=LC_ALL
+build --action_env=LANG
+# Allow C++ worker tests to execute "ray start" with the correct version of Python.
+build --action_env=VIRTUAL_ENV
+build --action_env=PYENV_VIRTUAL_ENV
+build --action_env=PYENV_VERSION
+build --action_env=PYENV_SHELL
+# This is needed for some core tests to run correctly
+build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
-build --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
+build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
+build:msvc     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
-build --per_file_copt="-\\.(asm|S)$,\\.pb\\.cc$@-w"
+build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-# Ignore this warning since it's impractical to fix in the relevant headers
-build --per_file_copt="-\\.(asm|S)$,.*/ray/raylet/reconstruction_policy_test\\.cc@-Wno-inconsistent-missing-override"
-# Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
-build --per_file_copt="-\\.(asm|S)$,.*/_raylet\\.cpp@-Wno-deprecated-declarations"
-build --per_file_copt="-\\.(asm|S)$,.*/_streaming\\.cpp@-Wno-deprecated-declarations"
+#build --per_file_copt="external/.*@-Wno-unused-result"
 # Ignore minor warnings for host tools, which we generally can't control
-build --host_copt="-Wno-builtin-macro-redefined"
-build --host_copt="-Wno-inconsistent-missing-override"
-build --host_copt="-Wno-microsoft-unqualified-friend"
+build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
+build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
+# Don't generate warnings about kernel features we don't need https://github.com/ray-project/ray/issues/6832
+build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR_MANYLINUX1"
+# Ignore wchar_t -> char conversion warning on MSVC
+build:msvc --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
+build --verbose_failures
 build:iwyu --experimental_action_listener=//:iwyu_cpp
 
 # Print relative paths when possible
@@ -42,8 +61,12 @@ build:windows --incompatible_strict_action_env
 # For colored output (seems necessary on Windows)
 build:windows --color=yes
 # For compiler colored output (seems necessary on Windows)
-build:windows --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
-build:windows --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
+
+build:manylinux2010 --copt="-Wno-unused-result"
+build:manylinux2010 --linkopt="-lrt"
+
 
 # Debug build flags. Uncomment in '-c dbg' builds to enable checks in the C++ standard library:
 #build:linux --cxxopt="-D_GLIBCXX_DEBUG=1"
@@ -57,36 +80,83 @@ build:windows --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -DTHREAD_SANITIZER
+build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 
 # Memory sanitizer configuration
-# If you change these make sure you also change ci/asan_tests/bazelrc
 build:asan --strip=never
 build:asan --copt -g
 build:asan --copt -fsanitize=address
-build:asan --copt -fno-sanitize=vptr
 build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
-build:asan --linkopt -fno-sanitize=vptr
-test:asan --action_env=ASAN_OPTIONS=detect_leaks=0
-# This LD_PRELOAD is set for Travis. You will need to change it for local debugging.
-test:asan --action_env=LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libasan.so.2
-# For example, for Ubuntu 18.04 libasan can be found here:
-# test:asan --action_env=LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so
+test:asan --jobs=1
+test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 
+build:asan-build --strip=never
+build:asan-build -c dbg
+build:asan-build --copt -fsanitize=address
+build:asan-build --copt -DADDRESS_SANITIZER
+build:asan-build --copt -O1
+build:asan-build --copt -g
+build:asan-build --copt -fno-omit-frame-pointer
+build:asan-build --copt -static-libasan
+build:asan-build --linkopt -fsanitize=address
+build:asan-build --linkopt -static-libasan
+# For example, for Ubuntu 18.04 libasan can be found here:
+# test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
+test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.5"
+
+# CI configuration:
+aquery:ci --color=no
+aquery:ci --noshow_progress
+build:ci --color=yes
+build:ci --curses=no
+build:ci --keep_going
+build:ci --progress_report_interval=100
+build:ci --show_progress_rate_limit=15
+build:ci --show_task_finish
+build:ci --ui_actions_shown=1024
+build:ci --show_timestamps
+build:ci-travis --disk_cache=~/ray-bazel-cache
+build:ci-travis --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
+build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has low disk space, so prefer hardlinks there.
+build:ci-github --disk_cache=~/ray-bazel-cache
+build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
-test:ci --progress_report_interval=100
-test:ci --show_progress_rate_limit=100
-test:ci --show_timestamps
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
+test:ci-debug -c dbg
+test:ci-debug --copt="-g"
+test:ci-debug --flaky_test_attempts=3
+test:ci-debug --nocache_test_results
+test:ci-debug --spawn_strategy=local
+test:ci-debug --test_output=errors
+test:ci-debug --test_verbose_timeout_warnings
 
-# [Linux] Uncomment this line to print a stack trace on exit.
-#test:linux --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
-# [Linux] Uncomment this line to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
-#test:linux --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
+aquery:get-toolchain --include_commandline=false
+aquery:get-toolchain --noimplicit_deps
+
+# [Linux] Uncomment this line (or use --config) to print a stack trace on exit.
+#test:linux --config=strace
+test:strace --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
+# [Linux] Uncomment this line (or use --config) to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
+#test:linux --config=segfault
+test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
+
+# Debug build:
+build:debug -c dbg
+build:debug --copt="-g"
+build:debug --strip="never"
+
+# Undefined Behavior Sanitizer
+build:ubsan --strip=never
+build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -fno-sanitize-recover=all
+build:ubsan --copt -g
+build:ubsan --linkopt -fsanitize=undefined
+build:ubsan --linkopt -fno-sanitize-recover=all

@@ -9,9 +9,7 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Integration test for Ray.*
- */
+/** Integration test for Ray.* */
 public class RayMethodsTest extends BaseTest {
 
   @Test
@@ -33,6 +31,5 @@ public class RayMethodsTest extends BaseTest {
     Assert.assertEquals(1, i1);
     Assert.assertEquals(3.14, f1, Double.MIN_NORMAL);
     Assert.assertNull(n1);
-
   }
 }

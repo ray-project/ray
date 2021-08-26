@@ -8,13 +8,23 @@ import yaml
 import ray
 from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
-from ray.tune.tune import _make_scheduler, run_experiments
+from ray.tune.tune import run_experiments
+from ray.tune.schedulers import create_scheduler
+from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
+
 # Try to import both backends for flag checking/warnings.
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 EXAMPLE_USAGE = """
@@ -52,8 +62,7 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Whether to run ray with `local_mode=True`. "
-        "Only if --ray-num-nodes is not used.")
+        help="Run ray in local mode for easier debugging.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
@@ -69,16 +78,6 @@ def create_parser(parser_creator=None):
         default=None,
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
-    parser.add_argument(
-        "--ray-redis-max-memory",
-        default=None,
-        type=int,
-        help="--redis-max-memory to use if starting a new cluster.")
-    parser.add_argument(
-        "--ray-memory",
-        default=None,
-        type=int,
-        help="--memory to use if starting a new cluster.")
     parser.add_argument(
         "--ray-object-store-memory",
         default=None,
@@ -100,6 +99,12 @@ def create_parser(parser_creator=None):
         default="",
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
+    # This will override any framework setting found in a yaml file.
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "tfe", "torch"],
+        default=None,
+        help="The DL framework specifier.")
     parser.add_argument(
         "-v", action="store_true", help="Whether to use INFO level logging.")
     parser.add_argument(
@@ -108,14 +113,6 @@ def create_parser(parser_creator=None):
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
-    parser.add_argument(
-        "--torch",
-        action="store_true",
-        help="Whether to use PyTorch (instead of tf) as the DL framework.")
-    parser.add_argument(
-        "--eager",
-        action="store_true",
-        help="Whether to attempt to enable TF eager execution.")
     parser.add_argument(
         "--trace",
         action="store_true",
@@ -136,6 +133,17 @@ def create_parser(parser_creator=None):
         type=str,
         help="If specified, use config options from this file. Note that this "
         "overrides any trial-specific options set via flags above.")
+
+    # Obsolete: Use --framework=torch|tf2|tfe instead!
+    parser.add_argument(
+        "--torch",
+        action="store_true",
+        help="Whether to use PyTorch (instead of tf) as the DL framework.")
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+
     return parser
 
 
@@ -149,6 +157,7 @@ def run(args, parser):
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
+                "checkpoint_at_end": args.checkpoint_at_end,
                 "keep_checkpoints_num": args.keep_checkpoints_num,
                 "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
@@ -168,33 +177,50 @@ def run(args, parser):
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
-        if exp.get("config", {}).get("input") and \
-                not os.path.exists(exp["config"]["input"]):
+        input_ = exp.get("config", {}).get("input")
+        if input_ and input_ != "sampler":
+            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
-            exp["config"]["input"] = str(input_file)
+
+            def patch_path(path):
+                if os.path.exists(path):
+                    return path
+                else:
+                    abs_path = str(rllib_dir.absolute().joinpath(path))
+                    return abs_path if os.path.exists(abs_path) else path
+
+            abs_inputs = list(map(patch_path, inputs))
+            if not isinstance(input_, list):
+                abs_inputs = abs_inputs[0]
+
+            exp["config"]["input"] = abs_inputs
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
-        if args.eager:
-            exp["config"]["framework"] = "tfe"
-        elif args.torch:
+
+        if args.torch:
+            deprecation_warning("--torch", "--framework=torch")
             exp["config"]["framework"] = "torch"
-        else:
-            exp["config"]["framework"] = "tf"
-        if args.v:
-            exp["config"]["log_level"] = "INFO"
-            verbose = 2
-        if args.vv:
-            exp["config"]["log_level"] = "DEBUG"
-            verbose = 3
+        elif args.eager:
+            deprecation_warning("--eager", "--framework=[tf2|tfe]")
+            exp["config"]["framework"] = "tfe"
+        elif args.framework is not None:
+            exp["config"]["framework"] = args.framework
+
         if args.trace:
-            if exp["config"]["framework"] != "tfe":
+            if exp["config"]["framework"] not in ["tf2", "tfe"]:
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
+
+        if args.v:
+            exp["config"]["log_level"] = "INFO"
+            verbose = 3  # Print details on trial result
+        if args.vv:
+            exp["config"]["log_level"] = "DEBUG"
+            verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
         cluster = Cluster()
@@ -202,30 +228,40 @@ def run(args, parser):
             cluster.add_node(
                 num_cpus=args.ray_num_cpus or 1,
                 num_gpus=args.ray_num_gpus or 0,
-                object_store_memory=args.ray_object_store_memory,
-                memory=args.ray_memory,
-                redis_max_memory=args.ray_redis_max_memory)
+                object_store_memory=args.ray_object_store_memory)
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_webui=not args.no_ray_ui,
+            include_dashboard=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
-            memory=args.ray_memory,
-            redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
+
+    if IS_NOTEBOOK:
+        progress_reporter = JupyterNotebookReporter(
+            overwrite=verbose >= 3, print_intermediate_tables=verbose >= 1)
+    else:
+        progress_reporter = CLIReporter(print_intermediate_tables=verbose >= 1)
+
     run_experiments(
         experiments,
-        scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials,
+        scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
+        queue_trials=args.queue_trials,
         verbose=verbose,
+        progress_reporter=progress_reporter,
         concurrent=True)
 
+    ray.shutdown()
 
-if __name__ == "__main__":
+
+def main():
     parser = create_parser()
     args = parser.parse_args()
     run(args, parser)
+
+
+if __name__ == "__main__":
+    main()

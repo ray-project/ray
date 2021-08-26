@@ -76,8 +76,8 @@ Ray now supports Java thanks to contributions from [Ant Financial][4]:
 
 
 [1]: https://github.com/ray-project/ray
-[2]: http://docs.ray.io/en/latest/rllib.html
-[3]: http://docs.ray.io/en/latest/tune.html
+[2]: http://docs.ray.io/en/master/rllib.html
+[3]: http://docs.ray.io/en/master/tune.html
 [4]: https://www.antfin.com/
 [5]: https://github.com/modin-project/modin
-[6]: http://docs.ray.io/en/latest/autoscaling.html
+[6]: http://docs.ray.io/en/master/autoscaling.html

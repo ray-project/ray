@@ -5,11 +5,11 @@ import argparse
 import random
 
 import ray
-from ray.tune import Trainable, run
+from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 
-class PBTBenchmarkExample(Trainable):
+class PBTBenchmarkExample(tune.Trainable):
     """Toy PBT problem for benchmarking adaptive learning rate.
 
     The goal is to optimize this trainable's accuracy. The accuracy increases
@@ -31,11 +31,11 @@ class PBTBenchmarkExample(Trainable):
     faster convergence. Training will not converge without PBT.
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         self.lr = config["lr"]
         self.accuracy = 0.0  # end = 1000
 
-    def _train(self):
+    def step(self):
         midpoint = 100  # lr starts decreasing after acc > midpoint
         q_tolerance = 3  # penalize exceeding lr by more than this multiple
         noise_level = 2  # add gaussian noise to the acc increase
@@ -66,13 +66,13 @@ class PBTBenchmarkExample(Trainable):
             "done": self.accuracy > midpoint * 2,
         }
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         return {
             "accuracy": self.accuracy,
             "lr": self.lr,
         }
 
-    def _restore(self, checkpoint):
+    def load_checkpoint(self, checkpoint):
         self.accuracy = checkpoint["accuracy"]
 
     def reset_config(self, new_config):
@@ -85,16 +85,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--cluster",
+        action="store_true",
+        help="Distribute tuning on a cluster")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
-    if args.smoke_test:
+
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    elif args.cluster:
+        ray.init(address="auto")
+    elif args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test
     else:
         ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=20,
         hyperparam_mutations={
             # distribution for resampling
@@ -103,10 +117,12 @@ if __name__ == "__main__":
             "some_other_factor": [1, 2],
         })
 
-    run(
+    analysis = tune.run(
         PBTBenchmarkExample,
         name="pbt_test",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         reuse_actors=True,
         checkpoint_freq=20,
         verbose=False,
@@ -120,3 +136,5 @@ if __name__ == "__main__":
             # the model training in this example
             "some_other_factor": 1,
         })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

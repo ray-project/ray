@@ -5,5 +5,4 @@ package io.ray.streaming.api.stream;
  *
  * @param <T> The type of StreamSource data.
  */
-public interface StreamSource<T> {
-}
+public interface StreamSource<T> {}

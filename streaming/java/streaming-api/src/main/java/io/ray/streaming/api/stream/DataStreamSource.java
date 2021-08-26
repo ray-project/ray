@@ -3,8 +3,7 @@ package io.ray.streaming.api.stream;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.SourceFunction;
 import io.ray.streaming.api.function.internal.CollectionSourceFunction;
-import io.ray.streaming.api.partition.impl.RoundRobinPartition;
-import io.ray.streaming.operator.impl.SourceOperator;
+import io.ray.streaming.operator.impl.SourceOperatorImpl;
 import java.util.Collection;
 
 /**
@@ -15,7 +14,7 @@ import java.util.Collection;
 public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T> {
 
   private DataStreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
-    super(streamingContext, new SourceOperator<>(sourceFunction), new RoundRobinPartition<>());
+    super(streamingContext, new SourceOperatorImpl<>(sourceFunction));
   }
 
   public static <T> DataStreamSource<T> fromSource(
@@ -35,5 +34,4 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
       StreamingContext context, Collection<T> values) {
     return new DataStreamSource<>(context, new CollectionSourceFunction<>(values));
   }
-
 }

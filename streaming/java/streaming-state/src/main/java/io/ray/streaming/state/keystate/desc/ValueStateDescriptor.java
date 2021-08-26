@@ -20,9 +20,7 @@ package io.ray.streaming.state.keystate.desc;
 
 import io.ray.streaming.state.keystate.state.ValueState;
 
-/**
- * ValueStateDescriptor.
- */
+/** ValueStateDescriptor. */
 public class ValueStateDescriptor<T> extends AbstractStateDescriptor<ValueState<T>, T> {
 
   private final T defaultValue;

@@ -1,11 +1,14 @@
 # coding: utf-8
 import asyncio
-import threading
-import pytest
 import sys
+import threading
+import time
+
+import pytest
 
 import ray
-from ray.test_utils import SignalActor
+from ray._private.test_utils import (
+    SignalActor, kill_actor_and_wait_for_failure, wait_for_condition)
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -113,23 +116,19 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     asyncio.set_event_loop(loop)
     loop.set_debug(True)
 
-    # This is needed for async plasma
-    from ray.experimental.async_api import init
-    init()
-
     # Test Async Plasma
     @ray.remote
     def task():
         return 1
 
-    assert await ray.async_compat.get_async(task.remote()) == 1
+    assert await task.remote().as_future() == 1
 
     @ray.remote
     def task_throws():
         1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await ray.async_compat.get_async(task_throws.remote())
+        await task_throws.remote().as_future()
 
     # Test actor calls.
     str_len = 200 * 1024
@@ -148,15 +147,21 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     actor = Actor.remote()
 
-    actor_call_future = ray.async_compat.get_async(actor.echo.remote(2))
+    actor_call_future = actor.echo.remote(2).as_future()
     assert await actor_call_future == 2
 
-    promoted_to_plasma_future = ray.async_compat.get_async(
-        actor.big_object.remote())
+    promoted_to_plasma_future = actor.big_object.remote().as_future()
     assert await promoted_to_plasma_future == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await ray.async_compat.get_async(actor.throw_error.remote())
+        await actor.throw_error.remote().as_future()
+
+    # Wrap in Remote Function to work with Ray client.
+    kill_actor_ref = ray.remote(kill_actor_and_wait_for_failure).remote(actor)
+    ray.get(kill_actor_ref)
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        await actor.echo.remote(1)
 
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):
@@ -196,6 +201,121 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     await signal.send.remote()
     await waiting
     await waiting
+
+
+@pytest.mark.asyncio
+async def test_asyncio_exit_actor(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
+
+    @ray.remote
+    class Actor:
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        async def ping(self):
+            return "pong"
+
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
+    with pytest.raises(ray.exceptions.RayError):
+        ray.get(a.exit.remote())
+
+    # New calls should just error.
+    with pytest.raises(ray.exceptions.RayError):
+        ray.get(a.ping.remote())
+
+    # The actor should be dead in the actor table.
+    # Using ray task so it works in Ray Client as well.
+    @ray.remote
+    def check_actor_gone_now():
+        def cond():
+            return ray.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+
+        wait_for_condition(cond)
+
+    ray.get(check_actor_gone_now.remote())
+
+
+def test_async_callback(ray_start_regular_shared):
+    global_set = set()
+
+    ref = ray.put(None)
+    ref._on_completed(lambda _: global_set.add("completed-1"))
+    wait_for_condition(lambda: "completed-1" in global_set)
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+
+    ref = wait.remote()
+    ref._on_completed(lambda _: global_set.add("completed-2"))
+    assert "completed-2" not in global_set
+    signal.send.remote()
+    wait_for_condition(lambda: "completed-2" in global_set)
+
+
+def test_async_function_errored(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+
+        @ray.remote
+        async def f():
+            pass
+
+
+@pytest.mark.asyncio
+async def test_async_obj_unhandled_errors(ray_start_regular_shared):
+    @ray.remote
+    def f():
+        raise ValueError()
+
+    num_exceptions = 0
+
+    def interceptor(e):
+        nonlocal num_exceptions
+        num_exceptions += 1
+
+    # Test we report unhandled exceptions.
+    ray.worker._unhandled_error_handler = interceptor
+    x1 = f.remote()
+    del x1
+    wait_for_condition(lambda: num_exceptions == 1)
+
+    # Test we don't report handled exceptions.
+    x1 = f.remote()
+    with pytest.raises(ray.exceptions.RayError):
+        await x1
+    del x1
+    await asyncio.sleep(1)
+    assert num_exceptions == 1, num_exceptions
+
+
+# This case tests that the asyncio actor shouldn't create thread
+# pool with max_concurrency threads. Otherwise it will allocate
+# too many resources for threads to lead worker crash.
+def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def sync_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+        async def async_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+    a = Actor.options(max_concurrency=100000).remote()
+    sync_id, async_id = ray.get(
+        [a.sync_thread_id.remote(),
+         a.async_thread_id.remote()])
+    assert sync_id == async_id
 
 
 if __name__ == "__main__":

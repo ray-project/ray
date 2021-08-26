@@ -1,8 +1,14 @@
+import inspect
+
+from ray.util import log_once
+from ray.rllib.utils.deprecation import deprecation_warning
+
+
 def override(cls):
     """Annotation for documenting method overrides.
 
-    Arguments:
-        cls (type): The superclass that provides the overriden method. If this
+    Args:
+        cls (type): The superclass that provides the overridden method. If this
             cls does not actually have the method, an error is raised.
     """
 
@@ -45,3 +51,48 @@ def DeveloperAPI(obj):
     """
 
     return obj
+
+
+def Deprecated(old=None, *, new=None, help=None, error):
+    """Annotation for documenting a (soon-to-be) deprecated method.
+
+    Methods tagged with this decorator should produce a
+    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
+    to not break existing code at this point.
+    In a next major release, this warning can then be made an error
+    (error=True), which means at this point that the method is already
+    no longer supported but will still inform the user about the
+    deprecation event.
+    In a further major release, the method should be erased.
+    """
+
+    def _inner(obj):
+        if inspect.isclass(obj):
+            obj_init = obj.__init__
+
+            def patched_init(*args, **kwargs):
+                if log_once(old or obj.__name__):
+                    deprecation_warning(
+                        old=old or obj.__name__,
+                        new=new,
+                        help=help,
+                        error=error,
+                    )
+                return obj_init(*args, **kwargs)
+
+            obj.__init__ = patched_init
+            return obj
+
+        def _ctor(*args, **kwargs):
+            if log_once(old or obj.__name__):
+                deprecation_warning(
+                    old=old or obj.__name__,
+                    new=new,
+                    help=help,
+                    error=error,
+                )
+            return obj(*args, **kwargs)
+
+        return _ctor
+
+    return _inner

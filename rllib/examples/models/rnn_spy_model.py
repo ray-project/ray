@@ -8,12 +8,14 @@ from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class SpyLayer(tf.keras.layers.Layer):
     """A keras Layer, which intercepts its inputs and stored them as pickled.
     """
+
+    output = np.array(0, dtype=np.int64)
 
     def __init__(self, num_outputs, **kwargs):
         super().__init__(**kwargs)
@@ -26,7 +28,7 @@ class SpyLayer(tf.keras.layers.Layer):
         """
 
         del kwargs
-        spy_fn = tf.py_func(
+        spy_fn = tf1.py_func(
             self.spy,
             [
                 inputs[0],  # observations
@@ -36,11 +38,11 @@ class SpyLayer(tf.keras.layers.Layer):
                 inputs[5],  # h_out
                 inputs[6],  # c_out
             ],
-            tf.int64,
+            tf.int64,  # Must match SpyLayer.output's type.
             stateful=True)
 
         # Compute outputs
-        with tf.control_dependencies([spy_fn]):
+        with tf1.control_dependencies([spy_fn]):
             return self.dense(inputs[1])
 
     @staticmethod
@@ -48,7 +50,8 @@ class SpyLayer(tf.keras.layers.Layer):
         """The actual spy operation: Store inputs in internal_kv."""
 
         if len(inputs) == 1:
-            return 0  # don't capture inference inputs
+            # don't capture inference inputs
+            return SpyLayer.output
         # TF runs this function in an isolated context, so we have to use
         # redis to communicate back to our suite
         ray.experimental.internal_kv._internal_kv_put(
@@ -61,7 +64,7 @@ class SpyLayer(tf.keras.layers.Layer):
             }),
             overwrite=True)
         RNNSpyModel.capture_index += 1
-        return 0
+        return SpyLayer.output
 
 
 class RNNSpyModel(RecurrentNetwork):
@@ -104,7 +107,6 @@ class RNNSpyModel(RecurrentNetwork):
             [inputs, seq_lens, state_in_h, state_in_c],
             [logits, value_out, state_out_h, state_out_c])
         self.base_model.summary()
-        self.register_variables(self.base_model.variables)
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):

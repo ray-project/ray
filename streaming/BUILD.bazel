@@ -2,24 +2,33 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "copy_to_workspace")
 
 proto_library(
     name = "streaming_proto",
     srcs = ["src/protobuf/streaming.proto"],
+    strip_import_prefix = "src",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 proto_library(
     name = "streaming_queue_proto",
     srcs = ["src/protobuf/streaming_queue.proto"],
+    strip_import_prefix = "src",
 )
 
 proto_library(
     name = "remote_call_proto",
     srcs = ["src/protobuf/remote_call.proto"],
+    strip_import_prefix = "src",
     visibility = ["//visibility:public"],
-    deps = ["streaming_proto"],
+    deps = [
+        "streaming_proto",
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 cc_proto_library(
@@ -58,6 +67,13 @@ cc_binary(
     deps = ["//:core_worker_lib"],
 )
 
+cc_binary(
+    name = "exported_streaming_internal.so",
+    copts = COPTS,
+    linkshared = 1,
+    deps = ["//:exported_streaming_internal"],
+)
+
 cc_library(
     name = "streaming_util",
     srcs = glob([
@@ -67,11 +83,10 @@ cc_library(
         "src/util/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
+    includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
+        "ray_common.so",
         "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
@@ -87,6 +102,7 @@ cc_library(
         "src/config/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "ray_common.so",
         ":streaming_cc_proto",
@@ -103,6 +119,7 @@ cc_library(
         "src/message/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "ray_common.so",
         ":streaming_config",
@@ -119,6 +136,7 @@ cc_library(
         "src/queue/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "ray_common.so",
         "ray_util.so",
@@ -132,11 +150,69 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
             # TODO(mehrdadn): This is to resolve symbols on Windows for now. Should remove this later. (See d7f8d18.)
             "//:core_worker_lib",
+            "//:exported_streaming_internal",
         ],
         "//conditions:default": [
             "core_worker_lib.so",
+            "exported_streaming_internal.so",
         ],
     }),
+)
+
+cc_library(
+    name = "streaming_channel",
+    srcs = glob(["src/channel/*.cc"]),
+    hdrs = glob(["src/channel/*.h"]),
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_common",
+        ":streaming_message",
+        ":streaming_queue",
+        ":streaming_ring_buffer",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_reliability",
+    srcs = glob(["src/reliability/*.cc"]),
+    hdrs = glob(["src/reliability/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_channel",
+        ":streaming_message",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_ring_buffer",
+    srcs = glob(["src/ring_buffer/*.cc"]),
+    hdrs = glob(["src/ring_buffer/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "core_worker_lib.so",
+        ":ray_common.so",
+        ":ray_util.so",
+        ":streaming_message",
+        "@boost//:circular_buffer",
+        "@boost//:thread",
+    ],
+)
+
+cc_library(
+    name = "streaming_common",
+    srcs = glob(["src/common/*.cc"]),
+    hdrs = glob(["src/common/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -150,20 +226,23 @@ cc_library(
         "src/test/*.h",
     ]),
     copts = COPTS,
-    includes = ["src"],
+    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         "ray_common.so",
         "ray_util.so",
+        ":streaming_channel",
+        ":streaming_common",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue",
+        ":streaming_reliability",
         ":streaming_util",
-        "@boost//:circular_buffer",
     ],
 )
 
 test_common_deps = [
+    "//:exported_streaming_internal",
     ":streaming_lib",
     "//:ray_common",
     "//:ray_util",
@@ -177,9 +256,6 @@ cc_binary(
         "src/test/mock_actor.cc",
     ],
     copts = COPTS,
-    includes = [
-        "streaming/src/test",
-    ],
     deps = test_common_deps,
 )
 
@@ -199,9 +275,17 @@ cc_test(
         "src/test/ring_buffer_tests.cc",
     ],
     copts = COPTS,
-    includes = [
-        "streaming/src/test",
+    tags = ["team:ant-group"],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "barrier_helper_tests",
+    srcs = [
+        "src/test/barrier_helper_tests.cc",
     ],
+    copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -211,6 +295,7 @@ cc_test(
         "src/test/message_serialization_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -220,6 +305,7 @@ cc_test(
         "src/test/mock_transfer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -229,6 +315,7 @@ cc_test(
         "src/test/streaming_util_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -237,17 +324,38 @@ cc_test(
     srcs = [
         "src/test/event_service_tests.cc",
     ],
+    copts = COPTS,
+    tags = ["team:ant-group"],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "queue_protobuf_tests",
+    srcs = [
+        "src/test/queue_protobuf_tests.cc",
+    ],
+    tags = ["team:ant-group"],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "data_writer_tests",
+    srcs = [
+        "src/test/data_writer_tests.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
 python_proto_compile(
     name = "streaming_py_proto",
-    deps = ["//streaming:streaming_proto"],
+    deps = [":streaming_proto"],
 )
 
 python_proto_compile(
     name = "remote_call_py_proto",
-    deps = ["//streaming:remote_call_proto"],
+    deps = [":remote_call_proto"],
 )
 
 filegroup(
@@ -258,62 +366,30 @@ filegroup(
     ],
 )
 
+copy_to_workspace(
+    name = "cp_all_py_proto",
+    srcs = [":all_py_proto"],
+    dstdir = "streaming/python/generated",
+)
+
 genrule(
     name = "copy_streaming_py_proto",
     srcs = [
-        ":all_py_proto",
+        ":cp_all_py_proto",
     ],
     outs = [
         "copy_streaming_py_proto.out",
     ],
     cmd = """
-        set -e
-        WORK_DIR="$$(pwd)"
-        # Copy generated files.
-        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
-        rm -rf "$$GENERATED_DIR"
+        GENERATED_DIR="streaming/python/generated"
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
-        for f in $(locations //streaming:all_py_proto); do
-            cp -f "$$f" "$$GENERATED_DIR"
-        done
+        # Use this `sed` command to change the import path in the generated file.
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
+        sed -i -E 's/from protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
     local = 1,
-    visibility = ["//visibility:public"],
-)
-
-# Streaming java
-genrule(
-    name = "copy_jni_h",
-    srcs = ["@bazel_tools//tools/jdk:jni_header"],
-    outs = ["jni.h"],
-    cmd = "cp -f $< $@",
-)
-
-genrule(
-    name = "copy_jni_md_h",
-    srcs = select({
-        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
-        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
-        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
-    }),
-    outs = ["jni_md.h"],
-    cmd = "cp -f $< $@",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "jni",
-    hdrs = [
-        ":jni.h",
-        ":jni_md.h",
-    ],
-    copts = COPTS,
-    includes = [
-        ".",  # needed for `include <jni.h>`
-    ],
     visibility = ["//visibility:public"],
 )
 
@@ -324,14 +400,10 @@ cc_binary(
         "src/lib/java/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
     linkshared = 1,
-    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        ":jni",
         ":streaming_lib",
+        "@bazel_tools//tools/jdk:jni",
     ],
 )

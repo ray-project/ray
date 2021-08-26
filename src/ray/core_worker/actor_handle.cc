@@ -16,15 +16,16 @@
 
 #include <memory>
 
-namespace {
+namespace ray {
+namespace core {
 
-ray::rpc::ActorHandle CreateInnerActorHandle(
+rpc::ActorHandle CreateInnerActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
-    const ray::rpc::Address &owner_address, const class JobID &job_id,
+    const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+    const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries) {
-  ray::rpc::ActorHandle inner;
+  rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
   inner.mutable_owner_address()->CopyFrom(owner_address);
@@ -38,15 +39,15 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
   return inner;
 }
 
-ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized) {
-  ray::rpc::ActorHandle inner;
+rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized) {
+  rpc::ActorHandle inner;
   inner.ParseFromString(serialized);
   return inner;
 }
 
-ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
-    const ray::gcs::ActorTableData &actor_table_data) {
-  ray::rpc::ActorHandle inner;
+rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
+    const rpc::ActorTableData &actor_table_data) {
+  rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
   inner.mutable_owner_address()->CopyFrom(actor_table_data.owner_address());
@@ -54,22 +55,20 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_actor_language(actor_table_data.task_spec().language());
   inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
       actor_table_data.task_spec().function_descriptor());
-  ray::TaskSpecification task_spec(actor_table_data.task_spec());
+  TaskSpecification task_spec(actor_table_data.task_spec());
   inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
+  inner.set_max_task_retries(
+      actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
   return inner;
 }
-
-}  // namespace
-
-namespace ray {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
     const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+    const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
@@ -78,7 +77,7 @@ ActorHandle::ActorHandle(
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
-ActorHandle::ActorHandle(const gcs::ActorTableData &actor_table_data)
+ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data)
     : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
@@ -86,13 +85,23 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
-      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1);
+      ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
   builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/actor_cursor_,
                            task_counter_++);
   actor_cursor_ = new_cursor;
 }
 
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
+                                              const ObjectID new_cursor) {
+  absl::MutexLock guard(&mutex_);
+  auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+  mutable_spec->set_previous_actor_task_dummy_object_id(actor_cursor_.Binary());
+  mutable_spec->set_actor_counter(task_counter_++);
+  actor_cursor_ = new_cursor;
+}
+
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
+}  // namespace core
 }  // namespace ray

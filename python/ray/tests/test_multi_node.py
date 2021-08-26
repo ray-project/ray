@@ -1,26 +1,26 @@
 import os
 import pytest
-import subprocess
+import psutil
+import sys
 import time
 
 import ray
-from ray.test_utils import (
-    RayTestTimeoutException,
-    run_string_as_driver,
-    run_string_as_driver_nonblocking,
-    wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit,
-    kill_process_by_name,
-)
+from ray import ray_constants
+from ray._private.test_utils import (
+    RayTestTimeoutException, run_string_as_driver,
+    run_string_as_driver_nonblocking, init_error_pubsub, get_error_message,
+    object_memory_usage, wait_for_condition)
 
 
 def test_error_isolation(call_ray_start):
     address = call_ray_start
     # Connect a driver to the Ray cluster.
     ray.init(address=address)
+    p = init_error_pubsub()
 
     # There shouldn't be any errors yet.
-    assert len(ray.errors()) == 0
+    errors = get_error_message(p, 1, 2)
+    assert len(errors) == 0
 
     error_string1 = "error_string1"
     error_string2 = "error_string2"
@@ -34,13 +34,11 @@ def test_error_isolation(call_ray_start):
         ray.get(f.remote())
 
     # Wait for the error to appear in Redis.
-    while len(ray.errors()) != 1:
-        time.sleep(0.1)
-        print("Waiting for error to appear.")
+    errors = get_error_message(p, 1)
 
     # Make sure we got the error.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    assert len(errors) == 1
+    assert error_string1 in errors[0].error_message
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
@@ -48,11 +46,13 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
+from ray._private.test_utils import (init_error_pubsub, get_error_message)
 
 ray.init(address="{}")
-
+p = init_error_pubsub()
 time.sleep(1)
-assert len(ray.errors()) == 0
+errors = get_error_message(p, 1, 2)
+assert len(errors) == 0
 
 @ray.remote
 def f():
@@ -63,12 +63,10 @@ try:
 except Exception as e:
     pass
 
-while len(ray.errors()) != 1:
-    print(len(ray.errors()))
-    time.sleep(0.1)
-assert len(ray.errors()) == 1
+errors = get_error_message(p, 1)
+assert len(errors) == 1
 
-assert "{}" in ray.errors()[0]["message"]
+assert "{}" in errors[0].error_message
 
 print("success")
 """.format(address, error_string2, error_string2)
@@ -79,8 +77,9 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this
     # driver.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    errors = get_error_message(p, 1)
+    assert len(errors) == 1
+    p.close()
 
 
 def test_remote_function_isolation(call_ray_start):
@@ -167,6 +166,12 @@ print("success")
         assert "success" in out
 
 
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0",
+    ],
+    indirect=True)
 def test_cleanup_on_driver_exit(call_ray_start):
     # This test will create a driver that creates a bunch of objects and then
     # exits. The entries in the object table should be cleaned up.
@@ -178,26 +183,51 @@ def test_cleanup_on_driver_exit(call_ray_start):
     driver_script = """
 import time
 import ray
+import numpy as np
+from ray._private.test_utils import object_memory_usage
+import os
+
+
 ray.init(address="{}")
-object_ids = [ray.put(i) for i in range(1000)]
+object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+              for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
-    if len(ray.objects()) == 1000:
+    if object_memory_usage() > 0:
         break
 else:
     raise Exception("Objects did not appear in object table.")
+
+@ray.remote
+def f():
+    time.sleep(1)
+
 print("success")
+# Submit some tasks without waiting for them to finish. Their workers should
+# still get cleaned up eventually, even if they get started after the driver
+# exits.
+[f.remote() for _ in range(10)]
 """.format(address)
 
-    run_string_as_driver(driver_script)
+    out = run_string_as_driver(driver_script)
+    assert "success" in out
 
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if len(ray.objects()) == 0:
+        if object_memory_usage() == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")
+
+    def all_workers_exited():
+        for proc in psutil.process_iter():
+            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+                return False
+        return True
+
+    # Check that workers are eventually cleaned up.
+    wait_for_condition(all_workers_exited)
 
 
 def test_drivers_named_actors(call_ray_start):
@@ -205,13 +235,13 @@ def test_drivers_named_actors(call_ray_start):
     # named actor.
     address = call_ray_start
 
-    ray.init(address=address)
+    ray.init(address=address, namespace="test")
 
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="test")
 @ray.remote
 class Counter:
     def __init__(self):
@@ -227,7 +257,7 @@ time.sleep(100)
     driver_script2 = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="test")
 while True:
     try:
         counter = ray.get_actor("Counter")
@@ -286,7 +316,7 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start", [
         "ray start --head --num-cpus=1 --num-gpus=1 " +
-        "--min-worker-port=0 --max-worker-port=0"
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
@@ -331,7 +361,7 @@ print("success")
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
-            output_line = ray.utils.decode(
+            output_line = ray._private.utils.decode(
                 process_handle.stdout.readline()).strip()
             print(output_line)
             if output_line == "success":
@@ -353,290 +383,8 @@ print("success")
         process_handle.kill()
 
 
-def test_calling_start_ray_head(call_ray_stop_only):
-    # Test that we can call ray start with various command line
-    # parameters. TODO(rkn): This test only tests the --head code path. We
-    # should also test the non-head node code path.
-
-    # Test starting Ray with no arguments.
-    subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with a redis port specified.
-    subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with a node IP address specified.
-    subprocess.check_output(
-        ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with the object manager and node manager ports
-    # specified.
-    subprocess.check_output([
-        "ray", "start", "--head", "--object-manager-port", "12345",
-        "--node-manager-port", "54321"
-    ])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with the worker port range specified.
-    subprocess.check_output([
-        "ray", "start", "--head", "--min-worker-port", "50000",
-        "--max-worker-port", "51000"
-    ])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with the number of CPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-cpus", "2"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with the number of GPUs specified.
-    subprocess.check_output(["ray", "start", "--head", "--num-gpus", "100"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with the max redis clients specified.
-    subprocess.check_output(
-        ["ray", "start", "--head", "--redis-max-clients", "100"])
-    subprocess.check_output(["ray", "stop"])
-
-    if "RAY_USE_NEW_GCS" not in os.environ:
-        # Test starting Ray with redis shard ports specified.
-        subprocess.check_output([
-            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
-        ])
-        subprocess.check_output(["ray", "stop"])
-
-        # Test starting Ray with all arguments specified.
-        subprocess.check_output([
-            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
-        ])
-        subprocess.check_output(["ray", "stop"])
-
-    # Test starting Ray with invalid arguments.
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
-    subprocess.check_output(["ray", "stop"])
-
-    # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
-
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
-
-    blocked.poll()
-    assert blocked.returncode is None
-
-    kill_process_by_name("raylet")
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
-    blocked.wait()
-    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
-
-    # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
-    blocked.poll()
-    assert blocked.returncode is None
-
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
-
-    blocked.terminate()
-    wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
-    blocked.wait()
-    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
-
-
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
-    indirect=True)
-def test_using_hostnames(call_ray_start):
-    ray.init(node_ip_address="localhost", address="localhost:6379")
-
-    @ray.remote
-    def f():
-        return 1
-
-    assert ray.get(f.remote()) == 1
-
-
-def test_connecting_in_local_case(ray_start_regular):
-    address_info = ray_start_regular
-
-    # Define a driver that just connects to Redis.
-    driver_script = """
-import ray
-ray.init(address="{}")
-print("success")
-""".format(address_info["redis_address"])
-
-    out = run_string_as_driver(driver_script)
-    # Make sure the other driver succeeded.
-    assert "success" in out
-
-
-def test_run_driver_twice(ray_start_regular):
-    # We used to have issue 2165 and 2288:
-    # https://github.com/ray-project/ray/issues/2165
-    # https://github.com/ray-project/ray/issues/2288
-    # both complain that driver will hang when run for the second time.
-    # This test is used to verify the fix for above issue, it will run the
-    # same driver for twice and verify whether both of them succeed.
-    address_info = ray_start_regular
-    driver_script = """
-import ray
-import ray.tune as tune
-import os
-import time
-
-def train_func(config, reporter):  # add a reporter arg
-    for i in range(2):
-        time.sleep(0.1)
-        reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
-
-os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-ray.init(address="{}")
-ray.tune.register_trainable("train_func", train_func)
-
-tune.run_experiments({{
-    "my_experiment": {{
-        "run": "train_func",
-        "stop": {{"mean_accuracy": 99}},
-        "config": {{
-            "layer1": {{
-                "class_name": tune.grid_search(["a"]),
-                "config": {{"lr": tune.grid_search([1, 2])}}
-            }},
-        }},
-        "local_dir": os.path.expanduser("~/tmp")
-    }}
-}})
-print("success")
-""".format(address_info["redis_address"])
-
-    for i in range(2):
-        out = run_string_as_driver(driver_script)
-        assert "success" in out
-
-
-@pytest.mark.skip(reason="fate sharing not implemented yet")
-def test_driver_exiting_when_worker_blocked(call_ray_start):
-    # This test will create some drivers that submit some tasks and then
-    # exit without waiting for the tasks to complete.
-    address = call_ray_start
-
-    ray.init(address=address)
-
-    # Define a driver that creates two tasks, one that runs forever and the
-    # other blocked on the first in a `ray.get`.
-    driver_script = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def f():
-    time.sleep(10**6)
-@ray.remote
-def g():
-    ray.get(f.remote())
-g.remote()
-time.sleep(1)
-print("success")
-""".format(address)
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        out = run_string_as_driver(driver_script)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that creates two tasks, one that runs forever and the
-    # other blocked on the first in a `ray.wait`.
-    driver_script = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def f():
-    time.sleep(10**6)
-@ray.remote
-def g():
-    ray.wait([f.remote()])
-g.remote()
-time.sleep(1)
-print("success")
-""".format(address)
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        out = run_string_as_driver(driver_script)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that creates one task that depends on a nonexistent
-    # object. This task will be queued as waiting to execute.
-    driver_script_template = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def g(x):
-    return
-g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
-time.sleep(1)
-print("success")
-"""
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        nonexistent_id = ray.ObjectID.from_random()
-        driver_script = driver_script_template.format(address,
-                                                      nonexistent_id.hex())
-        out = run_string_as_driver(driver_script)
-        # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(None, nonexistent_id)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that calls `ray.wait` on a nonexistent object.
-    driver_script_template = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def g():
-    ray.wait(ray.ObjectID(ray.utils.hex_to_binary("{}")))
-g.remote()
-time.sleep(1)
-print("success")
-"""
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        nonexistent_id = ray.ObjectID.from_random()
-        driver_script = driver_script_template.format(address,
-                                                      nonexistent_id.hex())
-        out = run_string_as_driver(driver_script)
-        # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(None, nonexistent_id)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    @ray.remote
-    def f():
-        return 1
-
-    # Make sure we can still talk with the raylet.
-    ray.get(f.remote())
-
-
 if __name__ == "__main__":
     import pytest
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

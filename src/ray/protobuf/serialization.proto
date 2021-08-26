@@ -21,9 +21,9 @@ package ray.serialization;
 // ## About Pickle 5 Protocol
 // Pickle5 will create two things during serialization:
 //   1. Inband data. This is the framed pickle data for most objects.
-//   2. Buffers. They are python buffers referring internal data of objects.
-//       They contain metadata of the buffer and a native pointer.
-//       Thus they provide interface for zero-copy serialization.
+//   2. Buffers. They are python buffers wrapping internal data chunks of objects.
+//       They contain metadata of the buffer and a native pointer, which is
+//       intended for zero-copy serialization.
 //
 // ## Protobuf object
 // A PythonObject protobuf object will be created for each python object.
@@ -34,19 +34,21 @@ package ray.serialization;
 //
 // ## Python object serialization memory layout
 // This section describes the memory layout in the Plasma store buffer.
-// Unfortunately, no frame info is included in protobuf data, so we have to specify
-// the length and offset of PythonObject.
 // ---------------------
-// i64 offset(PythonObject):
-//     Offset of the PythonObject relative to the start of this buffer.
+// i64 len(inband_data):
+//     Length of the inband data.
 // i64 len(PythonObject):
 //     Length of the PythonObject.
-// inband_data | pad(64)
+// inband_data
 //     Inband data, padded with 64 bytes for the alignment of buffers.
-// buffers | pad(8)
-//     Raw data of buffers, padded with 8 bytes for the alignment of PythonObject.
 // PythonObject
-//     PythonObject is stored at the end because its size will be variable.
+//     PythonObject protobuf defined as below.
+// buffers | aligned(64)
+//     Raw data of buffers, this section is 64-byte aligned.
+//     Inside the section, large buffers (>=2048 bytes) are aligned
+//     to 64 bytes for faster SIMD, small buffers (<2048 bytes) are
+//     aligned to 8 bytes.
+
 // ---------------------
 
 // The message for metadata of python buffer objects.
@@ -81,16 +83,12 @@ message PythonBuffer {
 
 // The message for pickle5 serialized python object.
 message PythonObject {
-  // The offset of the inband data section relative to the beginning of the Plasma buffer.
-  uint64 inband_data_offset = 1;
   // The size of the inband data section.
-  uint64 inband_data_size = 2;
-  // The offset of the raw buffers section relative to the beginning of the Plasma buffer.
-  uint64 raw_buffers_offset = 3;
+  uint64 inband_data_size = 1;
   // The size of the buffers section. It is not used in deserialization
   // because we already have the length and address of every buffer. However, it could
   // be useful for debugging or future adjustment, so we just keep it.
-  uint64 raw_buffers_size = 4;
+  uint64 raw_buffers_size = 2;
   // The metadata of python buffer objects.
-  repeated PythonBuffer buffer = 5;
+  repeated PythonBuffer buffer = 3;
 }

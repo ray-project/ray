@@ -1,35 +1,48 @@
-"""This test checks that SigOpt is functional.
+"""This example demonstrates the usage of SigOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
-import ray
-from ray.tune import run
+import sys
+import time
+
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
-    for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+def evaluate(step, width, height):
+    return (0.1 + width * step / 100)**(-1) + height * 0.01
+
+
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluate(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
     import argparse
     import os
 
-    assert "SIGOPT_KEY" in os.environ, \
-        "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+
+    if "SIGOPT_KEY" not in os.environ:
+        if args.smoke_test:
+            print("SigOpt API Key not found. Skipping smoke test.")
+            sys.exit(0)
+        else:
+            raise ValueError(
+                "SigOpt API Key not found. Please set the SIGOPT_KEY "
+                "environment variable.")
 
     space = [
         {
@@ -49,16 +62,6 @@ if __name__ == "__main__":
             },
         },
     ]
-
-    config = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
-        },
-    }
     algo = SigOptSearch(
         space,
         name="SigOpt Example Experiment",
@@ -66,8 +69,13 @@ if __name__ == "__main__":
         metric="mean_loss",
         mode="min")
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective,
+    analysis = tune.run(
+        easy_objective,
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        num_samples=4 if args.smoke_test else 100,
+        config={"steps": 10})
+
+    print("Best hyperparameters found were: ",
+          analysis.get_best_config("mean_loss", "min"))

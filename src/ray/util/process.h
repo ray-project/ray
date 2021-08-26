@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_PROCESS_H
-#define RAY_UTIL_PROCESS_H
+#pragma once
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -22,6 +21,7 @@
 #endif
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -35,6 +35,15 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 #endif
 
 namespace ray {
+
+class EnvironmentVariableLess {
+ public:
+  bool operator()(char a, char b) const;
+
+  bool operator()(const std::string &a, const std::string &b) const;
+};
+
+typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
 
 #ifdef _WIN32
 typedef int pid_t;
@@ -60,10 +69,13 @@ class Process {
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
+  /// \param[in] env Additional environment variables to be set on this process besides
+  /// the environment variables of the parent process.
   explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false);
+                   bool decouple = false, const ProcessEnvironment &env = {});
   /// Convenience function to run the given command line and wait for it to finish.
-  static std::error_code Call(const std::vector<std::string> &args);
+  static std::error_code Call(const std::vector<std::string> &args,
+                              const ProcessEnvironment &env = {});
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
   pid_t GetId() const;
@@ -78,11 +90,19 @@ class Process {
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
       const std::vector<std::string> &args, bool decouple,
-      const std::string &pid_file = std::string());
+      const std::string &pid_file = std::string(), const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
 };
+
+// Get the Process ID of the parent process. If the parent process exits, the PID
+// will be 1 (this simulates POSIX getppid()).
+pid_t GetParentPID();
+
+bool IsParentProcessAlive();
+
+bool IsProcessAlive(pid_t pid);
 
 }  // namespace ray
 
@@ -102,5 +122,3 @@ struct hash<ray::Process> {
 };
 
 }  // namespace std
-
-#endif

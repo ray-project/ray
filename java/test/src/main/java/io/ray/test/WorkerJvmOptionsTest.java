@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -12,17 +13,24 @@ public class WorkerJvmOptionsTest extends BaseTest {
     String getOptions() {
       return System.getProperty("test.suffix");
     }
+
+    String getEnv(String key) {
+      return System.getProperty(key);
+    }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testJvmOptions() {
-    TestUtils.skipTestUnderSingleProcess();
     // The whitespaces in following argument are intentionally added to test
     // that raylet can correctly handle dynamic options with whitespaces.
-    ActorHandle<Echo> actor = Ray.actor(Echo::new)
-        .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
-        .remote();
+    ActorHandle<Echo> actor =
+        Ray.actor(Echo::new)
+            .setJvmOptions(ImmutableList.of("-Dtest.suffix=suffix", "-Dtest.suffix1=suffix1"))
+            .remote();
     ObjectRef<String> obj = actor.task(Echo::getOptions).remote();
     Assert.assertEquals(obj.get(), "suffix");
+    // Auto injected by setup_runtime_env.py
+    ObjectRef<String> env = actor.task(Echo::getEnv, "serialized-runtime-env").remote();
+    Assert.assertEquals(env.get(), "{}");
   }
 }

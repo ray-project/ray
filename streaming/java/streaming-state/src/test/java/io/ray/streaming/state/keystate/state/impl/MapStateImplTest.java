@@ -36,10 +36,10 @@ public class MapStateImplTest {
 
   @BeforeClass
   public void setUp() throws Exception {
-    keyStateBackend = new KeyStateBackend(1, new KeyGroup(1, 2),
-        new MemoryStateBackend(new HashMap<>()));
-    MapStateDescriptor<Integer, String> descriptor = MapStateDescriptor
-        .build("MapStateImplTest", Integer.class, String.class);
+    keyStateBackend =
+        new KeyStateBackend(1, new KeyGroup(1, 2), new MemoryStateBackend(new HashMap<>()));
+    MapStateDescriptor<Integer, String> descriptor =
+        MapStateDescriptor.build("MapStateImplTest", Integer.class, String.class);
     descriptor.setTableName("table");
     mapState = (MapStateImpl<Integer, String>) keyStateBackend.getMapState(descriptor);
   }
@@ -86,7 +86,6 @@ public class MapStateImplTest {
     mapState.update(null);
     Assert.assertEquals(mapState.get().size(), 0);
   }
-
 
   @Test
   public void testFailover() throws Exception {

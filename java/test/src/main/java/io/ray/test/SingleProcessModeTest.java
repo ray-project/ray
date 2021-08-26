@@ -18,18 +18,15 @@ public class SingleProcessModeTest extends BaseTest {
   private static final int TIMES_TO_CALL_PER_ACTOR = 10;
 
   static class MyActor {
-    public MyActor() {
-    }
+    public MyActor() {}
 
     public long getThreadId() {
       return Thread.currentThread().getId();
     }
   }
 
-  @Test
+  @Test(groups = {"singleProcess"})
   public void testActorTasksInOneThread() {
-    TestUtils.skipTestUnderClusterMode();
-
     List<ActorHandle<MyActor>> actors = new ArrayList<>();
     Map<ActorId, Long> actorThreadIds = new HashMap<>();
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {

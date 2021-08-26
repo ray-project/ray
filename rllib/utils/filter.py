@@ -277,5 +277,7 @@ def get_filter(filter_config, shape):
         return ConcurrentMeanStdFilter(shape, clip=None)
     elif filter_config == "NoFilter":
         return NoFilter()
+    elif callable(filter_config):
+        return filter_config(shape)
     else:
         raise Exception("Unknown observation_filter: " + str(filter_config))

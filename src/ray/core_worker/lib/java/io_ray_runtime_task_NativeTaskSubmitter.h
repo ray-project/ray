@@ -25,32 +25,61 @@ extern "C" {
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitTask
  * Signature:
- * (Lio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
+ * (Lio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *, jclass, jobject, jobject, jint, jobject);
+    JNIEnv *, jclass, jobject, jint, jobject, jint, jobject);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeCreateActor
  * Signature:
- * (Lio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lio/ray/api/options/ActorCreationOptions;)[B
+ * (Lio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;Lio/ray/api/options/ActorCreationOptions;)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(JNIEnv *, jclass, jobject,
-                                                               jobject, jobject);
+                                                               jint, jobject, jobject);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeSubmitActorTask
  * Signature:
- * ([BLio/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
+ * ([BLio/ray/runtime/functionmanager/FunctionDescriptor;ILjava/util/List;ILio/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
                                                                    jbyteArray, jobject,
-                                                                   jobject, jint,
+                                                                   jint, jobject, jint,
                                                                    jobject);
+
+/*
+ * Class:     io_ray_runtime_task_NativeTaskSubmitter
+ * Method:    nativeCreatePlacementGroup
+ * Signature: (Lio/ray/api/options/PlacementGroupCreationOptions;)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *, jclass,
+                                                                        jobject);
+
+/*
+ * Class:     io_ray_runtime_task_NativeTaskSubmitter
+ * Method:    nativeRemovePlacementGroup
+ * Signature: ([B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(JNIEnv *, jclass,
+                                                                        jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_task_NativeTaskSubmitter
+ * Method:    nativeWaitPlacementGroupReady
+ * Signature: ([BI)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeWaitPlacementGroupReady(JNIEnv *,
+                                                                           jclass,
+                                                                           jbyteArray,
+                                                                           jint);
 
 #ifdef __cplusplus
 }

@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
+
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -27,24 +29,24 @@ class MockedGcsObjectManager : public gcs::GcsObjectManager {
       : gcs::GcsObjectManager(gcs_table_storage, gcs_pub_sub, gcs_node_manager) {}
 
  public:
-  void AddObjectsLocation(const ClientID &node_id,
+  void AddObjectsLocation(const NodeID &node_id,
                           const absl::flat_hash_set<ObjectID> &object_ids) {
     gcs::GcsObjectManager::AddObjectsLocation(node_id, object_ids);
   }
 
-  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+  void AddObjectLocationInCache(const ObjectID &object_id, const NodeID &node_id) {
     gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id);
   }
 
-  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id) {
+  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id) {
     return gcs::GcsObjectManager::GetObjectLocations(object_id);
   }
 
-  void OnNodeRemoved(const ClientID &node_id) {
+  void OnNodeRemoved(const NodeID &node_id) {
     gcs::GcsObjectManager::OnNodeRemoved(node_id);
   }
 
-  void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+  void RemoveObjectLocationInCache(const ObjectID &object_id, const NodeID &node_id) {
     gcs::GcsObjectManager::RemoveObjectLocationInCache(object_id, node_id);
   }
 };
@@ -53,8 +55,8 @@ class GcsObjectManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
+    gcs_node_manager_ =
+        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
     gcs_object_manager_ = std::make_shared<MockedGcsObjectManager>(
         gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_);
     GenTestData();
@@ -66,12 +68,12 @@ class GcsObjectManagerTest : public ::testing::Test {
       object_ids_.emplace(object_id);
     }
     for (size_t i = 0; i < node_count_; ++i) {
-      ClientID node_id = ClientID::FromRandom();
+      NodeID node_id = NodeID::FromRandom();
       node_ids_.emplace(node_id);
     }
   }
 
-  void CheckLocations(const absl::flat_hash_set<ClientID> &locations) {
+  void CheckLocations(const absl::flat_hash_set<NodeID> &locations) {
     ASSERT_EQ(locations.size(), node_ids_.size());
     for (const auto &location : locations) {
       auto it = node_ids_.find(location);
@@ -81,10 +83,8 @@ class GcsObjectManagerTest : public ::testing::Test {
   }
 
  protected:
-  boost::asio::io_service io_service_;
-  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   std::shared_ptr<MockedGcsObjectManager> gcs_object_manager_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -92,7 +92,7 @@ class GcsObjectManagerTest : public ::testing::Test {
   size_t object_count_{5};
   size_t node_count_{10};
   absl::flat_hash_set<ObjectID> object_ids_;
-  absl::flat_hash_set<ClientID> node_ids_;
+  absl::flat_hash_set<NodeID> node_ids_;
 };
 
 TEST_F(GcsObjectManagerTest, AddObjectsLocationAndGetLocationTest) {

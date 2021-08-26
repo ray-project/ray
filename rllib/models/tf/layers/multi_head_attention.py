@@ -4,14 +4,15 @@
       https://arxiv.org/pdf/1706.03762.pdf
 """
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-class MultiHeadAttention(tf.keras.layers.Layer):
+class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
     """A multi-head attention layer described in [1]."""
 
-    def __init__(self, out_dim, num_heads, head_dim, **kwargs):
+    def __init__(self, out_dim: int, num_heads: int, head_dim: int, **kwargs):
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
@@ -22,7 +23,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim, use_bias=False))
 
-    def call(self, inputs):
+    def call(self, inputs: TensorType) -> TensorType:
         L = tf.shape(inputs)[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
@@ -47,5 +48,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         wmat = tf.nn.softmax(masked_score, axis=2)
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
-        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
+        shape = tf.concat([tf.shape(out)[:2], [H * D]], axis=0)
+        out = tf.reshape(out, shape)
         return self._linear_layer(out)

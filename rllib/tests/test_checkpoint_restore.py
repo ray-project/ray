@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -63,13 +63,13 @@ CONFIGS = {
 }
 
 
-def ckpt_restore_test(alg_name, tfe=False):
+def ckpt_restore_test(alg_name, tfe=False, object_store=False):
     config = CONFIGS[alg_name]
     frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
-        for use_object_store in [False, True]:
+        for use_object_store in ([False, True] if object_store else [False]):
             print("use_object_store={}".format(use_object_store))
-            cls = get_agent_class(alg_name)
+            cls = get_trainer_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
                 alg1 = cls(config=config, env="Pendulum-v0")
                 alg2 = cls(config=config, env="Pendulum-v0")
@@ -96,7 +96,7 @@ def ckpt_restore_test(alg_name, tfe=False):
             if optim_state:
                 s2 = alg2.get_policy().get_state().get("_optimizer_variables")
                 # Tf -> Compare states 1:1.
-                if fw in ["tf", "tfe"]:
+                if fw in ["tf2", "tf", "tfe"]:
                     check(s2, optim_state)
                 # For torch, optimizers have state_dicts with keys=params,
                 # which are different for the two models (ignore these
@@ -124,12 +124,15 @@ def ckpt_restore_test(alg_name, tfe=False):
                 if abs(a1 - a2) > .1:
                     raise AssertionError("algo={} [a1={} a2={}]".format(
                         alg_name, a1, a2))
+            # Stop both Trainers.
+            alg1.stop()
+            alg2.stop()
 
 
-class TestCheckpointRestore(unittest.TestCase):
+class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=10, object_store_memory=1e9)
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls):
@@ -138,29 +141,55 @@ class TestCheckpointRestore(unittest.TestCase):
     def test_a3c_checkpoint_restore(self):
         ckpt_restore_test("A3C")
 
+    def test_ppo_checkpoint_restore(self):
+        ckpt_restore_test("PPO", object_store=True)
+
+
+class TestCheckpointRestoreOffPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_apex_ddpg_checkpoint_restore(self):
         ckpt_restore_test("APEX_DDPG")
-
-    def test_ars_checkpoint_restore(self):
-        ckpt_restore_test("ARS")
 
     def test_ddpg_checkpoint_restore(self):
         ckpt_restore_test("DDPG")
 
     def test_dqn_checkpoint_restore(self):
-        ckpt_restore_test("DQN")
-
-    def test_es_checkpoint_restore(self):
-        ckpt_restore_test("ES")
-
-    def test_ppo_checkpoint_restore(self):
-        ckpt_restore_test("PPO")
+        ckpt_restore_test("DQN", object_store=True)
 
     def test_sac_checkpoint_restore(self):
         ckpt_restore_test("SAC")
 
 
+class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_ars_checkpoint_restore(self):
+        ckpt_restore_test("ARS")
+
+    def test_es_checkpoint_restore(self):
+        ckpt_restore_test("ES")
+
+
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

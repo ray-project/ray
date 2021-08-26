@@ -1,0 +1,87 @@
+# These are mirrored in setup.py as install_requires,
+# which is what the users of the ray package will install. The rest of this file
+# sets up all the packages necessary for a /developer/ of Ray.
+#
+# In short, if you change it here, PLEASE also change it in setup.py.
+#
+# setup.py install_requires
+aiohttp==3.7
+aioredis < 2
+click >= 7.0
+cloudpickle
+filelock
+gpustat
+grpcio >= 1.28.1
+jsonschema
+msgpack >= 1.0.0, < 2.0.0
+numpy >= 1.16
+opencensus
+prometheus_client >= 0.7.1
+protobuf >= 3.8.0
+py-spy >= 0.2.0
+pydantic >= 1.8
+pyyaml
+redis >= 3.5.0
+requests
+
+## setup.py extras
+dm_tree
+flask
+gym
+lz4
+scikit-image
+opencv-python-headless==4.3.0.36
+pandas>=1.0.5; python_version < '3.7'
+pandas>=1.2.0; python_version >= '3.7'
+scipy==1.4.1
+tabulate
+tensorboardX >= 1.9
+uvicorn
+dataclasses; python_version < '3.7'
+starlette
+
+# Requirements for running tests
+pyarrow==4.0.1
+blist; platform_system != "Windows"
+azure-common
+azure-mgmt-resource
+msrestazure
+boto3
+cython >= 0.29.15
+dataclasses; python_version < '3.7'
+feather-format
+google-api-python-client
+gym
+gym-minigrid
+kubernetes
+lxml
+moto
+mypy
+networkx
+numba
+# higher version of llvmlite breaks windows
+llvmlite==0.34.0
+openpyxl
+opentelemetry-api==1.1.0
+opentelemetry-sdk==1.1.0
+opentelemetry-exporter-otlp==1.1.0
+pexpect
+Pillow; platform_system != "Windows"
+pygments
+pytest==5.4.3
+pytest-asyncio
+pytest-rerunfailures
+pytest-sugar
+pytest-lazy-fixture
+pytest-timeout
+scikit-learn==0.22.2
+tensorflow==2.5.1
+testfixtures
+werkzeug
+xlrd
+starlette
+fastapi
+smart_open[s3]
+tqdm
+async-exit-stack
+async-generator

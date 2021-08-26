@@ -5,13 +5,14 @@ import logging
 import re
 import string
 import sys
+import weakref
 
 import numpy as np
+from numpy import log
 import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
 logger = logging.getLogger(__name__)
 
@@ -315,30 +316,6 @@ def test_numpy_serialization(ray_start_regular):
     assert len(buffers) == 1
 
 
-def test_numpy_subclass_serialization(ray_start_regular):
-    class MyNumpyConstant(np.ndarray):
-        def __init__(self, value):
-            super().__init__()
-            self.constant = value
-
-        def __str__(self):
-            print(self.constant)
-
-    constant = MyNumpyConstant(123)
-
-    def explode(x):
-        raise RuntimeError("Expected error.")
-
-    ray.register_custom_serializer(
-        type(constant), serializer=explode, deserializer=explode)
-
-    try:
-        ray.put(constant)
-        assert False, "Should never get here!"
-    except (RuntimeError, IndexError):
-        print("Correct behavior, proof that customer serializer was used.")
-
-
 def test_numpy_subclass_serialization_pickle(ray_start_regular):
     class MyNumpyConstant(np.ndarray):
         def __init__(self, value):
@@ -352,6 +329,36 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
     repr_orig = repr(constant)
     repr_ser = repr(ray.get(ray.put(constant)))
     assert repr_orig == repr_ser
+
+
+def test_inspect_serialization(enable_pickle_debug):
+    import threading
+    from ray.cloudpickle import dumps_debug
+
+    lock = threading.Lock()
+
+    with pytest.raises(TypeError):
+        dumps_debug(lock)
+
+    def test_func():
+        print(lock)
+
+    with pytest.raises(TypeError):
+        dumps_debug(test_func)
+
+    class test_class:
+        def test(self):
+            self.lock = lock
+
+    from ray.util.check_serialize import inspect_serializability
+    results = inspect_serializability(lock)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_func)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_class)
+    assert list(results[1])[0].obj == lock, results
 
 
 @pytest.mark.parametrize(
@@ -446,7 +453,7 @@ def test_register_class(ray_start_2_cpus):
     assert ray.get(h2.remote(10)).value == 10
 
     # Test registering multiple classes with the same name.
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def j():
         class Class0:
             def method0(self):
@@ -519,6 +526,128 @@ def test_register_class(ray_start_2_cpus):
         assert not hasattr(c1, "method2")
         assert not hasattr(c2, "method0")
         assert not hasattr(c2, "method1")
+
+
+def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
+
+
+def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
+    # bpo-39492: reducer_override used to induce a spurious reference cycle
+    # inside the Pickler object, that could prevent all serialized objects
+    # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
+    def f():
+        return 4669201609102990671853203821578
+
+    wr = weakref.ref(f)
+
+    bio = io.BytesIO()
+    from ray.cloudpickle import CloudPickler, loads, dumps
+    p = CloudPickler(bio, protocol=5)
+    p.dump(f)
+    new_f = loads(bio.getvalue())
+    assert new_f() == 4669201609102990671853203821578
+
+    del p
+    del f
+
+    assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
+
+
+def test_buffer_alignment(ray_start_shared_local_modes):
+    # Deserialized large numpy arrays should be 64-byte aligned.
+    x = np.random.normal(size=(10, 20, 30))
+    y = ray.get(ray.put(x))
+    assert y.ctypes.data % 64 == 0
+
+    # Unlike PyArrow, Ray aligns small numpy arrays to 8
+    # bytes to be memory efficient.
+    xs = [np.random.normal(size=i) for i in range(100)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+
+def test_custom_serializer(ray_start_shared_local_modes):
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(x):
+        return A(x)
+
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+    ray.get(ray.put(A(1)))
+
+    ray.util.deregister_serializer(A)
+    with pytest.raises(Exception):
+        ray.get(ray.put(A(1)))
+
+    # deregister again takes no effects
+    ray.util.deregister_serializer(A)
+
+
+def test_numpy_ufunc(ray_start_shared_local_modes):
+    @ray.remote
+    def f():
+        # add reference to the numpy ufunc
+        log
+
+    ray.get(f.remote())
+
+
+class _SelfDereferenceObject:
+    """A object that dereferences itself during deserialization"""
+
+    def __init__(self, ref: ray.ObjectRef):
+        self.ref = ref
+
+    def __reduce__(self):
+        return ray.get, (self.ref, )
+
+
+def test_recursive_resolve(ray_start_shared_local_modes):
+    ref = ray.put(42)
+    for _ in range(10):
+        ref = ray.put(_SelfDereferenceObject(ref))
+    assert ray.get(ref) == 42
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
+namespace core {
 
 struct TaskState {
   TaskState(TaskSpecification t,
@@ -37,19 +38,16 @@ void InlineDependencies(
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      const auto &id = task.ArgId(i, 0);
+    if (task.ArgByRef(i)) {
+      const auto &id = task.ArgId(i);
       const auto &it = dependencies.find(id);
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        mutable_arg->clear_object_ids();
-        if (it->second->IsInPlasmaError()) {
-          // Promote the object id to plasma.
-          mutable_arg->add_object_ids(it->first.Binary());
-        } else {
-          // Inline the object value.
+        if (!it->second->IsInPlasmaError()) {
+          // The object has not been promoted to plasma. Inline the object by
+          // clearing the reference and replacing it with the raw value.
+          mutable_arg->clear_object_ref();
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());
@@ -58,9 +56,9 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          for (const auto &nested_id : it->second->GetNestedIds()) {
-            mutable_arg->add_nested_inlined_ids(nested_id.Binary());
-            contained_ids->push_back(nested_id);
+          for (const auto &nested_ref : it->second->GetNestedRefs()) {
+            mutable_arg->add_nested_inlined_refs()->CopyFrom(nested_ref);
+            contained_ids->push_back(ObjectID::FromBinary(nested_ref.object_id()));
           }
           inlined_dependency_ids->push_back(id);
         }
@@ -76,10 +74,8 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      RAY_CHECK(count <= 1) << "multi args not implemented";
-      local_dependencies.emplace(task.ArgId(i, 0), nullptr);
+    if (task.ArgByRef(i)) {
+      local_dependencies.emplace(task.ArgId(i), nullptr);
     }
   }
   if (local_dependencies.empty()) {
@@ -120,4 +116,5 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   }
 }
 
+}  // namespace core
 }  // namespace ray

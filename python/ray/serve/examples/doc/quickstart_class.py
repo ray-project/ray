@@ -1,19 +1,24 @@
-from ray import serve
 import requests
 
-serve.init()
+import ray
+from ray import serve
+
+serve.start()
 
 
+@serve.deployment
 class Counter:
     def __init__(self):
         self.count = 0
 
-    def __call__(self, flask_request):
-        return {"current_counter": self.count}
+    def __call__(self, *args):
+        self.count += 1
+        return {"count": self.count}
 
 
-serve.create_backend("counter", Counter)
-serve.create_endpoint("counter", backend="counter", route="/counter")
+# Deploy our class.
+Counter.deploy()
 
-requests.get("http://127.0.0.1:8000/counter").json()
-# > {"current_counter": self.count}
+# Query our endpoint in two different ways: from HTTP and from Python.
+assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+assert ray.get(Counter.get_handle().remote()) == {"count": 2}

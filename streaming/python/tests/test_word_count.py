@@ -1,10 +1,12 @@
 import os
+import sys
 import ray
 from ray.streaming import StreamingContext
+from ray._private.test_utils import wait_for_condition
 
 
 def test_word_count():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder() \
         .build()
     ctx.read_text_file(__file__) \
@@ -23,7 +25,7 @@ def test_word_count():
 
 
 def test_simple_word_count():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder() \
         .build()
     sink_file = "/tmp/ray_streaming_test_simple_word_count.txt"
@@ -45,14 +47,17 @@ def test_simple_word_count():
                 (old_value[0], old_value[1] + new_value[1])) \
         .sink(sink_func)
     ctx.submit("word_count")
-    import time
-    time.sleep(3)
+
+    def check_succeed():
+        if os.path.exists(sink_file):
+            with open(sink_file, "r") as f:
+                result = f.read()
+                return "a:2" in result and "b:2" in result and "c:2" in result
+        return False
+
+    wait_for_condition(check_succeed, timeout=60, retry_interval_ms=1000)
+    print("Execution succeed")
     ray.shutdown()
-    with open(sink_file, "r") as f:
-        result = f.read()
-        assert "a:2" in result
-        assert "b:2" in result
-        assert "c:2" in result
 
 
 if __name__ == "__main__":

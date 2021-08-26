@@ -4,24 +4,18 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayActorException;
+import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.setProperty("ray.job.num-java-workers-per-process", "1");
   }
 
   public static class HangActor {
@@ -42,6 +36,10 @@ public class KillActorTest extends BaseTest {
     public void kill(ActorHandle<?> actor, boolean noRestart) {
       actor.kill(noRestart);
     }
+
+    public void killWithoutRestart(ActorHandle<?> actor) {
+      actor.kill();
+    }
   }
 
   private static void localKill(ActorHandle<?> actor, boolean noRestart) {
@@ -54,15 +52,12 @@ public class KillActorTest extends BaseTest {
   }
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
-    TestUtils.skipTestUnderSingleProcess();
-
-    ActorHandle<HangActor> actor = Ray.actor(HangActor::new)
-        .setMaxRestarts(1)
-        .remote();
+    ActorHandle<HangActor> actor = Ray.actor(HangActor::new).setMaxRestarts(1).remote();
+    // Wait for the actor to be created.
+    actor.task(HangActor::ping).remote().get();
     ObjectRef<Boolean> result = actor.task(HangActor::hang).remote();
     // The actor will hang in this task.
-    Assert.assertEquals(0,
-        Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
+    Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
     // Kill the actor
     kill.accept(actor, noRestart);
@@ -79,8 +74,8 @@ public class KillActorTest extends BaseTest {
 
     if (noRestart) {
       // The actor should not be restarted.
-      Assert.expectThrows(RayActorException.class,
-          () -> actor.task(HangActor::hang).remote().get());
+      Assert.expectThrows(
+          RayActorException.class, () -> actor.task(HangActor::hang).remote().get());
     } else {
       Assert.assertEquals(actor.task(HangActor::ping).remote().get(), "pong");
     }
@@ -89,10 +84,17 @@ public class KillActorTest extends BaseTest {
   public void testLocalKill() {
     testKillActor(KillActorTest::localKill, false);
     testKillActor(KillActorTest::localKill, true);
+    testKillActor((actorHandle, noRestart) -> actorHandle.kill(), true);
   }
 
   public void testRemoteKill() {
     testKillActor(KillActorTest::remoteKill, false);
     testKillActor(KillActorTest::remoteKill, true);
+    testKillActor(
+        (actor, noRestart) -> {
+          ActorHandle<KillerActor> killer = Ray.actor(KillerActor::new).remote();
+          killer.task(KillerActor::killWithoutRestart, actor).remote();
+        },
+        true);
   }
 }

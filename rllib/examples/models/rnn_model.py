@@ -7,7 +7,7 @@ from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -54,7 +54,6 @@ class RNNModel(RecurrentNetwork):
         self.rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
     @override(RecurrentNetwork)
@@ -103,6 +102,8 @@ class TorchRNNModel(TorchRNN, nn.Module):
 
     @override(ModelV2)
     def get_initial_state(self):
+        # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+        #  View API is supported across all of RLlib.
         # Place hidden states on same device as model.
         h = [
             self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),

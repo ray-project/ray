@@ -5,9 +5,9 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
+import io.ray.runtime.exception.UnreconstructableException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +42,10 @@ public class ActorTest extends BaseTest {
       value += largeObject.data.length;
       return value;
     }
+
+    public TestUtils.LargeObject createLargeObject() {
+      return new TestUtils.LargeObject();
+    }
   }
 
   public void testCreateAndCallActor() {
@@ -53,14 +57,13 @@ public class ActorTest extends BaseTest {
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
     actor.task(Counter::increase, 1).remote();
-    Assert.assertEquals(Integer.valueOf(3),
-        actor.task(Counter::increaseAndGet, 1).remote().get());
+    Assert.assertEquals(Integer.valueOf(3), actor.task(Counter::increaseAndGet, 1).remote().get());
   }
 
   /**
    * Test getting an object twice from the local memory store.
    *
-   * Objects are stored in core worker's local memory. And it will be removed after the first
+   * <p>Objects are stored in core worker's local memory. And it will be removed after the first
    * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
    */
   public void testGetObjectTwice() {
@@ -68,14 +71,14 @@ public class ActorTest extends BaseTest {
     ObjectRef<Integer> result = actor.task(Counter::getValue).remote();
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
-    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
-    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
+    Assert.assertEquals(Ray.get(result), Integer.valueOf(1));
   }
 
   public void testCallActorWithLargeObject() {
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1).remote();
     TestUtils.LargeObject largeObject = new TestUtils.LargeObject();
-    Assert.assertEquals(Integer.valueOf(largeObject.data.length + 1),
+    Assert.assertEquals(
+        Integer.valueOf(largeObject.data.length + 1),
         actor.task(Counter::accessLargeObject, largeObject).remote().get());
   }
 
@@ -108,44 +111,75 @@ public class ActorTest extends BaseTest {
 
   public void testPassActorAsParameter() {
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 0).remote();
-    Assert.assertEquals(Integer.valueOf(1),
+    Assert.assertEquals(
+        Integer.valueOf(1),
         Ray.task(ActorTest::testActorAsFirstParameter, actor, 1).remote().get());
-    Assert.assertEquals(Integer.valueOf(11),
+    Assert.assertEquals(
+        Integer.valueOf(11),
         Ray.task(ActorTest::testActorAsSecondParameter, 10, actor).remote().get());
-    Assert.assertEquals(Integer.valueOf(111),
-        Ray.task(ActorTest::testActorAsFieldOfParameter,
-            Collections.singletonList(actor), 100).remote().get());
+    Assert.assertEquals(
+        Integer.valueOf(111),
+        Ray.task(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100)
+            .remote()
+            .get());
   }
 
-  // TODO(qwang): Will re-enable this test case once ref counting is supported in Java.
-  @Test(enabled = false)
+  // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
+  @Test(groups = {"cluster"})
   public void testUnreconstructableActorObject() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
-
-    // The UnreconstructableException is created by raylet.
     ActorHandle<Counter> counter = Ray.actor(Counter::new, 100).remote();
     // Call an actor method.
     ObjectRef value = counter.task(Counter::getValue).remote();
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value.getId()), false, false);
-    // Wait until the object is deleted, because the above free operation is async.
-    while (true) {
-      Boolean result = TestUtils.getRuntime().getObjectStore()
-          .wait(ImmutableList.of(value.getId()), 1, 0).get(0);
-      if (!result) {
-        break;
-      }
-      TimeUnit.MILLISECONDS.sleep(100);
+    Ray.internal().free(ImmutableList.of(value), false);
+    // Wait for delete RPC to propagate
+    TimeUnit.SECONDS.sleep(1);
+    // Free deletes from in-memory store.
+    Assert.expectThrows(UnreconstructableException.class, () -> value.get());
+
+    // Call an actor method.
+    ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
+    Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
+    // Delete the object from the object store.
+    Ray.internal().free(ImmutableList.of(largeValue), false);
+    // Wait for delete RPC to propagate
+    TimeUnit.SECONDS.sleep(1);
+    // Free deletes big objects from plasma store.
+    Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
+  }
+
+  public interface ChildClassInterface {
+
+    default String interfaceName() {
+      return ChildClassInterface.class.getName();
+    }
+  }
+
+  public static class ChildClass extends Counter implements ChildClassInterface {
+
+    public ChildClass(int initValue) {
+      super(initValue);
     }
 
-    try {
-      // Try getting the object again, this should throw an UnreconstructableException.
-      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
-      Ray.get(value.getId(), value.getType());
-      Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException e) {
-      Assert.assertEquals(value.getId(), e.objectId);
+    @Override
+    public void increase(int delta) {
+      super.increase(-delta);
     }
+  }
+
+  @Test(groups = {"cluster"})
+  public void testInheritance() {
+    ActorHandle<ChildClass> counter = Ray.actor(ChildClass::new, 100).remote();
+    counter.task(ChildClass::increase, 10).remote();
+    Assert.assertEquals(counter.task(ChildClass::getValue).remote().get(), Integer.valueOf(90));
+    // Since `increase` method is overrided, call by super class method reference should still
+    // execute child class methods.
+    counter.task(Counter::increase, 10).remote();
+    Assert.assertEquals(counter.task(Counter::getValue).remote().get(), Integer.valueOf(80));
+    // test interface default methods
+    Assert.assertEquals(
+        counter.task(ChildClassInterface::interfaceName).remote().get(),
+        ChildClassInterface.class.getName());
   }
 }

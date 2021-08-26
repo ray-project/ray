@@ -1,25 +1,25 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
+from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
-from ray.rllib.env.constants import GROUP_REWARDS
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
-tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class QMixLoss(nn.Module):
                 next_state=None):
         """Forward pass of the loss.
 
-        Arguments:
+        Args:
             rewards: Tensor of shape [B, T, n_agents]
             actions: Tensor of shape [B, T, n_agents]
             terminated: Tensor of shape [B, T, n_agents]
@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child.
+# TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -162,6 +162,7 @@ class QMixTorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
+        config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
@@ -194,6 +195,7 @@ class QMixTorchPolicy(Policy):
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.obs_size = _get_size(agent_obs_space)
+            self.env_global_state_shape = (self.obs_size, self.n_agents)
 
         self.model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -257,6 +259,7 @@ class QMixTorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         explore=None,
+                        timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
@@ -277,15 +280,15 @@ class QMixTorchPolicy(Policy):
                 action_mask, dtype=torch.float, device=self.device)
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
-            # epsilon-greedy action selector
-            random_numbers = torch.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < (self.cur_epsilon
-                                             if explore else 0.0)).long()
-            from torch.distributions import Categorical
-            random_actions = Categorical(avail).sample().long()
-            actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.argmax(dim=2))
-            actions = actions.cpu().numpy()
+            masked_q_values_folded = torch.reshape(
+                masked_q_values, [-1] + list(masked_q_values.shape)[2:])
+            actions, _ = self.exploration.get_exploration_action(
+                action_distribution=TorchCategorical(masked_q_values_folded),
+                timestep=timestep,
+                explore=explore)
+            actions = torch.reshape(
+                actions,
+                list(masked_q_values.shape)[:-1]).cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
         return tuple(actions.transpose([1, 0])), hiddens, {}
@@ -319,11 +322,11 @@ class QMixTorchPolicy(Policy):
 
         output_list, _, seq_lens = \
             chop_into_sequences(
-                samples[SampleBatch.EPS_ID],
-                samples[SampleBatch.UNROLL_ID],
-                samples[SampleBatch.AGENT_INDEX],
-                input_list,
-                [],  # RNN states not used here
+                episode_ids=samples[SampleBatch.EPS_ID],
+                unroll_ids=samples[SampleBatch.UNROLL_ID],
+                agent_indices=samples[SampleBatch.AGENT_INDEX],
+                feature_columns=input_list,
+                state_columns=[],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         # These will be padded to shape [B * T, ...]
@@ -472,6 +475,7 @@ class QMixTorchPolicy(Policy):
             tensorlib=np)
 
         if isinstance(unpacked[0], dict):
+            assert "obs" in unpacked[0]
             unpacked_obs = [
                 np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
             ]
@@ -492,7 +496,7 @@ class QMixTorchPolicy(Policy):
                 dtype=np.float32)
 
         if self.has_env_global_state:
-            state = unpacked[0][ENV_STATE]
+            state = np.concatenate(tree.flatten(unpacked[0][ENV_STATE]), 1)
         else:
             state = None
         return obs, action_mask, state
@@ -527,7 +531,7 @@ def _validate(obs_space, action_space):
 def _mac(model, obs, h):
     """Forward pass of the multi-agent controller.
 
-    Arguments:
+    Args:
         model: TorchModelV2 class
         obs: Tensor of shape [B, n_agents, obs_size]
         h: List of tensors of shape [B, n_agents, h_size]

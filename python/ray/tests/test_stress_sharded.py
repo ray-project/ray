@@ -1,25 +1,20 @@
 import numpy as np
-import os
 import pytest
 
 import ray
 
 
-@pytest.fixture(params=[1, 4])
+@pytest.fixture(params=[1])
 def ray_start_sharded(request):
-    num_redis_shards = request.param
-
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        num_redis_shards = 1
-        # For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports
-        # 1-node chain for that shard only.
+    # TODO(ekl) enable this again once GCS supports sharding.
+    # num_redis_shards = request.param
 
     # Start the Ray processes.
     ray.init(
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
-        num_redis_shards=num_redis_shards,
-        redis_max_memory=10**7)
+        # _num_redis_shards=num_redis_shards,
+        _redis_max_memory=10**8)
 
     yield None
 
@@ -39,7 +34,7 @@ def test_submitting_many_tasks(ray_start_sharded):
         return x
 
     ray.get([g(100) for _ in range(100)])
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_submitting_many_actors_to_one(ray_start_sharded):
@@ -77,7 +72,7 @@ def test_getting_and_putting(ray_start_sharded):
         for _ in range(1000):
             ray.get(x_id)
 
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_getting_many_objects(ray_start_sharded):
@@ -89,7 +84,7 @@ def test_getting_many_objects(ray_start_sharded):
     lst = ray.get([f.remote() for _ in range(n)])
     assert lst == n * [1]
 
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 if __name__ == "__main__":

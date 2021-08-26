@@ -37,5 +37,4 @@ public class MaxPressureTest extends RayBenchmarkTest {
   public boolean checkResult(Object o) {
     return (int) o == 0;
   }
-
 }

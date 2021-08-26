@@ -27,16 +27,14 @@ import io.ray.streaming.state.keystate.state.impl.OperatorStateImpl;
 import io.ray.streaming.state.strategy.StateStoreManagerProxy;
 import java.util.List;
 
-/**
- * This class defines ListState Wrapper, connecting state and backend.
- */
-public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>> implements
-    KeyValueState<String, List<T>> {
+/** This class defines ListState Wrapper, connecting state and backend. */
+public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>>
+    implements KeyValueState<String, List<T>> {
 
   private final ListState<T> listState;
 
-  public ListStateStoreManagerProxy(AbstractKeyStateBackend keyStateBackend,
-                                    ListStateDescriptor<T> stateDescriptor) {
+  public ListStateStoreManagerProxy(
+      AbstractKeyStateBackend keyStateBackend, ListStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     if (stateDescriptor.isOperatorList()) {
       this.listState = new OperatorStateImpl<>(stateDescriptor, keyStateBackend);

@@ -10,7 +10,7 @@ When a worker is executing a task, if the worker dies unexpectedly, either
 because the process crashed or because the machine failed, Ray will rerun
 the task (after a delay of several seconds) until either the task succeeds
 or the maximum number of retries is exceeded. The default number of retries
-is 4.
+is 3.
 
 You can experiment with this behavior by running the following code.
 
@@ -38,9 +38,10 @@ You can experiment with this behavior by running the following code.
             # exception.
             ray.get(potentially_fail.remote(0.5))
             print('SUCCESS')
-        except ray.exceptions.RayWorkerError:
+        except ray.exceptions.WorkerCrashedError:
             print('FAILURE')
 
+.. _actor-fault-tolerance:
 
 Actors
 ------
@@ -151,8 +152,8 @@ You can experiment with this behavior by running the following code.
 For at-least-once actors, the system will still guarantee execution ordering
 according to the initial submission order. For example, any tasks submitted
 after a failed actor task will not execute on the actor until the failed actor
-task has been successfully retried. The system also will not attempt to
-re-execute any tasks that executed successfully before the failure.
+task has been successfully retried. The system will not attempt to re-execute
+any tasks that executed successfully before the failure (unless :ref:`object reconstruction <object-reconstruction>` is enabled).
 
 At-least-once execution is best suited for read-only actors or actors with
 ephemeral state that does not need to be rebuilt after a failure. For actors
@@ -161,3 +162,31 @@ manually restart the actor or automatically restart the actor with at-most-once
 semantics. If the actor’s exact state at the time of failure is needed, the
 application is responsible for resubmitting all tasks since the last
 checkpoint.
+
+.. note::
+    For :ref:`async or threaded actors <async-actors>`, the tasks might
+    be completed out of order. Upon actor restart, the system will only retry
+    *incomplete* task, in their initial submission order. Previously completed
+    tasks will not be re-executed.
+
+.. _object-reconstruction:
+
+Objects
+-------
+
+Task outputs over a configurable threshold (default 100KB) may be stored in
+Ray's distributed object store. Thus, a node failure can cause the loss of a
+task output. If this occurs, Ray will automatically attempt to recover the
+value by looking for copies of the same object on other nodes. If there are no
+other copies left, an ``ObjectLostError`` will be raised.
+
+When there are no copies of an object left, Ray also provides an option to
+automatically recover the value by re-executing the task that created the
+value. Arguments to the task are recursively reconstructed with the same
+method. This option can be enabled with
+``ray.init(_enable_object_reconstruction=True)`` in standalone mode or ``ray
+start --enable-object-reconstruction`` in cluster mode.
+During reconstruction, each task will only be re-executed up to the specified
+number of times, using ``max_retries`` for normal tasks and
+``max_task_retries`` for actor tasks. Both limits can be set to infinity with
+the value -1.

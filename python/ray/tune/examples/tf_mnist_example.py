@@ -10,6 +10,9 @@
 #
 
 import argparse
+import os
+
+from filelock import FileLock
 from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
@@ -17,11 +20,6 @@ from tensorflow.keras.datasets.mnist import load_data
 from ray import tune
 
 MAX_TRAIN_BATCH = 10
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing")
-args, _ = parser.parse_known_args()
 
 
 class MyModel(Model):
@@ -40,10 +38,12 @@ class MyModel(Model):
 
 
 class MNISTTrainable(tune.Trainable):
-    def _setup(self, config):
+    def setup(self, config):
         # IMPORTANT: See the above note.
         import tensorflow as tf
-        (x_train, y_train), (x_test, y_test) = load_data()
+        # Use FileLock to avoid race conditions.
+        with FileLock(os.path.expanduser("~/.tune.lock")):
+            (x_train, y_train), (x_test, y_test) = load_data()
         x_train, x_test = x_train / 255.0, x_test / 255.0
 
         # Add a channels dimension
@@ -90,7 +90,7 @@ class MNISTTrainable(tune.Trainable):
         self.tf_train_step = train_step
         self.tf_test_step = test_step
 
-    def _train(self):
+    def step(self):
         self.train_loss.reset_states()
         self.train_accuracy.reset_states()
         self.test_loss.reset_states()
@@ -115,9 +115,28 @@ class MNISTTrainable(tune.Trainable):
 
 
 if __name__ == "__main__":
-    load_data()  # we download data on the driver to avoid race conditions.
-    tune.run(
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address and not args.smoke_test:
+        import ray
+        ray.init(f"ray://{args.server_address}")
+
+    analysis = tune.run(
         MNISTTrainable,
+        metric="test_loss",
+        mode="min",
         stop={"training_iteration": 5 if args.smoke_test else 50},
         verbose=1,
         config={"hiddens": tune.grid_search([32, 64, 128])})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

@@ -18,14 +18,11 @@
 
 package io.ray.streaming.state.keystate.desc;
 
-
 import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
 
 import io.ray.streaming.state.keystate.state.ListState;
 
-/**
- * ListStateDescriptor.
- */
+/** ListStateDescriptor. */
 public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>, T> {
 
   private final boolean isOperatorList;
@@ -41,8 +38,8 @@ public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>
     return build(name, type, false);
   }
 
-  public static <T> ListStateDescriptor<T> build(String name, Class<T> type,
-                                                 boolean isOperatorList) {
+  public static <T> ListStateDescriptor<T> build(
+      String name, Class<T> type, boolean isOperatorList) {
     return new ListStateDescriptor<>(name, type, isOperatorList);
   }
 
@@ -74,8 +71,8 @@ public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>
   @Override
   public String getIdentify() {
     if (isOperatorList) {
-      return String
-          .format("%s%s%d%s%d", super.getIdentify(), DELIMITER, partitionNum, DELIMITER, index);
+      return String.format(
+          "%s%s%d%s%d", super.getIdentify(), DELIMITER, partitionNum, DELIMITER, index);
     } else {
       return super.getIdentify();
     }

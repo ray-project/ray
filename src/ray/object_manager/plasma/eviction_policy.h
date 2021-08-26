@@ -15,8 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_EVICTION_POLICY_H
-#define PLASMA_EVICTION_POLICY_H
+// ==== The eviction policy ====
+//
+// This file contains declaration for all functions and data structures that
+// need to be provided if you want to implement a new eviction algorithm for the
+// Plasma store.
+
+#pragma once
 
 #include <functional>
 #include <list>
@@ -26,21 +31,80 @@
 #include <vector>
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
-// ==== The eviction policy ====
-//
-// This file contains declaration for all functions and data structures that
-// need to be provided if you want to implement a new eviction algorithm for the
-// Plasma store.
-//
-// It does not implement memory quotas; see quota_aware_policy for that.
+/// The eviction policy interface.
+class IEvictionPolicy {
+ public:
+  virtual ~IEvictionPolicy() = default;
+
+  /// This method will be called whenever an object is first created in order to
+  /// add it to the LRU cache. This is done so that the first time, the Plasma
+  /// store calls begin_object_access, we can remove the object from the LRU
+  /// cache.
+  ///
+  /// \param object_id The object ID of the object that was created.
+  virtual void ObjectCreated(const ObjectID &object_id) = 0;
+
+  /// This method will be called when the Plasma store needs more space, perhaps
+  /// to create a new object. When this method is called, the eviction
+  /// policy will assume that the objects chosen to be evicted will in fact be
+  /// evicted from the Plasma store by the caller.
+  ///
+  /// \param size The size in bytes of the new object, including both data and
+  ///        metadata.
+  /// \param objects_to_evict The object IDs that were chosen for eviction will
+  ///        be stored into this vector.
+  /// \return The number of bytes of space that is still needed, if
+  /// any. If negative, then the required space has been made.
+  virtual int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) = 0;
+
+  /// This method will be called whenever an unused object in the Plasma store
+  /// starts to be used. When this method is called, the eviction policy will
+  /// assume that the objects chosen to be evicted will in fact be evicted from
+  /// the Plasma store by the caller.
+  ///
+  /// \param object_id The ID of the object that is now being used.
+  virtual void BeginObjectAccess(const ObjectID &object_id) = 0;
+
+  /// This method will be called whenever an object in the Plasma store that was
+  /// being used is no longer being used. When this method is called, the
+  /// eviction policy will assume that the objects chosen to be evicted will in
+  /// fact be evicted from the Plasma store by the caller.
+  ///
+  /// \param object_id The ID of the object that is no longer being used.
+  virtual void EndObjectAccess(const ObjectID &object_id) = 0;
+
+  /// Choose some objects to evict from the Plasma store. When this method is
+  /// called, the eviction policy will assume that the objects chosen to be
+  /// evicted will in fact be evicted from the Plasma store by the caller.
+  ///
+  /// @note This method is not part of the API. It is exposed in the header file
+  /// only for testing.
+  ///
+  /// \param num_bytes_required The number of bytes of space to try to free up.
+  /// \param objects_to_evict The object IDs that were chosen for eviction will
+  ///        be stored into this vector.
+  /// \return The total number of bytes of space chosen to be evicted.
+  virtual int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
+                                       std::vector<ObjectID> &objects_to_evict) = 0;
+
+  /// This method will be called when an object is going to be removed
+  ///
+  /// \param object_id The ID of the object that is now being used.
+  virtual void RemoveObject(const ObjectID &object_id) = 0;
+
+  /// Returns debugging information for this eviction policy.
+  virtual std::string DebugString() const = 0;
+};
 
 class LRUCache {
  public:
-  LRUCache(const std::string& name, int64_t size)
+  LRUCache(const std::string &name, int64_t size)
       : name_(name),
         original_capacity_(size),
         capacity_(size),
@@ -48,12 +112,12 @@ class LRUCache {
         num_evictions_total_(0),
         bytes_evicted_total_(0) {}
 
-  void Add(const ObjectID& key, int64_t size);
+  void Add(const ObjectID &key, int64_t size);
 
-  int64_t Remove(const ObjectID& key);
+  int64_t Remove(const ObjectID &key);
 
   int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                               std::vector<ObjectID>* objects_to_evict);
+                               std::vector<ObjectID> &objects_to_evict);
 
   int64_t OriginalCapacity() const;
 
@@ -63,7 +127,9 @@ class LRUCache {
 
   void AdjustCapacity(int64_t delta);
 
-  void Foreach(std::function<void(const ObjectID&)>);
+  void Foreach(std::function<void(const ObjectID &)>);
+
+  bool Exists(const ObjectID &key) const;
 
   std::string DebugString() const;
 
@@ -90,123 +156,44 @@ class LRUCache {
   int64_t bytes_evicted_total_;
 };
 
-/// The eviction policy.
-class EvictionPolicy {
+/// The eviction policy implementation
+class EvictionPolicy : public IEvictionPolicy {
  public:
-  /// Construct an eviction policy.
-  ///
-  /// \param store_info Information about the Plasma store that is exposed
-  ///        to the eviction policy.
-  /// \param max_size Max size in bytes total of objects to store.
-  explicit EvictionPolicy(PlasmaStoreInfo* store_info, int64_t max_size);
+  EvictionPolicy(const IObjectStore &object_store, const IAllocator &allocator);
 
-  /// Destroy an eviction policy.
-  virtual ~EvictionPolicy() {}
+  void ObjectCreated(const ObjectID &object_id) override;
 
-  /// This method will be called whenever an object is first created in order to
-  /// add it to the LRU cache. This is done so that the first time, the Plasma
-  /// store calls begin_object_access, we can remove the object from the LRU
-  /// cache.
-  ///
-  /// \param object_id The object ID of the object that was created.
-  /// \param client The pointer to the client.
-  /// \param is_create Whether we are creating a new object (vs reading an object).
-  virtual void ObjectCreated(const ObjectID& object_id, Client* client, bool is_create);
+  int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) override;
 
-  /// Set quota for a client.
-  ///
-  /// \param client The pointer to the client.
-  /// \param output_memory_quota Set the quota for this client. This can only be
-  ///        called once per client. This is effectively the equivalent of giving
-  ///        the client its own LRU cache instance. The memory for this is taken
-  ///        out of the capacity of the global LRU cache for the client lifetime.
-  ///
-  /// \return True if enough space can be reserved for the given client quota.
-  virtual bool SetClientQuota(Client* client, int64_t output_memory_quota);
+  void BeginObjectAccess(const ObjectID &object_id) override;
 
-  /// Determine what objects need to be evicted to enforce the given client's quota.
-  ///
-  /// \param client The pointer to the client creating the object.
-  /// \param size The size of the object to create.
-  /// \param is_create Whether we are creating a new object (vs reading an object).
-  /// \param objects_to_evict The object IDs that were chosen for eviction will
-  ///        be stored into this vector.
-  ///
-  /// \return True if enough space could be freed and false otherwise.
-  virtual bool EnforcePerClientQuota(Client* client, int64_t size, bool is_create,
-                                     std::vector<ObjectID>* objects_to_evict);
+  void EndObjectAccess(const ObjectID &object_id) override;
 
-  /// Called to clean up any resources allocated by this client. This merges any
-  /// per-client LRU queue created by SetClientQuota into the global LRU queue.
-  ///
-  /// \param client The pointer to the client.
-  virtual void ClientDisconnected(Client* client);
+  int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
+                               std::vector<ObjectID> &objects_to_evict) override;
 
-  /// This method will be called when the Plasma store needs more space, perhaps
-  /// to create a new object. When this method is called, the eviction
-  /// policy will assume that the objects chosen to be evicted will in fact be
-  /// evicted from the Plasma store by the caller.
-  ///
-  /// \param size The size in bytes of the new object, including both data and
-  ///        metadata.
-  /// \param objects_to_evict The object IDs that were chosen for eviction will
-  ///        be stored into this vector.
-  /// \return True if enough space can be freed and false otherwise.
-  virtual bool RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict);
+  void RemoveObject(const ObjectID &object_id) override;
 
-  /// This method will be called whenever an unused object in the Plasma store
-  /// starts to be used. When this method is called, the eviction policy will
-  /// assume that the objects chosen to be evicted will in fact be evicted from
-  /// the Plasma store by the caller.
-  ///
-  /// \param object_id The ID of the object that is now being used.
-  virtual void BeginObjectAccess(const ObjectID& object_id);
+  std::string DebugString() const override;
 
-  /// This method will be called whenever an object in the Plasma store that was
-  /// being used is no longer being used. When this method is called, the
-  /// eviction policy will assume that the objects chosen to be evicted will in
-  /// fact be evicted from the Plasma store by the caller.
-  ///
-  /// \param object_id The ID of the object that is no longer being used.
-  virtual void EndObjectAccess(const ObjectID& object_id);
-
-  /// Choose some objects to evict from the Plasma store. When this method is
-  /// called, the eviction policy will assume that the objects chosen to be
-  /// evicted will in fact be evicted from the Plasma store by the caller.
-  ///
-  /// @note This method is not part of the API. It is exposed in the header file
-  /// only for testing.
-  ///
-  /// \param num_bytes_required The number of bytes of space to try to free up.
-  /// \param objects_to_evict The object IDs that were chosen for eviction will
-  ///        be stored into this vector.
-  /// \return The total number of bytes of space chosen to be evicted.
-  virtual int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                                       std::vector<ObjectID>* objects_to_evict);
-
-  /// This method will be called when an object is going to be removed
-  ///
-  /// \param object_id The ID of the object that is now being used.
-  virtual void RemoveObject(const ObjectID& object_id);
-
-  virtual void RefreshObjects(const std::vector<ObjectID>& object_ids);
-
-  /// Returns debugging information for this eviction policy.
-  virtual std::string DebugString() const;
-
- protected:
+ private:
   /// Returns the size of the object
-  int64_t GetObjectSize(const ObjectID& object_id) const;
+  int64_t GetObjectSize(const ObjectID &object_id) const;
+
+  /// Returns whether the object exist in cache or not
+  bool IsObjectExists(const ObjectID &object_id) const;
 
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
-  /// Pointer to the plasma store info.
-  PlasmaStoreInfo* store_info_;
   /// Datastructure for the LRU cache.
   LRUCache cache_;
+
+  const IObjectStore &object_store_;
+
+  const IAllocator &allocator_;
+
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 }  // namespace plasma
-
-#endif  // PLASMA_EVICTION_POLICY_H

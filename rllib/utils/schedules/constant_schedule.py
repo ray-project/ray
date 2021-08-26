@@ -1,5 +1,8 @@
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules.schedule import Schedule
+
+tf1, tf, tfv = try_import_tf()
 
 
 class ConstantSchedule(Schedule):
@@ -18,3 +21,7 @@ class ConstantSchedule(Schedule):
     @override(Schedule)
     def _value(self, t):
         return self._v
+
+    @override(Schedule)
+    def _tf_value_op(self, t):
+        return tf.constant(self._v)

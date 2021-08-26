@@ -31,8 +31,8 @@ public class MapStateStoreManagerTest extends StateStoreManagerTest {
 
   @BeforeClass
   public void setUp() {
-    MapStateDescriptor<String, Integer> descriptor = MapStateDescriptor
-        .build("map", String.class, Integer.class);
+    MapStateDescriptor<String, Integer> descriptor =
+        MapStateDescriptor.build("map", String.class, Integer.class);
     descriptor.setTableName("tableName");
     keyStateBackend.setContext(1L, "key");
     facade = new MapStateStoreManagerProxy<>(keyStateBackend, descriptor);
@@ -52,5 +52,4 @@ public class MapStateStoreManagerTest extends StateStoreManagerTest {
     facade.put("key2", map);
     Assert.assertEquals(facade.get("key2"), map);
   }
-
 }

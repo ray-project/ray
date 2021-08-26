@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 import time
 import gym
 import queue
@@ -8,6 +7,8 @@ import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    STEPS_TRAINED_COUNTER
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
@@ -17,7 +18,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
 
@@ -29,12 +30,12 @@ def iter_list(values):
 def make_workers(n):
     local = RolloutWorker(
         env_creator=lambda _: gym.make("CartPole-v0"),
-        policy=PPOTFPolicy,
+        policy_spec=PPOTFPolicy,
         rollout_fragment_length=100)
     remotes = [
         RolloutWorker.as_remote().remote(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=PPOTFPolicy,
+            policy_spec=PPOTFPolicy,
             rollout_fragment_length=100) for _ in range(n)
     ]
     workers = WorkerSet._from_existing(local, remotes)
@@ -123,11 +124,11 @@ def test_rollouts(ray_start_regular_shared):
     a = ParallelRollouts(workers, mode="bulk_sync")
     assert next(a).count == 200
     counters = a.shared_metrics.get().counters
-    assert counters["num_steps_sampled"] == 200, counters
+    assert counters[STEPS_SAMPLED_COUNTER] == 200, counters
     a = ParallelRollouts(workers, mode="async")
     assert next(a).count == 100
     counters = a.shared_metrics.get().counters
-    assert counters["num_steps_sampled"] == 100, counters
+    assert counters[STEPS_SAMPLED_COUNTER] == 100, counters
     workers.stop()
 
 
@@ -136,7 +137,7 @@ def test_rollouts_local(ray_start_regular_shared):
     a = ParallelRollouts(workers, mode="bulk_sync")
     assert next(a).count == 100
     counters = a.shared_metrics.get().counters
-    assert counters["num_steps_sampled"] == 100, counters
+    assert counters[STEPS_SAMPLED_COUNTER] == 100, counters
     workers.stop()
 
 
@@ -152,10 +153,10 @@ def test_concat_batches(ray_start_regular_shared):
 def test_standardize(ray_start_regular_shared):
     workers = make_workers(0)
     a = ParallelRollouts(workers, mode="async")
-    b = a.for_each(StandardizeFields(["t"]))
+    b = a.for_each(StandardizeFields([SampleBatch.EPS_ID]))
     batch = next(b)
-    assert abs(np.mean(batch["t"])) < 0.001, batch
-    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
+    assert abs(np.mean(batch[SampleBatch.EPS_ID])) < 0.001, batch
+    assert abs(np.std(batch[SampleBatch.EPS_ID]) - 1.0) < 0.001, batch
 
 
 def test_async_grads(ray_start_regular_shared):
@@ -164,7 +165,7 @@ def test_async_grads(ray_start_regular_shared):
     res1 = next(a)
     assert isinstance(res1, tuple) and len(res1) == 2, res1
     counters = a.shared_metrics.get().counters
-    assert counters["num_steps_sampled"] == 100, counters
+    assert counters[STEPS_SAMPLED_COUNTER] == 100, counters
     workers.stop()
 
 
@@ -174,11 +175,11 @@ def test_train_one_step(ray_start_regular_shared):
     b = a.for_each(TrainOneStep(workers))
     batch, stats = next(b)
     assert isinstance(batch, SampleBatch)
-    assert "default_policy" in stats
-    assert "learner_stats" in stats["default_policy"]
+    assert DEFAULT_POLICY_ID in stats
+    assert "learner_stats" in stats[DEFAULT_POLICY_ID]
     counters = a.shared_metrics.get().counters
-    assert counters["num_steps_sampled"] == 100, counters
-    assert counters["num_steps_trained"] == 100, counters
+    assert counters[STEPS_SAMPLED_COUNTER] == 100, counters
+    assert counters[STEPS_TRAINED_COUNTER] == 100, counters
     timers = a.shared_metrics.get().timers
     assert "learn" in timers
     workers.stop()
@@ -252,5 +253,6 @@ def test_store_to_replay_actor(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

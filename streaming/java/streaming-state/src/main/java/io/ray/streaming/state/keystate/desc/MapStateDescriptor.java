@@ -21,9 +21,7 @@ package io.ray.streaming.state.keystate.desc;
 import io.ray.streaming.state.keystate.state.MapState;
 import java.util.Map;
 
-/**
- * MapStateDescriptor.
- */
+/** MapStateDescriptor. */
 public class MapStateDescriptor<K, V> extends AbstractStateDescriptor<MapState<K, V>, Map<K, V>> {
 
   public MapStateDescriptor(String name, Class<K> keyType, Class<V> valueType) {
@@ -31,8 +29,8 @@ public class MapStateDescriptor<K, V> extends AbstractStateDescriptor<MapState<K
     // TODO: use the types to help serde
   }
 
-  public static <K, V> MapStateDescriptor<K, V> build(String name, Class<K> keyType,
-                                                      Class<V> valueType) {
+  public static <K, V> MapStateDescriptor<K, V> build(
+      String name, Class<K> keyType, Class<V> valueType) {
     return new MapStateDescriptor<>(name, keyType, valueType);
   }
 

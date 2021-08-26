@@ -53,8 +53,8 @@ def from_range(n: int, num_shards: int = 2,
         else:
             end = (i + 1) * shard_size
         generators.append(range(start, end))
-    name = "from_range[{}, shards={}{}]".format(
-        n, num_shards, ", repeat=True" if repeat else "")
+    name = (f"from_range[{n}, shards={num_shards}"
+            f"{', repeat=True' if repeat else ''}]")
     return from_iterators(
         generators,
         repeat=repeat,
@@ -111,7 +111,7 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
         name (str): Optional name to give the iterator.
     """
     if not name:
-        name = "from_actors[shards={}]".format(len(actors))
+        name = f"from_actors[shards={len(actors)}]"
     return ParallelIterator([_ActorSet(actors, [])], name, parent_iterators=[])
 
 
@@ -184,7 +184,7 @@ class ParallelIterator(Generic[T]):
         return repr(self)
 
     def __repr__(self):
-        return "ParallelIterator[{}]".format(self.name)
+        return f"ParallelIterator[{self.name}]"
 
     def _with_transform(self, local_it_fn, name):
         """Helper function to create new Parallel Iterator"""
@@ -193,19 +193,46 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
+                  ) -> "ParallelIterator[U]":
+        """Remotely transform the iterator.
+
+        This is advanced version of for_each that allows you to apply arbitrary
+        generator transformations over the iterator. Prefer to use .for_each()
+        when possible for simplicity.
+
+        Args:
+            fn (func): function to use to transform the iterator. The function
+                should pass through instances of _NextValueNotReady that appear
+                in its input iterator. Note that this function is only called
+                **once** over the input iterator.
+
+        Returns:
+            ParallelIterator[U]: a parallel iterator.
+
+        Examples:
+            >>> def f(it):
+            ...     for x in it:
+            ...         if x % 2 == 0:
+            ...            yield x
+            >>> from_range(10, 1).transform(f).gather_sync().take(5)
+            ... [0, 2, 4, 6, 8]
+        """
+        return self._with_transform(lambda local_it: local_it.transform(fn),
+                                    ".transform()")
+
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "ParallelIterator[U]":
-        """Remotely apply fn to each item in this iterator, at most `max_concurrency`
-        at a time per shard.
+        """Remotely apply fn to each item in this iterator.
 
         If `max_concurrency` == 1 then `fn` will be executed serially by each
         shards
 
         `max_concurrency` should be used to achieve a high degree of
         parallelism without the overhead of increasing the number of shards
-        (which are actor based). This provides the semantic guarantee that
-        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not
-        necessarily finish first)
+        (which are actor based). If `max_concurrency` is not 1, this function
+        provides no semantic guarantees on the output order.
+        Results will be returned as soon as they are ready.
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `num_async` is `n` and
@@ -224,7 +251,6 @@ class ParallelIterator(Generic[T]):
             ParallelIterator[U]: a parallel iterator whose elements have `fn`
             applied.
 
-
         Examples:
             >>> next(from_range(4).for_each(
                         lambda x: x * 2,
@@ -234,6 +260,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
 
         """
+        assert max_concurrency >= 0, "max_concurrency must be non-negative."
         return self._with_transform(
             lambda local_it: local_it.for_each(fn, max_concurrency, resources),
             ".for_each()")
@@ -263,7 +290,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 1, 2, 3]
         """
         return self._with_transform(lambda local_it: local_it.batch(n),
-                                    ".batch({})".format(n))
+                                    f".batch({n})")
 
     def flatten(self) -> "ParallelIterator[T[0]]":
         """Flatten batches of items into individual items.
@@ -375,10 +402,10 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_slice_batch.remote(
                             step=num_partitions,
                             start=partition_index,
@@ -394,8 +421,7 @@ class ParallelIterator(Generic[T]):
         def make_gen_i(i):
             return lambda: base_iterator(num_partitions, i)
 
-        name = self.name + ".repartition[num_partitions={}]".format(
-            num_partitions)
+        name = self.name + f".repartition[num_partitions={num_partitions}]"
 
         generators = [make_gen_i(s) for s in range(num_partitions)]
         worker_cls = ray.remote(ParallelIteratorWorker)
@@ -422,7 +448,7 @@ class ParallelIterator(Generic[T]):
             ... 2
         """
         it = self.batch_across_shards().flatten()
-        it.name = "{}.gather_sync()".format(self)
+        it.name = f"{self}.gather_sync()"
         return it
 
     def batch_across_shards(self) -> "LocalIterator[List[T]]":
@@ -461,7 +487,7 @@ class ParallelIterator(Generic[T]):
                         yield results
                     futures = [a.par_iter_next.remote() for a in active]
 
-        name = "{}.batch_across_shards()".format(self)
+        name = f"{self}.batch_across_shards()"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
     def gather_async(self, batch_ms=0, num_async=1) -> "LocalIterator[T]":
@@ -518,11 +544,11 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
                         local_iter.shared_metrics.get().current_actor = actor
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_next_batch.remote(
                             batch_ms)] = actor
                         for item in batch:
@@ -533,7 +559,7 @@ class ParallelIterator(Generic[T]):
                 if timeout is not None:
                     yield _NextValueNotReady()
 
-        name = "{}.gather_async()".format(self)
+        name = f"{self}.gather_async()"
         local_iter = LocalIterator(base_iterator, SharedMetrics(), name=name)
         return local_iter
 
@@ -549,8 +575,7 @@ class ParallelIterator(Generic[T]):
         """Return an iterator that is the union of this and the other."""
         if not isinstance(other, ParallelIterator):
             raise TypeError(
-                "other must be of type ParallelIterator, got {}".format(
-                    type(other)))
+                f"other must be of type ParallelIterator, got {type(other)}")
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
@@ -558,7 +583,7 @@ class ParallelIterator(Generic[T]):
         # keep an explicit reference to its parent iterator
         return ParallelIterator(
             actor_sets,
-            "ParallelUnion[{}, {}]".format(self, other),
+            f"ParallelUnion[{self}, {other}]",
             parent_iterators=self.parent_iterators + other.parent_iterators)
 
     def select_shards(self,
@@ -581,7 +606,7 @@ class ParallelIterator(Generic[T]):
         new_actor_set = _ActorSet(new_actors, old_actor_set.transforms)
         return ParallelIterator(
             [new_actor_set],
-            "{}.select_shards({} total)".format(self, len(shards_to_keep)),
+            f"{self}.select_shards({len(shards_to_keep)} total)",
             parent_iterators=self.parent_iterators)
 
     def num_shards(self) -> int:
@@ -647,7 +672,7 @@ class ParallelIterator(Generic[T]):
                 except StopIteration:
                     break
 
-        name = self.name + ".shard[{}]".format(shard_index)
+        name = self.name + f".shard[{shard_index}]"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
 
@@ -734,7 +759,21 @@ class LocalIterator(Generic[T]):
         return repr(self)
 
     def __repr__(self):
-        return "LocalIterator[{}]".format(self.name)
+        return f"LocalIterator[{self.name}]"
+
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
+                  ) -> "LocalIterator[U]":
+
+        # TODO(ekl) can we automatically handle NextValueNotReady here?
+        def apply_transform(it):
+            for item in fn(it):
+                yield item
+
+        return LocalIterator(
+            self.base_iterator,
+            self.shared_metrics,
+            self.local_transforms + [apply_transform],
+            name=self.name + ".transform()")
 
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "LocalIterator[U]":
@@ -765,23 +804,13 @@ class LocalIterator(Generic[T]):
                     if isinstance(item, _NextValueNotReady):
                         yield item
                     else:
-                        finished, remaining = ray.wait(cur, timeout=0)
-                        if max_concurrency and len(
-                                remaining) >= max_concurrency:
-                            ray.wait(cur, num_returns=(len(finished) + 1))
+                        if max_concurrency and len(cur) >= max_concurrency:
+                            finished, cur = ray.wait(cur)
+                            yield from ray.get(finished)
                         cur.append(remote_fn(item))
-
-                        while len(cur) > 0:
-                            to_yield = cur[0]
-                            finished, remaining = ray.wait(
-                                [to_yield], timeout=0)
-                            if finished:
-                                cur.pop(0)
-                                yield ray.get(to_yield)
-                            else:
-                                break
-
-                yield from ray.get(cur)
+                while cur:
+                    finished, cur = ray.wait(cur)
+                    yield from ray.get(finished)
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
@@ -840,7 +869,7 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.shared_metrics,
             self.local_transforms + [apply_batch],
-            name=self.name + ".batch({})".format(n))
+            name=self.name + f".batch({n})")
 
     def flatten(self) -> "LocalIterator[T[0]]":
         def apply_flatten(it):
@@ -982,7 +1011,7 @@ class LocalIterator(Generic[T]):
                 LocalIterator(
                     make_next(i),
                     self.shared_metrics, [],
-                    name=self.name + ".duplicate[{}]".format(i)))
+                    name=self.name + f".duplicate[{i}]"))
 
         return iterators
 
@@ -1007,8 +1036,7 @@ class LocalIterator(Generic[T]):
         for it in others:
             if not isinstance(it, LocalIterator):
                 raise ValueError(
-                    "other must be of type LocalIterator, got {}".format(
-                        type(it)))
+                    f"other must be of type LocalIterator, got {type(it)}")
 
         active = []
         parent_iters = [self] + list(others)
@@ -1059,8 +1087,7 @@ class LocalIterator(Generic[T]):
         return LocalIterator(
             build_union,
             shared_metrics, [],
-            name="LocalUnion[{}, {}]".format(self, ", ".join(map(str,
-                                                                 others))))
+            name=f"LocalUnion[{self}, {', '.join(map(str, others))}]")
 
 
 class ParallelIteratorWorker(object):
@@ -1095,10 +1122,9 @@ class ParallelIteratorWorker(object):
                     it = iter(make_iterator())
                     if it is item_generator:
                         raise ValueError(
-                            "Cannot iterate over {} multiple times." +
+                            "Cannot iterate over {0} multiple times." +
                             "Please pass in the base iterable or" +
-                            "lambda: {} instead.".format(
-                                item_generator, item_generator))
+                            "lambda: {0} instead.".format(item_generator))
                     for item in it:
                         yield item
 

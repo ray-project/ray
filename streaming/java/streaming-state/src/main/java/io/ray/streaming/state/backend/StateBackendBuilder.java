@@ -22,13 +22,11 @@ import io.ray.streaming.state.backend.impl.MemoryStateBackend;
 import io.ray.streaming.state.config.ConfigKey;
 import java.util.Map;
 
-/**
- * State Backend Builder.
- */
+/** State Backend Builder. */
 public class StateBackendBuilder {
 
-  private static AbstractStateBackend getStateBackend(Map<String, String> config,
-                                                      BackendType type) {
+  private static AbstractStateBackend getStateBackend(
+      Map<String, String> config, BackendType type) {
     switch (type) {
       case MEMORY:
         return new MemoryStateBackend(config);

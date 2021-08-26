@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef PLASMA_MALLOC_H
-#define PLASMA_MALLOC_H
+#pragma once
 
 #include <inttypes.h>
 #include <stddef.h>
 
 #include <unordered_map>
+#include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
 
@@ -31,24 +31,19 @@ namespace plasma {
 /// (in the client we cannot guarantee that these mmaps are contiguous).
 constexpr int64_t kMmapRegionsGap = sizeof(size_t);
 
-void GetMallocMapinfo(void* addr, int* fd, int64_t* map_length, ptrdiff_t* offset);
-
-/// Get the mmap size corresponding to a specific file descriptor.
-///
-/// \param fd The file descriptor to look up.
-/// \return The size of the corresponding memory-mapped file.
-int64_t GetMmapSize(int fd);
-
 struct MmapRecord {
-  int fd;
+  MEMFD_TYPE fd;
   int64_t size;
 };
 
 /// Hashtable that contains one entry per segment that we got from the OS
 /// via mmap. Associates the address of that segment with its file descriptor
 /// and size.
-extern std::unordered_map<void*, MmapRecord> mmap_records;
+extern std::unordered_map<void *, MmapRecord> mmap_records;
 
+/// private function, only used by PlasmaAllocator
+namespace internal {
+bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_length,
+                      ptrdiff_t *offset);
+}
 }  // namespace plasma
-
-#endif  // PLASMA_MALLOC_H

@@ -15,7 +15,7 @@ def test_basic_task_api(ray_start_regular):
 
     # Test multiple return values.
 
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def f_multiple_returns():
         return 1, 2, 3
 
@@ -41,7 +41,7 @@ def test_put_api(ray_start_regular):
     for obj in test_values:
         assert ray.get(ray.put(obj)) == obj
 
-    # Test putting object IDs.
+    # Test putting object refs.
     x_id = ray.put(0)
     for obj in [[x_id], (x_id, ), {x_id: x_id}]:
         assert ray.get(ray.put(obj)) == obj
@@ -59,3 +59,9 @@ def test_actor_api(ray_start_regular):
     x = 1
     f = Foo.remote(x)
     assert (ray.get(f.get.remote()) == x)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

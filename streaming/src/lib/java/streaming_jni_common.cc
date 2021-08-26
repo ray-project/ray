@@ -114,8 +114,8 @@ void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       });
 }
 
-std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
-    JNIEnv *env, jobject functionDescriptor) {
+std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(JNIEnv *env,
+                                                             jobject functionDescriptor) {
   jclass java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   jclass java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
@@ -136,8 +136,8 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
       &function_descriptor_list);
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(language, function_descriptor_list);
-  ray::RayFunction ray_function{language, function_descriptor};
-  return std::make_shared<ray::RayFunction>(ray_function);
+  RayFunction ray_function(language, function_descriptor);
+  return std::make_shared<RayFunction>(ray_function);
 }
 
 void ParseChannelInitParameters(

@@ -17,11 +17,6 @@ from apex import amp
 parser = argparse.ArgumentParser(
     description="PyTorch DP Synthetic Benchmark",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    "--fp16-allreduce",
-    action="store_true",
-    default=False,
-    help="use fp16 compression during allreduce")
 
 parser.add_argument(
     "--model", type=str, default="resnet50", help="model to benchmark")
@@ -55,13 +50,14 @@ cudnn.benchmark = True
 
 # Set up standard model.
 model = getattr(models, args.model)().cuda()
-model = DataParallel(model)
 
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 # Apex
 if args.amp_fp16:
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+
+model = DataParallel(model)
 
 # Set up fixed fake data
 data = torch.randn(args.batch_size, 3, 224, 224)
@@ -77,7 +73,7 @@ def benchmark_step():
     optimizer.step()
 
 
-print("Model: %s" % args.model)
+print(f"Model: {args.model}")
 print("Batch size: %d" % args.batch_size)
 device = "GPU"
 print("Number of %ss: %d" % (device, args.num_gpus))
@@ -98,7 +94,7 @@ for x in range(args.num_iters):
 # Results
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
-print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
+print(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
 print("Total img/sec on %d %s(s): %.1f +-%.1f" % (
     args.num_gpus,
     device,

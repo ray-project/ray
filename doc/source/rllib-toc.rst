@@ -60,7 +60,6 @@ Training APIs
 Environments
 ------------
 *  `RLlib Environments Overview <rllib-env.html>`__
-*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 *  `OpenAI Gym <rllib-env.html#openai-gym>`__
 *  `Vectorized <rllib-env.html#vectorized>`__
 *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -96,8 +95,6 @@ Algorithms
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
-
 *  Gradient-based
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
@@ -112,13 +109,27 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
+   -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+
 *  Derivative-free
 
    -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Multi-agent specific
+*  Model-based / Meta-learning / Offline
+
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
+
+   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
+   -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+   -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
+
+*  Multi-agent
 
    -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
    -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
@@ -131,6 +142,16 @@ Algorithms
 
    -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
    -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+
+*  Exploration-based plug-ins (can be combined with any algo)
+
+   -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
+
 
 Offline Datasets
 ----------------
@@ -154,7 +175,7 @@ Concepts and Custom Algorithms
    -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Execution Plans <rllib-concepts.html#execution-plans>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples
@@ -193,8 +214,6 @@ If you encounter errors like
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
 
-If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
-
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
 a timeline visualization of tasks to a file, and ``ray memory`` to list all object
@@ -203,10 +222,19 @@ references in the cluster.
 TensorFlow 2.0
 ~~~~~~~~~~~~~~
 
-RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
+RLlib supports both tf2.x as well as ``tf.compat.v1`` modes.
+Always use the ``ray.rllib.utils.framework.try_import_tf()`` utility function to import tensorflow.
+It returns three values:
+*  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
+*  ``tf``: The installed tensorflow module as-is.
+*  ``tfv``: A convenience version int, whose values are either 1 or 2.
+
+`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 16
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 16

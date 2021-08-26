@@ -2,6 +2,8 @@ import unittest
 
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    STEPS_TRAINED_COUNTER
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -10,7 +12,7 @@ class TestDistributedExecution(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
@@ -28,8 +30,8 @@ class TestDistributedExecution(unittest.TestCase):
             assert isinstance(result, dict)
             assert "info" in result
             assert "learner" in result["info"]
-            assert "num_steps_sampled" in result["info"]
-            assert "num_steps_trained" in result["info"]
+            assert STEPS_SAMPLED_COUNTER in result["info"]
+            assert STEPS_TRAINED_COUNTER in result["info"]
             assert "timers" in result
             assert "learn_time_ms" in result["timers"]
             assert "learn_throughput" in result["timers"]

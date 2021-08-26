@@ -1,6 +1,8 @@
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
+from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
@@ -8,13 +10,13 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf"""
 
-    def __init__(self, policy, gamma):
+    def __init__(self, policy: Policy, gamma: float):
         super().__init__(policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch):
+    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
@@ -22,7 +24,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
         # calculate importance ratios
         p = []
-        for t in range(batch.count - 1):
+        for t in range(batch.count):
             if t == 0:
                 pt_prev = 1.0
             else:
@@ -38,7 +40,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
         # calculate stepwise weighted IS estimate
         V_prev, V_step_WIS = 0.0, 0.0
-        for t in range(batch.count - 1):
+        for t in range(batch.count):
             V_prev += rewards[t] * self.gamma**t
             w_t = self.filter_values[t] / self.filter_counts[t]
             V_step_WIS += p[t] / w_t * rewards[t] * self.gamma**t

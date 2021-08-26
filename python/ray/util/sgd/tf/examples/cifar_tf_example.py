@@ -145,6 +145,61 @@ def data_augmentation_creator(config):
     return trainset, test_dataset
 
 
+def main(smoke_test,
+         num_replicas,
+         use_gpu=False,
+         augment_data=False,
+         batch_size=32):
+    data_size = 60000
+    test_size = 10000
+    batch_size = batch_size
+
+    num_train_steps = 10 if smoke_test else data_size // batch_size
+    num_eval_steps = 10 if smoke_test else test_size // batch_size
+
+    trainer = TFTrainer(
+        model_creator=create_model,
+        data_creator=(data_augmentation_creator
+                      if augment_data else data_creator),
+        num_replicas=num_replicas,
+        use_gpu=use_gpu,
+        verbose=True,
+        config={
+            "batch_size": batch_size,
+            "fit_config": {
+                "steps_per_epoch": num_train_steps,
+            },
+            "evaluate_config": {
+                "steps": num_eval_steps,
+            }
+        })
+
+    training_start = time.time()
+    num_epochs = 1 if smoke_test else 3
+    for i in range(num_epochs):
+        # Trains num epochs
+        train_stats1 = trainer.train()
+        train_stats1.update(trainer.validate())
+        print(f"iter {i}:", train_stats1)
+
+    dt = (time.time() - training_start) / 3
+    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
+
+    model = trainer.get_model()
+    trainer.shutdown()
+    dataset, test_dataset = data_augmentation_creator(
+        dict(batch_size=batch_size))
+
+    training_start = time.time()
+    model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
+    dt = (time.time() - training_start)
+    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
+
+    scores = model.evaluate(test_dataset, steps=num_eval_steps)
+    print("Test loss:", scores[0])
+    print("Test accuracy:", scores[1])
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -177,52 +232,14 @@ if __name__ == "__main__":
         help="Finish quickly for testing. Assume False for users.")
 
     args, _ = parser.parse_known_args()
-    ray.init(address=args.address)
-    data_size = 60000
-    test_size = 10000
-    batch_size = args.batch_size
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
 
-    num_train_steps = 10 if args.smoke_test else data_size // batch_size
-    num_eval_steps = 10 if args.smoke_test else test_size // batch_size
-
-    trainer = TFTrainer(
-        model_creator=create_model,
-        data_creator=(data_augmentation_creator
-                      if args.augment_data else data_creator),
-        num_replicas=args.num_replicas,
+    main(
+        smoke_test=args.smoke_test,
+        batch_size=args.batch_size,
+        augment_data=args.augment_data,
         use_gpu=args.use_gpu,
-        verbose=True,
-        config={
-            "batch_size": batch_size,
-            "fit_config": {
-                "steps_per_epoch": num_train_steps,
-            },
-            "evaluate_config": {
-                "steps": num_eval_steps,
-            }
-        })
-
-    training_start = time.time()
-    num_epochs = 1 if args.smoke_test else 3
-    for i in range(num_epochs):
-        # Trains num epochs
-        train_stats1 = trainer.train()
-        train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
-
-    dt = (time.time() - training_start) / 3
-    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
-
-    model = trainer.get_model()
-    trainer.shutdown()
-    dataset, test_dataset = data_augmentation_creator(
-        dict(batch_size=batch_size))
-
-    training_start = time.time()
-    model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
-    dt = (time.time() - training_start)
-    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
-
-    scores = model.evaluate(test_dataset, steps=num_eval_steps)
-    print("Test loss:", scores[0])
-    print("Test accuracy:", scores[1])
+        num_replicas=args.num_replicas)

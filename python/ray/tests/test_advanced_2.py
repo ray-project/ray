@@ -9,9 +9,9 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import RayTestTimeoutException
+from ray._private.test_utils import (RayTestTimeoutException,
+                                     wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
 
@@ -443,28 +443,23 @@ def test_multiple_raylets(ray_start_cluster):
 
 def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
+    cluster.add_node(num_cpus=1, resources={"CustomResource": 0})
     custom_resource_node = cluster.add_node(
-        num_cpus=3, resources={"CustomResource": 1})
+        num_cpus=1, resources={"CustomResource": 1})
     ray.init(address=cluster.address)
 
     @ray.remote
     def f():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
         return ray.worker.global_worker.node.unique_id
-
-    # The f tasks should be scheduled on both raylets.
-    assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
@@ -509,6 +504,17 @@ def test_two_custom_resources(ray_start_cluster):
             "CustomResource2": 4
         })
     ray.init(address=cluster.address)
+
+    @ray.remote
+    def foo():
+        # Sleep a while to emulate a slow operation. This is needed to make
+        # sure tasks are scheduled to different nodes.
+        time.sleep(0.1)
+        return ray.worker.global_worker.node.unique_id
+
+    # Make sure each node has at least one idle worker.
+    wait_for_condition(
+        lambda: len(set(ray.get([foo.remote() for _ in range(6)]))) == 2)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -590,25 +596,30 @@ def test_many_custom_resources(shutdown_only):
 def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
-    def test():
-        resources = ray.available_resources()
-        MAX_RETRY_ATTEMPTS = 5
-        retry_count = 0
-
+    def delete_miscellaneous_item(resources):
         del resources["memory"]
         del resources["object_store_memory"]
         for key in list(resources.keys()):
             if key.startswith("node:"):
                 del resources[key]
 
+    def test():
+        resources = ray.available_resources()
+        MAX_RETRY_ATTEMPTS = 5
+        retry_count = 0
+
+        delete_miscellaneous_item(resources)
+
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
+            delete_miscellaneous_item(resources)
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.", resources)
+                "Resources were available even after {} retries.".format(
+                    MAX_RETRY_ATTEMPTS), resources)
 
         return resources
 
@@ -648,17 +659,37 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     def f():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        assert gpu_ids[0] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
 
     @ray.remote(num_gpus=2)
     def g():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
-        assert gpu_ids[0] in allowed_gpu_ids
-        assert gpu_ids[1] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
+        assert int(gpu_ids[1]) in allowed_gpu_ids
 
     ray.get([f.remote() for _ in range(100)])
     ray.get([g.remote() for _ in range(100)])
+
+
+def test_local_mode_gpus(save_gpu_ids_shutdown_only):
+    allowed_gpu_ids = [4, 5, 6, 7, 8]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+        [str(i) for i in allowed_gpu_ids])
+
+    from importlib import reload
+    reload(ray.worker)
+
+    ray.init(num_gpus=3, local_mode=True)
+
+    @ray.remote
+    def f():
+        gpu_ids = ray.get_gpu_ids()
+        assert len(gpu_ids) == 3
+        for gpu in gpu_ids:
+            assert int(gpu) in allowed_gpu_ids
+
+    ray.get([f.remote() for _ in range(100)])
 
 
 def test_blocking_tasks(ray_start_regular):
@@ -670,15 +701,15 @@ def test_blocking_tasks(ray_start_regular):
     def g(i):
         # Each instance of g submits and blocks on the result of another
         # remote task.
-        object_ids = [f.remote(i, j) for j in range(2)]
-        return ray.get(object_ids)
+        object_refs = [f.remote(i, j) for j in range(2)]
+        return ray.get(object_refs)
 
     @ray.remote
     def h(i):
         # Each instance of g submits and blocks on the result of another
         # remote task using ray.wait.
-        object_ids = [f.remote(i, j) for j in range(2)]
-        return ray.wait(object_ids, num_returns=len(object_ids))
+        object_refs = [f.remote(i, j) for j in range(2)]
+        return ray.wait(object_refs, num_returns=len(object_refs))
 
     ray.get([h.remote(i) for i in range(4)])
 
@@ -702,7 +733,7 @@ def test_max_call_tasks(ray_start_regular):
         return os.getpid()
 
     pid = ray.get(f.remote())
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     @ray.remote(max_calls=2)
     def f():
@@ -711,7 +742,7 @@ def test_max_call_tasks(ray_start_regular):
     pid1 = ray.get(f.remote())
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
-    ray.test_utils.wait_for_pid_to_exit(pid1)
+    wait_for_pid_to_exit(pid1)
 
 
 if __name__ == "__main__":

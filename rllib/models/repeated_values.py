@@ -1,7 +1,7 @@
 from typing import List
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.framework import TensorType, TensorStructType
 
 
 @PublicAPI
@@ -48,7 +48,7 @@ class RepeatedValues:
         self.max_len = max_len
         self._unbatched_repr = None
 
-    def unbatch_all(self):
+    def unbatch_all(self) -> List[List[TensorType]]:
         """Unbatch both the repeat and batch dimensions into Python lists.
 
         This is only supported in PyTorch / TF eager mode.
@@ -96,7 +96,7 @@ class RepeatedValues:
 
         return self._unbatched_repr
 
-    def unbatch_repeat_dim(self):
+    def unbatch_repeat_dim(self) -> List[TensorType]:
         """Unbatches the repeat dimension (the one `max_len` in size).
 
         This removes the repeat dimension. The result will be a Python list of
@@ -120,7 +120,7 @@ class RepeatedValues:
         return repr(self)
 
 
-def _get_batch_dim_helper(v):
+def _get_batch_dim_helper(v: TensorStructType) -> int:
     """Tries to find the batch dimension size of v, or None."""
     if isinstance(v, dict):
         for u in v.values():
@@ -136,7 +136,7 @@ def _get_batch_dim_helper(v):
         return B
 
 
-def _unbatch_helper(v, max_len):
+def _unbatch_helper(v: TensorStructType, max_len: int) -> TensorStructType:
     """Recursively unpacks the repeat dimension (max_len)."""
     if isinstance(v, dict):
         return {k: _unbatch_helper(u, max_len) for (k, u) in v.items()}
@@ -152,7 +152,8 @@ def _unbatch_helper(v, max_len):
         return [v[:, i, ...] for i in range(max_len)]
 
 
-def _batch_index_helper(v, i, j):
+def _batch_index_helper(v: TensorStructType, i: int,
+                        j: int) -> TensorStructType:
     """Selects the item at the ith batch index and jth repetition."""
     if isinstance(v, dict):
         return {k: _batch_index_helper(u, i, j) for (k, u) in v.items()}

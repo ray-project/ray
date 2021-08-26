@@ -7,13 +7,13 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import GradientType, SampleBatchType, \
-    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
-    GRAD_WAIT_TIMER, _check_sample_batch_type, _get_shared_metrics
-from ray.rllib.policy.policy import PolicyID
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, GRAD_WAIT_TIMER, \
+    _check_sample_batch_type, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
+from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +25,15 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     If there are no remote workers, experiences will be collected serially from
     the local worker instance instead.
 
-    Arguments:
+    Args:
         workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of {'async', 'bulk_sync', 'raw'}.
-            - In 'async' mode, batches are returned as soon as they are
-              computed by rollout workers with no order guarantees.
-            - In 'bulk_sync' mode, we collect one batch from each worker
-              and concatenate them together into a large batch to return.
-            - In 'raw' mode, the ParallelIterator object is returned directly
-              and the caller is responsible for implementing gather and
-              updating the timesteps counter.
+        mode (str): One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
+            batches are returned as soon as they are computed by rollout
+            workers with no order guarantees. In 'bulk_sync' mode, we collect
+            one batch from each worker and concatenate them together into a
+            large batch to return. In 'raw' mode, the ParallelIterator object
+            is returned directly and the caller is responsible for implementing
+            gather and updating the timesteps counter.
         num_async (int): In async mode, the max number of async
             requests in flight per actor.
 
@@ -61,16 +60,22 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     def report_timesteps(batch):
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+        if isinstance(batch, MultiAgentBatch):
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
+                batch.agent_steps()
+        else:
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
     if not workers.remote_workers():
-        # Handle the serial sampling case.
+        # Handle the `num_workers=0` case, in which the local worker
+        # has to do sampling as well.
         def sampler(_):
             while True:
                 yield workers.local_worker().sample()
 
-        return (LocalIterator(sampler, SharedMetrics())
-                .for_each(report_timesteps))
+        return (LocalIterator(sampler,
+                              SharedMetrics()).for_each(report_timesteps))
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
@@ -91,10 +96,10 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
 
 def AsyncGradients(
-        workers: WorkerSet) -> LocalIterator[Tuple[GradientType, int]]:
+        workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
-    Arguments:
+    Args:
         workers (WorkerSet): set of rollout workers to use.
 
     Returns:
@@ -142,25 +147,31 @@ class ConcatBatches:
 
     Examples:
         >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.combine(ConcatBatches(min_batch_size=10000))
+        >>> rollouts = rollouts.combine(ConcatBatches(
+        ...    min_batch_size=10000, count_steps_by="env_steps"))
         >>> print(next(rollouts).count)
         10000
     """
 
-    def __init__(self, min_batch_size: int):
+    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
         self.min_batch_size = min_batch_size
+        self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
-        self.batch_start_time = None
-
-    def _on_fetch_start(self):
-        if self.batch_start_time is None:
-            self.batch_start_time = time.perf_counter()
+        self.last_batch_time = time.perf_counter()
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
         self.buffer.append(batch)
-        self.count += batch.count
+
+        if self.count_steps_by == "env_steps":
+            self.count += batch.count
+        else:
+            assert isinstance(batch, MultiAgentBatch), \
+                "`count_steps_by=agent_steps` only allowed in multi-agent " \
+                "environments!"
+            self.count += batch.agent_steps()
+
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
                 logger.info("Collected more training samples than expected "
@@ -169,10 +180,13 @@ class ConcatBatches:
                             "This may be because you have many workers or "
                             "long episodes in 'complete_episodes' batch mode.")
             out = SampleBatch.concat_samples(self.buffer)
+
+            perf_counter = time.perf_counter()
             timer = _get_shared_metrics().timers[SAMPLE_TIMER]
-            timer.push(time.perf_counter() - self.batch_start_time)
+            timer.push(perf_counter - self.last_batch_time)
             timer.push_units_processed(self.count)
-            self.batch_start_time = None
+
+            self.last_batch_time = perf_counter
             self.buffer = []
             self.count = 0
             return [out]

@@ -1,28 +1,36 @@
-"""Adapted from VTraceTFPolicy to use the PPO surrogate loss.
+"""
+TensorFlow policy class used for APPO.
 
-Keep in sync with changes to VTraceTFPolicy."""
+Adapted from VTraceTFPolicy to use the PPO surrogate loss.
+Keep in sync with changes to VTraceTFPolicy.
+"""
 
 import numpy as np
 import logging
 import gym
+from typing import Dict, List, Optional, Type, Union
 
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
@@ -30,179 +38,26 @@ TARGET_POLICY_SCOPE = "target_func"
 logger = logging.getLogger(__name__)
 
 
-class PPOSurrogateLoss:
-    """Loss used when V-trace is disabled.
+def make_appo_model(policy: Policy, obs_space: gym.spaces.Space,
+                    action_space: gym.spaces.Space,
+                    config: TrainerConfigDict) -> ModelV2:
+    """Builds model and target model for APPO.
 
-    Arguments:
-        prev_actions_logp: A float32 tensor of shape [T, B].
-        actions_logp: A float32 tensor of shape [T, B].
-        action_kl: A float32 tensor of shape [T, B].
-        actions_entropy: A float32 tensor of shape [T, B].
-        values: A float32 tensor of shape [T, B].
-        valid_mask: A bool tensor of valid RNN input elements (#2992).
-        advantages: A float32 tensor of shape [T, B].
-        value_targets: A float32 tensor of shape [T, B].
-        vf_loss_coeff (float): Coefficient of the value function loss.
-        entropy_coeff (float): Coefficient of the entropy regularizer.
-        clip_param (float): Clip parameter.
-        cur_kl_coeff (float): Coefficient for KL loss.
-        use_kl_loss (bool): If true, use KL loss.
+    Args:
+        policy (Policy): The Policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        ModelV2: The Model for the Policy to use.
+            Note: The target model will not be returned, just assigned to
+            `policy.target_model`.
     """
-
-    def __init__(self,
-                 prev_actions_logp,
-                 actions_logp,
-                 action_kl,
-                 actions_entropy,
-                 values,
-                 valid_mask,
-                 advantages,
-                 value_targets,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_param=0.3,
-                 cur_kl_coeff=None,
-                 use_kl_loss=False):
-        def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
-
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
-
-        surrogate_loss = tf.minimum(
-            advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
-
-        self.mean_kl = reduce_mean_valid(action_kl)
-        self.pi_loss = -reduce_mean_valid(surrogate_loss)
-
-        # The baseline loss
-        delta = values - value_targets
-        self.value_targets = value_targets
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
-
-        # The entropy loss
-        self.entropy = reduce_mean_valid(actions_entropy)
-
-        # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
-
-        # Optional additional KL Loss
-        if use_kl_loss:
-            self.total_loss += cur_kl_coeff * self.mean_kl
-
-
-class VTraceSurrogateLoss:
-    def __init__(self,
-                 actions,
-                 prev_actions_logp,
-                 actions_logp,
-                 old_policy_actions_logp,
-                 action_kl,
-                 actions_entropy,
-                 dones,
-                 behaviour_logits,
-                 old_policy_behaviour_logits,
-                 target_logits,
-                 discount,
-                 rewards,
-                 values,
-                 bootstrap_value,
-                 dist_class,
-                 model,
-                 valid_mask,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_rho_threshold=1.0,
-                 clip_pg_rho_threshold=1.0,
-                 clip_param=0.3,
-                 cur_kl_coeff=None,
-                 use_kl_loss=False):
-        """APPO Loss, with IS modifications and V-trace for Advantage Estimation
-
-        VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
-        batch_size. The reason we need to know `B` is for V-trace to properly
-        handle episode cut boundaries.
-
-        Arguments:
-            actions: An int|float32 tensor of shape [T, B, logit_dim].
-            prev_actions_logp: A float32 tensor of shape [T, B].
-            actions_logp: A float32 tensor of shape [T, B].
-            old_policy_actions_logp: A float32 tensor of shape [T, B].
-            action_kl: A float32 tensor of shape [T, B].
-            actions_entropy: A float32 tensor of shape [T, B].
-            dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
-            old_policy_behaviour_logits: A float32 tensor of shape
-            [T, B, logit_dim].
-            target_logits: A float32 tensor of shape [T, B, logit_dim].
-            discount: A float32 scalar.
-            rewards: A float32 tensor of shape [T, B].
-            values: A float32 tensor of shape [T, B].
-            bootstrap_value: A float32 tensor of shape [B].
-            dist_class: action distribution class for logits.
-            model: backing ModelV2 instance
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-            vf_loss_coeff (float): Coefficient of the value function loss.
-            entropy_coeff (float): Coefficient of the entropy regularizer.
-            clip_param (float): Clip parameter.
-            cur_kl_coeff (float): Coefficient for KL loss.
-            use_kl_loss (bool): If true, use KL loss.
-        """
-
-        def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
-
-        # Compute vtrace on the CPU for better perf.
-        with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=behaviour_logits,
-                target_policy_logits=old_policy_behaviour_logits,
-                actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
-                rewards=rewards,
-                values=values,
-                bootstrap_value=bootstrap_value,
-                dist_class=dist_class,
-                model=model,
-                clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
-
-        self.is_ratio = tf.clip_by_value(
-            tf.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
-        logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
-
-        advantages = self.vtrace_returns.pg_advantages
-        surrogate_loss = tf.minimum(
-            advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
-
-        self.mean_kl = reduce_mean_valid(action_kl)
-        self.pi_loss = -reduce_mean_valid(surrogate_loss)
-
-        # The baseline loss
-        delta = values - self.vtrace_returns.vs
-        self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
-
-        # The entropy loss
-        self.entropy = reduce_mean_valid(actions_entropy)
-
-        # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
-
-        # Optional additional KL Loss
-        if use_kl_loss:
-            self.total_loss += cur_kl_coeff * self.mean_kl
-
-
-def build_appo_model(policy, obs_space, action_space, config):
+    # Get the num_outputs for the following model construction calls.
     _, logit_dim = ModelCatalog.get_action_dist(action_space, config["model"])
 
+    # Construct the (main) model.
     policy.model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
@@ -212,6 +67,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         framework="torch" if config["framework"] == "torch" else "tf")
     policy.model_variables = policy.model.variables()
 
+    # Construct the target model.
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
@@ -221,10 +77,27 @@ def build_appo_model(policy, obs_space, action_space, config):
         framework="torch" if config["framework"] == "torch" else "tf")
     policy.target_model_variables = policy.target_model.variables()
 
+    # Return only the model (not the target model).
     return policy.model
 
 
-def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
+def appo_surrogate_loss(
+        policy: Policy, model: ModelV2, dist_class: Type[TFActionDistribution],
+        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    """Constructs the loss for APPO.
+
+    With IS modifications and V-trace for Advantage Estimation.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[ActionDistribution]): The action distr. class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        Union[TensorType, List[TensorType]]: A single loss tensor or a list
+            of loss tensors.
+    """
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
 
@@ -239,9 +112,10 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         is_multidiscrete = False
         output_hidden_shape = 1
 
+    # TODO: (sven) deprecate this when trajectory view API gets activated.
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
-                                **kw)
+        return _make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                                *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -249,154 +123,225 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
-    old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
-
-    unpacked_behaviour_logits = tf.split(
-        behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_old_policy_behaviour_logits = tf.split(
-        old_policy_behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
-    old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
+    values_time_major = make_time_major(values)
 
     policy.model_vars = policy.model.variables()
     policy.target_model_vars = policy.target_model.variables()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
+        mask = make_time_major(mask, drop_last=policy.config["vtrace"])
+
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, mask))
+
     else:
-        mask = tf.ones_like(rewards)
+        reduce_mean_valid = tf.reduce_mean
 
     if policy.config["vtrace"]:
         logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
-        # Prepare actions for loss
+        # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
             actions, axis=1)
+
+        old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
 
         # Prepare KL for Loss
         mean_kl = make_time_major(
             old_policy_action_dist.multi_kl(action_dist), drop_last=True)
 
-        policy.loss = VTraceSurrogateLoss(
-            actions=make_time_major(loss_actions, drop_last=True),
-            prev_actions_logp=make_time_major(
-                prev_action_dist.logp(actions), drop_last=True),
-            actions_logp=make_time_major(
-                action_dist.logp(actions), drop_last=True),
-            old_policy_actions_logp=make_time_major(
-                old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
-            if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(
-                action_dist.multi_entropy(), drop_last=True),
-            dones=make_time_major(dones, drop_last=True),
-            behaviour_logits=make_time_major(
-                unpacked_behaviour_logits, drop_last=True),
-            old_policy_behaviour_logits=make_time_major(
-                unpacked_old_policy_behaviour_logits, drop_last=True),
-            target_logits=make_time_major(unpacked_outputs, drop_last=True),
-            discount=policy.config["gamma"],
-            rewards=make_time_major(rewards, drop_last=True),
-            values=make_time_major(values, drop_last=True),
-            bootstrap_value=make_time_major(values)[-1],
-            dist_class=Categorical if is_multidiscrete else dist_class,
-            model=policy.model,
-            valid_mask=make_time_major(mask, drop_last=True),
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
-            clip_pg_rho_threshold=policy.config[
-                "vtrace_clip_pg_rho_threshold"],
-            clip_param=policy.config["clip_param"],
-            cur_kl_coeff=policy.kl_coeff,
-            use_kl_loss=policy.config["use_kl_loss"])
+        unpacked_behaviour_logits = tf.split(
+            behaviour_logits, output_hidden_shape, axis=1)
+        unpacked_old_policy_behaviour_logits = tf.split(
+            old_policy_behaviour_logits, output_hidden_shape, axis=1)
+
+        # Compute vtrace on the CPU for better perf.
+        with tf.device("/cpu:0"):
+            vtrace_returns = vtrace.multi_from_logits(
+                behaviour_policy_logits=make_time_major(
+                    unpacked_behaviour_logits, drop_last=True),
+                target_policy_logits=make_time_major(
+                    unpacked_old_policy_behaviour_logits, drop_last=True),
+                actions=tf.unstack(
+                    make_time_major(loss_actions, drop_last=True), axis=2),
+                discounts=tf.cast(
+                    ~make_time_major(tf.cast(dones, tf.bool), drop_last=True),
+                    tf.float32) * policy.config["gamma"],
+                rewards=make_time_major(rewards, drop_last=True),
+                values=values_time_major[:-1],  # drop-last=True
+                bootstrap_value=values_time_major[-1],
+                dist_class=Categorical if is_multidiscrete else dist_class,
+                model=model,
+                clip_rho_threshold=tf.cast(
+                    policy.config["vtrace_clip_rho_threshold"], tf.float32),
+                clip_pg_rho_threshold=tf.cast(
+                    policy.config["vtrace_clip_pg_rho_threshold"], tf.float32),
+            )
+
+        actions_logp = make_time_major(
+            action_dist.logp(actions), drop_last=True)
+        prev_actions_logp = make_time_major(
+            prev_action_dist.logp(actions), drop_last=True)
+        old_policy_actions_logp = make_time_major(
+            old_policy_action_dist.logp(actions), drop_last=True)
+
+        is_ratio = tf.clip_by_value(
+            tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
+        logp_ratio = is_ratio * tf.exp(actions_logp - prev_actions_logp)
+        policy._is_ratio = is_ratio
+
+        advantages = vtrace_returns.pg_advantages
+        surrogate_loss = tf.minimum(
+            advantages * logp_ratio,
+            advantages *
+            tf.clip_by_value(logp_ratio, 1 - policy.config["clip_param"],
+                             1 + policy.config["clip_param"]))
+
+        action_kl = tf.reduce_mean(mean_kl, axis=0) \
+            if is_multidiscrete else mean_kl
+        mean_kl = reduce_mean_valid(action_kl)
+        mean_policy_loss = -reduce_mean_valid(surrogate_loss)
+
+        # The value function loss.
+        delta = values_time_major[:-1] - vtrace_returns.vs
+        value_targets = vtrace_returns.vs
+        mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
+
+        # The entropy loss.
+        actions_entropy = make_time_major(
+            action_dist.multi_entropy(), drop_last=True)
+        mean_entropy = reduce_mean_valid(actions_entropy)
+
     else:
         logger.debug("Using PPO surrogate loss (vtrace=False)")
 
         # Prepare KL for Loss
         mean_kl = make_time_major(prev_action_dist.multi_kl(action_dist))
 
-        policy.loss = PPOSurrogateLoss(
-            prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
-            actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
-            if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(action_dist.multi_entropy()),
-            values=make_time_major(values),
-            valid_mask=make_time_major(mask),
-            advantages=make_time_major(train_batch[Postprocessing.ADVANTAGES]),
-            value_targets=make_time_major(
-                train_batch[Postprocessing.VALUE_TARGETS]),
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            cur_kl_coeff=policy.kl_coeff,
-            use_kl_loss=policy.config["use_kl_loss"])
+        logp_ratio = tf.math.exp(
+            make_time_major(action_dist.logp(actions)) -
+            make_time_major(prev_action_dist.logp(actions)))
 
-    return policy.loss.total_loss
+        advantages = make_time_major(train_batch[Postprocessing.ADVANTAGES])
+        surrogate_loss = tf.minimum(
+            advantages * logp_ratio,
+            advantages *
+            tf.clip_by_value(logp_ratio, 1 - policy.config["clip_param"],
+                             1 + policy.config["clip_param"]))
+
+        action_kl = tf.reduce_mean(mean_kl, axis=0) \
+            if is_multidiscrete else mean_kl
+        mean_kl = reduce_mean_valid(action_kl)
+        mean_policy_loss = -reduce_mean_valid(surrogate_loss)
+
+        # The value function loss.
+        value_targets = make_time_major(
+            train_batch[Postprocessing.VALUE_TARGETS])
+        delta = values_time_major - value_targets
+        mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
+
+        # The entropy loss.
+        mean_entropy = reduce_mean_valid(
+            make_time_major(action_dist.multi_entropy()))
+
+    # The summed weighted loss
+    total_loss = mean_policy_loss + \
+        mean_vf_loss * policy.config["vf_loss_coeff"] - \
+        mean_entropy * policy.config["entropy_coeff"]
+
+    # Optional additional KL Loss
+    if policy.config["use_kl_loss"]:
+        total_loss += policy.kl_coeff * mean_kl
+
+    policy._total_loss = total_loss
+    policy._mean_policy_loss = mean_policy_loss
+    policy._mean_kl = mean_kl
+    policy._mean_vf_loss = mean_vf_loss
+    policy._mean_entropy = mean_entropy
+    policy._value_targets = value_targets
+
+    # Store stats in policy for stats_fn.
+    return total_loss
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Stats function for APPO. Returns a dict with important loss stats.
+
+    Args:
+        policy (Policy): The Policy to generate stats for.
+        train_batch (SampleBatch): The SampleBatch (already) used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
     values_batched = _make_time_major(
         policy,
-        train_batch.get("seq_lens"),
+        train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
         drop_last=policy.config["vtrace"])
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
+        "policy_loss": policy._mean_policy_loss,
+        "entropy": policy._mean_entropy,
+        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
+        "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            tf.reshape(policy.loss.value_targets, [-1]),
+            tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
     }
 
     if policy.config["vtrace"]:
-        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0, 1])
-        stats_dict.update({"mean_IS": is_stat_mean})
-        stats_dict.update({"var_IS": is_stat_var})
+        is_stat_mean, is_stat_var = tf.nn.moments(policy._is_ratio, [0, 1])
+        stats_dict["mean_IS"] = is_stat_mean
+        stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy.loss.mean_kl})
-        stats_dict.update({"KL_Coeff": policy.kl_coeff})
+        stats_dict["kl"] = policy._mean_kl
+        stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
 
 
-def postprocess_trajectory(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
+def postprocess_trajectory(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+    """Postprocesses a trajectory and returns the processed trajectory.
+
+    The trajectory contains only data from one episode and from one agent.
+    - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
+    contain a truncated (at-the-end) episode, in case the
+    `config.rollout_fragment_length` was reached by the sampler.
+    - If `config.batch_mode=complete_episodes`, sample_batch will contain
+    exactly one episode (no matter how long).
+    New columns can be added to sample_batch and existing ones may be altered.
+
+    Args:
+        policy (Policy): The Policy used to generate the trajectory
+            (`sample_batch`)
+        sample_batch (SampleBatch): The SampleBatch to postprocess.
+        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+            dict of AgentIDs mapping to other agents' trajectory data (from the
+            same episode). NOTE: The other agents use the same policy.
+        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+            object in which the agents operated.
+
+    Returns:
+        SampleBatch: The postprocessed, modified SampleBatch (or a new one).
+    """
     if not policy.config["vtrace"]:
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            policy.config["gamma"],
-            policy.config["lambda"],
-            use_gae=policy.config["use_gae"],
-            use_critic=policy.config["use_critic"])
-    else:
-        batch = sample_batch
-    del batch.data["new_obs"]  # not used, so save some bandwidth
-    return batch
+        sample_batch = compute_gae_for_sample_batch(
+            policy, sample_batch, other_agent_batches, episode)
+
+    return sample_batch
 
 
 def add_values(policy):
@@ -407,13 +352,14 @@ def add_values(policy):
 
 
 class TargetNetworkMixin:
-    def __init__(self, obs_space, action_space, config):
-        """Target Network is updated by the master learner every
-        trainer.update_target_frequency steps. All worker batches
-        are importance sampled w.r. to the target network to ensure
-        a more stable pi_old in PPO.
-        """
+    """Target NN is updated by master learner via the `update_target` method.
 
+    Updates happen every `trainer.update_target_frequency` steps. All worker
+    batches are importance sampled wrt the target network to ensure a more
+    stable pi_old in PPO.
+    """
+
+    def __init__(self, obs_space, action_space, config):
         @make_tf_callable(self.get_session())
         def do_update():
             assign_ops = []
@@ -430,25 +376,47 @@ class TargetNetworkMixin:
         return self.model_vars + self.target_model_vars
 
 
-def setup_mixins(policy, obs_space, action_space, config):
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before APPOPolicy initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors after APPOPolicy initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
+# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# above.
 AsyncPPOTFPolicy = build_tf_policy(
     name="AsyncPPOTFPolicy",
-    make_model=build_appo_model,
-    loss_fn=build_appo_surrogate_loss,
+    make_model=make_appo_model,
+    loss_fn=appo_surrogate_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
-    gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_values,
+    compute_gradients_fn=clip_gradients,
+    extra_action_out_fn=add_values,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[

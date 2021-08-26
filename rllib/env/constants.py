@@ -1,15 +1,12 @@
-# info key for the individual rewards of an agent, for example:
-# info: {
-#   group_1: {
-#      _group_rewards: [5, -1, 1],  # 3 agents in this group
-#   }
-# }
-GROUP_REWARDS = "_group_rewards"
+from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS as GR, \
+    GROUP_INFO as GI
+from ray.rllib.utils.deprecation import deprecation_warning
 
-# info key for the individual infos of an agent, for example:
-# info: {
-#   group_1: {
-#      _group_infos: [{"foo": ...}, {}],  # 2 agents in this group
-#   }
-# }
-GROUP_INFO = "_group_info"
+deprecation_warning(
+    old="ray.rllib.env.constants.GROUP_[REWARDS|INFO]",
+    new="ray.rllib.env.wrappers.group_agents_wrapper.GROUP_[REWARDS|INFO]",
+    error=False,
+)
+
+GROUP_REWARDS = GR
+GROUP_INFO = GI

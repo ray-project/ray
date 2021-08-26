@@ -36,6 +36,13 @@ def create_mock_components():
 
 
 class TrialRunnerTest2(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -126,6 +133,9 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(len(scheduler.errored_trials), 0)
 
     def testFailureRecoveryNodeRemoval(self):
+        # Node removal simulation only works with resource requests
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         ray.init(num_cpus=1, num_gpus=1)
         searchalg, scheduler = create_mock_components()
 
@@ -216,6 +226,30 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertRaises(TuneError, lambda: runner.step())
 
+    def testFailFastRaise(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(fail_fast=TrialRunner.RAISE)
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process result, dispatch save
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
+        with self.assertRaises(Exception):
+            runner.step()  # Error
+
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
@@ -239,9 +273,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
-
         self.assertEqual(trials[1].status, Trial.PENDING)
-
         runner.step()  # Start trial, dispatch restore
         self.assertEqual(trials[1].status, Trial.RUNNING)
 

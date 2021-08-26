@@ -1,14 +1,13 @@
-#ifndef RAY_STREAMING_EVENT_SERVER_H
-#define RAY_STREAMING_EVENT_SERVER_H
+#pragma once
+
 #include <condition_variable>
 #include <mutex>
 #include <queue>
 #include <thread>
 #include <unordered_map>
 
-#include "channel.h"
-#include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
+#include "channel/channel.h"
+#include "ring_buffer/ring_buffer.h"
 #include "util/streaming_util.h"
 
 namespace ray {
@@ -24,7 +23,7 @@ enum class EventType : uint8_t {
   FullChannel = 3,
   // Recovery at the beginning.
   Reload = 4,
-  // Error event if event queue is freezed.
+  // Error event if event queue is not active.
   ErrorEvent = 5
 };
 
@@ -39,6 +38,12 @@ struct Event {
   ProducerChannelInfo *channel_info;
   EventType type;
   bool urgent;
+  Event() = default;
+  Event(ProducerChannelInfo *channel_info, EventType type, bool urgent) {
+    this->channel_info = channel_info;
+    this->type = type;
+    this->urgent = urgent;
+  }
 };
 
 /// Data writer utilizes what's called an event-driven programming model
@@ -50,14 +55,14 @@ struct Event {
 /// processing functions ordered by its priority.
 class EventQueue {
  public:
-  EventQueue(size_t size) : urgent_(false), capacity_(size), is_freezed_(true) {}
+  EventQueue(size_t size) : urgent_(false), capacity_(size), is_active_(true) {}
 
   virtual ~EventQueue();
 
   /// Resume event queue to normal model.
   void Unfreeze();
 
-  /// Push is prohibited when event queue is freezed.
+  /// Push is prohibited when event queue is not active.
   void Freeze();
 
   void Push(const Event &t);
@@ -84,6 +89,9 @@ class EventQueue {
 
   inline bool Full() const { return buffer_.size() + urgent_buffer_.size() == capacity_; }
 
+  /// Wait for queue util it's timeout or any stuff in.
+  void WaitFor(std::unique_lock<std::mutex> &lock);
+
  private:
   std::mutex ring_buffer_mutex_;
   std::condition_variable no_empty_cv_;
@@ -95,7 +103,10 @@ class EventQueue {
   // Urgent event will be poped out first if urgent_ flag is true.
   bool urgent_;
   size_t capacity_;
-  bool is_freezed_;
+  // Event service active flag.
+  bool is_active_;
+  // Pop/Get timeout ms for condition variables wait.
+  static constexpr int kConditionTimeoutMs = 200;
 };
 
 class EventService {
@@ -139,4 +150,3 @@ class EventService {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_EVENT_SERVER_H

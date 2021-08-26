@@ -1,11 +1,12 @@
 diff --git include/msgpack/v1/vrefbuffer.hpp include/msgpack/v1/vrefbuffer.hpp
 --- include/msgpack/v1/vrefbuffer.hpp
 +++ include/msgpack/v1/vrefbuffer.hpp
-@@ -28,4 +28,12 @@
--struct iovec {
--    void  *iov_base;
--    size_t iov_len;
--};
+@@ -25,7 +25,22 @@
+-#if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__)
++#if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__) || defined(__unix__)
+ #include <sys/uio.h>
+ #else
++#ifdef _WIN32
 +#ifndef _WS2DEF_
 +#include <Winsock2.h>
 +#endif
@@ -17,6 +18,12 @@ diff --git include/msgpack/v1/vrefbuffer.hpp include/msgpack/v1/vrefbuffer.hpp
 +#endif
 +#ifndef iov_len
 +#define iov_len len
++#endif
++#else
+ struct iovec {
+     void  *iov_base;
+     size_t iov_len;
+ };
 +#endif
 @@ -171,1 +179,1 @@
 -                const_cast<const void *>((m_tail - 1)->iov_base)

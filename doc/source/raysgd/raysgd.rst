@@ -14,8 +14,6 @@ The main features are:
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
-
 
 Getting Started
 ---------------
@@ -26,33 +24,41 @@ You can start a ``TorchTrainer`` with the following:
 
     import ray
     from ray.util.sgd import TorchTrainer
+    from ray.util.sgd.torch import TrainingOperator
     from ray.util.sgd.torch.examples.train_example import LinearDataset
 
     import torch
     from torch.utils.data import DataLoader
 
+    class CustomTrainingOperator(TrainingOperator):
+        def setup(self, config):
+            # Load data.
+            train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+            val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
 
-    def model_creator(config):
-        return torch.nn.Linear(1, 1)
+            # Create model.
+            model = torch.nn.Linear(1, 1)
 
+            # Create optimizer.
+            optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
 
-    def optimizer_creator(model, config):
-        """Returns optimizer."""
-        return torch.optim.SGD(model.parameters(), lr=1e-2)
+            # Create loss.
+            loss = torch.nn.MSELoss()
 
+            # Register model, optimizer, and loss.
+            self.model, self.optimizer, self.criterion = self.register(
+                models=model,
+                optimizers=optimizer,
+                criterion=loss)
 
-    def data_creator(config):
-        train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
-        val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
-        return train_loader, val_loader
+            # Register data loaders.
+            self.register_data(train_loader=train_loader, validation_loader=val_loader)
+
 
     ray.init()
 
     trainer1 = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=torch.nn.MSELoss,
+        training_operator_cls=CustomTrainingOperator,
         num_workers=2,
         use_gpu=False,
         config={"batch_size": 64})
@@ -62,4 +68,5 @@ You can start a ``TorchTrainer`` with the following:
     trainer1.shutdown()
     print("success!")
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+.. tip:: We are rolling out a lighter-weight version of RaySGD in a future version of Ray. See the documentation :ref:`here <sgd-v2-docs>`.

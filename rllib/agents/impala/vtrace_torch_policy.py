@@ -3,17 +3,15 @@ import logging
 import numpy as np
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.impala.vtrace_tf_policy import postprocess_trajectory
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import global_norm, sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    explained_variance, global_norm, sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -105,6 +103,7 @@ class VTraceLoss:
 
         # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
+        self.mean_entropy = self.entropy / torch.sum(valid_mask)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -118,8 +117,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
         output_hidden_shape = [policy.action_space.n]
-    elif isinstance(policy.action_space,
-                    gym.spaces.multi_discrete.MultiDiscrete):
+    elif isinstance(policy.action_space, gym.spaces.MultiDiscrete):
         is_multidiscrete = True
         output_hidden_shape = policy.action_space.nvec.astype(np.int32)
     else:
@@ -127,8 +125,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         output_hidden_shape = 1
 
     def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -147,8 +145,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
         mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
@@ -158,7 +157,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    policy.loss = VTraceLoss(
+    loss = VTraceLoss(
         actions=_make_time_major(loss_actions, drop_last=True),
         actions_logp=_make_time_major(
             action_dist.logp(actions), drop_last=True),
@@ -183,13 +182,25 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    return policy.loss.total_loss
+    # Store loss object only for multi-GPU tower 0.
+    if model is policy.model_gpu_towers[0]:
+        policy.loss = loss
+        values_batched = make_time_major(
+            policy,
+            train_batch.get(SampleBatch.SEQ_LENS),
+            values,
+            drop_last=policy.config["vtrace"])
+        policy._vf_explained_var = explained_variance(
+            torch.reshape(loss.value_targets, [-1]),
+            torch.reshape(values_batched, [-1])),
+
+    return loss.total_loss
 
 
 def make_time_major(policy, seq_lens, tensor, drop_last=False):
     """Swaps batch and trajectory axis.
 
-    Arguments:
+    Args:
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
@@ -210,7 +221,7 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tensor.shape[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
@@ -224,23 +235,14 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 def stats(policy, train_batch):
-    values_batched = make_time_major(
-        policy,
-        train_batch.get("seq_lens"),
-        policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
-
     return {
         "cur_lr": policy.cur_lr,
         "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
-        "vf_explained_var": explained_variance(
-            torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1]),
-            framework="torch"),
+        "vf_explained_var": policy._vf_explained_var,
     }
 
 
@@ -249,7 +251,7 @@ def choose_optimizer(policy, config):
         return torch.optim.Adam(
             params=policy.model.parameters(), lr=policy.cur_lr)
     else:
-        return torch.optim.RMSProp(
+        return torch.optim.RMSprop(
             params=policy.model.parameters(),
             lr=policy.cur_lr,
             weight_decay=config["decay"],
@@ -263,12 +265,12 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-VTraceTorchPolicy = build_torch_policy(
+VTraceTorchPolicy = build_policy_class(
     name="VTraceTorchPolicy",
+    framework="torch",
     loss_fn=build_vtrace_loss,
     get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
     stats_fn=stats,
-    postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_mixins,

@@ -6,7 +6,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class EagerModel(TFModelV2):
@@ -34,13 +34,12 @@ class EagerModel(TFModelV2):
 
         def lambda_(x):
             eager_out = tf.py_function(self.forward_eager, [x], tf.float32)
-            with tf.control_dependencies([eager_out]):
+            with tf1.control_dependencies([eager_out]):
                 eager_out.set_shape(x.shape)
                 return eager_out
 
         out = tf.keras.layers.Lambda(lambda_)(out)
         self.base_model = tf.keras.models.Model(inputs, [out, value_out])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):

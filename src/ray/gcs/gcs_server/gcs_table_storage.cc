@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
@@ -48,9 +49,11 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
   auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
-      Data data;
-      data.ParseFromString(item.second);
-      values[Key::FromBinary(item.first)] = data;
+      if (!item.second.empty()) {
+        Data data;
+        data.ParseFromString(item.second);
+        values[Key::FromBinary(item.first)] = data;
+      }
     }
     callback(values);
   };
@@ -88,9 +91,11 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
   auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
-      Data data;
-      data.ParseFromString(item.second);
-      values[Key::FromBinary(item.first)] = std::move(data);
+      if (!item.second.empty()) {
+        Data data;
+        data.ParseFromString(item.second);
+        values[Key::FromBinary(item.first)] = std::move(data);
+      }
     }
     callback(values);
   };
@@ -105,27 +110,46 @@ Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                  callback);
 }
 
+template <typename Key, typename Data>
+Status GcsTableWithJobId<Key, Data>::Delete(const Key &key,
+                                            const StatusCallback &callback) {
+  return this->store_client_->AsyncDeleteWithIndex(
+      this->table_name_, key.Binary(), GetJobIdFromKey(key).Binary(), callback);
+}
+
+template <typename Key, typename Data>
+Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
+                                                 const StatusCallback &callback) {
+  std::vector<std::string> keys_to_delete;
+  std::vector<std::string> indexs_to_delete;
+  for (auto key : keys) {
+    keys_to_delete.push_back(key.Binary());
+    indexs_to_delete.push_back(GetJobIdFromKey(key).Binary());
+  }
+  return this->store_client_->AsyncBatchDeleteWithIndex(this->table_name_, keys_to_delete,
+                                                        indexs_to_delete, callback);
+}
+
 template class GcsTable<JobID, JobTableData>;
-template class GcsTable<ClientID, GcsNodeInfo>;
-template class GcsTable<ClientID, ResourceMap>;
-template class GcsTable<ClientID, HeartbeatTableData>;
-template class GcsTable<ClientID, HeartbeatBatchTableData>;
+template class GcsTable<NodeID, GcsNodeInfo>;
+template class GcsTable<NodeID, ResourceMap>;
+template class GcsTable<NodeID, ResourceUsageBatchData>;
 template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
-template class GcsTable<WorkerID, WorkerFailureData>;
+template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
-template class GcsTable<ActorCheckpointID, ActorCheckpointData>;
-template class GcsTable<ActorID, ActorCheckpointIdData>;
 template class GcsTable<TaskID, TaskTableData>;
 template class GcsTable<TaskID, TaskLeaseData>;
 template class GcsTable<TaskID, TaskReconstructionData>;
-template class GcsTable<ObjectID, ObjectTableDataList>;
+template class GcsTable<ObjectID, ObjectLocationInfo>;
+template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
-template class GcsTableWithJobId<ActorID, ActorCheckpointIdData>;
 template class GcsTableWithJobId<TaskID, TaskTableData>;
 template class GcsTableWithJobId<TaskID, TaskLeaseData>;
 template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
-template class GcsTableWithJobId<ObjectID, ObjectTableDataList>;
+template class GcsTableWithJobId<ObjectID, ObjectLocationInfo>;
+template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
+template class GcsTable<PlacementGroupID, ScheduleData>;
 
 }  // namespace gcs
 }  // namespace ray

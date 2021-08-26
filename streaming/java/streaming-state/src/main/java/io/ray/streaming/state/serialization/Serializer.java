@@ -20,13 +20,11 @@ package io.ray.streaming.state.serialization;
 
 import org.nustaq.serialization.FSTConfiguration;
 
-/**
- * fst wrapper.
- */
+/** fst wrapper. */
 public class Serializer {
 
-  private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal
-      .withInitial(FSTConfiguration::createDefaultConfiguration);
+  private static final ThreadLocal<FSTConfiguration> conf =
+      ThreadLocal.withInitial(FSTConfiguration::createDefaultConfiguration);
 
   public static byte[] object2Bytes(Object value) {
     return conf.get().asByteArray(value);

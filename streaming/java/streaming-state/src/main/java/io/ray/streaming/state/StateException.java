@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state;
 
-/**
- * RuntimeException wrapper, indicating the exceptions occurs in states.
- */
+/** RuntimeException wrapper, indicating the exceptions occurs in states. */
 public class StateException extends RuntimeException {
 
   public StateException(Throwable t) {

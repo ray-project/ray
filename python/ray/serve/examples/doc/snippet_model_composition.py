@@ -1,8 +1,10 @@
 from random import random
 import requests
+import ray
 from ray import serve
 
-serve.init()
+ray.init(num_cpus=8)
+serve.start()
 
 # Our pipeline will be structured as follows:
 # - Input comes in, the composed model sends it to model_one
@@ -13,24 +15,35 @@ serve.init()
 # Let's define two models that just print out the data they received.
 
 
-def model_one(_unused_flask_request, data=None):
+@serve.deployment
+def model_one(data):
     print("Model 1 called with data ", data)
     return random()
 
 
-def model_two(_unused_flask_request, data=None):
+model_one.deploy()
+
+
+@serve.deployment
+def model_two(data):
     print("Model 2 called with data ", data)
     return data
 
 
+model_two.deploy()
+
+
+# max_concurrent_queries is optional. By default, if you pass in an async
+# function, Ray Serve sets the limit to a high number.
+@serve.deployment(max_concurrent_queries=10, route_prefix="/composed")
 class ComposedModel:
     def __init__(self):
-        self.model_one = serve.get_handle("model_one")
-        self.model_two = serve.get_handle("model_two")
+        self.model_one = model_one.get_handle()
+        self.model_two = model_two.get_handle()
 
     # This method can be called concurrently!
-    async def __call__(self, flask_request):
-        data = flask_request.data
+    async def __call__(self, starlette_request):
+        data = await starlette_request.body()
 
         score = await self.model_one.remote(data=data)
         if score > 0.5:
@@ -42,18 +55,7 @@ class ComposedModel:
         return result
 
 
-serve.create_backend("model_one", model_one)
-serve.create_endpoint("model_one", backend="model_one")
-
-serve.create_backend("model_two", model_two)
-serve.create_endpoint("model_two", backend="model_two")
-
-# max_concurrent_queries is optional. By default, if you pass in an async
-# function, Ray Serve sets the limit to a high number.
-serve.create_backend(
-    "composed_backend", ComposedModel, config={"max_concurrent_queries": 10})
-serve.create_endpoint(
-    "composed", backend="composed_backend", route="/composed")
+ComposedModel.deploy()
 
 for _ in range(5):
     resp = requests.get("http://127.0.0.1:8000/composed", data="hey!")

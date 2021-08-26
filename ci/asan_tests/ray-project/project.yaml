@@ -16,12 +16,11 @@ cluster:
 
 commands:
   - name: Setup
-    command: make setup
+    command: ./run_asan_tests.sh setup
   - name: Run
-    command: make run
+    command: ./run_asan_tests.sh run
   - name: Recompile
-    command: |
-      git_sha={{git_sha}} make recompile
+    command: ./run_asan_tests.sh recompile {{git_sha}}
     params:
     - name: git_sha # Ray version string.
       default: "master"

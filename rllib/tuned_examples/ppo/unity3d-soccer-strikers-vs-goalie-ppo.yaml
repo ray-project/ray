@@ -8,7 +8,7 @@
 # goalie's reward (-1 if goal) across all within-scene parallelized playing
 # fields (8 fields with each 2 strikers + 1 goalie, for the soccer env).
 unity3d-soccer-strikers-vs-goalie-ppo:
-    env: ray.rllib.env.unity3d_env.Unity3DEnv
+    env: ray.rllib.env.wrappers.unity3d_env.Unity3DEnv
     run: PPO
     stop:
         timesteps_total: 1000000

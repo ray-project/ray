@@ -1,7 +1,9 @@
 from ray.includes.unique_ids cimport (
     CActorID,
-    CClientID,
+    CNodeID,
     CObjectID,
+    CWorkerID,
+    CPlacementGroupID
 )
 
 from ray.includes.global_state_accessor cimport (
@@ -15,45 +17,162 @@ cdef class GlobalStateAccessor:
     cdef:
         unique_ptr[CGlobalStateAccessor] inner
 
-    def __init__(self, redis_address, redis_password, c_bool is_test_client=False):
+    def __init__(self, redis_address, redis_password):
         if not redis_password:
             redis_password = ""
         self.inner.reset(
-            new CGlobalStateAccessor(redis_address.encode("ascii"),
-                redis_password.encode("ascii"), is_test_client))
+            new CGlobalStateAccessor(
+                redis_address.encode("ascii"),
+                redis_password.encode("ascii"),
+            ),
+        )
 
     def connect(self):
-        return self.inner.get().Connect()
+        cdef c_bool result
+        with nogil:
+            result = self.inner.get().Connect()
+        return result
 
     def disconnect(self):
-        self.inner.get().Disconnect()
+        with nogil:
+            self.inner.get().Disconnect()
 
     def get_job_table(self):
-        return self.inner.get().GetAllJobInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllJobInfo()
+        return result
+
+    def get_next_job_id(self):
+        cdef CJobID cjob_id
+        with nogil:
+            cjob_id = self.inner.get().GetNextJobID()
+        return cjob_id.ToInt()
 
     def get_node_table(self):
-        return self.inner.get().GetAllNodeInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllNodeInfo()
+        return result
+
+    def get_all_available_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllAvailableResources()
+        return result
 
     def get_profile_table(self):
-        return self.inner.get().GetAllProfileInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllProfileInfo()
+        return result
 
     def get_object_table(self):
-        return self.inner.get().GetAllObjectInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllObjectInfo()
+        return result
 
     def get_object_info(self, object_id):
-        object_info = self.inner.get().GetObjectInfo(CObjectID.FromBinary(object_id.binary()))
+        cdef unique_ptr[c_string] object_info
+        cdef CObjectID cobject_id = CObjectID.FromBinary(object_id.binary())
+        with nogil:
+            object_info = self.inner.get().GetObjectInfo(cobject_id)
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
+    def get_all_resource_usage(self):
+        """Get newest resource usage of all nodes from GCS service."""
+        cdef unique_ptr[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllResourceUsage()
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
     def get_actor_table(self):
-        return self.inner.get().GetAllActorInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllActorInfo()
+        return result
 
     def get_actor_info(self, actor_id):
-        actor_info = self.inner.get().GetActorInfo(CActorID.FromBinary(actor_id.binary()))
+        cdef unique_ptr[c_string] actor_info
+        cdef CActorID cactor_id = CActorID.FromBinary(actor_id.binary())
+        with nogil:
+            actor_info = self.inner.get().GetActorInfo(cactor_id)
         if actor_info:
             return c_string(actor_info.get().data(), actor_info.get().size())
         return None
 
     def get_node_resource_info(self, node_id):
-        return self.inner.get().GetNodeResourceInfo(CClientID.FromBinary(node_id.binary()))
+        cdef c_string result
+        cdef CNodeID cnode_id = CNodeID.FromBinary(node_id.binary())
+        with nogil:
+            result = self.inner.get().GetNodeResourceInfo(cnode_id)
+        return result
+
+    def get_worker_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllWorkerInfo()
+        return result
+
+    def get_worker_info(self, worker_id):
+        cdef unique_ptr[c_string] worker_info
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        with nogil:
+            worker_info = self.inner.get().GetWorkerInfo(cworker_id)
+        if worker_info:
+            return c_string(worker_info.get().data(), worker_info.get().size())
+        return None
+
+    def add_worker_info(self, serialized_string):
+        cdef c_bool result
+        cdef c_string cserialized_string = serialized_string
+        with nogil:
+            result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result
+
+    def get_placement_group_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllPlacementGroupInfo()
+        return result
+
+    def get_placement_group_info(self, placement_group_id):
+        cdef unique_ptr[c_string] result
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        with nogil:
+            result = self.inner.get().GetPlacementGroupInfo(
+                cplacement_group_id)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
+    def get_placement_group_by_name(self, placement_group_name, ray_namespace):
+        cdef unique_ptr[c_string] result
+        cdef c_string cplacement_group_name = placement_group_name
+        cdef c_string cray_namespace = ray_namespace
+        with nogil:
+            result = self.inner.get().GetPlacementGroupByName(
+                cplacement_group_name, cray_namespace)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        cdef CRayStatus status
+        cdef c_string cnode_ip_address = node_ip_address
+        cdef c_string cnode_to_connect
+        with nogil:
+            status = self.inner.get().GetNodeToConnectForDriver(
+                cnode_ip_address, &cnode_to_connect)
+        if not status.ok():
+            raise RuntimeError(status.message())
+        return cnode_to_connect

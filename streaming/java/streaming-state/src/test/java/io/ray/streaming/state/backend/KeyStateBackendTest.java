@@ -37,8 +37,8 @@ public class KeyStateBackendTest {
 
   public void testGetValueState() {
     keyStateBackend.setCheckpointId(1L);
-    ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-      .build("value", String.class, null);
+    ValueStateDescriptor<String> valueStateDescriptor =
+        ValueStateDescriptor.build("value", String.class, null);
     valueStateDescriptor.setTableName("kepler_hlg_ut");
     ValueState<String> valueState = keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -114,13 +114,12 @@ public class KeyStateBackendTest {
     Assert.assertEquals(valueState.get(), "jack");
     valueState.setCurrentKey("9");
     Assert.assertNull(valueState.get());
-
   }
 
   public void testGetListState() {
     keyStateBackend.setCheckpointId(1l);
-    ListStateDescriptor<String> listStateDescriptor = ListStateDescriptor
-      .build("list", String.class);
+    ListStateDescriptor<String> listStateDescriptor =
+        ListStateDescriptor.build("list", String.class);
     listStateDescriptor.setTableName("kepler_hlg_ut");
     ListState<String> listState = keyStateBackend.getListState(listStateDescriptor);
 
@@ -207,8 +206,8 @@ public class KeyStateBackendTest {
 
   public void testGetMapState() {
     keyStateBackend.setCheckpointId(1l);
-    MapStateDescriptor<String, String> mapStateDescriptor = MapStateDescriptor
-      .build("map", String.class, String.class);
+    MapStateDescriptor<String, String> mapStateDescriptor =
+        MapStateDescriptor.build("map", String.class, String.class);
     mapStateDescriptor.setTableName("kepler_hlg_ut");
     MapState<String, String> mapState = keyStateBackend.getMapState(mapStateDescriptor);
 
@@ -222,7 +221,7 @@ public class KeyStateBackendTest {
     Assert.assertEquals(mapState.get("hello3"), null);
 
     mapState.setCurrentKey("2");
-    //Assert.assertEquals(mapState.iterator(), (new HashMap()));
+    // Assert.assertEquals(mapState.iterator(), (new HashMap()));
 
     mapState.setCurrentKey("2");
     mapState.put("eagle", "eagle-1");
@@ -302,7 +301,6 @@ public class KeyStateBackendTest {
     Assert.assertNull(mapState.get("6666"));
   }
 
-
   @Test
   public void testMem() {
     stateBackend = StateBackendBuilder.buildStateBackend(new HashMap<>());
@@ -311,5 +309,4 @@ public class KeyStateBackendTest {
     testGetListState();
     testGetMapState();
   }
-
 }

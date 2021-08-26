@@ -1,67 +1,82 @@
-"""This test checks that HyperOpt is functional.
+"""This example demonstrates the usage of HyperOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
-    assert type(config["activation"]) == str, \
-        "Config is incorrect: {}".format(type(config["activation"]))
-    for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+def evaluation_fn(step, width, height):
+    time.sleep(0.1)
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
+
+
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
 
 
 if __name__ == "__main__":
     import argparse
-    from hyperopt import hp
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
-    ray.init(configure_logging=False)
 
-    space = {
-        "width": hp.uniform("width", 0, 20),
-        "height": hp.uniform("height", -100, 100),
-        "activation": hp.choice("activation", ["relu", "tanh"])
-    }
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(configure_logging=False)
 
     current_best_params = [
         {
             "width": 1,
             "height": 2,
-            "activation": 0  # Activation will be relu
+            "activation": "relu"  # Activation will be relu
         },
         {
             "width": 4,
             "height": 2,
-            "activation": 1  # Activation will be tanh
+            "activation": "tanh"  # Activation will be tanh
         }
     ]
 
-    config = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
-        },
-    }
-    algo = HyperOptSearch(
-        space,
+    algo = HyperOptSearch(points_to_evaluate=current_best_params)
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
+        easy_objective,
+        search_alg=algo,
+        scheduler=scheduler,
         metric="mean_loss",
         mode="min",
-        points_to_evaluate=current_best_params)
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective, search_alg=algo, scheduler=scheduler, **config)
+        num_samples=10 if args.smoke_test else 1000,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            # This is an ignored parameter.
+            "activation": tune.choice(["relu", "tanh"])
+        })
+
+    print("Best hyperparameters found were: ", analysis.best_config)
