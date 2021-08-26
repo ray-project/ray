@@ -498,7 +498,6 @@ def _check_spilled(num_objects_spilled=0):
         m = re.search(r"Spilled (\d+) MiB, (\d+) objects", s)
         if m is not None:
             actual_num_objects = int(m.group(2))
-            print(actual_num_objects)
             return actual_num_objects >= num_objects_spilled
 
         return False

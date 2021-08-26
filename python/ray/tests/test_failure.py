@@ -297,7 +297,6 @@ def test_worker_dying(ray_start_regular, error_pubsub):
         eval("exit()")
 
     with pytest.raises(ray.exceptions.WorkerCrashedError):
-
         ray.get(f.remote())
 
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
