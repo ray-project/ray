@@ -24,7 +24,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, WriteTask
+from ray.data.datasource import Datasource, CSVDatasource
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -570,8 +570,6 @@ class Dataset(Generic[T]):
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
-        Time complexity: O(1)
-
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
@@ -878,7 +876,8 @@ class Dataset(Generic[T]):
             self,
             path: str,
             *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -896,28 +895,14 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def csv_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_csv(
-                write_path, mode="a", header=True, index=False)
-
-        refs = [
-            csv_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.csv"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            CSVDatasource(),
+            path=path,
+            uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_csv_args)
 
     def write_numpy(
             self,
@@ -974,17 +959,13 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks,
-                                               self._blocks.get_metadata(),
-                                               **write_args)
+        write_tasks = datasource.do_write(self._blocks,
+                                          self._blocks.get_metadata(),
+                                          **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
-        remote_write = cached_remote_fn(_remote_write)
-
-        write_task_outputs = [remote_write.remote(w) for w in write_tasks]
         try:
-            progress.block_until_complete(write_task_outputs)
-            datasource.on_write_complete(write_tasks,
-                                         ray.get(write_task_outputs))
+            progress.block_until_complete(write_tasks)
+            datasource.on_write_complete(write_tasks)
         except Exception as e:
             datasource.on_write_failed(write_tasks, e)
             raise
@@ -1591,10 +1572,6 @@ def _get_num_rows(block: Block) -> int:
 def _get_sum(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return sum(block.iter_rows())
-
-
-def _remote_write(task: WriteTask) -> Any:
-    return task()
 
 
 def _block_to_df(block: Block):

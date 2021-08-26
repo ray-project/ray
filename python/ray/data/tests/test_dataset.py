@@ -1571,12 +1571,44 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
 
     # Single block.
     os.mkdir(path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df1)])
+    ds._set_uuid("data")
+    ds.write_csv(path)
+    file_path = os.path.join(path, "data_000000.csv")
+    assert df1.equals(pd.read_csv(file_path))
+    shutil.rmtree(path)
+
+    # Two blocks.
+    os.mkdir(path)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds._set_uuid("data")
+    ds.write_csv(path)
+    file_path2 = os.path.join(path, "data_000001.csv")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_csv(file_path), pd.read_csv(file_path2)])
+    assert df.equals(ds_df)
+    shutil.rmtree(path)
+
+
+def test_csv_roundtrip(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_csv_dir")
+
+    # Single block.
+    os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df)])
     ds._set_uuid("data")
     ds.write_csv(path)
     file_path = os.path.join(path, "data_000000.csv")
-    assert df.equals(pd.read_csv(file_path))
+    ds2 = ray.data.read_csv([file_path])
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert ds2df.equals(df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     shutil.rmtree(path)
 
     # Two blocks.
@@ -1586,9 +1618,12 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_csv(path)
     file_path2 = os.path.join(path, "data_000001.csv")
-    assert pd.concat([df, df2]).equals(
-        pd.concat([pd.read_csv(file_path),
-                   pd.read_csv(file_path2)]))
+    ds2 = ray.data.read_csv([file_path, file_path2], parallelism=2)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     shutil.rmtree(path)
 
 
