@@ -963,7 +963,7 @@ class SampleBatch(dict):
                     # Batch repeat value = 1: We already have framestacks
                     # at each timestep.
                     else:
-                        input_dict[view_col] = self[view_col][-1][None]
+                        input_dict[view_col] = self[data_col][-1][None]
                 # Single index.
                 else:
                     data = self[data_col][-1]

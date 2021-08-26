@@ -66,7 +66,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 8, view_req_policy
+            assert len(view_req_policy) == 10, \
+                (len(view_req_policy), view_req_policy)
             for key in [
                     SampleBatch.OBS,
                     SampleBatch.ACTIONS,
@@ -105,14 +106,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="torch"):#TODO remove
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 20, view_req_policy
+            print(list(view_req_policy.keys()))
+            assert len(view_req_policy) == 21, \
+                (len(view_req_policy), list(view_req_policy.keys()))
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -327,7 +330,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         trainer.stop()
 
     def test_traj_view_framestacking(self):
-        """Tests, whether Policy/Model return framestacked obs.
+        """Tests, whether Policy/Model return framestacked obs/next-obs.
         """
         config = ppo.DEFAULT_CONFIG.copy()
         config["model"] = config["model"].copy()
@@ -348,13 +351,17 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             sample_old = rw.sample()
             sample_old[SampleBatch.OBS] = np.transpose(
                 sample_old[SampleBatch.OBS], [0, 3, 1, 2])
-            sample_old[SampleBatch.NEXT_OBS] = np.transpose(
-                sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
+            if SampleBatch.NEXT_OBS in sample_old:
+                sample_old[SampleBatch.NEXT_OBS] = np.transpose(
+                    sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
 
             for k in [
-                    SampleBatch.OBS, SampleBatch.NEXT_OBS, SampleBatch.ACTIONS,
-                    SampleBatch.REWARDS
+                SampleBatch.OBS, SampleBatch.NEXT_OBS,
+                SampleBatch.ACTIONS, SampleBatch.REWARDS,
+                SampleBatch.VF_PREDS, "value_targets",
             ]:
+                if k == SampleBatch.NEXT_OBS and k not in sample_old:
+                    continue
                 check(sample_new[k], sample_old[k])
 
             trainer_w_new_framestacking.stop()
