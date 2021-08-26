@@ -54,7 +54,7 @@ class ObjectManagerClientPool : public IObjectManagerClientPool {
   std::vector<std::shared_ptr<rpc::ObjectManagerClient>>
   GetOrConnectAllObjectManagerClients() override;
 
-  ObjectManagerClientPool(rpc::ClientCallManager &ccm, gcs::GcsClient *gcs_client)
+  ObjectManagerClientPool(rpc::ClientCallManager &ccm, gcs::GcsClient &gcs_client)
       : client_factory_(defaultClientFactory(ccm)), gcs_client_(gcs_client){};
 
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectManagerClientPool);
@@ -85,7 +85,7 @@ class ObjectManagerClientPool : public IObjectManagerClientPool {
   ObjectManagerClientFactoryFn client_factory_;
 
   /// A client connection to the GCS.
-  gcs::GcsClient *gcs_client_;
+  gcs::GcsClient &gcs_client_;
 
   absl::Mutex mu_;
 

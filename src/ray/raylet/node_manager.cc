@@ -242,7 +242,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             }
             return result;
           },
-          gcs_client_.get()),
+          *gcs_client_),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),

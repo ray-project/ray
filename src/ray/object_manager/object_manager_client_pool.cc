@@ -33,13 +33,19 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManagerClientPool::GetOrConnectB
 
 absl::optional<std::shared_ptr<rpc::ObjectManagerClient>>
 ObjectManagerClientPool::GetOrConnectByID(ray::NodeID id) {
-  auto node_info = gcs_client_->Nodes().Get(id);
+  absl::MutexLock lock(&mu_);
+  auto it = client_map_.find(id);
+  auto client_cached = it != client_map_.end();
+  auto node_info = gcs_client_.Nodes().Get(id);
+
+  // If the node is dead, disconnect.
   if (!node_info) {
+    if (client_cached) {
+      client_map_.erase(it);
+    }
     return {};
   }
 
-  absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
   if (it == client_map_.end()) {
     rpc::Address addr;
     addr.set_ip_address(node_info->node_manager_address());
@@ -54,7 +60,7 @@ std::vector<std::shared_ptr<rpc::ObjectManagerClient>>
 ObjectManagerClientPool::GetOrConnectAllObjectManagerClients() {
   absl::MutexLock lock(&mu_);
   std::vector<std::shared_ptr<rpc::ObjectManagerClient>> clients;
-  const auto &node_map = gcs_client_->Nodes().GetAll();
+  const auto &node_map = gcs_client_.Nodes().GetAll();
   for (const auto &item : node_map) {
     rpc::Address addr;
     addr.set_ip_address(item.second.node_manager_address());

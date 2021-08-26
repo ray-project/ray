@@ -57,7 +57,7 @@ ObjectManager::ObjectManager(
     std::function<void()> object_store_full_callback,
     AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    gcs::GcsClient *gcs_client)
+    gcs::GcsClient &gcs_client)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
