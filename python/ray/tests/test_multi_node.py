@@ -235,13 +235,13 @@ def test_drivers_named_actors(call_ray_start):
     # named actor.
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
 
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 @ray.remote
 class Counter:
     def __init__(self):
@@ -257,7 +257,7 @@ time.sleep(100)
     driver_script2 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 while True:
     try:
         counter = ray.get_actor("Counter")

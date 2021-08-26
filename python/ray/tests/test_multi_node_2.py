@@ -291,7 +291,7 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     ray.get(main_actor.ping.remote())
 
     ray.shutdown()
-    ray.init(address=cluster.address, namespace="")
+    ray.init(address=cluster.address, namespace="default_test_namespace")
 
     main_actor = ray.get_actor("main")
     num_to_start = int(ray.available_resources().get("CPU", 0) + 1)

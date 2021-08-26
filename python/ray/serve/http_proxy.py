@@ -165,10 +165,10 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name))
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(self, controller_name: str, controller_namespace: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(None, None,
@@ -187,7 +187,7 @@ class HTTPProxy:
 
         self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name), {
+            ray.get_actor(controller_name, namespace=controller_namespace), {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
             call_in_event_loop=asyncio.get_event_loop())
@@ -261,6 +261,7 @@ class HTTPProxyActor:
                  host: str,
                  port: int,
                  controller_name: str,
+                 controller_namespace: str,
                  http_middlewares: List[
                      "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
@@ -268,7 +269,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(controller_name, controller_namespace)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
