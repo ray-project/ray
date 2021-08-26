@@ -136,7 +136,7 @@ def execute_workflow(
 
     To fully explain what we are doing, we need to introduce some syntax first.
     The syntax for dependencies between workflow steps
-    "A.step(B.step())" is "A - B"; the syntax for nested workflow steps
+    "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
     "def A(): return B.step()" is "A / B".
 
     In a chain/DAG of step dependencies, the "output step" is the step of last

@@ -68,6 +68,14 @@ def set_global_storage(storage: Storage) -> None:
     _global_storage = storage
 
 
+def assert_initialized():
+    from ray import is_initialized
+    if not is_initialized():
+        raise RuntimeError(
+            "Please connect to ray cluster by calling `ray.init`")
+    get_global_storage()
+
+
 __all__ = ("Storage", "get_global_storage", "create_storage",
            "set_global_storage", "DataLoadError", "DataSaveError",
            "KeyNotFoundError")
