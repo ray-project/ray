@@ -92,7 +92,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.trial_runner = TrialRunner(
             trial_executor=self.executor, callbacks=[self.callback])
         # experiment would never be None normally, but it's fine for testing
-        self.trial_runner.setup_experiments(experiments=[None])
+        self.trial_runner.setup_experiments(
+            experiments=[None], total_num_samples=1)
 
     def tearDown(self):
         ray.shutdown()
@@ -211,7 +212,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         self.assertIn("setup", self.callback.state)
         self.assertTrue(self.callback.state["setup"] is not None)
-        for key in Experiment.PUBLIC_KEYS + {"total_num_samples"}:
+        keys = Experiment.PUBLIC_KEYS.copy()
+        keys.add("total_num_samples")
+        for key in keys:
             self.assertIn(key, self.callback.state["setup"])
         # check if it was added first
         self.assertTrue(list(self.callback.state)[0] == "setup")
@@ -294,7 +297,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         callback = NoExperimentInSetupCallback()
         trial_runner = TrialRunner(callbacks=[callback])
         trial_runner.setup_experiments(
-            experiments=[Experiment("", lambda x: x)])
+            experiments=[Experiment("", lambda x: x)], total_num_samples=1)
         mocked_warning_method.assert_called_once()
         self.assertIn("Please update",
                       mocked_warning_method.call_args_list[0][0][0])
