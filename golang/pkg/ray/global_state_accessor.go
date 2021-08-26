@@ -1,7 +1,6 @@
 package ray
 
 /*
-   #cgo CFLAGS: -I../../../src/ray/core_worker/lib/golang
    #include <stdlib.h>
    #include "go_worker.h"
 */

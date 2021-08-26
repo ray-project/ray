@@ -16,18 +16,12 @@ cd $ray_source_dir
 ### linux
 export LD_LIBRARY_PATH=${PWD}/bazel-bin/:$LD_LIBRARY_PATH 
 
-### macos (TODO: it's hacky)
-export LIBRARY_PATH=${PWD}/bazel-bin/:$LIBRARY_PATH
-export DYLD_LIBRARY_PATH=${PWD}/bazel-bin/:$DYLD_LIBRARY_PATH
-sudo cp bazel-bin/libcore_worker_library_go.so /usr/local/
-
-### start
 ray start --head --port=6379
 
 #build ray golang worker (in golang directory)
 cd $ray_source_dir/golang
 
-go build -o worker pkg/worker/main.go
+go build -x -o worker pkg/worker/main.go
 
 #test driver (in golang directory)
 cd $ray_source_dir/golang

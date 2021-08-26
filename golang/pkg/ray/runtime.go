@@ -1,8 +1,6 @@
 package ray
 
 /*
-   #cgo CFLAGS: -I../../../src/ray/core_worker/lib/golang
-   #cgo LDFLAGS: -lcore_worker_library_go -lstdc++
    #include <stdlib.h>
    #include "go_worker.h"
 */

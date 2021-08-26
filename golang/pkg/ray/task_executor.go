@@ -1,10 +1,7 @@
 package ray
 
-/*
-   #cgo CFLAGS: -I../../../ray/src/ray/core_worker/lib/golang
-   #include <string.h>
-   #include "go_worker.h"
-*/
+// #include <string.h>
+// #include "go_worker.h"
 import "C"
 import (
     "fmt"

@@ -2069,7 +2069,7 @@ cc_binary(
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
-            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds) -install_name @rpath/libcore_worker_library_go.so",
         ],
         "@bazel_tools//src/conditions:windows": [
         ],
