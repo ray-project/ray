@@ -107,7 +107,12 @@ class SampleBatch(dict):
                 if k != SampleBatch.EPS_ID and (
                     len(v) == 0 or not isinstance(v[0], dict)
                 ) and None not in np.array(v):
-                    self[k] = np.array(v, dtype=np.float32)
+                    try:
+                        self[k] = np.array(v, dtype=np.float32)
+                    except TypeError:
+                        # For those objects that can't be casted to float32, we
+                        # keep it as an numpy array of the object.
+                        self[k] = np.array(v)
                 else:
                     # If we have field of type dict, let's keep it as np.object
                     self[k] = np.array(v)
