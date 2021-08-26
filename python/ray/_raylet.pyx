@@ -442,7 +442,8 @@ cdef execute_task(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        # Generate the repr used for logging prefixes.
+        # Record the actor name via :actor_name: magic token in the log file.
+        # This is used as a prefix in driver logs `(actor_repr pid=123) ...`
         if "__repr__" in actor_class.__ray_actor_class__.__dict__:
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
@@ -466,6 +467,8 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
         function_executor = execution_info.function
+        # Record the task name via :actor_name: magic token in the log file.
+        # This is used as a prefix in driver logs `(task_name pid=123) ...`
         print("{}{}".format(ray_constants.LOG_PREFIX_TASK_NAME, task_name))
     else:
         actor = worker.actors[core_worker.get_actor_id()]
