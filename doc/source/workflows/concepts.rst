@@ -81,6 +81,10 @@ Concepts
     :caption: The Fibonacci recursive workflow:
 
     @workflow.step
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    @workflow.step
     def fib(n: int) -> int:
         if n <= 1:
             return n
