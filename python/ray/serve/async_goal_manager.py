@@ -58,6 +58,7 @@ class AsyncGoal:
     def wait(self) -> Coroutine:
         return self.event.wait()
 
+
 class AsyncGoalManager:
     """
     Helper class to facilitate ServeController's async goal creation, tracking
