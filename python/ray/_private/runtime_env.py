@@ -474,7 +474,7 @@ def fetch_package(pkg_uri: str) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    if len(data) > GCS_STORAGE_MAX_SIZE:
+    if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
             "working_dir package exceeds the maximum size of 512MiB. You "
             "can exclude large files using the 'excludes' option to the "
