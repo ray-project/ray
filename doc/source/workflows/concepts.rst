@@ -1,7 +1,7 @@
 .. _workflows:
 
-Workflows: Fast, Durable Workflow Engine
-========================================
+Workflows: Fast, Durable Workflows
+==================================
 
 .. warning::
 
