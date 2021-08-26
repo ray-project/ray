@@ -5,6 +5,7 @@ import platform
 import random
 import signal
 import sys
+import time
 
 import numpy as np
 
@@ -531,6 +532,78 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
                                  " MiB") in memory_summary(stats_only=True)))
+
+
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_inlined_nested_refs(ray_start_cluster, inline_args):
+    cluster = ray_start_cluster
+    config = {}
+    if not inline_args:
+        config["max_direct_call_object_size"] = 0
+    cluster.add_node(
+        num_cpus=2,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config=config)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def nested(self):
+            return ray.put("x")
+
+    @ray.remote
+    def nested_nested(a):
+        return a.nested.remote()
+
+    @ray.remote
+    def foo(ref):
+        time.sleep(1)
+        return ray.get(ref)
+
+    a = Actor.remote()
+    nested_nested_ref = nested_nested.remote(a)
+    # We get nested_ref's value directly from its owner.
+    nested_ref = ray.get(nested_nested_ref)
+
+    del nested_nested_ref
+    x = foo.remote(nested_ref)
+    del nested_ref
+    ray.get(x)
+
+
+# https://github.com/ray-project/ray/issues/17553
+def test_return_nested_ids(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    class Nested:
+        def __init__(self, blocks):
+            self._blocks = blocks
+
+    @ray.remote
+    def echo(fn):
+        return fn()
+
+    @ray.remote
+    def create_nested():
+        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
+        return Nested(refs)
+
+    @ray.remote
+    def test():
+        ref = create_nested.remote()
+        result1 = ray.get(ref)
+        del ref
+        result = echo.remote(lambda: result1)  # noqa
+        del result1
+
+        time.sleep(5)
+        block = ray.get(result)._blocks[0]
+        print(ray.get(block))
+
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

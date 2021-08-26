@@ -10,7 +10,7 @@
 /src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
 /src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp

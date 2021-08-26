@@ -15,21 +15,20 @@ from starlette.requests import Request
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
 
+import ray
 from ray import cloudpickle
 from ray.actor import ActorHandle
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
+from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger, LoggingContext)
-
-import ray
 
 if TYPE_CHECKING:
     from fastapi import APIRouter, FastAPI  # noqa: F401
@@ -41,11 +40,24 @@ _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
 
 
+def _get_controller_namespace(detached):
+    controller_namespace = ray.get_runtime_context().namespace
+
+    if not detached:
+        return controller_namespace
+
+    # Start controller in "serve" namespace if detached and currently
+    # in anonymous namespace.
+    if _UUID_RE.fullmatch(controller_namespace) is not None:
+        controller_namespace = "serve"
+    return controller_namespace
+
+
 def _get_global_client():
     if _global_client is not None:
         return _global_client
 
-    return connect()
+    return _connect()
 
 
 def _set_global_client(client):
@@ -55,7 +67,7 @@ def _set_global_client(client):
 
 @dataclass
 class ReplicaContext:
-    """Stores data for Serve API calls from within the user's backend code."""
+    """Stores data for Serve API calls from within deployments."""
     deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
@@ -75,15 +87,9 @@ def _set_internal_replica_context(
 
 def _ensure_connected(f: Callable) -> Callable:
     @wraps(f)
-    def check(self, *args, _internal=False, **kwargs):
+    def check(self, *args, **kwargs):
         if self._shutdown:
             raise RayServeException("Client has already been shut down.")
-        if not _internal:
-            logger.warning(
-                "The client-based API is being deprecated in favor of global "
-                "API calls (e.g., `serve.create_backend()`). Please replace "
-                "all instances of `client.api_call()` with "
-                "`serve.api_call()`.")
         return f(self, *args, **kwargs)
 
     return check
@@ -126,9 +132,7 @@ class Client:
             self.shutdown()
 
     def __reduce__(self):
-        raise RayServeException(
-            ("Ray Serve client cannot be serialized. Please use "
-             "serve.connect() to get a client from within a backend."))
+        raise RayServeException(("Ray Serve client cannot be serialized."))
 
     def shutdown(self) -> None:
         """Completely shut down the connected Serve instance.
@@ -146,7 +150,10 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    ray.get_actor(self._controller_name)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached)
+                    ray.get_actor(
+                        self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -168,186 +175,6 @@ class Client:
         ready, _ = ray.wait(
             [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
         return len(ready) == 1
-
-    @_ensure_connected
-    def create_endpoint(self,
-                        endpoint_name: str,
-                        *,
-                        backend: str = None,
-                        route: Optional[str] = None,
-                        methods: List[str] = ["GET"]) -> None:
-        """Create a service endpoint given route_expression.
-
-        Args:
-            endpoint_name (str): A name to associate to with the endpoint.
-            backend (str, required): The backend that will serve requests to
-                this endpoint. To change this or split traffic among backends,
-                use `serve.set_traffic`.
-            route (str, optional): A string begin with "/". HTTP server will
-                use the string to match the path.
-            methods(List[str], optional): The HTTP methods that are valid for
-                this endpoint.
-        """
-        if backend is None:
-            raise TypeError("backend must be specified when creating "
-                            "an endpoint.")
-        elif not isinstance(backend, str):
-            raise TypeError("backend must be a string, got {}.".format(
-                type(backend)))
-
-        if route is not None:
-            if not isinstance(route, str) or not route.startswith("/"):
-                raise TypeError("route must be a string starting with '/'.")
-
-        if not isinstance(methods, list):
-            raise TypeError(
-                "methods must be a list of strings, but got type {}".format(
-                    type(methods)))
-
-        endpoints = self.list_endpoints(_internal=True)
-        if endpoint_name in endpoints:
-            methods_old = endpoints[endpoint_name]["methods"]
-            route_old = endpoints[endpoint_name]["route"]
-            if sorted(methods_old) == sorted(methods) and route_old == route:
-                raise ValueError(
-                    "Route '{}' is already registered to endpoint '{}' "
-                    "with methods '{}'.  To set the backend for this "
-                    "endpoint, please use serve.set_traffic().".format(
-                        route, endpoint_name, methods))
-
-        upper_methods = []
-        for method in methods:
-            if not isinstance(method, str):
-                raise TypeError(
-                    "methods must be a list of strings, but contained "
-                    "an element of type {}".format(type(method)))
-            upper_methods.append(method.upper())
-
-        ray.get(
-            self._controller.create_endpoint.remote(
-                endpoint_name, {backend: 1.0}, route, upper_methods))
-
-    @_ensure_connected
-    def delete_endpoint(self, endpoint: str) -> None:
-        """Delete the given endpoint.
-
-        Does not delete any associated backends.
-        """
-        ray.get(self._controller.delete_endpoint.remote(endpoint))
-
-    @_ensure_connected
-    def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
-        """Returns a dictionary of all registered endpoints.
-
-        The dictionary keys are endpoint names and values are dictionaries
-        of the form: {"methods": List[str], "traffic": Dict[str, float]}.
-        """
-        return ray.get(self._controller.get_all_endpoints.remote())
-
-    @_ensure_connected
-    def update_backend_config(
-            self, backend_tag: str,
-            config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
-        """Update a backend configuration for a backend tag.
-
-        Keys not specified in the passed will be left unchanged.
-
-        Args:
-            backend_tag(str): A registered backend.
-            config_options(dict, serve.BackendConfig): Backend config options
-                to update. Either a BackendConfig object or a dict mapping
-                strings to values for the following supported options:
-                - "num_replicas": number of processes to start up that
-                will handle requests to this backend.
-                - "max_concurrent_queries": the maximum number of queries
-                that will be sent to a replica of this backend
-                without receiving a response.
-                - "user_config" (experimental): Arguments to pass to the
-                reconfigure method of the backend. The reconfigure method is
-                called if "user_config" is not None.
-        """
-
-        if not isinstance(config_options, (BackendConfig, dict)):
-            raise TypeError(
-                "config_options must be a BackendConfig or dictionary.")
-        if isinstance(config_options, dict):
-            config_options = BackendConfig.parse_obj(config_options)
-        self._wait_for_goal(
-            ray.get(
-                self._controller.update_backend_config.remote(
-                    backend_tag, config_options)))
-
-    @_ensure_connected
-    def get_backend_config(self, backend_tag: str) -> BackendConfig:
-        """Get the backend configuration for a backend tag.
-
-        Args:
-            backend_tag(str): A registered backend.
-        """
-        return ray.get(self._controller.get_backend_config.remote(backend_tag))
-
-    @_ensure_connected
-    def create_backend(
-            self,
-            backend_tag: str,
-            backend_def: Union[Callable, Type[Callable], str],
-            *init_args: Any,
-            ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-    ) -> None:
-        """Create a backend with the provided tag.
-
-        Args:
-            backend_tag (str): a unique tag assign to identify this backend.
-            backend_def (callable, class, str): a function or class
-                implementing __call__ and returning a JSON-serializable object
-                or a Starlette Response object. A string import path can also
-                be provided (e.g., "my_module.MyClass"), in which case the
-                underlying function or class will be imported dynamically in
-                the worker replicas.
-            *init_args (optional): the arguments to pass to the class
-                initialization method. Not valid if backend_def is a function.
-            ray_actor_options (optional): options to be passed into the
-                @ray.remote decorator for the backend actor.
-            config (dict, serve.BackendConfig, optional): configuration options
-                for this backend. Either a BackendConfig, or a dictionary
-                mapping strings to values for the following supported options:
-                - "num_replicas": number of processes to start up that
-                will handle requests to this backend.
-                - "max_concurrent_queries": the maximum number of queries that
-                will be sent to a replica of this backend without receiving a
-                response.
-                - "user_config" (experimental): Arguments to pass to the
-                reconfigure method of the backend. The reconfigure method is
-                called if "user_config" is not None.
-        """
-        if backend_tag in self.list_backends(_internal=True).keys():
-            raise ValueError(
-                "Cannot create backend. "
-                "Backend '{}' is already registered.".format(backend_tag))
-
-        if config is None:
-            config = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
-
-        replica_config = ReplicaConfig(
-            backend_def, *init_args, ray_actor_options=ray_actor_options)
-
-        if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj(config)
-        elif isinstance(config, BackendConfig):
-            backend_config = config
-        else:
-            raise TypeError("config must be a BackendConfig or a dictionary.")
-
-        self._wait_for_goal(
-            ray.get(
-                self._controller.create_backend.remote(
-                    backend_tag,
-                    backend_config,
-                    replica_config,
-                    deployer_job_id=ray.get_runtime_context().job_id)))
 
     @_ensure_connected
     def deploy(self,
@@ -431,82 +258,11 @@ class Client:
         return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
-    def list_backends(self) -> Dict[str, BackendConfig]:
-        """Returns a dictionary of all registered backends.
-
-        Dictionary maps backend tags to backend config objects.
-        """
-        return ray.get(self._controller.get_all_backends.remote())
-
-    @_ensure_connected
-    def delete_backend(self, backend_tag: str, force: bool = False) -> None:
-        """Delete the given backend.
-
-        The backend must not currently be used by any endpoints.
-
-        Args:
-            backend_tag (str): The backend tag to be deleted.
-            force (bool): Whether or not to force the deletion, without waiting
-              for graceful shutdown. Default to false.
-        """
-        self._wait_for_goal(
-            ray.get(
-                self._controller.delete_backend.remote(backend_tag, force)))
-
-    @_ensure_connected
-    def set_traffic(self, endpoint_name: str,
-                    traffic_policy_dictionary: Dict[str, float]) -> None:
-        """Associate a service endpoint with traffic policy.
-
-        Example:
-
-        >>> serve.set_traffic("service-name", {
-            "backend:v1": 0.5,
-            "backend:v2": 0.5
-        })
-
-        Args:
-            endpoint_name (str): A registered service endpoint.
-            traffic_policy_dictionary (dict): a dictionary maps backend names
-                to their traffic weights. The weights must sum to 1.
-        """
-        ray.get(
-            self._controller.set_traffic.remote(endpoint_name,
-                                                traffic_policy_dictionary))
-
-    @_ensure_connected
-    def shadow_traffic(self, endpoint_name: str, backend_tag: str,
-                       proportion: float) -> None:
-        """Shadow traffic from an endpoint to a backend.
-
-        The specified proportion of requests will be duplicated and sent to the
-        backend. Responses of the duplicated traffic will be ignored.
-        The backend must not already be in use.
-
-        To stop shadowing traffic to a backend, call `shadow_traffic` with
-        proportion equal to 0.
-
-        Args:
-            endpoint_name (str): A registered service endpoint.
-            backend_tag (str): A registered backend.
-            proportion (float): The proportion of traffic from 0 to 1.
-        """
-
-        if not isinstance(proportion,
-                          (float, int)) or not 0 <= proportion <= 1:
-            raise TypeError("proportion must be a float from 0 to 1.")
-
-        ray.get(
-            self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
-                                                   proportion))
-
-    @_ensure_connected
     def get_handle(
             self,
             endpoint_name: str,
             missing_ok: Optional[bool] = False,
             sync: bool = True,
-            _internal_use_serve_request: Optional[bool] = True,
             _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
@@ -559,7 +315,6 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
@@ -567,7 +322,6 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -575,7 +329,7 @@ class Client:
         return handle
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -593,9 +347,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown(). This should *not* be set in
-          an anonymous Ray namespace because you will not be able to reconnect
-          to the instance after the script exits.
+          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -630,22 +382,12 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    current_namespace = ray.get_runtime_context().namespace
-    if detached:
-        if _UUID_RE.fullmatch(current_namespace) is not None:
-            raise RuntimeError(
-                "serve.start(detached=True) should not be called in anonymous "
-                "Ray namespaces because you won't be able to reconnect to the "
-                "Serve instance after the script exits. If you want to start "
-                "a long-lived Serve instance, provide a namespace when "
-                "connecting to Ray. See the documentation for more details: "
-                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
-            )
+    controller_namespace = _get_controller_namespace(detached)
 
     try:
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
-                    f"'{current_namespace}'.")
+                    f"'{controller_namespace}'.")
         return client
     except RayServeException:
         pass
@@ -671,6 +413,7 @@ def start(
         resources={
             get_current_node_resource_key(): 0.01
         },
+        namespace=controller_namespace,
     ).remote(
         controller_name,
         http_options,
@@ -691,12 +434,11 @@ def start(
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
     logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
-                f"namespace '{current_namespace}'.")
+                f"namespace '{controller_namespace}'.")
     return client
 
 
-@Deprecated
-def connect() -> Client:
+def _connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -715,14 +457,17 @@ def connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
+        controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = _get_controller_namespace(detached=False)
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name)
+        controller = ray.get_actor(
+            controller_name, namespace=controller_namespace)
     except ValueError:
-        raise RayServeException("Called `serve.connect()` but there is no "
+        raise RayServeException("There is no "
                                 "instance running on this Ray cluster. Please "
                                 "call `serve.start(detached=True) to start "
                                 "one.")
@@ -746,225 +491,6 @@ def shutdown() -> None:
     _set_global_client(None)
 
 
-@Deprecated
-def create_endpoint(endpoint_name: str,
-                    *,
-                    backend: str = None,
-                    route: Optional[str] = None,
-                    methods: List[str] = ["GET"]) -> None:
-    """Create a service endpoint given route_expression.
-
-    Args:
-        endpoint_name (str): A name to associate to with the endpoint.
-        backend (str, required): The backend that will serve requests to
-            this endpoint. To change this or split traffic among backends,
-            use `serve.set_traffic`.
-        route (str, optional): A string begin with "/". HTTP server will
-            use the string to match the path.
-        methods(List[str], optional): The HTTP methods that are valid for
-            this endpoint.
-    """
-    return _get_global_client().create_endpoint(
-        endpoint_name,
-        backend=backend,
-        route=route,
-        methods=methods,
-        _internal=True)
-
-
-@Deprecated
-def delete_endpoint(endpoint: str) -> None:
-    """Delete the given endpoint.
-
-    Does not delete any associated backends.
-    """
-    return _get_global_client().delete_endpoint(endpoint, _internal=True)
-
-
-@Deprecated
-def list_endpoints() -> Dict[str, Dict[str, Any]]:
-    """Returns a dictionary of all registered endpoints.
-
-    The dictionary keys are endpoint names and values are dictionaries
-    of the form: {"methods": List[str], "traffic": Dict[str, float]}.
-    """
-    return _get_global_client().list_endpoints(_internal=True)
-
-
-@Deprecated
-def update_backend_config(
-        backend_tag: str,
-        config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
-    """Update a backend configuration for a backend tag.
-
-    Keys not specified in the passed will be left unchanged.
-
-    Args:
-        backend_tag(str): A registered backend.
-        config_options(dict, serve.BackendConfig): Backend config options
-            to update. Either a BackendConfig object or a dict mapping
-            strings to values for the following supported options:
-            - "num_replicas": number of processes to start up that
-            will handle requests to this backend.
-            - "max_concurrent_queries": the maximum number of queries
-            that will be sent to a replica of this backend
-            without receiving a response.
-            - "user_config" (experimental): Arguments to pass to the
-            reconfigure method of the backend. The reconfigure method is
-            called if "user_config" is not None.
-    """
-    return _get_global_client().update_backend_config(
-        backend_tag, config_options, _internal=True)
-
-
-@Deprecated
-def get_backend_config(backend_tag: str) -> BackendConfig:
-    """Get the backend configuration for a backend tag.
-
-    Args:
-        backend_tag(str): A registered backend.
-    """
-    return _get_global_client().get_backend_config(backend_tag, _internal=True)
-
-
-@Deprecated
-def create_backend(
-        backend_tag: str,
-        backend_def: Union[Callable, Type[Callable], str],
-        *init_args: Any,
-        ray_actor_options: Optional[Dict] = None,
-        config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
-    """Create a backend with the provided tag.
-
-    Args:
-        backend_tag (str): a unique tag assign to identify this backend.
-        backend_def (callable, class, str): a function or class
-            implementing __call__ and returning a JSON-serializable object
-            or a Starlette Response object. A string import path can also
-            be provided (e.g., "my_module.MyClass"), in which case the
-            underlying function or class will be imported dynamically in
-            the worker replicas.
-        *init_args (optional): the arguments to pass to the class
-            initialization method. Not valid if backend_def is a function.
-        ray_actor_options (optional): options to be passed into the
-            @ray.remote decorator for the backend actor.
-        config (dict, serve.BackendConfig, optional): configuration options
-            for this backend. Either a BackendConfig, or a dictionary
-            mapping strings to values for the following supported options:
-            - "num_replicas": number of processes to start up that
-            will handle requests to this backend.
-            - "max_concurrent_queries": the maximum number of queries that
-            will be sent to a replica of this backend without receiving a
-            response.
-            - "user_config" (experimental): Arguments to pass to the
-            reconfigure method of the backend. The reconfigure method is
-            called if "user_config" is not None.
-    """
-    return _get_global_client().create_backend(
-        backend_tag,
-        backend_def,
-        *init_args,
-        ray_actor_options=ray_actor_options,
-        config=config,
-        _internal=True)
-
-
-@Deprecated
-def list_backends() -> Dict[str, BackendConfig]:
-    """Returns a dictionary of all registered backends.
-
-    Dictionary maps backend tags to backend config objects.
-    """
-    return _get_global_client().list_backends(_internal=True)
-
-
-@Deprecated
-def delete_backend(backend_tag: str, force: bool = False) -> None:
-    """Delete the given backend.
-
-    The backend must not currently be used by any endpoints.
-
-    Args:
-        backend_tag (str): The backend tag to be deleted.
-        force (bool): Whether or not to force the deletion, without waiting
-          for graceful shutdown. Default to false.
-    """
-    return _get_global_client().delete_backend(
-        backend_tag, force=force, _internal=True)
-
-
-@Deprecated
-def set_traffic(endpoint_name: str,
-                traffic_policy_dictionary: Dict[str, float]) -> None:
-    """Associate a service endpoint with traffic policy.
-
-    Example:
-
-    >>> serve.set_traffic("service-name", {
-        "backend:v1": 0.5,
-        "backend:v2": 0.5
-    })
-
-    Args:
-        endpoint_name (str): A registered service endpoint.
-        traffic_policy_dictionary (dict): a dictionary maps backend names
-            to their traffic weights. The weights must sum to 1.
-    """
-    return _get_global_client().set_traffic(
-        endpoint_name, traffic_policy_dictionary, _internal=True)
-
-
-@Deprecated
-def shadow_traffic(endpoint_name: str, backend_tag: str,
-                   proportion: float) -> None:
-    """Shadow traffic from an endpoint to a backend.
-
-    The specified proportion of requests will be duplicated and sent to the
-    backend. Responses of the duplicated traffic will be ignored.
-    The backend must not already be in use.
-
-    To stop shadowing traffic to a backend, call `shadow_traffic` with
-    proportion equal to 0.
-
-    Args:
-        endpoint_name (str): A registered service endpoint.
-        backend_tag (str): A registered backend.
-        proportion (float): The proportion of traffic from 0 to 1.
-    """
-    return _get_global_client().shadow_traffic(
-        endpoint_name, backend_tag, proportion, _internal=True)
-
-
-@Deprecated
-def get_handle(
-        endpoint_name: str,
-        missing_ok: bool = False,
-        sync: bool = True,
-        _internal_use_serve_request: bool = True,
-        _internal_pickled_http_request: bool = False,
-) -> Union[RayServeHandle, RayServeSyncHandle]:
-    """Retrieve RayServeHandle for service endpoint to invoke it from Python.
-
-    Args:
-        endpoint_name (str): A registered service endpoint.
-        missing_ok (bool): If true, then Serve won't check the endpoint is
-            registered. False by default.
-        sync (bool): If true, then Serve will return a ServeHandle that
-            works everywhere. Otherwise, Serve will return a ServeHandle
-            that's only usable in asyncio loop.
-
-    Returns:
-        RayServeHandle
-    """
-    return _get_global_client().get_handle(
-        endpoint_name,
-        missing_ok=missing_ok,
-        sync=sync,
-        _internal_use_serve_request=_internal_use_serve_request,
-        _internal_pickled_http_request=_internal_pickled_http_request,
-        _internal=True)
-
-
 @PublicAPI
 def get_replica_context() -> ReplicaContext:
     """If called from a deployment, returns the deployment and replica tag.
@@ -982,7 +508,7 @@ def get_replica_context() -> ReplicaContext:
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "
                                 "may only be called from within a "
-                                "Ray Serve backend.")
+                                "Ray Serve deployment.")
     return _INTERNAL_REPLICA_CONTEXT
 
 
@@ -992,7 +518,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
     Args:
         app(FastAPI,APIRouter): the app or router object serve as ingress
-            for this backend.
+            for this deployment.
 
     Example:
     >>> app = FastAPI()
@@ -1212,14 +738,12 @@ class Deployment:
             prev_version=self._prev_version,
             route_prefix=self._route_prefix,
             url=self.url,
-            _blocking=_blocking,
-            _internal=True)
+            _blocking=_blocking)
 
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
-        return _get_global_client().delete_deployment(
-            self._name, _internal=True)
+        return _get_global_client().delete_deployment(self._name)
 
     @PublicAPI
     def get_handle(self, sync: Optional[bool] = True
@@ -1236,11 +760,7 @@ class Deployment:
             ServeHandle
         """
         return _get_global_client().get_handle(
-            self._name,
-            missing_ok=True,
-            sync=sync,
-            _internal_use_serve_request=False,
-            _internal=True)
+            self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
     def options(
@@ -1372,7 +892,7 @@ def deployment(
             deployment will fail. If not provided, deployment procedure will
             not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
-            will handle requests to this backend. Defaults to 1.
+            will handle requests to this deployment. Defaults to 1.
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
@@ -1387,14 +907,14 @@ def deployment(
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Config to pass to the
-            reconfigure method of the backend. This can be updated dynamically
-            without changing the version of the deployment and restarting its
-            replicas. The user_config needs to be hashable to keep track of
-            updates, so it must only contain hashable types, or hashable types
-            nested in lists and dictionaries.
+            reconfigure method of the deployment. This can be updated
+            dynamically without changing the version of the deployment and
+            restarting its replicas. The user_config needs to be hashable to
+            keep track of updates, so it must only contain hashable types, or
+            hashable types nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
-            that will be sent to a replica of this backend without receiving a
-            response. Defaults to 100.
+            that will be sent to a replica of this deployment without receiving
+            a response. Defaults to 100.
 
     Example:
 
@@ -1458,7 +978,7 @@ def get_deployment(name: str) -> Deployment:
     """
     try:
         backend_info, route_prefix = _get_global_client().get_deployment_info(
-            name, _internal=True)
+            name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
@@ -1480,7 +1000,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = _get_global_client().list_deployments(_internal=True)
+    infos = _get_global_client().list_deployments()
 
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():

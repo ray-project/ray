@@ -78,6 +78,7 @@ CORE_NIGHTLY_TESTS = {
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
+        "shuffle_data_loader",
     ],
 }
 
@@ -137,6 +138,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         "multi_gpu_learning_tests",
+        "multi_gpu_with_lstm_learning_tests",
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
         SmokeTest("stress_tests"),
@@ -147,6 +149,7 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
+        "wheel_urls",
     ],
 }
 
@@ -336,7 +339,8 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
-            ("python3 release/.buildkite/build_pipeline.py "
+            "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
+            ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
         ],
         "label": ":pipeline: Again",
@@ -359,6 +363,7 @@ def build_pipeline(steps):
     RAY_BRANCH = os.environ.get("RAY_BRANCH", "master")
     RAY_REPO = os.environ.get("RAY_REPO",
                               "https://github.com/ray-project/ray.git")
+    RAY_VERSION = os.environ.get("RAY_VERSION", "")
 
     RAY_TEST_BRANCH = os.environ.get("RAY_TEST_BRANCH", RAY_BRANCH)
     RAY_TEST_REPO = os.environ.get("RAY_TEST_REPO", RAY_REPO)
@@ -371,6 +376,7 @@ def build_pipeline(steps):
         f"Ray repo/branch to test:\n"
         f" RAY_REPO   = {RAY_REPO}\n"
         f" RAY_BRANCH = {RAY_BRANCH}\n\n"
+        f" RAY_VERSION = {RAY_VERSION}\n\n"
         f"Ray repo/branch containing the test configurations and scripts:"
         f" RAY_TEST_REPO   = {RAY_TEST_REPO}\n"
         f" RAY_TEST_BRANCH = {RAY_TEST_BRANCH}\n\n"
@@ -392,8 +398,10 @@ def build_pipeline(steps):
 
             logging.info(f"Adding test: {test_base}/{test_name}")
 
-            cmd = str(f"python release/e2e.py "
-                      f"--ray-branch {RAY_BRANCH} "
+            cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
+                      f"RAY_BRANCH=\"{RAY_BRANCH}\" "
+                      f"RAY_VERSION=\"{RAY_VERSION}\" "
+                      f"python release/e2e.py "
                       f"--category {RAY_BRANCH} "
                       f"--test-config {test_file} "
                       f"--test-name {test_name}")

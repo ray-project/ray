@@ -14,8 +14,7 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (RESERVED_VERSION_TAG,
-                                 MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.constants import MAX_NUM_DELETED_DEPLOYMENTS
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -115,7 +114,8 @@ class ActorReplicaWrapper:
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name)
+                    backend_info.backend_config, self._controller_name,
+                    self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
@@ -186,8 +186,12 @@ class BackendVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(
                 f"code_version must be str, got {type(code_version)}.")
-
-        self.code_version = code_version
+        if code_version is None:
+            self.unversioned = True
+            self.code_version = get_random_letters()
+        else:
+            self.unversioned = False
+            self.code_version = code_version
         self.user_config_hash = self._hash_user_config(user_config)
         self._hash = hash((self.code_version, self.user_config_hash))
 
@@ -667,14 +671,8 @@ class BackendState:
             self._backend_metadata[backend_tag] = backend_info
             self._target_replicas[
                 backend_tag] = backend_info.backend_config.num_replicas
-
-            if backend_info.version is not None:
-                code_version = backend_info.version
-            else:
-                code_version = get_random_letters()
-
             self._target_versions[backend_tag] = BackendVersion(
-                code_version,
+                backend_info.version,
                 user_config=backend_info.backend_config.user_config)
 
         else:
@@ -702,18 +700,9 @@ class BackendState:
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
-            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
-            # we shouldn't use versions at all to determine redeployment
-            # because `None` is used to indicate always redeploying.
-            if backend_info.version == RESERVED_VERSION_TAG:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None), False
-            # New codepath: treat version as ground truth for implementation.
-            elif (existing_info.backend_config == backend_info.backend_config
-                  and backend_info.version is not None
-                  and existing_info.version == backend_info.version):
+            if (existing_info.backend_config == backend_info.backend_config
+                    and backend_info.version is not None
+                    and existing_info.version == backend_info.version):
                 return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:
@@ -763,12 +752,6 @@ class BackendState:
         This includes both explicit code version updates and changes to the
         user_config.
         """
-        # NOTE(edoakes): this short-circuits when using the legacy
-        # `create_backend` codepath -- it can be removed once we deprecate
-        # that as the version should never be None.
-        if target_version is None:
-            return 0
-
         # Short circuit if target replicas is 0 (the backend is being deleted)
         # because this will be handled in the main loop.
         if target_replicas == 0:

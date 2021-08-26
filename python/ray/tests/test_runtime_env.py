@@ -39,12 +39,12 @@ try:
 
 
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.client("{address}").env({runtime_env}).namespace("").connect()
+        ray.client("{address}").env({runtime_env}).namespace("default_test_namespace").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
                  logging_level=logging.DEBUG,
-                 namespace=""
+                 namespace="default_test_namespace"
 )
 except ValueError:
     print("ValueError")
@@ -663,19 +663,19 @@ def test_init(shutdown_only):
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             filename = get_wheel_filename(sys_platform, ray_version,
                                           py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
-            assert requests.head(url).status_code == 200
+            assert requests.head(url).status_code == 200, url
 
 
 def test_get_master_wheel_url():
     ray_version = "2.0.0.dev0"
     test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
                                        py_version)
             assert requests.head(url).status_code == 200, url
@@ -684,7 +684,7 @@ def test_get_master_wheel_url():
 def test_get_release_wheel_url():
     test_commits = {"1.6.0": "5052fe67d99f1d4bfc81b2a8694dbf2aa807bbdc"}
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             for version, commit in test_commits.items():
                 url = get_release_wheel_url(commit, sys_platform, version,
                                             py_version)

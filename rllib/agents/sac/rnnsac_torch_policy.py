@@ -213,7 +213,7 @@ def actor_critic_loss(
         state_batches.append(train_batch["state_in_{}".format(i)])
         i += 1
     assert state_batches
-    seq_lens = train_batch.get("seq_lens")
+    seq_lens = train_batch.get(SampleBatch.SEQ_LENS)
 
     model_out_t, state_in_t = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
@@ -343,7 +343,7 @@ def actor_critic_loss(
     # BURNIN #
     B = state_batches[0].shape[0]
     T = q_t_selected.shape[0] // B
-    seq_mask = sequence_mask(train_batch["seq_lens"], T)
+    seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)
     # Mask away also the burn-in sequence at the beginning.
     burn_in = policy.config["burn_in"]
     if burn_in > 0 and burn_in < T:
