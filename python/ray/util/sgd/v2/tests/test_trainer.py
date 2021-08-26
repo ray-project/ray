@@ -8,9 +8,10 @@ import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
 
-from ray.util.sgd.v2 import Trainer
+from ray.util.sgd.v2 import Trainer, TorchConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
+from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
@@ -678,8 +679,14 @@ def test_max_failures(ray_start_2_cpus):
     assert iterator._num_failures == 3
 
 
-def test_worker_kill(ray_start_2_cpus):
-    test_config = TestConfig()
+@pytest.mark.parametrize("backend", ["test", "torch", "tf"])
+def test_worker_kill(ray_start_2_cpus, backend):
+    if backend == "test":
+        test_config = TestConfig()
+    elif backend == "torch":
+        test_config = TorchConfig()
+    elif backend == "tf":
+        test_config = TensorflowConfig()
 
     trainer = Trainer(test_config, num_workers=2)
 

@@ -20,6 +20,37 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+def check_for_failure(remote_values):
+    """Gets the remote values while handling for worker failures.
+
+    Args:
+        remote_values (list): List of object refs representing functions
+            that may fail in the middle of execution. For example, running
+            a SGD training loop in multiple parallel actor calls.
+
+    Returns:
+        Returns Tuple of success boolean and list of workers indexes that fail.
+    """
+    unfinished = remote_values.copy()
+    dead_worker_indexes = []  # Store the indexes of the failed workers.
+    while len(unfinished) > 0:
+        finished, unfinished = ray.wait(unfinished)
+        # If a failure occurs the ObjectRef will be marked as finished.
+        # Calling ray.get will expose the failure as a RayActorError.
+        for object_ref in finished:
+            try:
+                ray.get(object_ref)
+            except RayActorError as exc:
+                logger.exception(str(exc))
+                failed_actor_rank = remote_values.index(object_ref)
+                logger.info(f"Worker {failed_actor_rank} has failed.")
+                dead_worker_indexes.append(failed_actor_rank)
+    if len(dead_worker_indexes) > 0:
+        return False, dead_worker_indexes
+    else:
+        return True, []
+
+
 class BackendConfig:
     """Parent class for configurations of training backend."""
 
@@ -108,6 +139,9 @@ class BackendExecutor:
                                         self._num_gpus_per_worker)
         if initialization_hook:
             self.worker_group.execute(initialization_hook)
+        self.start_backend()
+
+    def start_backend(self):
         self._backend.on_start(self.worker_group, self._backend_config)
 
     def start_training(
@@ -386,38 +420,16 @@ class BackendExecutor:
             remote_values (list): List of object refs representing functions
                 that may fail in the middle of execution. For example, running
                 a SGD training loop in multiple parallel actor calls.
-
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        unfinished = remote_values.copy()
-        dead_worker_indexes = []  # Store the indexes of the failed workers.
-        while len(unfinished) > 0:
-            finished, unfinished = ray.wait(unfinished)
-            # If a failure occurs the ObjectRef will be marked as finished.
-            # Calling ray.get will expose the failure as a RayActorError.
-            for object_ref in finished:
-                try:
-                    ray.get(object_ref)
-                except RayActorError as exc:
-                    logger.exception(str(exc))
-                    failed_actor_rank = remote_values.index(object_ref)
-                    logger.info(f"Worker {failed_actor_rank} has failed.")
-                    dead_worker_indexes.append(failed_actor_rank)
-        if len(dead_worker_indexes) > 0:
-            self.handle_failure(failed_worker_indexes=dead_worker_indexes)
-        else:
+        success, failed_worker_indexes = check_for_failure(remote_values)
+        if success:
             return ray.get(remote_values)
-
-    def handle_failure(self, failed_worker_indexes: List[int]):
-        self.worker_group.remove_workers(failed_worker_indexes)
-        if len(self.worker_group) > 0:
-            self._backend.on_shutdown(self.worker_group, self._backend_config)
-            # If a failure occurs during handling of another failure.
-            futures = self.worker_group.execute_async(shutdown_session)
-            self.get_with_failure_handling(futures)
-        self.worker_group.add_workers(len(failed_worker_indexes))
-        raise TrainingWorkerError
+        else:
+            self._backend.handle_failure(
+                self.worker_group, failed_worker_indexes, self._backend_config)
+            raise TrainingWorkerError
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
@@ -466,6 +478,17 @@ class BackendInterface:
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
         raise NotImplementedError
+
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        # TODO: Handle failures during handling of another failure.
+        worker_group.remove_workers(failed_worker_indexes)
+        if len(worker_group) > 0:
+            self.on_shutdown(worker_group, backend_config)
+            worker_group.execute(shutdown_session)
+        worker_group.add_workers(len(failed_worker_indexes))
+        self.on_start(worker_group, backend_config)
 
 
 class InactiveWorkerGroupError(Exception):

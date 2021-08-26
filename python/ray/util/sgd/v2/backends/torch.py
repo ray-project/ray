@@ -3,7 +3,7 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
@@ -140,3 +140,10 @@ class TorchBackend(BackendInterface):
         if len(worker_group) > 1:
             worker_group.execute(dist.destroy_process_group)
         worker_group.execute(shutdown_torch)
+
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        worker_group.shutdown()
+        worker_group.start()
+        self.on_start(worker_group, backend_config)
