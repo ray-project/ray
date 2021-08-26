@@ -459,7 +459,6 @@ def from_modin(df: "modin.DataFrame", *,
     return from_pandas(parts, parallelism=parallelism)
 
 
-
 @PublicAPI(stability="beta")
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 *,
