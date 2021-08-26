@@ -9,21 +9,21 @@ See https://github.com/ray-project/ray/issues/3721.
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
     CActorClassID,
     CActorID,
-    CClientID,
+    CNodeID,
     CConfigID,
     CJobID,
     CFunctionID,
     CObjectID,
     CTaskID,
     CUniqueID,
-    CWorkerID
+    CWorkerID,
+    CPlacementGroupID
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -31,7 +31,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -62,7 +62,7 @@ cdef class BaseID:
         return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
-        return self.binary() != other.binary()
+        return type(self) != type(other) or self.binary() != other.binary()
 
     def __bytes__(self):
         return self.binary()
@@ -126,75 +126,6 @@ cdef class UniqueID(BaseID):
         return self.data.Hash()
 
 
-cdef class ObjectID(BaseID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CObjectID.FromBinary(<c_string>id)
-        self.in_core_worker = False
-
-        worker = ray.worker.global_worker
-        # TODO(edoakes): We should be able to remove the in_core_worker flag.
-        # But there are still some dummy object IDs being created outside the
-        # context of a core worker.
-        if hasattr(worker, "core_worker"):
-            worker.core_worker.add_object_id_reference(self)
-            self.in_core_worker = True
-
-    def __dealloc__(self):
-        if self.in_core_worker:
-            try:
-                worker = ray.worker.global_worker
-                worker.core_worker.remove_object_id_reference(self)
-            except Exception as e:
-                # There is a strange error in rllib that causes the above to
-                # fail. Somehow the global 'ray' variable corresponding to the
-                # imported package is None when this gets called. Unfortunately
-                # this is hard to debug because __dealloc__ is called during
-                # garbage collection so we can't get a good stack trace. In any
-                # case, there's not much we can do besides ignore it
-                # (re-importing ray won't help).
-                pass
-
-    cdef CObjectID native(self):
-        return <CObjectID>self.data
-
-    def size(self):
-        return CObjectID.Size()
-
-    def binary(self):
-        return self.data.Binary()
-
-    def hex(self):
-        return decode(self.data.Hex())
-
-    def is_nil(self):
-        return self.data.IsNil()
-
-    def task_id(self):
-        return TaskID(self.data.TaskId().Binary())
-
-    cdef size_t hash(self):
-        return self.data.Hash()
-
-    @classmethod
-    def nil(cls):
-        return cls(CObjectID.Nil().Binary())
-
-    @classmethod
-    def from_random(cls):
-        return cls(CObjectID.FromRandom().Binary())
-
-    def __await__(self):
-        # Delayed import because this can only be imported in py3.
-        from ray.async_compat import get_async
-        return get_async(self).__await__()
-
-    def as_future(self):
-        # Delayed import because this can only be imported in py3.
-        from ray.async_compat import get_async
-        return get_async(self)
-
 cdef class TaskID(BaseID):
     cdef CTaskID data
 
@@ -219,6 +150,9 @@ cdef class TaskID(BaseID):
 
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
+
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
 
     cdef size_t hash(self):
         return self.data.Hash()
@@ -267,14 +201,14 @@ cdef class TaskID(BaseID):
             CTaskID.FromBinary(parent_task_id.binary()),
             parent_task_counter).Binary())
 
-cdef class ClientID(UniqueID):
+cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClientID.FromBinary(<c_string>id)
+        self.data = CNodeID.FromBinary(<c_string>id)
 
-    cdef CClientID native(self):
-        return <CClientID>self.data
+    cdef CNodeID native(self):
+        return <CNodeID>self.data
 
 
 cdef class JobID(BaseID):
@@ -289,7 +223,7 @@ cdef class JobID(BaseID):
 
     @classmethod
     def from_int(cls, value):
-        assert value < 65536, "Maximum JobID integer is 65535."
+        assert value < 2**32, "Maximum JobID integer is 2**32 - 1."
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod
@@ -299,6 +233,9 @@ cdef class JobID(BaseID):
     @classmethod
     def size(cls):
         return CJobID.Size()
+
+    def int(self):
+        return self.data.ToInt()
 
     def binary(self):
         return self.data.Binary()
@@ -325,6 +262,7 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
+
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
@@ -368,14 +306,26 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ActorCheckpointID(UniqueID):
+cdef class ClientActorRef(ActorID):
 
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.FromBinary(<c_string>id)
+    def __init__(self, id: bytes):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
 
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
+    def __dealloc__(self):
+        if client is None or client.ray is None:
+            # The client package or client.ray object might be set
+            # to None when the script exits. Should be safe to skip
+            # call_release in this case, since the client should have already
+            # disconnected at this point.
+            return
+        if client.ray.is_connected() and not self.data.IsNil():
+            client.ray.call_release(self.id)
+
+    @property
+    def id(self):
+        return self.binary()
 
 
 cdef class FunctionID(UniqueID):
@@ -397,15 +347,55 @@ cdef class ActorClassID(UniqueID):
     cdef CActorClassID native(self):
         return <CActorClassID>self.data
 
+# This type alias is for backward compatibility.
+ObjectID = ObjectRef
+
+cdef class PlacementGroupID(BaseID):
+    cdef CPlacementGroupID data
+
+    def __init__(self, id):
+        check_id(id, CPlacementGroupID.Size())
+        self.data = CPlacementGroupID.FromBinary(<c_string>id)
+
+    cdef CPlacementGroupID native(self):
+        return <CPlacementGroupID>self.data
+
+    @classmethod
+    def from_random(cls):
+        return cls(CPlacementGroupID.FromRandom().Binary())
+
+    @classmethod
+    def nil(cls):
+        return cls(CPlacementGroupID.Nil().Binary())
+
+    @classmethod
+    def size(cls):
+        return CPlacementGroupID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def size(self):
+        return CPlacementGroupID.Size()
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
+
 _ID_TYPES = [
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     JobID,
     WorkerID,
     FunctionID,
     ObjectID,
     TaskID,
     UniqueID,
+    PlacementGroupID,
 ]

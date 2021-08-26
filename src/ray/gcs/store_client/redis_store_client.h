@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
+#pragma once
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -49,12 +48,23 @@ class RedisStoreClient : public StoreClient {
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
+  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
+                              const std::string &index_key,
+                              const StatusCallback &callback) override;
+
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
                           const StatusCallback &callback) override;
 
+  Status AsyncBatchDeleteWithIndex(const std::string &table_name,
+                                   const std::vector<std::string> &keys,
+                                   const std::vector<std::string> &index_keys,
+                                   const StatusCallback &callback) override;
+
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
+
+  int GetNextJobID() override;
 
  private:
   /// \class RedisScanner
@@ -104,9 +114,12 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
 
-  static std::unordered_map<RedisContext *, std::vector<std::string>> GenCommandsByShards(
-      const std::shared_ptr<RedisClient> &redis_client, const std::string &command,
-      const std::vector<std::string> &keys);
+  /// The return value is a map, whose key is the shard and the value is a list of batch
+  /// operations.
+  static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                      const std::string &command, const std::vector<std::string> &keys,
+                      int *count);
 
   /// The separator is used when building redis key.
   static std::string table_separator_;
@@ -139,5 +152,3 @@ class RedisStoreClient : public StoreClient {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H

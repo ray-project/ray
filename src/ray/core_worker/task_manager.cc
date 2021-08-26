@@ -14,9 +14,15 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "ray/common/buffer.h"
+#include "ray/common/common_protocol.h"
+#include "ray/common/constants.h"
 #include "ray/util/util.h"
 
+#include "msgpack.hpp"
+
 namespace ray {
+namespace core {
 
 // Start throttling task failure logs once we hit this threshold.
 const int64_t kTaskFailureThrottlingThreshold = 50;
@@ -24,8 +30,7 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const TaskID &caller_id,
-                                 const rpc::Address &caller_address,
+void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                                  const TaskSpecification &spec,
                                  const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
@@ -35,13 +40,12 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
-        task_deps.push_back(spec.ArgId(i, j));
-        RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i, j);
-      }
+      task_deps.push_back(spec.ArgId(i));
+      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         task_deps.push_back(inlined_id);
         RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
       }
@@ -62,12 +66,12 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     for (size_t i = 0; i < num_returns; i++) {
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
-      // notify us via the WaitForRefRemoved RPC that we are now a borrower for
-      // the inner IDs. Note that this RPC can be received *before* the
+      // publish the WaitForRefRemoved message that we are now a borrower for
+      // the inner IDs. Note that this message can be received *before* the
       // PushTaskReply.
       reference_counter_->AddOwnedObject(spec.ReturnId(i),
-                                         /*inner_ids=*/{}, caller_id, caller_address,
-                                         call_site, -1, /*is_reconstructable=*/true);
+                                         /*inner_ids=*/{}, caller_address, call_site, -1,
+                                         /*is_reconstructable=*/true);
     }
   }
 
@@ -90,9 +94,6 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (it == submissible_tasks_.end()) {
       return Status::Invalid("Task spec missing");
     }
-    if (it->second.spec.IsActorTask()) {
-      return Status::Invalid("Cannot reconstruct objects returned by actors");
-    }
 
     if (!it->second.pending) {
       resubmit = true;
@@ -108,19 +109,22 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
 
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
-        task_deps->push_back(spec.ArgId(i, j));
-      }
+      task_deps->push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
-        task_deps->push_back(inlined_id);
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
       }
     }
   }
 
   if (!task_deps->empty()) {
     reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+  }
+
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+    reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
   }
 
   if (resubmit) {
@@ -184,17 +188,21 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
+    RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                   << return_object.size();
 
+    const auto nested_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
-      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
+        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       } else {
-        RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
-                      << " in plasma on a dead node, attempting to recover";
+        RAY_LOG(DEBUG) << "Task " << task_id << " returned object " << object_id
+                       << " in plasma on a dead node, attempting to recover.";
         reconstruct_object_callback_(object_id);
       }
     } else {
@@ -217,13 +225,21 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
+
       bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+          RayObject(data_buffer, metadata_buffer, nested_refs), object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
+    }
+
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+      std::vector<ObjectID> nested_ids;
+      for (const auto &nested_ref : nested_refs) {
+        nested_ids.emplace_back(ObjectRefToId(nested_ref));
+      }
+      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
   }
 
@@ -268,8 +284,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status) {
+bool TaskManager::PendingTaskFailed(
+    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -304,8 +322,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left != 0) {
     auto retries_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
-                   << ", attempting to resubmit.";
+    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     will_retry = true;
   } else {
@@ -318,8 +336,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
            (current_time_ms() - last_log_time_ms_) >
                kTaskFailureLoggingFrequencyMillis)) {
         if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
-                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                           << kTaskFailureLoggingFrequencyMillis << " millis.";
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
@@ -333,7 +351,9 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    MarkPendingTaskFailed(task_id, spec, error_type);
+    if (immediately_mark_object_fail) {
+      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+    }
   }
 
   ShutdownIfNeeded();
@@ -373,13 +393,12 @@ void TaskManager::RemoveFinishedTaskReferences(
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
-        plasma_dependencies.push_back(spec.ArgId(i, j));
-      }
+      plasma_dependencies.push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
     }
   }
   if (spec.IsActorTask()) {
@@ -417,13 +436,12 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
-        for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
-          released_objects->push_back(it->second.spec.ArgId(i, j));
-        }
+        released_objects->push_back(it->second.spec.ArgId(i));
       } else {
-        const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
-        released_objects->insert(released_objects->end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
       }
     }
 
@@ -442,21 +460,42 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
-                                        const TaskSpecification &spec,
-                                        rpc::ErrorType error_type) {
+void TaskManager::MarkPendingTaskFailed(
+    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
-    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
-  }
-
-  if (spec.IsActorCreationTask()) {
-    // Publish actor death if actor creation task failed after
-    // a number of retries.
-    actor_manager_->PublishTerminatedActor(spec);
+    const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
+    if (creation_task_exception != nullptr) {
+      // Structure of bytes stored in object store:
+      // rpc::RayException
+      // ->pb-serialized bytes
+      // ->msgpack-serialized bytes
+      // ->[offset][msgpack-serialized bytes]
+      std::string pb_serialized_exception;
+      creation_task_exception->SerializeToString(&pb_serialized_exception);
+      msgpack::sbuffer msgpack_serialized_exception;
+      msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
+      packer.pack_bin(pb_serialized_exception.size());
+      packer.pack_bin_body(pb_serialized_exception.data(),
+                           pb_serialized_exception.size());
+      LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                     kMessagePackOffset);
+      // copy msgpack-serialized bytes
+      std::memcpy(final_buffer.Data() + kMessagePackOffset,
+                  msgpack_serialized_exception.data(),
+                  msgpack_serialized_exception.size());
+      // copy offset
+      msgpack::sbuffer msgpack_int;
+      msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
+      std::memcpy(final_buffer.Data(), msgpack_int.data(), msgpack_int.size());
+      RAY_UNUSED(in_memory_store_->Put(
+          RayObject(error_type, final_buffer.Data(), final_buffer.Size()), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    }
   }
 }
 
@@ -469,4 +508,17 @@ absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id
   return it->second.spec;
 }
 
+std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+    const TaskID &parent_task_id) const {
+  std::vector<TaskID> ret_vec;
+  absl::MutexLock lock(&mu_);
+  for (auto it : submissible_tasks_) {
+    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
+      ret_vec.push_back(it.first);
+    }
+  }
+  return ret_vec;
+}
+
+}  // namespace core
 }  // namespace ray

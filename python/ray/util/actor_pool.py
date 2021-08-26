@@ -1,6 +1,8 @@
 import ray
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
@@ -10,7 +12,8 @@ class ActorPool:
     Examples:
         >>> a1, a2 = Actor.remote(), Actor.remote()
         >>> pool = ActorPool([a1, a2])
-        >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+        >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
+        ...                     [1, 2, 3, 4])))
         [2, 4, 6, 8]
     """
 
@@ -42,8 +45,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -52,7 +55,8 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
+            ...                     [1, 2, 3, 4])))
             [2, 4, 6, 8]
         """
         for v in values:
@@ -69,8 +73,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -79,7 +83,8 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> print(list(pool.map_unordered(lambda a, v: a.double.remote(v),\
+            ...                               [1, 2, 3, 4])))
             [6, 2, 4, 8]
         """
         for v in values:
@@ -96,8 +101,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             value (object): Value to compute a result for.
 
         Examples:
@@ -110,7 +115,8 @@ class ActorPool:
         if self._idle_actors:
             actor = self._idle_actors.pop()
             future = fn(actor, value)
-            self._future_to_actor[future] = (self._next_task_index, actor)
+            future_key = tuple(future) if isinstance(future, list) else future
+            self._future_to_actor[future_key] = (self._next_task_index, actor)
             self._index_to_future[self._next_task_index] = future
             self._next_task_index += 1
         else:
@@ -164,7 +170,10 @@ class ActorPool:
                 raise TimeoutError("Timed out waiting for result")
         del self._index_to_future[self._next_return_index]
         self._next_return_index += 1
-        i, a = self._future_to_actor.pop(future)
+
+        future_key = tuple(future) if isinstance(future, list) else future
+        i, a = self._future_to_actor.pop(future_key)
+
         self._return_actor(a)
         return ray.get(future)
 
@@ -210,3 +219,64 @@ class ActorPool:
         self._idle_actors.append(actor)
         if self._pending_submits:
             self.submit(*self._pending_submits.pop(0))
+
+    def has_free(self):
+        """Returns whether there are any idle actors available.
+
+        Returns:
+            True if there are any idle actors and no pending submits.
+
+        Examples:
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool(a1)
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.has_free())
+            False
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.has_free())
+            True
+        """
+        return len(self._idle_actors) > 0 and len(self._pending_submits) == 0
+
+    def pop_idle(self):
+        """Removes an idle actor from the pool.
+
+        Returns:
+            An idle actor if one is available.
+            None if no actor was free to be removed.
+
+        Examples:
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.pop_idle())
+            None
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.pop_idle())
+            <ptr to a1>
+        """
+        if self.has_free():
+            return self._idle_actors.pop()
+        return None
+
+    def push(self, actor):
+        """Pushes a new actor into the current list of idle actors.
+
+        Examples:
+            >>> a1, b1 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.get_next())
+            2
+            >>> pool2 = ActorPool([b1])
+            >>> pool2.push(pool.pop_idle())
+        """
+        busy_actors = []
+        if self._future_to_actor.values():
+            _, busy_actors = zip(*self._future_to_actor.values())
+        if actor in self._idle_actors or actor in busy_actors:
+            raise ValueError("Actor already belongs to current ActorPool")
+        else:
+            self._idle_actors.append(actor)

@@ -1,12 +1,11 @@
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.utils.deprecation import deprecation_warning, \
-    DEPRECATED_VALUE
-from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
-    PerWorkerOrnsteinUhlenbeckNoise
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ DEFAULT_CONFIG = with_common_config({
         # The initial noise scaling factor.
         "initial_scale": 1.0,
         # The final noise scaling factor.
-        "final_scale": 1.0,
+        "final_scale": 0.02,
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
@@ -106,9 +105,21 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===
@@ -128,7 +139,7 @@ DEFAULT_CONFIG = with_common_config({
     # Weights for L2 regularization
     "l2_reg": 1e-6,
     # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": None,
+    "grad_clip": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
@@ -148,51 +159,24 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # Deprecated keys.
-    "parameter_noise": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def validate_config(config):
-    # TODO(sven): Remove at some point.
-    #  Backward compatibility of noise-based exploration config.
-    schedule_max_timesteps = None
-    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("schedule_max_timesteps",
-                            "exploration_config.scale_timesteps")
-        schedule_max_timesteps = config["schedule_max_timesteps"]
-    if config.get("exploration_final_scale", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("exploration_final_scale",
-                            "exploration_config.final_scale")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["final_scale"] = \
-                config.pop("exploration_final_scale")
-    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        assert schedule_max_timesteps is not None
-        deprecation_warning("exploration_fraction",
-                            "exploration_config.scale_timesteps")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["scale_timesteps"] = config.pop(
-                "exploration_fraction") * schedule_max_timesteps
-    if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning(
-            "per_worker_exploration",
-            "exploration_config.type=PerWorkerOrnsteinUhlenbeckNoise")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["type"] = \
-                PerWorkerOrnsteinUhlenbeckNoise
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
 
-    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
+    if config["model"]["custom_model"]:
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
+    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+        raise ValueError("`grad_clip` value must be > 0.0!")
 
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":
@@ -201,8 +185,27 @@ def validate_config(config):
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
 
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
 
-def get_policy_class(config):
+
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy

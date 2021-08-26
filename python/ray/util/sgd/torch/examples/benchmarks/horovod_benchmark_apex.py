@@ -118,7 +118,7 @@ def log(s, nl=True):
     print(s, end="\n" if nl else "")
 
 
-log("Model: %s" % args.model)
+log(f"Model: {args.model}")
 log("Batch size: %d" % args.batch_size)
 device = "GPU" if args.cuda else "CPU"
 log("Number of %ss: %d" % (device, hvd.size()))
@@ -139,6 +139,6 @@ for x in range(args.num_iters):
 # Results
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
-log("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
+log(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
 log("Total img/sec on %d %s(s): %.1f +-%.1f" %
     (hvd.size(), device, hvd.size() * img_sec_mean, hvd.size() * img_sec_conf))

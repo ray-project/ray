@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
+
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
 namespace ray {
@@ -36,6 +37,12 @@ TEST_F(InMemoryStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
 
 TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
+}
+
+TEST_F(InMemoryStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
+
+TEST_F(InMemoryStoreClientTest, TestAsyncBatchDeleteWithIndex) {
+  TestAsyncBatchDeleteWithIndex();
 }
 
 }  // namespace gcs

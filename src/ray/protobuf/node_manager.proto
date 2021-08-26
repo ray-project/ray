@@ -17,11 +17,14 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
 
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
   // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
+  // Worker's backlog size for this spec's shape.
+  int64 backlog_size = 2;
 }
 
 message RequestWorkerLeaseReply {
@@ -35,6 +38,37 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
+  // Whether creating the runtime environment for this lease request failed.
+  // If this is true, the corresponding task should be failed by the client.
+  bool runtime_env_setup_failed = 5;
+  // PID of the worker process.
+  uint32 worker_pid = 6;
+}
+
+message PrepareBundleResourcesRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message PrepareBundleResourcesReply {
+  // The status if prepare request was successful.
+  bool success = 1;
+}
+
+message CommitBundleResourcesRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CommitBundleResourcesReply {
+}
+
+message CancelResourceReserveRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CancelResourceReserveReply {
 }
 
 // Release a worker back to its raylet.
@@ -51,6 +85,13 @@ message ReturnWorkerRequest {
 message ReturnWorkerReply {
 }
 
+message ReleaseUnusedWorkersRequest {
+  repeated bytes worker_ids_in_use = 1;
+}
+
+message ReleaseUnusedWorkersReply {
+}
+
 message CancelWorkerLeaseRequest {
   // The task to cancel.
   bytes task_id = 1;
@@ -62,17 +103,6 @@ message CancelWorkerLeaseReply {
   // the cancellation request, and the node manager has not yet
   // granted the lease.
   bool success = 1;
-}
-
-message ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  bytes task_id = 1;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  repeated Task uncommitted_tasks = 2;
-}
-
-message ForwardTaskReply {
 }
 
 message PinObjectIDsRequest {
@@ -91,23 +121,46 @@ message GetNodeStatsRequest {
   bool include_memory_info = 1;
 }
 
-message WorkerStats {
-  // PID of the worker process.
-  uint32 pid = 1;
-  // Whether this is a driver.
-  bool is_driver = 2;
-  // Debug information returned from the core worker.
-  CoreWorkerStats core_worker_stats = 3;
-  // Error string if fetching core worker stats failed.
-  string fetch_error = 4;
+// Object store stats, which may be reported per-node or aggregated across
+// multiple nodes in the cluster (values are additive).
+message ObjectStoreStats {
+  // The amount of wall time total where spilling was happening.
+  double spill_time_total_s = 1;
+  // The number of bytes spilled total.
+  int64 spilled_bytes_total = 2;
+  // The number of objects spilled total.
+  int64 spilled_objects_total = 3;
+  // The amount of wall time total where object restore was happening.
+  double restore_time_total_s = 4;
+  // The number of bytes restored total.
+  int64 restored_bytes_total = 5;
+  // The number of objects restored total.
+  int64 restored_objects_total = 6;
+  // The current usage of the object store.
+  int64 object_store_bytes_used = 7;
+  // The max capacity of the object store.
+  int64 object_store_bytes_avail = 8;
+  // The number of bytes pinned as the primary copy of objects.
+  int64 object_store_bytes_primary_copy = 9;
+  // The number of bytes allocated from the filesystem (fallback allocs).
+  int64 object_store_bytes_fallback = 10;
+  // The number of local objects total.
+  int64 num_local_objects = 11;
+  // The number of plasma object bytes that are consumed by core workers.
+  int64 consumed_bytes = 12;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory.
+  bool object_pulls_queued = 13;
 }
 
 message GetNodeStatsReply {
-  repeated WorkerStats workers_stats = 1;
+  repeated CoreWorkerStats core_workers_stats = 1;
   repeated ViewData view_data = 2;
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
+  ObjectStoreStats store_stats = 6;
 }
 
 message GlobalGCRequest {
@@ -116,26 +169,109 @@ message GlobalGCRequest {
 message GlobalGCReply {
 }
 
+// Accumulates memory info across all nodes. To access per-node memory info,
+// use GetNodeStats() calls instead.
 message FormatGlobalMemoryInfoRequest {
+  // Whether or not the reply should include memory summary.
+  // If it is true, it will add extra overhead to the system
+  // because getting memory info requires to ping every core worker
+  // in the cluster.
+  bool include_memory_info = 1;
 }
 
 message FormatGlobalMemoryInfoReply {
-  // A tabular summary of the memory stats. To get this data in structured form, you
-  // can instead use GetNodeStats() directly.
+  // A tabular summary of the memory stats. To get this data in structured form,
+  // you can instead use GetNodeStats() directly.
   string memory_summary = 1;
+  // Aggregate store stats across all nodes. To get the individual node data,
+  // you can instead use GetNodeStats() directly.
+  ObjectStoreStats store_stats = 2;
+}
+
+message RequestObjectSpillageRequest {
+  // ObjectID to spill.
+  bytes object_id = 1;
+}
+
+message RequestObjectSpillageReply {
+  // Whether the object spilling was successful or not.
+  bool success = 1;
+  // Object URL where the object is spilled.
+  string object_url = 2;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 3;
+}
+
+message ReleaseUnusedBundlesRequest {
+  repeated Bundle bundles_in_use = 1;
+}
+
+message ReleaseUnusedBundlesReply {
+}
+
+message GetSystemConfigRequest {
+}
+
+message GetSystemConfigReply {
+  string system_config = 1;
+}
+
+message RequestResourceReportRequest {
+}
+
+message RequestResourceReportReply {
+  ResourcesData resources = 1;
+}
+
+message UpdateResourceUsageRequest {
+  // This is a serialized version of ResourceUsageBatchData. This extra layer of
+  // serialization allows the sender to cache the expensive operation of serializing a
+  // `ResourceUsageBatchData` when sending this request to all nodes.
+  bytes serialized_resource_usage_batch = 1;
+}
+
+message UpdateResourceUsageReply {
+}
+
+message GetGcsServerAddressRequest {
+}
+
+message GetGcsServerAddressReply {
+  string ip = 1;
+  int32 port = 2;
 }
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
+  // Update the node's view of the cluster resource usage
+  rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Request the current resource usage from this raylet
+  rpc RequestResourceReport(RequestResourceReportRequest)
+      returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // This method is only used by GCS, and the purpose is to release leased workers
+  // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
+  // in the previous lifecycle. In this case, GCS will send a list of worker ids that
+  // are still needed. And Raylet will release other leased workers.
+  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
+      returns (ReleaseUnusedWorkersReply);
+  // Request a raylet to lock resources for a bundle.
+  // This is the first phase of 2PC protocol for atomic placement group creation.
+  rpc PrepareBundleResources(PrepareBundleResourcesRequest)
+      returns (PrepareBundleResourcesReply);
+  // Commit bundle resources to a raylet.
+  // This is the second phase of 2PC protocol for atomic placement group creation.
+  rpc CommitBundleResources(CommitBundleResourcesRequest)
+      returns (CommitBundleResourcesReply);
+  // Return resource for the raylet.
+  rpc CancelResourceReserve(CancelResourceReserveRequest)
+      returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
-  // Forward a task and its uncommitted lineage to the remote node manager.
-  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
@@ -145,4 +281,17 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
+  // Ask the raylet to spill an object to external storage.
+  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
+      returns (RequestObjectSpillageReply);
+  // This method is only used by GCS, and the purpose is to release bundles
+  // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
+  // in the previous lifecycle. In this case, GCS will send a list of bundles that
+  // are still needed. And Raylet will release other bundles.
+  rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
+      returns (ReleaseUnusedBundlesReply);
+  // Get the system config.
+  rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
+  // Get gcs server address.
+  rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
 }

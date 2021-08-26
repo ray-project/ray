@@ -1,0 +1,49 @@
+cluster_name: long-running-distributed-tests
+
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray-ml:nightly-gpu
+    container_name: ray_container
+    pull_before_run: True
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
+
+
+available_node_types:
+    gpu_2_32:
+        node_config:
+            InstanceType: g3.8xlarge
+
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 201
+
+            TagSpecifications:
+                - ResourceType: "instance"
+                  Tags:
+                    - Key: anyscale-user
+                      Value: '{{env["ANYSCALE_USER"]}}'
+                    - Key: anyscale-expiration
+                      Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+
+        resources: {"CPU": 32, "GPU": 2}
+        min_workers: 3
+        max_workers: 3
+
+
+auth:
+    ssh_user: ubuntu
+
+head_node_type: gpu_2_32
+worker_default_node_type: gpu_2_32
+
+file_mounts_sync_continuously: false
+
+setup_commands:
+   - pip install -U {{env["RAY_WHEEL"]}}

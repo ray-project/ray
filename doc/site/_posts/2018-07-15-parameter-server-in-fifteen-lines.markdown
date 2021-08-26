@@ -321,12 +321,12 @@ Questions should be directed to *ray-dev@googlegroups.com*.
 
 
 [1]: https://github.com/ray-project/ray
-[2]: http://docs.ray.io/en/latest/resources.html
+[2]: http://docs.ray.io/en/master/resources.html
 [3]: http://www.sysml.cc/doc/206.pdf
-[4]: http://docs.ray.io/en/latest/rllib.html
-[5]: http://docs.ray.io/en/latest/tune.html
-[6]: http://docs.ray.io/en/latest
-[7]: http://docs.ray.io/en/latest/api.html
+[4]: http://docs.ray.io/en/master/rllib.html
+[5]: http://docs.ray.io/en/master/tune.html
+[6]: http://docs.ray.io/en/master
+[7]: http://docs.ray.io/en/master/api.html
 [8]: https://github.com/modin-project/modin
 [9]: https://ray-project.github.io/2017/10/15/fast-python-serialization-with-ray-and-arrow.html
 [10]: https://ray-project.github.io/2017/08/08/plasma-in-memory-object-store.html

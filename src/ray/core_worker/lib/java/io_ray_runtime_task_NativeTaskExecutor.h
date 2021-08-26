@@ -21,25 +21,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#undef io_ray_runtime_task_NativeTaskExecutor_NUM_ACTOR_CHECKPOINTS_TO_KEEP
-#define io_ray_runtime_task_NativeTaskExecutor_NUM_ACTOR_CHECKPOINTS_TO_KEEP 20L
-/*
- * Class:     io_ray_runtime_task_NativeTaskExecutor
- * Method:    nativePrepareCheckpoint
- * Signature: ()[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *, jclass);
-
-/*
- * Class:     io_ray_runtime_task_NativeTaskExecutor
- * Method:    nativeNotifyActorResumedFromCheckpoint
- * Signature: ([B)V
- */
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
-    JNIEnv *, jclass, jbyteArray);
-
 #ifdef __cplusplus
 }
 #endif

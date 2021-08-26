@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_PUB_SUB_H_
-#define RAY_GCS_GCS_PUB_SUB_H_
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -30,12 +28,12 @@ namespace gcs {
 #define NODE_CHANNEL "NODE"
 #define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
 #define ACTOR_CHANNEL "ACTOR"
-#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define WORKER_CHANNEL "WORKER"
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
-#define HEARTBEAT_CHANNEL "HEARTBEAT"
-#define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+#define RESOURCES_BATCH_CHANNEL "RESOURCES_BATCH"
+#define ERROR_INFO_CHANNEL "ERROR_INFO"
 
 /// \class GcsPubSub
 ///
@@ -47,7 +45,7 @@ class GcsPubSub {
   using Callback = std::function<void(const std::string &id, const std::string &data)>;
 
   explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(redis_client) {}
+      : redis_client_(redis_client), total_commands_queued_(0) {}
 
   virtual ~GcsPubSub() = default;
 
@@ -89,17 +87,28 @@ class GcsPubSub {
   /// \return Status
   Status Unsubscribe(const std::string &channel, const std::string &id);
 
+  /// Check if the specified ID under the specified channel is unsubscribed.
+  ///
+  /// \param channel The channel to unsubscribe from redis.
+  /// \param id The id of message to be unsubscribed from redis.
+  /// \return Whether the specified ID under the specified channel is unsubscribed.
+  bool IsUnsubscribed(const std::string &channel, const std::string &id);
+
+  std::string DebugString() const;
+
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.
   struct Command {
     /// SUBSCRIBE constructor.
-    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback,
+            bool is_sub_or_unsub_all)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
-          done_callback(done_callback) {}
+          done_callback(done_callback),
+          is_sub_or_unsub_all(is_sub_or_unsub_all) {}
     /// UNSUBSCRIBE constructor.
-    Command() : is_subscribe(false) {}
+    Command() : is_subscribe(false), is_sub_or_unsub_all(false) {}
     /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
     const bool is_subscribe;
     /// Callback that is called whenever a new pubsub message is received from
@@ -108,6 +117,8 @@ class GcsPubSub {
     /// Callback that is called once we have successfully subscribed to a
     /// channel. This should only be set if is_subscribe is true.
     const StatusCallback done_callback;
+    /// True if this is a SUBSCRIBE all or UNSUBSCRIBE all command else false.
+    const bool is_sub_or_unsub_all;
   };
 
   struct Channel {
@@ -141,8 +152,8 @@ class GcsPubSub {
                                   GcsPubSub::Channel &channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(const std::string &channel, const Callback &subscribe,
-                           const StatusCallback &done,
+  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
+                           const StatusCallback &done, bool is_sub_or_unsub_all,
                            const boost::optional<std::string> &id = boost::none);
 
   std::string GenChannelPattern(const std::string &channel,
@@ -151,12 +162,12 @@ class GcsPubSub {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// Mutex to protect the subscribe_callback_index_ field.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   absl::flat_hash_map<std::string, Channel> channels_ GUARDED_BY(mutex_);
+
+  size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_PUB_SUB_H_

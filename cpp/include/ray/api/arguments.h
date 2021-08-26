@@ -1,84 +1,63 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
+#include <ray/api/object_ref.h>
 #include <ray/api/serializer.h>
+
 #include <msgpack.hpp>
 
 namespace ray {
-namespace api {
+namespace internal {
+
+/// Check T is ObjectRef or not.
+template <typename T>
+struct is_object_ref : std::false_type {};
+
+template <typename T>
+struct is_object_ref<ObjectRef<T>> : std::true_type {};
 
 class Arguments {
  public:
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer);
+  template <typename ArgType>
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ArgType &&arg) {
+    static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
 
-  template <typename Arg1Type>
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1);
+    msgpack::sbuffer buffer = Serializer::Serialize(arg);
+    TaskArg task_arg;
+    task_arg.buf = std::move(buffer);
+    /// Pass by value.
+    task_args->emplace_back(std::move(task_arg));
+  }
 
-  template <typename Arg1Type, typename... OtherArgTypes>
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1,
-                       OtherArgTypes &... args);
+  template <typename ArgType>
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ObjectRef<ArgType> &arg) {
+    /// Pass by reference.
+    TaskArg task_arg{};
+    task_arg.id = arg.ID();
+    task_args->emplace_back(std::move(task_arg));
+  }
 
-  static void UnwrapArgs(msgpack::unpacker &unpacker);
-
-  template <typename Arg1Type>
-  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1);
-
-  template <typename Arg1Type, typename... OtherArgTypes>
-  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1,
-                         std::shared_ptr<OtherArgTypes> *... args);
+  template <typename... OtherArgTypes>
+  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&... args) {
+    (void)std::initializer_list<int>{
+        (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
+    /// Silence gcc warning error.
+    (void)task_args;
+  }
 };
 
-// --------- inline implementation ------------
-#include <typeinfo>
-
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer) {}
-
-template <typename Arg1Type>
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer,
-                                Arg1Type &arg1) {
-  /// Notice RayObjectClassPrefix should be modified by RayObject class name or namespace.
-  static const std::string RayObjectClassPrefix = "N3ray3api9RayObject";
-  std::string type_name = typeid(arg1).name();
-  if (type_name.rfind(RayObjectClassPrefix, 0) == 0) {
-    /// Pass by reference.
-    Serializer::Serialize(packer, true);
-  } else {
-    /// Pass by value.
-    Serializer::Serialize(packer, false);
-  }
-  Serializer::Serialize(packer, arg1);
-}
-
-template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1,
-                                OtherArgTypes &... args) {
-  WrapArgs(packer, arg1);
-  WrapArgs(packer, args...);
-}
-
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker) {}
-
-template <typename Arg1Type>
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
-                                  std::shared_ptr<Arg1Type> *arg1) {
-  bool is_ray_object;
-  Serializer::Deserialize(unpacker, &is_ray_object);
-  if (is_ray_object) {
-    RayObject<Arg1Type> ray_object;
-    Serializer::Deserialize(unpacker, &ray_object);
-    *arg1 = ray_object.Get();
-  } else {
-    Serializer::Deserialize(unpacker, arg1);
-  }
-}
-
-template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
-                                  std::shared_ptr<Arg1Type> *arg1,
-                                  std::shared_ptr<OtherArgTypes> *... args) {
-  UnwrapArgs(unpacker, arg1);
-  UnwrapArgs(unpacker, args...);
-}
-
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

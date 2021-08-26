@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+
+        logger.debug(f"Found {key} in environment, but value must "
+                     f"be an integer. Got: {value}. Returning "
+                     f"provided default {default}.")
+        return default
     return default
 
 
@@ -19,23 +26,36 @@ def env_bool(key, default):
     return default
 
 
-ID_SIZE = 20
+ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+# The default proportion of available memory allocated to the object store
+DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
-# This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
+# This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# Above this number of bytes, raise an error by default unless the user sets
+# RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
+RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
+
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
+DEFAULT_DASHBOARD_PORT = 8265
+REDIS_KEY_DASHBOARD = "dashboard"
+PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -49,7 +69,9 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -58,17 +80,13 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 100000
+MAX_RESOURCE_QUANTITY = 100e12
 
 # Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
+MEMORY_RESOURCE_UNIT_BYTES = 1
 
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
-
-# Fraction of plasma memory that can be reserved. It is actually 70% but this
-# is set to 69% to leave some headroom.
-PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 
 def round_to_memory_units(memory_bytes, round_up):
@@ -122,61 +140,79 @@ REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 REPORTER_DIED_ERROR = "reporter_died"
+DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
+EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
-# Abort autoscaling if more than this number of errors are encountered. This
-# is a safety feature to prevent e.g. runaway node launches.
-AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
+# Used in gpu detection
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
-# The maximum number of nodes to launch in a single request.
-# Multiple requests may be made for this batch size, up to
-# the limit of AUTOSCALER_MAX_CONCURRENT_LAUNCHES.
-AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
-
-# Max number of nodes to launch at a time.
-AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
-    "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10)
-
-# Interval at which to perform autoscaling updates.
-AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
-
-# The autoscaler will attempt to restart Ray on nodes it hasn't heard from
-# in more than this interval.
-AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
-                                             30)
+RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
-# Max number of retries to AWS (default is 5, time increases exponentially)
-BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
-# Max number of retries to create an EC2 node (retry different subnet)
-BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
+# Number of attempts to ping the Redis server. See
+# `services.py:wait_for_redis_to_start`.
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
-LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
+LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
+LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
+LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
+
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
+PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+# TODO(sang): Delete it.
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
+PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
+PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
+PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
+
+# Log file names
+MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
+LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
+
+WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
+WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
+WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
+WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE = (
+    f"ray::IDLE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE = (
+    f"ray::IDLE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+WORKER_PROCESS_TYPE_SPILL_WORKER = (
+    f"ray::SPILL_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+WORKER_PROCESS_TYPE_RESTORE_WORKER = (
+    f"ray::RESTORE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
+
+# The object metadata field uses the following format: It is a comma
+# separated list of fields. The first field is mandatory and is the
+# type of the object (see types below) or an integer, which is interpreted
+# as an error value. The second part is optional and if present has the
+# form DEBUG:<breakpoint_id>, it is used for implementing the debugger.
 
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
@@ -185,11 +221,28 @@ OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
 
+# A constant used as object metadata to indicate the object is an actor handle.
+# This value should be synchronized with the Java definition in
+# ObjectSerializer.java
+# TODO(fyrestone): Serialize the ActorHandle via the custom type feature
+# of XLANG.
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
+
+# A constant indicating the debugging part of the metadata (see above).
+OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
+
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
 # The default password to prevent redis port scanning attack.
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
+
+# The default module path to a Python function that sets up the worker env.
+DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
+
+# The default module path to a Python function that sets up runtime envs.
+DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
+    "ray.workers.setup_runtime_env.setup_runtime_env"
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
@@ -197,11 +250,18 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
-# RAY_GCS_SERVICE_ENABLED only set in ci job.
-# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
-# remove it.
-GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)
-
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
+
+# Object Spilling related constants
+DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
+
+GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
+
+HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
+
+# Filename of "shim process" that sets up Python worker environment.
+# Should be kept in sync with kSetupWorkerFilename in
+# src/ray/common/constants.h.
+SETUP_WORKER_FILENAME = "setup_worker.py"

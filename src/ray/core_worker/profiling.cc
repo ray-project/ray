@@ -17,6 +17,7 @@
 #include <chrono>
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
@@ -28,16 +29,18 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
 }
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-                   boost::asio::io_service &io_service,
+                   instrumented_io_context &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
-      timer_(io_service_, boost::asio::chrono::seconds(1)),
+      periodical_runner_(io_service_),
       rpc_profile_data_(new rpc::ProfileTableData()),
       gcs_client_(gcs_client) {
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
+  periodical_runner_.RunFnPeriodically(
+      [this] { FlushEvents(); }, 1000,
+      "CoreWorker.deadline_timer.flush_profiling_events");
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
@@ -57,20 +60,35 @@ void Profiler::FlushEvents() {
     }
   }
 
+  auto on_complete = [this](const Status &status) {
+    absl::MutexLock lock(&mutex_);
+    profile_flush_active_ = false;
+  };
+
   if (cur_profile_data->profile_events_size() != 0) {
-    if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, nullptr).ok()) {
-      RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
+    // Check if we're backlogged first.
+    {
+      absl::MutexLock lock(&mutex_);
+      if (profile_flush_active_) {
+        RAY_LOG(WARNING) << "The GCS is backlogged processing profiling data. "
+                            "Some events may be dropped.";
+        return;  // Drop the events; we're behind.
+      } else {
+        profile_flush_active_ = true;
+      }
+    }
+    if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, on_complete).ok()) {
+      RAY_LOG(WARNING)
+          << "Failed to push profile events to GCS. This won't affect core Ray, but you "
+             "might lose profile data, and ray timeline might not work as expected.";
     } else {
       RAY_LOG(DEBUG) << "Pushed " << cur_profile_data->profile_events_size()
                      << " events to GCS.";
     }
   }
-
-  // Reset the timer to 1 second from the previous expiration time to avoid drift.
-  timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
 }
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray

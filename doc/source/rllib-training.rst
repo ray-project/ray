@@ -1,3 +1,8 @@
+
+.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 RLlib Training APIs
 ===================
 
@@ -14,7 +19,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0  # --eager [--trace] for eager execution
+    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -81,9 +86,30 @@ In an example below, we train A2C by specifying 8 workers through the config fla
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
+You can control the degree of parallelism used by setting the ``num_workers``
+hyperparameter for most algorithms. The Trainer will construct that many
+"remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
+that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that is not a
+ray actor, but lives directly inside the Trainer.
+For most algorithms, learning updates are performed on the local worker and sample collection from
+one or more environments is performed by the remote workers (in parallel).
+For example, setting ``num_workers=0`` will only create the local worker, in which case both
+sample collection and training will be done by the local worker.
+On the other hand, setting ``num_workers=5`` will create the local worker (responsible for training updates)
+and 5 remote workers (responsible for sample collection).
 
-For synchronous algorithms like PPO and A2C, the driver and workers can make use of the same GPU. To do this for an amount of ``n`` GPUS:
+Since learning is most of the time done on the local worker, it may help to provide one or more GPUs
+to that worker via the ``num_gpus`` setting.
+Similarly, the resource allocation to remote workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``.
+
+The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
+of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting
+``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
+as well that also demonstrates how environments (running on the remote workers) that
+require a GPU can benefit from the ``num_gpus_per_worker`` setting.
+
+For synchronous algorithms like PPO and A2C, the driver and workers can make use of
+the same GPU. To do this for an amount of ``n`` GPUS:
 
 .. code-block:: python
 
@@ -94,8 +120,15 @@ For synchronous algorithms like PPO and A2C, the driver and workers can make use
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
 
+If you specify ``num_gpus`` and your machine does not have the required number of GPUs
+available, a RuntimeError will be thrown by the respective worker. On the other hand,
+if you set ``num_gpus=0``, your policies will be built solely on the CPU, even if
+GPUs are available on the machine.
+
 Scaling Guide
 ~~~~~~~~~~~~~
+
+.. _rllib-scaling-guide:
 
 Here are some rules of thumb for scaling training with RLlib.
 
@@ -151,7 +184,6 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -180,9 +212,9 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
 .. note::
 
-    It's recommended that you run RLlib trainers with :ref:`Tune <tune-index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib trainers with :doc:`Tune <tune/index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Tune <tune-index>`. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :doc:`Tune <tune/index>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
@@ -198,7 +230,6 @@ All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. Th
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            "eager": False,
         },
     )
 
@@ -216,11 +247,63 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
+``tune.run()`` returns an ExperimentAnalysis object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
+It also simplifies saving the trained agent. For example:
+
+.. code-block:: python
+
+    # tune.run() allows setting a custom log directory (other than ``~/ray-results``)
+    # and automatically saving the trained agent
+    analysis = ray.tune.run(
+        ppo.PPOTrainer,
+        config=config,
+        local_dir=log_dir,
+        stop=stop_criteria,
+        checkpoint_at_end=True)
+
+    # list of lists: one list per checkpoint; each checkpoint list contains
+    # 1st the path, 2nd the metric value
+    checkpoints = analysis.get_trial_checkpoints_paths(
+        trial=analysis.get_best_trial("episode_reward_mean"),
+        metric="episode_reward_mean")
+
+    # or simply get the last checkpoint (with highest "training_iteration")
+    last_checkpoint = analysis.get_last_checkpoint()
+    # if there are multiple trials, select a specific trial or automatically
+    # choose the best one according to a given metric
+    last_checkpoint = analysis.get_last_checkpoint(
+        metric="episode_reward_mean", mode="max"
+    )
+
+Loading and restoring a trained agent from a checkpoint is simple:
+
+.. code-block:: python
+
+    agent = ppo.PPOTrainer(config=config, env=env_class)
+    agent.restore(checkpoint_path)
+
+
 Computing Actions
 ~~~~~~~~~~~~~~~~~
 
 The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
 This method preprocesses and filters the observation before passing it to the agent policy.
+Here is a simple example of testing a trained agent for one episode:
+
+.. code-block:: python
+
+    # instantiate env class
+    env = env_class(env_config)
+
+    # run until episode ends
+    episode_reward = 0
+    done = False
+    obs = env.reset()
+    while not done:
+        action = agent.compute_action(obs)
+        obs, reward, done, info = env.step(action)
+        episode_reward += reward
+
 For more advanced usage, you can access the ``workers`` and policies held by the trainer
 directly as ``compute_action()`` does:
 
@@ -338,7 +421,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the policy
     >>> from ray.rllib.agents.ppo import PPOTrainer
-    >>> trainer = PPOTrainer(env="CartPole-v0", config={"eager": True, "num_workers": 0})
+    >>> trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
     >>> policy = trainer.get_policy()
     <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -393,7 +476,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
-    >>> trainer = DQNTrainer(env="CartPole-v0", config={"eager": True})
+    >>> trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
     >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
@@ -475,7 +558,7 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *detached actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
@@ -508,6 +591,15 @@ User-defined state can be stored for the `episode <https://github.com/ray-projec
 .. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
     :members:
 
+
+Chaining Callbacks
+~~~~~~~~~~~~~~~~~~
+
+Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+
+.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+
+
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -524,12 +616,11 @@ actions from distributions (stochastically or deterministically).
 The setup can be done via using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
 which are specified (and further configured) inside ``Trainer.config["exploration_config"]``.
-Besides using built-in classes, one can sub-class any of
+Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
-Every policy has-an instantiation of one of the Exploration (sub-)classes.
-This Exploration object is created from the Trainer’s
+Every policy has-an Exploration object, which is created from the Trainer’s
 ``config[“exploration_config”]`` dict, which specifies the class to use via the
 special “type” key, as well as constructor arguments via all other keys,
 e.g.:
@@ -545,7 +636,7 @@ e.g.:
     # ...
 
 The following table lists all built-in Exploration sub-classes and the agents
-that currently used these by default:
+that currently use these by default:
 
 .. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
 .. image:: images/rllib-exploration-api-table.svg
@@ -554,53 +645,20 @@ An Exploration class implements the ``get_exploration_action`` method,
 in which the exact exploratory behavior is defined.
 It takes the model’s output, the action distribution class, the model itself,
 a timestep (the global env-sampling steps already taken),
-and an ``explore`` switch and outputs a tuple of 1) action and
-2) log-likelihood:
+and an ``explore`` switch and outputs a tuple of a) action and
+b) log-likelihood:
 
-.. code-block:: python
-
-    def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
-        """Returns a (possibly) exploratory action and its log-likelihood.
-
-        Given the Model's logits outputs and action distribution, returns an
-        exploratory action.
-
-        Args:
-            distribution_inputs (any): The output coming from the model,
-                ready for parameterizing a distribution
-                (e.g. q-values or PG-logits).
-            action_dist_class (class): The action distribution class
-                to use.
-            model (ModelV2): The Model object.
-            explore (bool): True: "Normal" exploration behavior.
-                False: Suppress all exploratory behavior and return
-                    a deterministic action.
-            timestep (int): The current sampling time step. If None, the
-                component should try to use an internal counter, which it
-                then increments by 1. If provided, will set the internal
-                counter to the given value.
-
-        Returns:
-            Tuple:
-            - The chosen exploration action or a tf-op to fetch the exploration
-              action from the graph.
-            - The log-likelihood of the exploration action.
-        """
-        pass
-
+.. literalinclude:: ../../rllib/utils/exploration/exploration.py
+   :language: python
+   :start-after: __sphinx_doc_begin_get_exploration_action__
+   :end-before: __sphinx_doc_end_get_exploration_action__
 
 On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
 methods have a boolean ``explore`` switch, which is passed into
-``Exploration.get_exploration_action``. If ``None``, the value of
-``Trainer.config[“explore”]`` is used.
-Hence ``config[“explore”]`` describes the default behavior of the policy and
-e.g. allows switching off any exploration easily for evaluation purposes
-(see :ref:`CustomEvaluation`).
+``Exploration.get_exploration_action``. If ``explore=None``, the value of
+``Trainer.config[“explore”]`` is used, which thus serves as a main switch for
+exploratory behavior, allowing e.g. turning off any exploration easily for
+evaluation purposes (see :ref:`CustomEvaluation`).
 
 The following are example excerpts from different Trainers' configs
 (see rllib/agents/trainer.py) to setup different exploration behaviors:
@@ -644,13 +702,14 @@ The following are example excerpts from different Trainers' configs
        "temperature": 1.0,
     },
 
-    # c) PPO: see rllib/agents/ppo/ppo.py
-    # Behavior: The algo samples stochastically by default from the
+    # c) All policy-gradient algos and SAC: see rllib/agents/trainer.py
+    # Behavior: The algo samples stochastically from the
     # model-parameterized distribution. This is the global Trainer default
-    # setting defined in trainer.py and used by all PG-type algos.
+    # setting defined in trainer.py and used by all PG-type algos (plus SAC).
     "explore": True,
     "exploration_config": {
        "type": "StochasticSampling",
+       "random_timesteps": 0,  # timesteps at beginning, over which to act uniformly randomly
     },
 
 
@@ -760,9 +819,42 @@ Policy losses are defined over the ``post_batch`` data, so you can mutate that i
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
-Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
+In Curriculum learning, the environment can be set to different difficulties (or "tasks") to allow for learning to progress through controlled phases
+(from easy to more difficult). RLlib comes with a basic curriculum learning API utilizing the
+`TaskSettableEnv <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__ environment API.
+Your environment only needs to implement the `set_task` and `get_task` methods for this to work. You can then define an `env_task_fn` in your config,
+which receives the last training results and returns a new task for the env to be set to:
 
-Approach 1: Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function:
+.. code-block:: python
+
+    from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+
+    class MyEnv(TaskSettableEnv):
+        def get_task(self):
+            return self.current_difficulty
+
+        def set_task(self, task):
+            self.current_difficulty = task
+
+    def curriculum_fn(train_results, task_settable_env, env_ctx):
+        # Very simple curriculum function.
+        current_task = task_settable_env.get_task()
+        new_task = current_task + 1
+        return new_task
+
+    # Setup your Trainer's config like so:
+    config = {
+        "env": MyEnv,
+        "env_task_fn": curriculum_fn,
+    }
+    # Train using `tune.run` or `Trainer.train()` and the above config stub.
+    # ...
+
+There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
+
+Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function.
+This is basically the same as what the built-in `env_task_fn` API described above already does under the hood, but allows you to do even more
+customizations to your training loop.
 
 .. code-block:: python
 
@@ -776,30 +868,31 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
             result = trainer.train()
             reporter(**result)
             if result["episode_reward_mean"] > 200:
-                phase = 2
+                task = 2
             elif result["episode_reward_mean"] > 100:
-                phase = 1
+                task = 1
             else:
-                phase = 0
+                task = 0
             trainer.workers.foreach_worker(
                 lambda ev: ev.foreach_env(
-                    lambda env: env.set_phase(phase)))
+                    lambda env: env.set_task(task)))
+
+    num_gpus = 0
+    num_workers = 2
 
     ray.init()
     tune.run(
         train,
         config={
-            "num_gpus": 0,
-            "num_workers": 2,
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
         },
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": lambda spec: spec.config.num_gpus,
-            "extra_cpu": lambda spec: spec.config.num_workers,
-        },
+        resources_per_trial=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),
     )
 
-Approach 2: Use the callbacks API to update the environment on new training results:
+You could also use RLlib's callbacks API to update the environment on new training results:
 
 .. code-block:: python
 
@@ -809,15 +902,15 @@ Approach 2: Use the callbacks API to update the environment on new training resu
     def on_train_result(info):
         result = info["result"]
         if result["episode_reward_mean"] > 200:
-            phase = 2
+            task = 2
         elif result["episode_reward_mean"] > 100:
-            phase = 1
+            task = 1
         else:
-            phase = 0
+            task = 0
         trainer = info["trainer"]
         trainer.workers.foreach_worker(
             lambda ev: ev.foreach_env(
-                lambda env: env.set_phase(phase)))
+                lambda env: env.set_task(task)))
 
     ray.init()
     tune.run(
@@ -854,8 +947,8 @@ Eager Mode
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
-``"eager": True`` / ``"eager_tracing": True`` config options or using
-``rllib train --eager [--trace]``.
+``"framework": "[tf2|tfe]"`` / ``"eager_tracing": true`` config options or using
+``rllib train --config '{"framework": "tf2"}' [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
@@ -868,7 +961,7 @@ Using PyTorch
 ~~~~~~~~~~~~~
 
 Trainers that have an implemented TorchPolicy, will allow you to run
-`rllib train` using the the command line ``--torch`` flag.
+`rllib train` using the command line ``--torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
 

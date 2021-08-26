@@ -52,8 +52,8 @@ public class MVStateStrategyTest {
 
   public void caseKV() {
 
-    ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-        .build("mvint-" + currentTime, String.class, "");
+    ValueStateDescriptor<String> valueStateDescriptor =
+        ValueStateDescriptor.build("mvint-" + currentTime, String.class, "");
     valueStateDescriptor.setTableName(table);
     ValueState<String> state = this.keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -169,8 +169,8 @@ public class MVStateStrategyTest {
   }
 
   public void caseKList() {
-    ListStateDescriptor<Integer> listStateDescriptor = ListStateDescriptor
-        .build("mvlist-" + currentTime, Integer.class);
+    ListStateDescriptor<Integer> listStateDescriptor =
+        ListStateDescriptor.build("mvlist-" + currentTime, Integer.class);
     listStateDescriptor.setTableName(table);
     ListState<Integer> state = this.keyStateBackend.getListState(listStateDescriptor);
 
@@ -273,8 +273,8 @@ public class MVStateStrategyTest {
   }
 
   public void caseKMap() {
-    MapStateDescriptor<Integer, Integer> mapStateDescriptor = MapStateDescriptor
-        .build("mvmap-" + currentTime, Integer.class, Integer.class);
+    MapStateDescriptor<Integer, Integer> mapStateDescriptor =
+        MapStateDescriptor.build("mvmap-" + currentTime, Integer.class, Integer.class);
     mapStateDescriptor.setTableName(table);
     MapState<Integer, Integer> state = this.keyStateBackend.getMapState(mapStateDescriptor);
 
@@ -391,15 +391,13 @@ public class MVStateStrategyTest {
     Assert.assertNull(state.get(7));
   }
 
-
   @Test
   public void testMemMV() {
     config.put(ConfigKey.STATE_BACKEND_TYPE, BackendType.MEMORY.name());
-    this.keyStateBackend = new KeyStateBackend(10, new KeyGroup(1, 3),
-        StateBackendBuilder.buildStateBackend(config));
+    this.keyStateBackend =
+        new KeyStateBackend(10, new KeyGroup(1, 3), StateBackendBuilder.buildStateBackend(config));
     caseKV();
     caseKList();
     caseKMap();
   }
 }
-

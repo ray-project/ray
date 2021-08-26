@@ -12,21 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
-
-#include <unistd.h>
-
-#include <functional>
-#include <string>
+#pragma once
 
 #include <boost/optional.hpp>
+#include <functional>
+#include <future>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -34,12 +43,28 @@ class RayObject;
 // Magic argument to signal to mock_worker we should check message order.
 static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 
+/// Wait until the future is ready, or timeout is reached.
+///
+/// \param[in] future The future to wait for.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the future is ready.
+bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms);
+
 /// Wait until the condition is met, or timeout is reached.
 ///
 /// \param[in] condition The condition to wait for.
 /// \param[in] timeout_ms Timeout in milliseconds to wait for for.
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
+
+/// Wait until the expected count is met, or timeout is reached.
+///
+/// \param[in] current_count The current count.
+/// \param[in] expected_count The expected count.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the expected count is met.
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms = 60000);
 
 /// Used to kill process whose pid is stored in `socket_name.id` file.
 void KillProcessBySocketName(std::string socket_name);
@@ -52,6 +77,9 @@ int KillAllExecutable(const std::string &executable_with_suffix);
 // A helper function to return a random task id.
 TaskID RandomTaskId();
 
+// A helper function to return a random job id.
+JobID RandomJobId();
+
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 
 std::shared_ptr<RayObject> GenerateRandomObject(
@@ -61,13 +89,8 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
-
-/// Path to object store executable binary.
-extern std::string TEST_STORE_EXEC_PATH;
 
 /// Path to gcs server executable binary.
 extern std::string TEST_GCS_SERVER_EXEC_PATH;
@@ -76,8 +99,6 @@ extern std::string TEST_GCS_SERVER_EXEC_PATH;
 extern std::string TEST_RAYLET_EXEC_PATH;
 /// Path to mock worker executable binary. Required by raylet.
 extern std::string TEST_MOCK_WORKER_EXEC_PATH;
-/// Path to raylet monitor executable binary.
-extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
 
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES
@@ -94,21 +115,13 @@ class TestSetupUtil {
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
-  static std::string StartObjectStore(
-      const boost::optional<std::string> &socket_name = boost::none);
-  static void StopObjectStore(const std::string &store_socket_name);
-
   static std::string StartGcsServer(const std::string &redis_address);
   static void StopGcsServer(const std::string &gcs_server_socket_name);
-
-  static std::string StartRaylet(const std::string &store_socket_name,
-                                 const std::string &node_ip_address, const int &port,
+  static std::string StartRaylet(const std::string &node_ip_address, const int &port,
                                  const std::string &redis_address,
-                                 const std::string &resource);
+                                 const std::string &resource,
+                                 std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);
-
-  static std::string StartRayletMonitor(const std::string &redis_address);
-  static void StopRayletMonitor(const std::string &raylet_monitor_socket_name);
 
  private:
   static int StartUpRedisServer(const int &port);
@@ -117,5 +130,3 @@ class TestSetupUtil {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H

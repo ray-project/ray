@@ -6,7 +6,7 @@ atari-impala:
             - BreakoutNoFrameskip-v4
             - BeamRiderNoFrameskip-v4
             - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4 
+            - SpaceInvadersNoFrameskip-v4
     run: IMPALA
     config:
         rollout_fragment_length: 50

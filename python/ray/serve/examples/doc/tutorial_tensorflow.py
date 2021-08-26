@@ -1,15 +1,17 @@
 # yapf: disable
+import ray
 # __doc_import_begin__
 from ray import serve
 
 import os
+import tempfile
 import numpy as np
 import requests
 # __doc_import_end__
 # yapf: enable
 
 # __doc_train_model_begin__
-TRAINED_MODEL_PATH = "/tmp/mnist_model.h5"
+TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")
 
 
 def train_and_save_model():
@@ -43,16 +45,17 @@ if not os.path.exists(TRAINED_MODEL_PATH):
 
 
 # __doc_define_servable_begin__
+@serve.deployment(route_prefix="/mnist")
 class TFMnistModel:
     def __init__(self, model_path):
         import tensorflow as tf
         self.model_path = model_path
         self.model = tf.keras.models.load_model(model_path)
 
-    def __call__(self, flask_request):
+    async def __call__(self, starlette_request):
         # Step 1: transform HTTP request -> tensorflow input
         # Here we define the request schema to be a json array.
-        input_array = np.array(flask_request.json["array"])
+        input_array = np.array((await starlette_request.json())["array"])
         reshaped_array = input_array.reshape((1, 28, 28))
 
         # Step 2: tensorflow input -> tensorflow output
@@ -67,10 +70,10 @@ class TFMnistModel:
 
 # __doc_define_servable_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
-serve.init()
-serve.create_backend("tf:v1", TFMnistModel, "/tmp/mnist_model.h5")
-serve.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
+serve.start()
+TFMnistModel.deploy(TRAINED_MODEL_PATH)
 # __doc_deploy_end__
 
 # __doc_query_begin__

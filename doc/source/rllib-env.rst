@@ -5,7 +5,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: rllib-envs.svg
 
@@ -71,6 +71,10 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
             return self.env.step(action)
 
     register_env("multienv", lambda config: MultiEnv(config))
+
+.. tip::
+
+   When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
 
 OpenAI Gym
 ----------
@@ -203,6 +207,30 @@ Here is a simple `example training script <https://github.com/ray-project/ray/bl
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
 
+
+PettingZoo Multi-Agent Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+
+.. code-block:: python
+
+    from ray.tune.registry import register_env
+    # import the pettingzoo environment
+    from pettingzoo.butterfly import prison_v2
+    # import rllib pettingzoo interface
+    from ray.rllib.env import PettingZooEnv
+    # define how to make the environment. This way takes an optional environment config, num_floors
+    env_creator = lambda config: prison_v2.env(num_floors=config.get("num_floors", 4))
+    # register that way to make the environment under an rllib name
+    register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
+    # now you can use `prison` as an environment
+    # you can pass arguments to the environment creator with the env_config option in the config
+    config['env_config'] = {"num_floors": 5}
+
+A more complete example is here: `pettingzoo_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/pettingzoo_env.py>`__
+
+
 Rock Paper Scissors Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -314,7 +342,18 @@ In many situations, it does not make sense for an environment to be "stepped" by
 
     A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose.
+Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
+This can be done for multiple concurrent episodes as well.
+
+Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
+scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
+and connect several clients to this server to learn the env.
+
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
+how to run a similar setup against a Unity3D external game engine.
+
 
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

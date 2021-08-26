@@ -6,15 +6,18 @@ import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _internal_kv_get, _internal_kv_put
 from ray.tune.error import TuneError
+from typing import Callable
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
+RLLIB_INPUT = "rllib_input"
+TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR,
-    RLLIB_ACTION_DIST
+    RLLIB_ACTION_DIST, RLLIB_INPUT, TEST
 ]
 
 logger = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ def validate_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
-def register_trainable(name, trainable):
+def register_trainable(name, trainable, warn=True):
     """Register a trainable function or class.
 
     This enables a class or function to be accessed on every Ray process
@@ -58,11 +61,11 @@ def register_trainable(name, trainable):
         logger.debug("Detected class for trainable.")
     elif isinstance(trainable, FunctionType):
         logger.debug("Detected function for trainable.")
-        trainable = wrap_function(trainable)
+        trainable = wrap_function(trainable, warn=warn)
     elif callable(trainable):
-        logger.warning(
+        logger.info(
             "Detected unknown callable for trainable. Converting to class.")
-        trainable = wrap_function(trainable)
+        trainable = wrap_function(trainable, warn=warn)
 
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable",
@@ -78,12 +81,37 @@ def register_env(name, env_creator):
 
     Args:
         name (str): Name to register.
-        env_creator (obj): Function that creates an env.
+        env_creator (obj): Callable that creates an env.
     """
 
-    if not isinstance(env_creator, FunctionType):
-        raise TypeError("Second argument must be a function.", env_creator)
+    if not callable(env_creator):
+        raise TypeError("Second argument must be callable.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
+
+
+def register_input(name: str, input_creator: Callable):
+    """Register a custom input api for RLLib.
+
+    Args:
+        name (str): Name to register.
+        input_creator (IOContext -> InputReader): Callable that creates an
+            input reader.
+    """
+    if not callable(input_creator):
+        raise TypeError("Second argument must be callable.", input_creator)
+    _global_registry.register(RLLIB_INPUT, name, input_creator)
+
+
+def registry_contains_input(name: str) -> bool:
+    return _global_registry.contains(RLLIB_INPUT, name)
+
+
+def registry_get_input(name: str) -> Callable:
+    return _global_registry.get(RLLIB_INPUT, name)
+
+
+def check_serializability(key, value):
+    _global_registry.register(TEST, key, value)
 
 
 def _make_key(category, key):
@@ -105,11 +133,16 @@ class _Registry:
         self._to_flush = {}
 
     def register(self, category, key, value):
+        """Registers the value with the global registry.
+
+        Raises:
+            PicklingError if unable to pickle to provided file.
+        """
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._to_flush[(category, key)] = pickle.dumps(value)
+        self._to_flush[(category, key)] = pickle.dumps_debug(value)
         if _internal_kv_initialized():
             self.flush_values()
 
@@ -139,3 +172,27 @@ class _Registry:
 
 _global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
+
+
+class _ParameterRegistry:
+    def __init__(self):
+        self.to_flush = {}
+        self.references = {}
+
+    def put(self, k, v):
+        self.to_flush[k] = v
+        if ray.is_initialized():
+            self.flush()
+
+    def get(self, k):
+        if not ray.is_initialized():
+            return self.to_flush[k]
+        return ray.get(self.references[k])
+
+    def flush(self):
+        for k, v in self.to_flush.items():
+            if isinstance(v, ray.ObjectRef):
+                self.references[k] = v
+            else:
+                self.references[k] = ray.put(v)
+        self.to_flush.clear()

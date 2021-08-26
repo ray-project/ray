@@ -1,12 +1,17 @@
-import threading
 import copy
-
 from six.moves import queue
+import threading
+from typing import Dict, Optional
 
 from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+from ray.util.iter import _NextValueNotReady
+
+tf1, tf, tfv = try_import_tf()
 
 
 class LearnerThread(threading.Thread):
@@ -18,11 +23,12 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_worker, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size, learner_queue_timeout):
+    def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int,
+                 num_sgd_iter: int, learner_queue_size: int,
+                 learner_queue_timeout: int):
         """Initialize the learner thread.
 
-        Arguments:
+        Args:
             local_worker (RolloutWorker): process local rollout worker holding
                 policies this thread will call learn_on_batch() on
             minibatch_buffer_size (int): max number of train batches to store
@@ -54,13 +60,19 @@ class LearnerThread(threading.Thread):
         self.stopped = False
         self.num_steps = 0
 
-    def run(self):
+    def run(self) -> None:
+        # Switch on eager mode if configured.
+        if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
+            tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
 
-    def step(self):
+    def step(self) -> Optional[_NextValueNotReady]:
         with self.queue_timer:
-            batch, _ = self.minibatch_buffer.get()
+            try:
+                batch, _ = self.minibatch_buffer.get()
+            except queue.Empty:
+                return _NextValueNotReady()
 
         with self.grad_timer:
             fetches = self.local_worker.learn_on_batch(batch)
@@ -71,7 +83,7 @@ class LearnerThread(threading.Thread):
         self.outqueue.put((batch.count, self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
-    def add_learner_metrics(self, result):
+    def add_learner_metrics(self, result: Dict) -> Dict:
         """Add internal metrics to a trainer result dict."""
 
         def timer_to_ms(timer):

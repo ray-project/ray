@@ -1,219 +1,337 @@
 import asyncio
 import socket
+import time
+import pickle
+from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
+import starlette.responses
+import starlette.routing
 
 import ray
 from ray import serve
-from ray.serve.context import TaskContext
-from ray.serve.metric import MetricClient
-from ray.serve.request_params import RequestMetadata
-from ray.serve.http_util import Response
+from ray.exceptions import RayActorError, RayTaskError
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.long_poll import LongPollNamespace
+from ray.util import metrics
 from ray.serve.utils import logger
+from ray.serve.handle import RayServeHandle
+from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
+from ray.serve.long_poll import LongPollClient
+from ray.serve.handle import DEFAULT
 
-from urllib.parse import parse_qs
+MAX_REPLICA_FAILURE_RETRIES = 10
 
-# The maximum number of times to retry a request due to actor failure.
-# TODO(edoakes): this should probably be configurable.
-MAX_ACTOR_DEAD_RETRIES = 10
+
+async def _send_request_to_handle(handle, scope, receive, send):
+    http_body_bytes = await receive_http_body(scope, receive, send)
+
+    headers = {k.decode(): v.decode() for k, v in scope["headers"]}
+    handle = handle.options(
+        method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
+        shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
+        http_method=scope["method"].upper(),
+        http_headers=headers,
+    )
+
+    # scope["router"] and scope["endpoint"] contain references to a router
+    # and endpoint object, respectively, which each in turn contain a
+    # reference to the Serve client, which cannot be serialized.
+    # The solution is to delete these from scope, as they will not be used.
+    # TODO(edoakes): this can be removed once we deprecate the old API.
+    if "router" in scope:
+        del scope["router"]
+    if "endpoint" in scope:
+        del scope["endpoint"]
+
+    # NOTE(edoakes): it's important that we defer building the starlette
+    # request until it reaches the backend replica to avoid unnecessary
+    # serialization cost, so we use a simple dataclass here.
+    request = HTTPRequestWrapper(scope, http_body_bytes)
+    # Perform a pickle here to improve latency. Stdlib pickle for simple
+    # dataclasses are 10-100x faster than cloudpickle.
+    request = pickle.dumps(request)
+
+    retries = 0
+    backoff_time_s = 0.05
+    while retries < MAX_REPLICA_FAILURE_RETRIES:
+        object_ref = await handle.remote(request)
+        try:
+            result = await object_ref
+            break
+        except RayActorError:
+            logger.warning("Request failed due to replica failure. There are "
+                           f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                           "remaining.")
+            await asyncio.sleep(backoff_time_s)
+            backoff_time_s *= 2
+            retries += 1
+
+    if isinstance(result, RayTaskError):
+        error_message = "Task Error. Traceback: {}.".format(result)
+        await Response(
+            error_message, status_code=500).send(scope, receive, send)
+    elif isinstance(result, starlette.responses.Response):
+        await result(scope, receive, send)
+    else:
+        await Response(result).send(scope, receive, send)
+
+
+class LongestPrefixRouter:
+    """Router that performs longest prefix matches on incoming routes."""
+
+    def __init__(self, get_handle: Callable):
+        # Function to get a handle given a name. Used to mock for testing.
+        self._get_handle = get_handle
+        # Routes sorted in order of decreasing length.
+        self.sorted_routes: List[str] = list()
+        # Endpoints and methods associated with the routes.
+        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        # Contains a ServeHandle for each endpoint.
+        self.handles: Dict[str, RayServeHandle] = dict()
+
+    def endpoint_exists(self, endpoint: EndpointTag) -> bool:
+        return endpoint in self.handles
+
+    def update_routes(self,
+                      endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+        logger.debug(f"Got updated endpoints: {endpoints}.")
+
+        existing_handles = set(self.handles.keys())
+        routes = []
+        route_info = {}
+        for endpoint, info in endpoints.items():
+            # Default case where the user did not specify a route prefix.
+            if info.route is None:
+                route = f"/{endpoint}"
+            else:
+                route = info.route
+
+            routes.append(route)
+            route_info[route] = (endpoint, info.http_methods)
+            if endpoint in self.handles:
+                existing_handles.remove(endpoint)
+            else:
+                self.handles[endpoint] = self._get_handle(endpoint)
+
+        # Clean up any handles that are no longer used.
+        for endpoint in existing_handles:
+            del self.handles[endpoint]
+
+        # Routes are sorted in order of decreasing length to enable longest
+        # prefix matching.
+        self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
+        self.route_info = route_info
+
+    def match_route(self, target_route: str, target_method: str
+                    ) -> Tuple[Optional[str], Optional[RayServeHandle]]:
+        """Return the longest prefix match among existing routes for the route.
+
+        Args:
+            target_route (str): route to match against.
+            target_method (str): method to match against.
+
+        Returns:
+            (matched_route (str), serve_handle (RayServeHandle)) if found,
+            else (None, None).
+        """
+
+        for route in self.sorted_routes:
+            if target_route.startswith(route):
+                matched = False
+                # If the route we matched on ends in a '/', then so does the
+                # target route and this must be a match.
+                if route.endswith("/"):
+                    matched = True
+                # If the route we matched on doesn't end in a '/', we need to
+                # do another check to ensure that either this is an exact match
+                # or the next character in the target route is a '/'. This is
+                # to guard against the scenario where we have '/route' as a
+                # prefix and there's a request to '/routesuffix'. In this case,
+                # it should *not* be a match.
+                elif (len(target_route) == len(route)
+                      or target_route[len(route)] == "/"):
+                    matched = True
+
+                if matched:
+                    endpoint, methods = self.route_info[route]
+                    if target_method in methods:
+                        return route, self.handles[endpoint]
+
+        return None, None
 
 
 class HTTPProxy:
-    """
-    This class should be instantiated and ran by ASGI server.
+    """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
-    # blocks forever
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
     """
 
-    async def fetch_config_from_master(self):
-        assert ray.is_initialized()
-        master = serve.api._get_master_actor()
+    def __init__(self, controller_name: str, controller_namespace: str):
+        # Set the controller name so that serve will connect to the
+        # controller instance this proxy is running in.
+        ray.serve.api._set_internal_replica_context(None, None,
+                                                    controller_name, None)
 
-        self.route_table, [self.router_handle
-                           ] = await master.get_http_proxy_config.remote()
+        # Used only for displaying the route table.
+        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
 
-        # The exporter is required to return results for /-/metrics endpoint.
-        [self.metric_exporter] = await master.get_metric_exporter.remote()
+        def get_handle(name):
+            return serve.api._get_global_client().get_handle(
+                name,
+                sync=False,
+                missing_ok=True,
+                _internal_pickled_http_request=True,
+            )
 
-        self.metric_client = MetricClient(self.metric_exporter)
-        self.request_counter = self.metric_client.new_counter(
-            "num_http_requests",
-            description="The number of requests processed",
-            label_names=("route", ))
+        self.prefix_router = LongestPrefixRouter(get_handle)
+        self.long_poll_client = LongPollClient(
+            ray.get_actor(controller_name, namespace=controller_namespace), {
+                LongPollNamespace.ROUTE_TABLE: self._update_routes,
+            },
+            call_in_event_loop=asyncio.get_event_loop())
+        self.request_counter = metrics.Counter(
+            "serve_num_http_requests",
+            description="The number of HTTP requests processed.",
+            tag_keys=("route", ))
 
-    def set_route_table(self, route_table):
-        self.route_table = route_table
+    def _update_routes(self,
+                       endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        for endpoint, info in endpoints.items():
+            route = info.route if info.route is not None else f"/{endpoint}"
+            self.route_info[route] = (endpoint, info.http_methods)
 
-    async def handle_lifespan_message(self, scope, receive, send):
-        assert scope["type"] == "lifespan"
+        self.prefix_router.update_routes(endpoints)
 
-        message = await receive()
-        if message["type"] == "lifespan.startup":
-            await send({"type": "lifespan.startup.complete"})
-        elif message["type"] == "lifespan.shutdown":
-            await send({"type": "lifespan.shutdown.complete"})
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        start = time.time()
+        while True:
+            if time.time() - start > timeout_s:
+                raise TimeoutError(
+                    f"Waited {timeout_s} for {endpoint} to propagate.")
+            for existing_endpoint, _ in self.route_info.values():
+                if existing_endpoint == endpoint:
+                    return
+            await asyncio.sleep(0.2)
 
-    async def receive_http_body(self, scope, receive, send):
-        body_buffer = []
-        more_body = True
-        while more_body:
-            message = await receive()
-            assert message["type"] == "http.request"
-
-            more_body = message["more_body"]
-            body_buffer.append(message["body"])
-
-        return b"".join(body_buffer)
-
-    def _parse_latency_slo(self, scope):
-        query_string = scope["query_string"].decode("ascii")
-        query_kwargs = parse_qs(query_string)
-
-        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
-        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
-        relative_slo_ms = self._validate_slo_ms(relative_slo_ms)
-        absolute_slo_ms = self._validate_slo_ms(absolute_slo_ms)
-        if relative_slo_ms is not None and absolute_slo_ms is not None:
-            raise ValueError("Both relative and absolute slo's"
-                             "cannot be specified.")
-        return relative_slo_ms, absolute_slo_ms
-
-    def _validate_slo_ms(self, request_slo_ms):
-        if request_slo_ms is None:
-            return None
-        if len(request_slo_ms) != 1:
-            raise ValueError(
-                "Multiple SLO specified, please specific only one.")
-        request_slo_ms = request_slo_ms[0]
-        request_slo_ms = float(request_slo_ms)
-        if request_slo_ms < 0:
-            raise ValueError("Request SLO must be positive, it is {}".format(
-                request_slo_ms))
-        return request_slo_ms
-
-    def _make_error_sender(self, scope, receive, send):
-        async def sender(error_message, status_code):
-            response = Response(error_message, status_code=status_code)
-            await response.send(scope, receive, send)
-
-        return sender
-
-    async def _handle_system_request(self, scope, receive, send):
+    async def _not_found(self, scope, receive, send):
         current_path = scope["path"]
-        if current_path == "/-/routes":
-            await Response(self.route_table).send(scope, receive, send)
-        elif current_path == "/-/metrics":
-            metric_info = await self.metric_exporter.inspect_metrics.remote()
-            await Response(metric_info).send(scope, receive, send)
-        else:
-            await Response(
-                "System path {} not found".format(current_path),
-                status_code=404).send(scope, receive, send)
+        response = Response(
+            f"Path '{current_path}' not found. "
+            "Please ping http://.../-/routes for route table.",
+            status_code=404)
+        await response.send(scope, receive, send)
 
     async def __call__(self, scope, receive, send):
-        # NOTE: This implements ASGI protocol specified in
-        #       https://asgi.readthedocs.io/en/latest/specs/index.html
+        """Implements the ASGI protocol.
 
-        if scope["type"] == "lifespan":
-            await self.handle_lifespan_message(scope, receive, send)
-            return
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
 
-        error_sender = self._make_error_sender(scope, receive, send)
-
-        assert self.route_table is not None, (
-            "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
-        current_path = scope["path"]
+        self.request_counter.inc(tags={"route": scope["path"]})
 
-        self.request_counter.labels(route=current_path).add()
+        if scope["path"] == "/-/routes":
+            return await starlette.responses.JSONResponse(self.route_info)(
+                scope, receive, send)
 
-        if current_path.startswith("/-/"):
-            await self._handle_system_request(scope, receive, send)
-            return
+        route_prefix, handle = self.prefix_router.match_route(
+            scope["path"], scope["method"])
+        if route_prefix is None:
+            return await self._not_found(scope, receive, send)
 
-        try:
-            endpoint_name, methods_allowed = self.route_table[current_path]
-        except KeyError:
-            error_message = (
-                "Path {} not found. "
-                "Please ping http://.../-/routes for routing table"
-            ).format(current_path)
-            await error_sender(error_message, 404)
-            return
+        # Modify the path and root path so that reverse lookups and redirection
+        # work as expected. We do this here instead of in replicas so it can be
+        # changed without restarting the replicas.
+        if route_prefix != "/":
+            assert not route_prefix.endswith("/")
+            scope["path"] = scope["path"].replace(route_prefix, "", 1)
+            scope["root_path"] = route_prefix
 
-        if scope["method"] not in methods_allowed:
-            error_message = ("Methods {} not allowed. "
-                             "Available HTTP methods are {}.").format(
-                                 scope["method"], methods_allowed)
-            await error_sender(error_message, 405)
-            return
-
-        http_body_bytes = await self.receive_http_body(scope, receive, send)
-
-        # get slo_ms before enqueuing the query
-        try:
-            relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
-        except ValueError as e:
-            await error_sender(str(e), 400)
-            return
-
-        headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        request_metadata = RequestMetadata(
-            endpoint_name,
-            TaskContext.Web,
-            relative_slo_ms=relative_slo_ms,
-            absolute_slo_ms=absolute_slo_ms,
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
-        )
-
-        retries = 0
-        while retries <= MAX_ACTOR_DEAD_RETRIES:
-            try:
-                result = await self.router_handle.enqueue_request.remote(
-                    request_metadata, scope, http_body_bytes)
-                if not isinstance(result, ray.exceptions.RayActorError):
-                    await Response(result).send(scope, receive, send)
-                    break
-                logger.warning("Got RayActorError: {}".format(str(result)))
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                error_message = "Internal Error. Traceback: {}.".format(e)
-                await error_sender(error_message, 500)
-                break
-        else:
-            logger.debug("Maximum actor death retries exceeded")
-            await error_sender(
-                "Internal Error. Maximum actor death retries exceeded", 500)
+        await _send_request_to_handle(handle, scope, receive, send)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class HTTPProxyActor:
-    async def __init__(self, host, port, instance_name=None):
-        serve.init(name=instance_name)
-        self.app = HTTPProxy()
-        await self.app.fetch_config_from_master()
+    def __init__(self,
+                 host: str,
+                 port: int,
+                 controller_name: str,
+                 controller_namespace: str,
+                 http_middlewares: List[
+                     "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
         self.port = port
 
+        self.setup_complete = asyncio.Event()
+
+        self.app = HTTPProxy(controller_name, controller_namespace)
+
+        self.wrapped_app = self.app
+        for middleware in http_middlewares:
+            self.wrapped_app = middleware.cls(self.wrapped_app,
+                                              **middleware.options)
+
         # Start running the HTTP server on the event loop.
-        asyncio.get_event_loop().create_task(self.run())
+        # This task should be running forever. We track it in case of failure.
+        self.running_task = asyncio.get_event_loop().create_task(self.run())
+
+    async def ready(self):
+        """Returns when HTTP proxy is ready to serve traffic.
+        Or throw exception when it is not able to serve traffic.
+        """
+        done_set, _ = await asyncio.wait(
+            [
+                # Either the HTTP setup has completed.
+                # The event is set inside self.run.
+                self.setup_complete.wait(),
+                # Or self.run errored.
+                self.running_task,
+            ],
+            return_when=asyncio.FIRST_COMPLETED)
+
+        # Return None, or re-throw the exception from self.running_task.
+        return await done_set.pop()
+
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
         sock = socket.socket()
+        # These two socket options will allow multiple process to bind the the
+        # same port. Kernel will evenly load balance among the port listeners.
+        # Note: this will only work on Linux.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.host, self.port))
-        sock.set_inheritable(True)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
-        config = uvicorn.Config(self.app, lifespan="on", access_log=False)
+        try:
+            sock.bind((self.host, self.port))
+        except OSError:
+            # The OS failed to bind a socket to the given host and port.
+            raise ValueError(
+                f"""Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'.
+Please make sure your http-host and http-port are specified correctly.""")
+
+        # Note(simon): we have to use lower level uvicorn Config and Server
+        # class because we want to run the server as a coroutine. The only
+        # alternative is to call uvicorn.run which is blocking.
+        config = uvicorn.Config(
+            self.wrapped_app,
+            host=self.host,
+            port=self.port,
+            lifespan="off",
+            access_log=False)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
-        await server.serve(sockets=[sock])
 
-    async def set_route_table(self, route_table):
-        self.app.set_route_table(route_table)
+        self.setup_complete.set()
+        await server.serve(sockets=[sock])

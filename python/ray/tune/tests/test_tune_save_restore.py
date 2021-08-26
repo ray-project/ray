@@ -9,6 +9,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
+from ray.tune.utils import validate_save_restore
 
 
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
@@ -18,30 +19,32 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
     class MockTrainable(Trainable):
         _name = "MockTrainable"
 
-        def _setup(self, config):
+        def setup(self, config):
             self.state = {"hi": 1}
 
-        def _train(self):
+        def step(self):
             return {"timesteps_this_iter": 1, "done": True}
 
-        def _save(self, checkpoint_dir):
+        def save_checkpoint(self, checkpoint_dir):
             checkpoint_path = os.path.join(
                 checkpoint_dir, "checkpoint-{}".format(self._iteration))
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
             return checkpoint_path
 
-        def _restore(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_path):
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
 
     def setUp(self):
+        self.absolute_local_dir = None
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
 
     def tearDown(self):
-        shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
-        self.absolute_local_dir = None
+        if self.absolute_local_dir is not None:
+            shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
+            self.absolute_local_dir = None
         ray.shutdown()
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
@@ -84,7 +87,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_1/checkpoint-1")))
+                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")))
 
     def _restore(self, exp_name, local_dir, absolute_local_dir):
         trial_name, abs_trial_dir = self._get_trial_dir(
@@ -92,7 +95,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         checkpoint_path = os.path.join(
             local_dir, exp_name, trial_name,
-            "checkpoint_1/checkpoint-1")  # Relative checkpoint path
+            "checkpoint_000001/checkpoint-1")  # Relative checkpoint path
 
         # The file tune would find. The absolute checkpoint path.
         tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
@@ -146,6 +149,31 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.absolute_local_dir = local_dir
         self._train(exp_name, local_dir, local_dir)
         self._restore(exp_name, local_dir, local_dir)
+
+    def testCheckpointWithNoop(self):
+        """Tests that passing the checkpoint_dir right back works."""
+
+        class MockTrainable(Trainable):
+            def setup(self, config):
+                pass
+
+            def step(self):
+                return {"score": 1}
+
+            def save_checkpoint(self, checkpoint_dir):
+                with open(os.path.join(checkpoint_dir, "test.txt"), "wb") as f:
+                    pickle.dump("test", f)
+                return checkpoint_dir
+
+            def load_checkpoint(self, checkpoint_dir):
+                with open(os.path.join(checkpoint_dir, "test.txt"), "rb") as f:
+                    x = pickle.load(f)
+
+                assert x == "test"
+                return checkpoint_dir
+
+        validate_save_restore(MockTrainable)
+        validate_save_restore(MockTrainable, use_object_store=True)
 
 
 if __name__ == "__main__":

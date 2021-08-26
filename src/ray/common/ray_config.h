@@ -12,13 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CONFIG_H
-#define RAY_CONFIG_H
+#pragma once
 
+#include <cstdint>
 #include <sstream>
-#include <unordered_map>
+#include <string>
 
+#include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
+
+template <typename T>
+T ConvertValue(const std::string &type_string, const std::string &value) {
+  std::istringstream stream(value);
+  T parsed_value;
+  stream >> parsed_value;
+  RAY_CHECK(!value.empty() && stream.eof())
+      << "Cannot parse \"" << value << "\" to " << type_string;
+  return parsed_value;
+}
+
+template <>
+inline std::string ConvertValue<std::string>(const std::string &type_string,
+                                             const std::string &value) {
+  return value;
+}
+
+template <>
+inline bool ConvertValue<bool>(const std::string &type_string, const std::string &value) {
+  auto new_value = absl::AsciiStrToLower(value);
+  return new_value == "true" || new_value == "1";
+}
 
 class RayConfig {
 /// -----------Include ray_config_def.h to define config items.----------------
@@ -26,47 +49,36 @@ class RayConfig {
 /// In particular, this generates a private field called `name_` and a public getter
 /// method called `name()` for a given config item.
 ///
+/// Configs defined in this way can be overriden by setting the env variable
+/// RAY_{name}=value where {name} is the variable name.
+///
 /// \param type Type of the config item.
 /// \param name Name of the config item.
 /// \param default_value Default value of the config item.
-#define RAY_CONFIG(type, name, default_value) \
- private:                                     \
-  type name##_ = default_value;               \
-                                              \
- public:                                      \
+#define RAY_CONFIG(type, name, default_value)                       \
+ private:                                                           \
+  type name##_ = ReadEnv<type>("RAY_" #name, #type, default_value); \
+                                                                    \
+ public:                                                            \
   inline type name() { return name##_; }
 
-#include "ray_config_def.h"
+#include "ray/common/ray_config_def.h"
 /// -------------------------------------------------------------------------
 #undef RAY_CONFIG
 
  public:
-  static RayConfig &instance() {
-    static RayConfig config;
-    return config;
-  }
+  static RayConfig &instance();
 
-// clang-format off
-/// -----------Include ray_config_def.h to set config items.-------------------
-/// A helper macro that helps to set a value to a config item.
-#define RAY_CONFIG(type, name, default_value) \
-  if (pair.first == #name) {                  \
-    std::istringstream stream(pair.second);   \
-    stream >> name##_;                        \
-    continue;                                 \
-  }
+  void initialize(const std::string &config_list);
 
-  void initialize(const std::unordered_map<std::string, std::string> &config_map) {
-    for (auto const &pair : config_map) {
-      // We use a big chain of if else statements because C++ doesn't allow
-      // switch statements on strings.
-#include "ray_config_def.h"
-      RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
+ private:
+  template <typename T>
+  T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
+    auto value = getenv(name.c_str());
+    if (value == nullptr) {
+      return default_value;
+    } else {
+      return ConvertValue<T>(type_string, value);
     }
   }
-/// ---------------------------------------------------------------------
-#undef RAY_CONFIG
 };
-// clang-format on
-
-#endif  // RAY_CONFIG_H

@@ -1,52 +1,67 @@
 import pytest
 import collections
-import subprocess
-import tempfile
 import os
 import unittest
-from unittest.mock import MagicMock, Mock
-
+from unittest.mock import MagicMock, Mock, patch
+from ray import tune
+from ray._private.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
-from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        trial_progress_str)
+from ray.tune.result import AUTO_RESULT_KEYS
+from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
+                                        _fair_filter_trials, best_trial_str,
+                                        detect_reporter, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+------------+
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
-|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00000 | TERMINATED | here  |   0 |   0 |        0   |
 +--------------+------------+-------+-----+-----+------------+
 ... 2 more trials not shown (2 RUNNING)"""
 
 EXPECTED_RESULT_2 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+-----+
-|   Trial name | status     | loc   |   a |   b |
-|--------------+------------+-------+-----+-----|
-|        00000 | TERMINATED | here  |   0 |   0 |
-|        00001 | PENDING    | here  |   1 |   2 |
-|        00002 | RUNNING    | here  |   2 |   4 |
-|        00003 | RUNNING    | here  |   3 |   6 |
-|        00004 | RUNNING    | here  |   4 |   8 |
-+--------------+------------+-------+-----+-----+"""
++--------------+------------+-------+-----+-----+---------+---------+
+|   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
+|--------------+------------+-------+-----+-----+---------+---------|
+|        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
+|        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
+|        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
++--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+------------+------------+
-|   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
-|--------------+------------+-------+-----+------------+------------|
-|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
-|        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
-|        00000 | TERMINATED | here  |   0 |        0   |       0    |
-+--------------+------------+-------+-----+------------+------------+
++--------------+------------+-------+-----+-----------+------------+
+|   Trial name | status     | loc   |   A |   NestSub |   Metric 2 |
+|--------------+------------+-------+-----+-----------+------------|
+|        00002 | RUNNING    | here  |   2 |       1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |       0.5 |       0.25 |
+|        00000 | TERMINATED | here  |   0 |       0   |       0    |
++--------------+------------+-------+-----+-----------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
+
+EXPECTED_RESULT_4 = """Result logdir: /foo
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
++--------------+------------+-------+-----+-----+------------+
+|   Trial name | status     | loc   |   a |   b |   metric_1 |
+|--------------+------------+-------+-----+-----+------------|
+|        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00003 | RUNNING    | here  |   3 |   6 |        1.5 |
+|        00004 | RUNNING    | here  |   4 |   8 |        2   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
+|        00000 | TERMINATED | here  |   0 |   0 |        0   |
++--------------+------------+-------+-----+-----+------------+"""
 
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
+
+reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
 
 def f(config):
     return {"done": True}
@@ -71,36 +86,52 @@ tune.run_experiments({
             "c": tune.grid_search(list(range(10))),
         },
     },
-}, reuse_actors=True, verbose=1)"""
+}, verbose=3, progress_reporter=reporter)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
+EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
 +---------------+----------+-------+-----+-----+
 | Trial name    | status   | loc   |   a |   b |
 |---------------+----------+-------+-----+-----|
-| f_xxxxx_00001 | PENDING  |       |   1 |     |
-| f_xxxxx_00002 | PENDING  |       |   2 |     |
-| f_xxxxx_00003 | PENDING  |       |   3 |     |
-| f_xxxxx_00004 | PENDING  |       |   4 |     |
-| f_xxxxx_00005 | PENDING  |       |   5 |     |
-| f_xxxxx_00006 | PENDING  |       |   6 |     |
-| f_xxxxx_00007 | PENDING  |       |   7 |     |
-| f_xxxxx_00008 | PENDING  |       |   8 |     |
-| f_xxxxx_00009 | PENDING  |       |   9 |     |
-| f_xxxxx_00010 | PENDING  |       |     |   0 |
-| f_xxxxx_00011 | PENDING  |       |     |   1 |
-| f_xxxxx_00012 | PENDING  |       |     |   2 |
-| f_xxxxx_00013 | PENDING  |       |     |   3 |
-| f_xxxxx_00014 | PENDING  |       |     |   4 |
-| f_xxxxx_00015 | PENDING  |       |     |   5 |
-| f_xxxxx_00016 | PENDING  |       |     |   6 |
-| f_xxxxx_00017 | PENDING  |       |     |   7 |
-| f_xxxxx_00018 | PENDING  |       |     |   8 |
-| f_xxxxx_00019 | PENDING  |       |     |   9 |
 | f_xxxxx_00000 | RUNNING  |       |   0 |     |
-+---------------+----------+-------+-----+-----+
-... 10 more trials not shown (10 PENDING)"""
+| f_xxxxx_00001 | PENDING  |       |   1 |     |"""
 
-EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
++---------------+------------+-------+-----+-----+-----+--------+
+| Trial name    | status     | loc   |   a |   b |   c | done   |
+|---------------+------------+-------+-----+-----+-----+--------|
+| f_xxxxx_00000 | TERMINATED |       |   0 |     |     | True   |
+| f_xxxxx_00001 | TERMINATED |       |   1 |     |     | True   |
+| f_xxxxx_00002 | TERMINATED |       |   2 |     |     | True   |
+| f_xxxxx_00003 | TERMINATED |       |   3 |     |     | True   |
+| f_xxxxx_00004 | TERMINATED |       |   4 |     |     | True   |
+| f_xxxxx_00005 | TERMINATED |       |   5 |     |     | True   |
+| f_xxxxx_00006 | TERMINATED |       |   6 |     |     | True   |
+| f_xxxxx_00007 | TERMINATED |       |   7 |     |     | True   |
+| f_xxxxx_00008 | TERMINATED |       |   8 |     |     | True   |
+| f_xxxxx_00009 | TERMINATED |       |   9 |     |     | True   |
+| f_xxxxx_00010 | TERMINATED |       |     |   0 |     | True   |
+| f_xxxxx_00011 | TERMINATED |       |     |   1 |     | True   |
+| f_xxxxx_00012 | TERMINATED |       |     |   2 |     | True   |
+| f_xxxxx_00013 | TERMINATED |       |     |   3 |     | True   |
+| f_xxxxx_00014 | TERMINATED |       |     |   4 |     | True   |
+| f_xxxxx_00015 | TERMINATED |       |     |   5 |     | True   |
+| f_xxxxx_00016 | TERMINATED |       |     |   6 |     | True   |
+| f_xxxxx_00017 | TERMINATED |       |     |   7 |     | True   |
+| f_xxxxx_00018 | TERMINATED |       |     |   8 |     | True   |
+| f_xxxxx_00019 | TERMINATED |       |     |   9 |     | True   |
+| f_xxxxx_00020 | TERMINATED |       |     |     |   0 | True   |
+| f_xxxxx_00021 | TERMINATED |       |     |     |   1 | True   |
+| f_xxxxx_00022 | TERMINATED |       |     |     |   2 | True   |
+| f_xxxxx_00023 | TERMINATED |       |     |     |   3 | True   |
+| f_xxxxx_00024 | TERMINATED |       |     |     |   4 | True   |
+| f_xxxxx_00025 | TERMINATED |       |     |     |   5 | True   |
+| f_xxxxx_00026 | TERMINATED |       |     |     |   6 | True   |
+| f_xxxxx_00027 | TERMINATED |       |     |     |   7 | True   |
+| f_xxxxx_00028 | TERMINATED |       |     |     |   8 | True   |
+| f_xxxxx_00029 | TERMINATED |       |     |     |   9 | True   |
++---------------+------------+-------+-----+-----+-----+--------+"""
+
+EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|
@@ -136,44 +167,98 @@ EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
 | f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
 +---------------+------------+-------+-----+-----+-----+"""
 
-EXPECTED_END_TO_END_AC = """Number of trials: 30 (30 TERMINATED)
-+---------------+------------+-------+-----+-----+-----+
-| Trial name    | status     | loc   |   a |   b |   c |
-|---------------+------------+-------+-----+-----+-----|
-| f_xxxxx_00000 | TERMINATED |       |   0 |     |     |
-| f_xxxxx_00001 | TERMINATED |       |   1 |     |     |
-| f_xxxxx_00002 | TERMINATED |       |   2 |     |     |
-| f_xxxxx_00003 | TERMINATED |       |   3 |     |     |
-| f_xxxxx_00004 | TERMINATED |       |   4 |     |     |
-| f_xxxxx_00005 | TERMINATED |       |   5 |     |     |
-| f_xxxxx_00006 | TERMINATED |       |   6 |     |     |
-| f_xxxxx_00007 | TERMINATED |       |   7 |     |     |
-| f_xxxxx_00008 | TERMINATED |       |   8 |     |     |
-| f_xxxxx_00009 | TERMINATED |       |   9 |     |     |
-| f_xxxxx_00010 | TERMINATED |       |     |   0 |     |
-| f_xxxxx_00011 | TERMINATED |       |     |   1 |     |
-| f_xxxxx_00012 | TERMINATED |       |     |   2 |     |
-| f_xxxxx_00013 | TERMINATED |       |     |   3 |     |
-| f_xxxxx_00014 | TERMINATED |       |     |   4 |     |
-| f_xxxxx_00015 | TERMINATED |       |     |   5 |     |
-| f_xxxxx_00016 | TERMINATED |       |     |   6 |     |
-| f_xxxxx_00017 | TERMINATED |       |     |   7 |     |
-| f_xxxxx_00018 | TERMINATED |       |     |   8 |     |
-| f_xxxxx_00019 | TERMINATED |       |     |   9 |     |
-| f_xxxxx_00020 | TERMINATED |       |     |     |   0 |
-| f_xxxxx_00021 | TERMINATED |       |     |     |   1 |
-| f_xxxxx_00022 | TERMINATED |       |     |     |   2 |
-| f_xxxxx_00023 | TERMINATED |       |     |     |   3 |
-| f_xxxxx_00024 | TERMINATED |       |     |     |   4 |
-| f_xxxxx_00025 | TERMINATED |       |     |     |   5 |
-| f_xxxxx_00026 | TERMINATED |       |     |     |   6 |
-| f_xxxxx_00027 | TERMINATED |       |     |     |   7 |
-| f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
-| f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
-+---------------+------------+-------+-----+-----+-----+"""
+EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
+                  "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
+
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
+                  "parameters={'a': 4}"
+
+EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_ASC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00002 | TERMINATED | here  |   2 |        0.4 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
+VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
+
+VERBOSE_TRIAL_NORM = "Trial train_xxxxx_00000 reported acc=5 with " + \
+    """parameters={'do': 'complete'}. This trial completed.
+Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
+Trial train_xxxxx_00001 completed. Last result: _metric=6
+Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
+Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
+    "This trial completed."
+
+VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
+| Trial name        | status   | loc   | do       |
+|-------------------+----------+-------+----------|
+| train_xxxxx_00000 | RUNNING  |       | complete |"""
+
+VERBOSE_CMD = """from ray import tune
+import random
+import numpy as np
+import time
+
+def train(config):
+    if config["do"] == "complete":
+        time.sleep(0.1)
+        tune.report(acc=5, done=True)
+    elif config["do"] == "once":
+        time.sleep(0.5)
+        tune.report(6)
+    else:
+        time.sleep(1.0)
+        tune.report(acc=7)
+        tune.report(acc=8)
+
+random.seed(1234)
+np.random.seed(1234)
+
+tune.run(
+    train,
+    config={
+        "do": tune.grid_search(["complete", "once", "twice"])
+    },"""
+
+# Add "verbose=3)" etc
 
 
 class ProgressReporterTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
+
     def mock_trial(self, status, i):
         mock = MagicMock()
         mock.status = status
@@ -234,6 +319,43 @@ class ProgressReporterTest(unittest.TestCase):
         reporter.add_metric_column("foo", "bar")
         self.assertIn("foo", reporter._metric_columns)
 
+    def testInfer(self):
+        reporter = CLIReporter()
+        test_result = dict(foo_result=1, baz_result=4123, bar_result="testme")
+
+        def test(config):
+            for i in range(3):
+                tune.report(**test_result)
+
+        analysis = tune.run(test, num_samples=3)
+        all_trials = analysis.trials
+        inferred_results = reporter._infer_user_metrics(all_trials)
+        for metric in inferred_results:
+            self.assertNotIn(metric, AUTO_RESULT_KEYS)
+            self.assertTrue(metric in test_result)
+
+        class TestReporter(CLIReporter):
+            _output = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output.append(progress_str)
+
+        reporter = TestReporter()
+        analysis = tune.run(test, num_samples=3, progress_reporter=reporter)
+        found = {k: False for k in test_result}
+        for output in reporter._output:
+            for key in test_result:
+                if key in output:
+                    found[key] = True
+        assert found["foo_result"]
+        assert found["baz_result"]
+        assert not found["bar_result"]
+
     def testProgressStr(self):
         trials = []
         for i in range(5):
@@ -247,58 +369,244 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_id = "%05d" % i
             t.local_dir = "/foo"
             t.location = "here"
-            t.config = {"a": i, "b": i * 2}
-            t.evaluated_params = t.config
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {
+                "a": i,
+                "b": i * 2,
+                "n/k/0": i,
+                "n/k/1": 2 * i
+            }
             t.last_result = {
                 "config": {
                     "a": i,
-                    "b": i * 2
+                    "b": i * 2,
+                    "n": {
+                        "k": [i, 2 * i]
+                    }
                 },
                 "metric_1": i / 2,
-                "metric_2": i / 4
+                "metric_2": i / 4,
+                "nested": {
+                    "sub": i / 2
+                }
             }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
-        # One metric, all parameters
+        # One metric, two parameters
         prog1 = trial_progress_str(
-            trials, ["metric_1"], None, fmt="psql", max_rows=3)
+            trials, ["metric_1"], ["a", "b"],
+            fmt="psql",
+            max_rows=3,
+            force_table=True)
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 
         # No metric, all parameters
-        prog2 = trial_progress_str(trials, [], None, fmt="psql", max_rows=None)
+        prog2 = trial_progress_str(
+            trials, [], None, fmt="psql", max_rows=None, force_table=True)
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
-        # Both metrics, one parameter, all with custom representation
+        # Two metrics, one parameter, all with custom representation
         prog3 = trial_progress_str(
             trials, {
-                "metric_1": "Metric 1",
+                "nested/sub": "NestSub",
                 "metric_2": "Metric 2"
             }, {"a": "A"},
             fmt="psql",
-            max_rows=3)
+            max_rows=3,
+            force_table=True)
         print(prog3)
         assert prog3 == EXPECTED_RESULT_3
+
+        # Current best trial
+        best1 = best_trial_str(trials[1], "metric_1")
+        assert best1 == EXPECTED_BEST_1
+
+    def testCurrentBestTrial(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        class TestReporter(CLIReporter):
+            _output = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output.append(progress_str)
+
+        reporter = TestReporter(mode="max")
+        reporter.report(trials, done=False)
+        assert EXPECTED_BEST_2 in reporter._output[0]
+
+    def testSortByMetric(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            if i < 3:
+                t.status = "TERMINATED"
+            elif i == 3:
+                t.status = "PENDING"
+            else:
+                t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+        # Set `metric_1` for terminated trails
+        trials[0].last_result["metric_1"] = 0.3
+        trials[1].last_result["metric_1"] = 0.2
+        trials[2].last_result["metric_1"] = 0.4
+
+        class TestReporter(CLIReporter):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+                self._output = ""
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output = progress_str
+
+        # Default reporter
+        reporter1 = TestReporter(
+            max_progress_rows=4, mode="max", metric="metric_1")
+        reporter1.report(trials, done=False)
+        print(reporter1._output)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter1._output
+
+        # Sort by metric (asc)
+        reporter2 = TestReporter(
+            max_progress_rows=4,
+            mode="min",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter2.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_ASC in reporter2._output
+
+        # Sort by metric (desc)
+        reporter3 = TestReporter(
+            max_progress_rows=4,
+            mode="max",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter3.report(trials, done=False)
+        print(reporter3._output)
+        assert EXPECTED_SORT_RESULT_DESC in reporter3._output
+
+        # Sort by metric when mode is None
+        reporter4 = TestReporter(
+            max_progress_rows=4, metric="metric_1", sort_by_metric=True)
+        reporter4.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter4._output
+
+        # Sort by metric when metric is None
+        reporter5 = TestReporter(
+            max_progress_rows=4, mode="max", sort_by_metric=True)
+        reporter5.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
 
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
-            with tempfile.NamedTemporaryFile(suffix=".py") as f:
-                f.write(END_TO_END_COMMAND.encode("utf-8"))
-                f.flush()
-                output = subprocess.check_output(["python3", f.name])
-                output = output.decode("utf-8")
-                try:
-                    assert EXPECTED_END_TO_END_START in output
-                    assert EXPECTED_END_TO_END_END in output
-                except Exception:
-                    print("*** BEGIN OUTPUT ***")
-                    print(output)
-                    print("*** END OUTPUT ***")
-                    raise
+            os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
+            output = run_string_as_driver(END_TO_END_COMMAND)
+            try:
+                assert EXPECTED_END_TO_END_START in output
+                assert EXPECTED_END_TO_END_END in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testVerboseReporting(self):
+        try:
+            os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+
+            verbose_0_cmd = VERBOSE_CMD + "verbose=0)"
+            output = run_string_as_driver(verbose_0_cmd)
+            try:
+                self.assertNotIn(VERBOSE_EXP_OUT_1, output)
+                self.assertNotIn(VERBOSE_EXP_OUT_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_1_cmd = VERBOSE_CMD + "verbose=1)"
+            output = run_string_as_driver(verbose_1_cmd)
+            try:
+                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                self.assertIn(VERBOSE_EXP_OUT_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_2_cmd = VERBOSE_CMD + "verbose=2)"
+            output = run_string_as_driver(verbose_2_cmd)
+            try:
+                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                self.assertIn(VERBOSE_EXP_OUT_2, output)
+                self.assertIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_3_cmd = VERBOSE_CMD + "verbose=3)"
+            output = run_string_as_driver(verbose_3_cmd)
+            try:
+                self.assertIn(VERBOSE_EXP_OUT_1, output)
+                self.assertIn(VERBOSE_EXP_OUT_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertIn(VERBOSE_TRIAL_DETAIL, output)
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+        finally:
+            del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testReporterDetection(self):
+        """Test if correct reporter is returned from ``detect_reporter()``"""
+        reporter = detect_reporter()
+        self.assertTrue(isinstance(reporter, CLIReporter))
+        self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
+
+        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+            reporter = detect_reporter()
+            self.assertFalse(isinstance(reporter, CLIReporter))
+            self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
 import unittest
+import threading
 
 import ray
 from ray.rllib import _register_all
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.error import TuneError
+from ray.tune.utils import diagnose_serialization
 
 
 class ExperimentTest(unittest.TestCase):
@@ -69,6 +71,28 @@ class ExperimentTest(unittest.TestCase):
 
     def testConvertExperimentIncorrect(self):
         self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
+
+
+class ValidateUtilTest(unittest.TestCase):
+    def testDiagnoseSerialization(self):
+
+        # this is not serializable
+        e = threading.Event()
+
+        def test(config):
+            print(e)
+
+        assert diagnose_serialization(test) is not True
+
+        # should help identify that 'e' should be moved into
+        # the `test` scope.
+
+        # correct implementation
+        def test(config):
+            e = threading.Event()
+            print(e)
+
+        assert diagnose_serialization(test) is True
 
 
 if __name__ == "__main__":

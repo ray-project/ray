@@ -3,7 +3,6 @@ import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import pytest
 import sys
-import json
 
 import ray
 import ray.experimental.array.remote as ra
@@ -19,13 +18,13 @@ def reload_modules():
 
 def test_remote_array_methods(ray_start_2_cpus, reload_modules):
     # test eye
-    object_id = ra.eye.remote(3)
-    val = ray.get(object_id)
+    object_ref = ra.eye.remote(3)
+    val = ray.get(object_ref)
     assert_almost_equal(val, np.eye(3))
 
     # test zeros
-    object_id = ra.zeros.remote([3, 4, 5])
-    val = ray.get(object_id)
+    object_ref = ra.zeros.remote([3, 4, 5])
+    val = ray.get(object_ref)
     assert_equal(val, np.zeros([3, 4, 5]))
 
     # test qr - pass by value
@@ -35,7 +34,7 @@ def test_remote_array_methods(ray_start_2_cpus, reload_modules):
     r_val = ray.get(r_id)
     assert_almost_equal(np.dot(q_val, r_val), a_val)
 
-    # test qr - pass by objectid
+    # test qr - pass by object_ref
     a = ra.random.normal.remote([10, 13])
     q_id, r_id = ra.linalg.qr.remote(a)
     a_val = ray.get(a)
@@ -56,16 +55,17 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
         ]))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_2_nodes",
     [{
-        "_internal_config": json.dumps({
+        "_system_config": {
             # NOTE(swang): If plasma store notifications to the raylet for new
             # objects are delayed by long enough, then this causes concurrent
             # fetch calls to timeout and mistakenly mark the object as lost.
             # Set the timeout very high to prevent this.
-            "initial_reconstruction_timeout_milliseconds": 60000,
-        })
+            "object_timeout_milliseconds": 60000,
+        }
     }],
     indirect=True)
 def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):

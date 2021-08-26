@@ -12,16 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_SERVER_H
-#define RAY_GCS_GCS_SERVER_H
+#pragma once
 
-#include <ray/gcs/pubsub/gcs_pub_sub.h>
-#include <ray/gcs/redis_gcs_client.h>
-#include <ray/rpc/client_call.h>
-#include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
+#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/gcs/redis_client.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 namespace gcs {
@@ -34,11 +44,17 @@ struct GcsServerConfig {
   std::string redis_address;
   uint16_t redis_port = 6379;
   bool retry_redis = true;
-  bool is_test = false;
+  bool enable_sharding_conn = true;
+  std::string node_ip_address;
+  bool grpc_based_resource_broadcast = false;
+  bool grpc_pubsub_enabled = false;
 };
 
 class GcsNodeManager;
 class GcsActorManager;
+class GcsJobManager;
+class GcsWorkerManager;
+class GcsPlacementGroupManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -49,7 +65,7 @@ class GcsActorManager;
 class GcsServer {
  public:
   explicit GcsServer(const GcsServerConfig &config,
-                     boost::asio::io_service &main_service);
+                     instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -68,36 +84,55 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
-  /// Initialize the backend storage client.
-  /// The gcs server is just the proxy between the gcs client and reliable storage
-  /// for the time being, so we need a backend client to connect to the storage.
-  virtual void InitBackendClient();
+  void DoStart(const GcsInitData &gcs_init_data);
 
-  /// Initialize the gcs node manager.
-  /// The gcs node manager is responsible for managing and monitoring all nodes in the
-  /// cluster.
-  virtual void InitGcsNodeManager();
+  /// Initialize gcs node manager.
+  void InitGcsNodeManager(const GcsInitData &gcs_init_data);
 
-  /// Initialize the gcs actor manager.
-  virtual void InitGcsActorManager();
+  /// Initialize gcs heartbeat manager.
+  void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
 
-  /// The job info handler
-  virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
+  /// Initialize gcs resource manager.
+  void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
-  /// The object manager
-  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
+  /// Initialize gcs resource scheduler.
+  void InitGcsResourceScheduler();
 
-  /// The task info handler
-  virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
+  /// Initialize gcs job manager.
+  void InitGcsJobManager(const GcsInitData &gcs_init_data);
 
-  /// The stats handler
-  virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
+  /// Initialize gcs actor manager.
+  void InitGcsActorManager(const GcsInitData &gcs_init_data);
 
-  /// The error info handler
-  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
+  /// Initialize gcs placement group manager.
+  void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
-  /// The worker info handler
-  virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
+  /// Initialize gcs object manager.
+  void InitObjectManager(const GcsInitData &gcs_init_data);
+
+  /// Initialize gcs worker manager.
+  void InitGcsWorkerManager();
+
+  /// Initialize task info handler.
+  void InitTaskInfoHandler();
+
+  /// Initialize stats handler.
+  void InitStatsHandler();
+
+  /// Initialize KV manager.
+  void InitKVManager();
+
+  // Init RuntimeENv manager
+  void InitRuntimeEnvManager();
+
+  /// Initialize resource report polling.
+  void InitResourceReportPolling(const GcsInitData &gcs_init_data);
+
+  /// Initialize resource report broadcasting.
+  void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
+
+  /// Install event listeners.
+  void InstallEventListeners();
 
  private:
   /// Store the address of GCS server in Redis.
@@ -107,48 +142,86 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  /// Gcs server configuration
+  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
+  void CollectStats();
+
+  /// Print debug info periodically.
+  void PrintDebugInfo();
+
+  /// Print the asio event loop stats for debugging.
+  void PrintAsioStats();
+
+  /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context &main_service_;
+  instrumented_io_context &main_service_;
+  /// The io service used by heartbeat manager in case of node failure detector being
+  /// blocked by main thread.
+  instrumented_io_context heartbeat_manager_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
+  /// Node manager client pool.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// The gcs resource manager.
+  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  /// The gcs resource scheduler.
+  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The heartbeat manager.
+  std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
-  /// The gcs actor manager
+  /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
-  /// Job info handler and service
-  std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
+  /// The gcs placement group manager.
+  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  /// Job info handler and service.
+  std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
-  /// Actor info service
+  /// Actor info service.
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
-  /// Node info handler and service
+  /// Node info handler and service.
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
-  /// Object info handler and service
+  /// Node resource info handler and service.
+  std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
+  /// Heartbeat info handler and service.
+  std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
+  /// Object info handler and service.
   std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
-  /// Task info handler and service
+  /// Task info handler and service.
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
-  /// Stats handler and service
+  /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  /// Error info handler and service
-  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
-  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
-  /// Worker info handler and service
-  std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
+  /// Resource report poller.
+  std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
+  /// Resource report broadcaster.
+  std::unique_ptr<GrpcBasedResourceBroadcaster> grpc_based_resource_broadcaster_;
+  /// The gcs worker manager.
+  std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
+  /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
-  /// Backend client
-  std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// Placement Group info handler and service.
+  std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+  /// Backend client.
+  std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Grpc based pubsub.
+  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  /// Grpc based pubsub's periodical runner.
+  PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;
@@ -156,5 +229,3 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif

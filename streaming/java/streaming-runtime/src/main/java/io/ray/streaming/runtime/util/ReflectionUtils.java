@@ -55,10 +55,10 @@ public class ReflectionUtils {
   }
 
   /**
-   * <p>Gets a <code>List</code> of all interfaces implemented by the given
-   * class and its superclasses.</p>
-   * <p>The order is determined by looking through each interface in turn as
-   * declared in the source file and following its hierarchy up.</p>
+   * Gets a <code>List</code> of all interfaces implemented by the given class and its superclasses.
+   *
+   * <p>The order is determined by looking through each interface in turn as declared in the source
+   * file and following its hierarchy up.
    */
   public static List<Class<?>> getAllInterfaces(Class<?> cls) {
     if (cls == null) {
@@ -83,5 +83,4 @@ public class ReflectionUtils {
       cls = cls.getSuperclass();
     }
   }
-
 }

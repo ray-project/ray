@@ -26,32 +26,34 @@ extern "C" {
  * Method:    nativeGetLanguage
  * Signature: ([B)I
  */
-JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage
-  (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
+    JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
  * Method:    nativeGetActorCreationTaskFunctionDescriptor
  * Signature: ([B)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor
-  (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
+    JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
  * Method:    nativeSerialize
  * Signature: ([B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize
-  (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
  * Method:    nativeDeserialize
  * Signature: ([B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize
-  (JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *, jclass,
+                                                              jbyteArray);
 
 #ifdef __cplusplus
 }

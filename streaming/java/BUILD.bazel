@@ -1,4 +1,6 @@
 load("//bazel:ray.bzl", "define_java_module")
+load("//bazel:ray.bzl", "native_java_binary")
+load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
@@ -38,23 +40,28 @@ define_java_module(
         "//java:io_ray_ray_api",
         ":io_ray_ray_streaming-state",
         ":io_ray_ray_streaming-api",
-        "@ray_streaming_maven//:com_google_guava_guava",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+        "@maven//:org_yaml_snakeyaml",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
-        "@ray_streaming_maven//:org_testng_testng",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":io_ray_ray_streaming-state",
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:com_google_code_findbugs_jsr305",
         "@ray_streaming_maven//:com_google_code_gson_gson",
-        "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
@@ -63,57 +70,34 @@ define_java_module(
     define_test_lib = True,
     test_deps = [
         ":io_ray_ray_streaming-state",
-        "@ray_streaming_maven//:com_google_guava_guava",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
-        "@ray_streaming_maven//:org_testng_testng",
-        "@ray_streaming_maven//:org_mockito_mockito_all",
-        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:org_yaml_snakeyaml",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
+        "@ray_streaming_maven//:org_mockito_mockito_all",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@ray_streaming_maven//:com_google_guava_guava",
-        "@ray_streaming_maven//:de_ruedigermoeller_fst",
-        "@ray_streaming_maven//:log4j_log4j",
+        "@maven//:com_google_guava_guava",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
-# `//streaming:streaming_java` will be located in jar `streaming` directory,
-# but we need it located in jar root path.
-# resource_strip_prefix = "streaming" will make other resources file located in wrong path.
-# So we copy libs explicitly to remove `streaming` path.
+native_java_library("streaming-runtime", "streaming_java", "//streaming:libstreaming_java.so")
+
 filegroup(
     name = "java_native_deps",
     srcs = [":streaming_java"],
-)
-
-filegroup(
-    name = "streaming_java",
-    srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":streaming_java_darwin"],
-        "//conditions:default": [":streaming_java_linux"],
-    }),
-    visibility = ["//visibility:public"],
-)
-
-genrule(
-    name = "streaming_java_darwin",
-    srcs = ["//streaming:libstreaming_java.so"],
-    outs = ["libstreaming_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
-)
-
-genrule(
-    name = "streaming_java_linux",
-    srcs = ["//streaming:libstreaming_java.so"],
-    outs = ["libstreaming_java.so"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
 )
 
 define_java_module(
@@ -134,14 +118,17 @@ define_java_module(
         ":io_ray_ray_streaming-state",
         ":io_ray_ray_streaming-api",
         ":io_ray_ray_streaming-runtime",
-        "@ray_streaming_maven//:com_google_guava_guava",
+        "@maven//:com_google_guava_guava",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+        "@maven//:org_yaml_snakeyaml",
         "@ray_streaming_maven//:com_google_code_findbugs_jsr305",
-        "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
-        "@ray_streaming_maven//:org_testng_testng",
+        "@ray_streaming_maven//:org_apache_commons_commons_lang3",
         "@ray_streaming_maven//:org_mockito_mockito_all",
         "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
         "@ray_streaming_maven//:org_powermock_powermock_module_testng",
@@ -152,16 +139,20 @@ define_java_module(
         ":io_ray_ray_streaming-state",
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:commons_io_commons_io",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_msgpack_msgpack_core",
+        "@maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:com_github_davidmoten_flatbuffers_java",
         "@ray_streaming_maven//:com_google_code_findbugs_jsr305",
-        "@ray_streaming_maven//:com_google_guava_guava",
-        "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
-        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:commons_collections_commons_collections",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
-        "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:org_msgpack_msgpack_core",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
-        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
@@ -176,11 +167,11 @@ java_binary(
         ":io_ray_ray_streaming-runtime_test",
         ":io_ray_ray_streaming-state",
         "//java:io_ray_ray_runtime",
-        "@ray_streaming_maven//:com_beust_jcommander",
+        "@maven//:org_testng_testng",
+        "@maven//:org_yaml_snakeyaml",
         "@ray_streaming_maven//:org_mockito_mockito_all",
         "@ray_streaming_maven//:org_powermock_powermock_api_mockito",
         "@ray_streaming_maven//:org_powermock_powermock_module_testng",
-        "@ray_streaming_maven//:org_testng_testng",
     ],
 )
 
@@ -214,6 +205,7 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //streaming/java:io_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
         cp -f $(location //streaming/java:io_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
+        cp -f $(location //streaming/java:io_ray_ray_streaming-state_pom) "$$WORK_DIR/streaming/java/streaming-state/pom.xml"
         date > $@
     """,
     local = 1,
@@ -236,6 +228,8 @@ genrule(
         for f in $(locations //streaming/java:all_java_proto); do
             unzip -q -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
+        # remove third party protobuf
+        rm -rf $$WORK_DIR/streaming/java/streaming-runtime/src/main/java/com/google/protobuf/
         date > $@
     """,
     local = 1,
@@ -251,9 +245,15 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        WORK_DIR="$$(pwd)"
+        WORK_DIR="$${PWD}"
         # Copy native dependencies.
-        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"
+        OS_NAME=""
+        case "$${OSTYPE}" in
+          linux*) OS_NAME="linux";;
+          darwin*) OS_NAME="darwin";;
+          *) echo "$${OSTYPE} is not supported currently"; exit 1;;
+        esac
+        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/native/$$OS_NAME"
         rm -rf "$$NATIVE_DEPS_DIR"
         mkdir -p "$$NATIVE_DEPS_DIR"
         for f in $(locations //streaming/java:java_native_deps); do

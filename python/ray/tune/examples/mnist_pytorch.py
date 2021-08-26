@@ -1,7 +1,6 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 import os
-import numpy as np
 import argparse
 from filelock import FileLock
 import torch
@@ -81,15 +80,19 @@ def get_data_loaders():
                 transform=mnist_transforms),
             batch_size=64,
             shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST("~/data", train=False, transform=mnist_transforms),
-        batch_size=64,
-        shuffle=True)
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data",
+                train=False,
+                download=True,
+                transform=mnist_transforms),
+            batch_size=64,
+            shuffle=True)
     return train_loader, test_loader
 
 
 def train_mnist(config):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
@@ -100,6 +103,7 @@ def train_mnist(config):
     while True:
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
+        # Set this to run Tune.
         tune.report(mean_accuracy=acc)
 
 
@@ -115,15 +119,29 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.")
-    args = parser.parse_args()
-    if args.ray_address:
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    elif args.ray_address:
         ray.init(address=args.ray_address)
     else:
         ray.init(num_cpus=2 if args.smoke_test else None)
-    sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration", metric="mean_accuracy")
+
+    # for early stopping
+    sched = AsyncHyperBandScheduler()
+
     analysis = tune.run(
         train_mnist,
+        metric="mean_accuracy",
+        mode="max",
         name="exp",
         scheduler=sched,
         stop={
@@ -132,13 +150,12 @@ if __name__ == "__main__":
         },
         resources_per_trial={
             "cpu": 2,
-            "gpu": int(args.cuda)
+            "gpu": int(args.cuda)  # set this for GPUs
         },
         num_samples=1 if args.smoke_test else 50,
         config={
-            "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
+            "lr": tune.loguniform(1e-4, 1e-2),
             "momentum": tune.uniform(0.1, 0.9),
-            "use_gpu": int(args.cuda)
         })
 
-    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config is:", analysis.best_config)

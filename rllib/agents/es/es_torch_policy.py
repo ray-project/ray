@@ -3,12 +3,12 @@
 
 import gym
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
@@ -16,7 +16,6 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 def before_init(policy, observation_space, action_space, config):
@@ -49,7 +48,7 @@ def before_init(policy, observation_space, action_space, config):
         for k in sorted(theta_dict.keys()):
             theta_list.append(torch.reshape(theta_dict[k], (-1, )))
         cat = torch.cat(theta_list, dim=0)
-        return cat.numpy()
+        return cat.cpu().numpy()
 
     type(policy).set_flat_weights = _set_flat_weights
     type(policy).get_flat_weights = _get_flat_weights
@@ -66,7 +65,7 @@ def before_init(policy, observation_space, action_space, config):
         observation = policy.observation_filter(
             observation[None], update=update)
 
-        observation = convert_to_torch_tensor(observation)
+        observation = convert_to_torch_tensor(observation, policy.device)
         dist_inputs, _ = policy.model({
             SampleBatch.CUR_OBS: observation
         }, [], None)
@@ -74,8 +73,9 @@ def before_init(policy, observation_space, action_space, config):
         action = dist.sample()
 
         def _add_noise(single_action, single_action_space):
-            single_action = single_action.detach().numpy()
-            if add_noise and isinstance(single_action_space, gym.spaces.Box):
+            single_action = single_action.detach().cpu().numpy()
+            if add_noise and isinstance(single_action_space, gym.spaces.Box) \
+                    and single_action_space.dtype.name.startswith("float"):
                 single_action += np.random.randn(*single_action.shape) * \
                                  policy.action_noise_std
             return single_action
@@ -83,9 +83,19 @@ def before_init(policy, observation_space, action_space, config):
         action = tree.map_structure(_add_noise, action,
                                     policy.action_space_struct)
         action = unbatch(action)
-        return action
+        return action, [], {}
+
+    def _compute_single_action(policy,
+                               observation,
+                               add_noise=False,
+                               update=True,
+                               **kwargs):
+        action, state_outs, extra_fetches = policy.compute_actions(
+            [observation], add_noise=add_noise, update=update, **kwargs)
+        return action[0], state_outs, extra_fetches
 
     type(policy).compute_actions = _compute_actions
+    type(policy).compute_single_action = _compute_single_action
 
 
 def after_init(policy, observation_space, action_space, config):
@@ -117,8 +127,9 @@ def make_model_and_action_dist(policy, observation_space, action_space,
     return model, dist_class
 
 
-ESTorchPolicy = build_torch_policy(
+ESTorchPolicy = build_policy_class(
     name="ESTorchPolicy",
+    framework="torch",
     loss_fn=None,
     get_default_config=lambda: ray.rllib.agents.es.es.DEFAULT_CONFIG,
     before_init=before_init,

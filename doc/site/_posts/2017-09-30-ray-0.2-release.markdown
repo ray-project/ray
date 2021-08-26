@@ -134,12 +134,12 @@ state of the actor. We are working on improving the speed of recovery by
 enabling actor state to be restored from checkpoints. See [an overview of fault
 tolerance in Ray][4].
 
-[1]: http://docs.ray.io/en/latest/plasma-object-store.html
-[2]: http://docs.ray.io/en/latest/webui.html
-[3]: http://docs.ray.io/en/latest/rllib.html
-[4]: http://docs.ray.io/en/latest/fault-tolerance.html
+[1]: http://docs.ray.io/en/master/plasma-object-store.html
+[2]: http://docs.ray.io/en/master/webui.html
+[3]: http://docs.ray.io/en/master/rllib.html
+[4]: http://docs.ray.io/en/master/fault-tolerance.html
 [5]: https://github.com/apache/arrow
-[6]: http://docs.ray.io/en/latest/example-a3c.html
+[6]: http://docs.ray.io/en/master/example-a3c.html
 [7]: https://github.com/openai/baselines
 [8]: https://github.com/ray-project/ray/blob/b020e6bf1fb00d0745371d8674146d4a5b75d9f0/python/ray/rllib/test/tuned_examples.sh#L11
 [9]: https://arrow.apache.org/docs/python/ipc.html#arbitrary-object-serialization

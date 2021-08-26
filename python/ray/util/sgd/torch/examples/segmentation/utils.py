@@ -49,8 +49,8 @@ class ConfusionMatrix(object):
                 'IoU: {}\n'
                 'mean IoU: {:.1f}').format(
                     acc_global.item() * 100,
-                    ['{:.1f}'.format(i) for i in (acc * 100).tolist()],
-                    ['{:.1f}'.format(i) for i in (iu * 100).tolist()],
+                    [f'{i:.1f}' for i in (acc * 100).tolist()],
+                    [f'{i:.1f}' for i in (iu * 100).tolist()],
                     iu.mean().item() * 100)
 
 

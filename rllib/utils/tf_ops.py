@@ -1,13 +1,124 @@
-from ray.rllib.utils import try_import_tf
+import gym
+from gym.spaces import Discrete, MultiDiscrete
+import numpy as np
+import tree  # pip install dm_tree
 
-tf = try_import_tf()
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, tf, tfv = try_import_tf()
+
+
+def convert_to_non_tf_type(stats):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all tf (eager) tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-tf Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, (tf.Tensor, tf.Variable)):
+            return item.numpy()
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
+
+
+def explained_variance(y, pred):
+    _, y_var = tf.nn.moments(y, axes=[0])
+    _, diff_var = tf.nn.moments(y - pred, axes=[0])
+    return tf.maximum(-1.0, 1 - (diff_var / y_var))
+
+
+def get_gpu_devices():
+    """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
+
+    Supports both tf1.x and tf2.x.
+    """
+    if tfv == 1:
+        from tensorflow.python.client import device_lib
+        devices = device_lib.list_local_devices()
+    else:
+        try:
+            devices = tf.config.list_physical_devices()
+        except Exception:
+            devices = tf.config.experimental.list_physical_devices()
+
+    # Expect "GPU", but also stuff like: "XLA_GPU".
+    return [d.name for d in devices if "GPU" in d.device_type]
+
+
+def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
+    from ray.rllib.models.catalog import ModelCatalog
+
+    if space is not None:
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            return ModelCatalog.get_action_placeholder(space, None)
+        return tf1.placeholder(
+            shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
+            dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
+            name=name,
+        )
+    else:
+        assert value is not None
+        shape = value.shape[1:]
+        return tf1.placeholder(
+            shape=(None, ) + ((None, )
+                              if time_axis else ()) + (shape if isinstance(
+                                  shape, tuple) else tuple(shape.as_list())),
+            dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
+            name=name,
+        )
+
+
+def get_tf_eager_cls_if_necessary(orig_cls, config):
+    cls = orig_cls
+    framework = config.get("framework", "tf")
+    if framework in ["tf2", "tf", "tfe"]:
+        if not tf1:
+            raise ImportError("Could not import tensorflow!")
+        if framework in ["tf2", "tfe"]:
+            assert tf1.executing_eagerly()
+
+            from ray.rllib.policy.tf_policy import TFPolicy
+
+            # Create eager-class.
+            if hasattr(orig_cls, "as_eager"):
+                cls = orig_cls.as_eager()
+                if config.get("eager_tracing"):
+                    cls = cls.with_tracing()
+            # Could be some other type of policy.
+            elif not issubclass(orig_cls, TFPolicy):
+                pass
+            else:
+                raise ValueError("This policy does not support eager "
+                                 "execution: {}".format(orig_cls))
+    return cls
 
 
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(
         tf.abs(x) < delta,
-        tf.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+        tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return tf.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
 def reduce_mean_ignore_inf(x, axis):
@@ -24,13 +135,18 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
     variable is clipped to `clip_val`
     """
     # Accidentally passing values < 0.0 will break all gradients.
-    assert clip_val > 0.0, clip_val
+    assert clip_val is None or clip_val > 0.0, clip_val
 
-    gradients = optimizer.compute_gradients(objective, var_list=var_list)
-    for i, (grad, var) in enumerate(gradients):
-        if grad is not None:
-            gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return gradients
+    if tf.executing_eagerly():
+        tape = optimizer.tape
+        grads_and_vars = list(
+            zip(list(tape.gradient(objective, var_list)), var_list))
+    else:
+        grads_and_vars = optimizer.compute_gradients(
+            objective, var_list=var_list)
+
+    return [(tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
+            for (g, v) in grads_and_vars if g is not None]
 
 
 def make_tf_callable(session_or_none, dynamic_shape=False):
@@ -42,7 +158,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
     will build a function that executes a session run with placeholders
     internally.
 
-    Arguments:
+    Args:
         session_or_none (tf.Session): tf.Session if in graph mode, else None.
         dynamic_shape (bool): True if the placeholders should have a dynamic
             batch dimension. Otherwise they will be fixed shape.
@@ -57,11 +173,15 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         assert session_or_none is not None
 
     def make_wrapper(fn):
-        if session_or_none:
-            placeholders = []
+        # Static-graph mode: Create placeholders and make a session call each
+        # time the wrapped function is called. Return this session call's
+        # outputs.
+        if session_or_none is not None:
+            args_placeholders = []
+            kwargs_placeholders = {}
             symbolic_out = [None]
 
-            def call(*args):
+            def call(*args, **kwargs):
                 args_flat = []
                 for a in args:
                     if type(a) is list:
@@ -79,17 +199,35 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     shape = ()
                             else:
                                 shape = v.shape
-                            placeholders.append(
-                                tf.placeholder(
+                            args_placeholders.append(
+                                tf1.placeholder(
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
-                        symbolic_out[0] = fn(*placeholders)
-                feed_dict = dict(zip(placeholders, args))
+                        for k, v in kwargs.items():
+                            if dynamic_shape:
+                                if len(v.shape) > 0:
+                                    shape = (None, ) + v.shape[1:]
+                                else:
+                                    shape = ()
+                            else:
+                                shape = v.shape
+                            kwargs_placeholders[k] = \
+                                tf1.placeholder(
+                                    dtype=v.dtype,
+                                    shape=shape,
+                                    name="kwarg_{}".format(k))
+                        symbolic_out[0] = fn(*args_placeholders,
+                                             **kwargs_placeholders)
+                feed_dict = dict(zip(args_placeholders, args))
+                feed_dict.update(
+                    {kwargs_placeholders[k]: kwargs[k]
+                     for k in kwargs.keys()})
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 
             return call
+        # Eager mode (call function as is).
         else:
             return fn
 
@@ -114,7 +252,7 @@ def scope_vars(scope, trainable_only=False):
     vars: [tf.Variable]
       list of variables in `scope`.
     """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
+    return tf1.get_collection(
+        tf1.GraphKeys.TRAINABLE_VARIABLES
+        if trainable_only else tf1.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)

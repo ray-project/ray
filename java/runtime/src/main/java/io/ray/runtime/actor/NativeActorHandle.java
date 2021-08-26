@@ -16,9 +16,7 @@ import java.util.List;
  */
 public abstract class NativeActorHandle implements BaseActorHandle, Externalizable {
 
-  /**
-   * ID of the actor.
-   */
+  /** ID of the actor. */
   byte[] actorId;
 
   private Language language;
@@ -29,10 +27,13 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
     this.language = language;
   }
 
-  /**
-   * Required by FST
-   */
-  NativeActorHandle() {
+  /** Required by FST. */
+  NativeActorHandle() {}
+
+  public static NativeActorHandle create(byte[] actorId) {
+    Language language = Language.forNumber(nativeGetLanguage(actorId));
+    Preconditions.checkState(language != null, "Language shouldn't be null");
+    return create(actorId, language);
   }
 
   public static NativeActorHandle create(byte[] actorId, Language language) {
@@ -70,7 +71,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   /**
    * Serialize this actor handle to bytes.
    *
-   * @return  the bytes of the actor handle
+   * @return the bytes of the actor handle
    */
   public byte[] toBytes() {
     return nativeSerialize(actorId);
@@ -79,7 +80,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   /**
    * Deserialize an actor handle from bytes.
    *
-   * @return  the bytes of an actor handle
+   * @return the bytes of an actor handle
    */
   public static NativeActorHandle fromBytes(byte[] bytes) {
     byte[] actorId = nativeDeserialize(bytes);

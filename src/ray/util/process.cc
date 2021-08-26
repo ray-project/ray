@@ -15,25 +15,67 @@
 #include "ray/util/process.h"
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#include <Windows.h>
+#include <Winternl.h>
 #include <process.h>
 #else
+#include <poll.h>
 #include <signal.h>
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#endif
 #include <unistd.h>
+#endif
+
+#include <string.h>
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <string>
 #include <vector>
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
+#ifdef __APPLE__
+extern char **environ;
+
+// macOS dosn't come with execvpe.
+// https://stackoverflow.com/questions/7789750/execve-with-path-search
+int execvpe(const char *program, char *const argv[], char *const envp[]) {
+  char **saved = environ;
+  int rc;
+  environ = const_cast<char **>(envp);
+  rc = execvp(program, argv);
+  environ = saved;
+  return rc;
+}
+#endif
+
 namespace ray {
+
+bool EnvironmentVariableLess::operator()(char a, char b) const {
+  // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
+  // It should be changed when Process adds Unicode support on Windows.
+  return std::less<char>()(tolower(a), tolower(b));
+}
+
+bool EnvironmentVariableLess::operator()(const std::string &a,
+                                         const std::string &b) const {
+  bool result;
+#ifdef _WIN32
+  result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
+#else
+  result = a < b;
+#endif
+  return result;
+}
 
 class ProcessFD {
   pid_t pid_;
@@ -53,11 +95,27 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec, bool decouple) {
+  static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
+                            const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
+    ProcessEnvironment new_env;
+    for (char *const *e = environ; *e; ++e) {
+      RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+      const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
+      RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+      new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
+    }
+    for (const auto &item : env) {
+      new_env[item.first] = item.second;
+    }
+    std::string new_env_block;
+    for (const auto &item : new_env) {
+      new_env_block += item.first + '=' + item.second + '\0';
+    }
 #ifdef _WIN32
+
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
@@ -79,7 +137,10 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        RAY_UNUSED(
+            new_env_block.c_str());  // Ensure there's a final terminator for Windows
+        char *const envp = &new_env_block[0];
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
           break;
         }
@@ -95,6 +156,13 @@ class ProcessFD {
       pid = -1;
     }
 #else
+    std::vector<char *> new_env_ptrs;
+    for (size_t i = 0; i < new_env_block.size(); i += strlen(&new_env_block[i]) + 1) {
+      new_env_ptrs.push_back(&new_env_block[i]);
+    }
+    new_env_ptrs.push_back(static_cast<char *>(NULL));
+    char **envp = &new_env_ptrs[0];
+
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
@@ -120,7 +188,8 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvp(argv[0], const_cast<char *const *>(argv));
+        execvpe(argv[0], const_cast<char *const *>(argv),
+                const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -133,15 +202,8 @@ class ProcessFD {
       int r = read(pipefds[0], &pid, sizeof(pid));
       (void)r;  // can't do much if this fails, so ignore return value
     }
-    if (decouple) {
-      fd = pipefds[0];  // grandchild, but we can use this to track its lifetime
-    } else {
-      fd = -1;  // direct child, so we can use the PID to track its lifetime
-      if (pipefds[0] != -1) {
-        close(pipefds[0]);
-        pipefds[0] = -1;
-      }
-    }
+    // Use pipe to track process lifetime. (The pipe closes when process terminates.)
+    fd = pipefds[0];
     if (pid == -1) {
       ec = std::error_code(errno, std::system_category());
     }
@@ -274,23 +336,24 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec,
-                 bool decouple) {
+Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
+                 const ProcessEnvironment &env) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvp(argv, ec, decouple);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
 }
 
-std::error_code Process::Call(const std::vector<std::string> &args) {
+std::error_code Process::Call(const std::vector<std::string> &args,
+                              const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), NULL, ec, true);
+  Process proc(&*argv.begin(), NULL, ec, true, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
@@ -322,14 +385,15 @@ bool Process::IsValid() const { return GetId() != -1; }
 
 std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
                                                    bool decouple,
-                                                   const std::string &pid_file) {
+                                                   const std::string &pid_file,
+                                                   const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple);
+  Process proc(&*argv.begin(), NULL, error, decouple, env);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;
@@ -405,15 +469,33 @@ void Process::Kill() {
       HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
       if (!::TerminateProcess(handle, ERROR_PROCESS_ABORTED)) {
         error = std::error_code(GetLastError(), std::system_category());
+        if (error.value() == ERROR_ACCESS_DENIED) {
+          // This can occur in some situations if the process is already terminating.
+          DWORD exit_code;
+          if (GetExitCodeProcess(handle, &exit_code) && exit_code != STILL_ACTIVE) {
+            // The process is already terminating, so consider the killing successful.
+            error = std::error_code();
+          }
+        }
       }
 #else
-      (void)fd;
-      if (kill(pid, SIGKILL) != 0) {
+      pollfd pfd = {static_cast<int>(fd), POLLHUP};
+      if (fd != -1 && poll(&pfd, 1, 0) == 1 && (pfd.revents & POLLHUP)) {
+        // The process has already died; don't attempt to kill its PID again.
+      } else if (kill(pid, SIGKILL) != 0) {
         error = std::error_code(errno, std::system_category());
+      }
+      if (error.value() == ESRCH) {
+        // The process died before our kill().
+        // This is probably due to using FromPid().Kill() on a non-owned process.
+        // We got lucky here, because we could've killed a recycled PID.
+        // To avoid this, do not kill a process that is not owned by us.
+        // Instead, let its parent receive its SIGCHLD normally and call waitpid() on it.
+        // (Exception: Tests might occasionally trigger this, but that should be benign.)
       }
 #endif
       if (error) {
-        RAY_LOG(ERROR) << "Failed to kill process " << pid << " with error " << error
+        RAY_LOG(DEBUG) << "Failed to kill process " << pid << " with error " << error
                        << ": " << error.message();
       }
     } else {
@@ -427,12 +509,84 @@ void Process::Kill() {
   }
 }
 
+#ifdef _WIN32
+#ifndef STATUS_BUFFER_OVERFLOW
+#define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)
+#endif
+typedef LONG NTSTATUS;
+typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
+                                                    ULONG ProcessInformationClass,
+                                                    PVOID ProcessInformation,
+                                                    ULONG ProcessInformationLength,
+                                                    ULONG *ReturnLength);
+
+static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
+    ATOMIC_VAR_INIT(NULL);
+
+pid_t GetParentPID() {
+  NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
+  if (!NtQueryInformationProcess) {
+    NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
+        GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")),
+                       _CRT_STRINGIZE(NtQueryInformationProcess)));
+    NtQueryInformationProcess_ = NtQueryInformationProcess;
+  }
+  DWORD ppid = 0;
+  PROCESS_BASIC_INFORMATION info;
+  ULONG cb = sizeof(info);
+  NTSTATUS status = NtQueryInformationProcess(GetCurrentProcess(), 0, &info, cb, &cb);
+  if ((status >= 0 || status == STATUS_BUFFER_OVERFLOW) && cb >= sizeof(info)) {
+    ppid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(info.Reserved3));
+  }
+  pid_t result = 0;
+  if (ppid > 0) {
+    // For now, assume PPID = 1 (simulating the reassignment to "init" on Linux)
+    result = 1;
+    if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
+      long long me_created, parent_created;
+      FILETIME unused;
+      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
+                          &unused, &unused, &unused) &&
+          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
+                          &unused, &unused)) {
+        if (me_created >= parent_created) {
+          // We verified the child is younger than the parent, so we know the parent
+          // is still alive.
+          // (Note that the parent can still die by the time this function returns,
+          // but that race condition exists on POSIX too, which we're emulating here.)
+          result = static_cast<pid_t>(ppid);
+        }
+      }
+      CloseHandle(parent);
+    }
+  }
+  return result;
+}
+#else
+pid_t GetParentPID() { return getppid(); }
+#endif  // #ifdef _WIN32
+
+bool IsParentProcessAlive() { return GetParentPID() != 1; }
+
+bool IsProcessAlive(pid_t pid) {
+#ifdef _WIN32
+  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  return false;
+#else
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  return true;
+#endif
+}
+
 }  // namespace ray
 
 namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
+  using namespace ray;
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -444,6 +598,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
+  using namespace ray;
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();

@@ -2,8 +2,8 @@ import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -33,7 +33,7 @@ class OnlineLinearRegression(nn.Module):
 
     def partial_fit(self, x, y):
         # TODO: Handle batch of data rather than individual points
-        self._check_inputs(x, y)
+        x, y = self._check_inputs(x, y)
         x = x.squeeze(0)
         y = y.item()
         self.time += 1
@@ -77,7 +77,7 @@ class OnlineLinearRegression(nn.Module):
                 posterior distribution to perform Thompson Sampling as per
                 http://proceedings.mlr.press/v28/agrawal13.pdf .
         """
-        self._check_inputs(x)
+        x = self._check_inputs(x)
         theta = self.sample_theta() if sample_theta else self.theta
         scores = x @ theta
         return scores
@@ -94,6 +94,7 @@ class OnlineLinearRegression(nn.Module):
                 "Target should be a tensor;" \
                 "Only online learning with a batch size of 1 is " \
                 "supported for now!"
+        return x if y is None else (x, y)
 
 
 class DiscreteLinearModel(TorchModelV2, nn.Module):
@@ -189,14 +190,19 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         self._cur_ctx = None
 
     def _check_inputs(self, x):
-        if x.ndim == 3:
-            assert x.size()[
-                0] == 1, "Only batch size of 1 is supported for now."
+        if x.ndim == 3 and x.size()[0] != 1:
+            # Just a test batch, slice to index 0.
+            if torch.all(x == 0.0):
+                x = x[0:1]
+            # An actual batch -> Error.
+            else:
+                raise ValueError("Only batch size of 1 is supported for now.")
+        return x
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
-        self._check_inputs(x)
+        x = self._check_inputs(x)
         x.squeeze_(dim=0)  # Remove the batch dimension
         scores = self.predict(x)
         scores.unsqueeze_(dim=0)  # Add the batch dimension
@@ -230,7 +236,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
 class ParametricLinearModelUCB(ParametricLinearModel):
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
-        self._check_inputs(x)
+        x = self._check_inputs(x)
         x.squeeze_(dim=0)  # Remove the batch dimension
         scores = super(ParametricLinearModelUCB, self).predict(
             x, sample_theta=False, use_ucb=True)
@@ -241,7 +247,7 @@ class ParametricLinearModelUCB(ParametricLinearModel):
 class ParametricLinearModelThompsonSampling(ParametricLinearModel):
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
-        self._check_inputs(x)
+        x = self._check_inputs(x)
         x.squeeze_(dim=0)  # Remove the batch dimension
         scores = super(ParametricLinearModelThompsonSampling, self).predict(
             x, sample_theta=True, use_ucb=False)

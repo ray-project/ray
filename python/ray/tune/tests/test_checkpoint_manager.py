@@ -1,6 +1,8 @@
 # coding: utf-8
+import os
 import random
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -127,6 +129,35 @@ class CheckpointManagerTest(unittest.TestCase):
 
         self.assertEqual(newest, checkpoints[1])
         self.assertEqual(checkpoint_manager.best_checkpoints(), [])
+
+    def testSameCheckpoint(self):
+        checkpoint_manager = CheckpointManager(
+            1, "i", delete_fn=lambda c: os.remove(c.value))
+
+        tmpfiles = []
+        for i in range(3):
+            tmpfile = tempfile.mktemp()
+            with open(tmpfile, "wt") as fp:
+                fp.write("")
+            tmpfiles.append(tmpfile)
+
+        checkpoints = [
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[0],
+                       self.mock_result(5)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
+                       self.mock_result(10)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[2],
+                       self.mock_result(0)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
+                       self.mock_result(20))
+        ]
+        for checkpoint in checkpoints:
+            checkpoint_manager.on_checkpoint(checkpoint)
+            self.assertTrue(os.path.exists(checkpoint.value))
+
+        for tmpfile in tmpfiles:
+            if os.path.exists(tmpfile):
+                os.remove(tmpfile)
 
 
 if __name__ == "__main__":

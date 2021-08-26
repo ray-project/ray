@@ -1,15 +1,18 @@
-from ray import serve
 import requests
 
-serve.init()
+from ray import serve
+
+serve.start()
 
 
-def echo(flask_request):
-    return "hello " + flask_request.args.get("name", "serve!")
+@serve.deployment
+def hello(request):
+    name = request.query_params["name"]
+    return f"Hello {name}!"
 
 
-serve.create_backend("hello", echo)
-serve.create_endpoint("hello", backend="hello", route="/hello")
+hello.deploy()
 
-requests.get("http://127.0.0.1:8000/hello").text
-# > "hello serve!"
+# Query our endpoint over HTTP.
+response = requests.get("http://127.0.0.1:8000/hello?name=serve").text
+assert response == "Hello serve!"

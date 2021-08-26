@@ -1,31 +1,37 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
-#include <boost/asio/thread_pool.hpp>
-#include <memory>
-#include <queue>
 #include "../native_ray_runtime.h"
 #include "invocation_spec.h"
-#include "ray/core.h"
 #include "task_submitter.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class NativeTaskSubmitter : public TaskSubmitter {
  public:
-  NativeTaskSubmitter(NativeRayRuntime &native_ray_tuntime);
+  ObjectID SubmitTask(InvocationSpec &invocation, const CallOptions &call_options);
 
-  ObjectID SubmitTask(const InvocationSpec &invocation);
+  ActorID CreateActor(InvocationSpec &invocation,
+                      const ActorCreationOptions &create_options);
 
-  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
-                      std::shared_ptr<msgpack::sbuffer> args);
-
-  ObjectID SubmitActorTask(const InvocationSpec &invocation);
+  ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
  private:
-  NativeRayRuntime &native_ray_tuntime_;
-
-  ObjectID Submit(const InvocationSpec &invocation, TaskType type);
+  ObjectID Submit(InvocationSpec &invocation, const CallOptions &call_options);
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

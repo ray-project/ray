@@ -34,8 +34,8 @@ import ray
 from ray.tune import register_env
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.env.policy_server_input import PolicyServerInput
+from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-from ray.rllib.examples.env.unity3d_env import Unity3DEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -69,7 +69,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)
+    ray.init()
 
     # Create a fake-env for the server. This env will never be used (neither
     # for sampling, nor for evaluation) and its obs/action Spaces do not
@@ -92,7 +92,6 @@ if __name__ == "__main__":
         "input_evaluation": [],
 
         # Other settings.
-        "sample_batch_size": 64,
         "train_batch_size": 256,
         "rollout_fragment_length": 20,
         # Multi-agent setup for the particular env.

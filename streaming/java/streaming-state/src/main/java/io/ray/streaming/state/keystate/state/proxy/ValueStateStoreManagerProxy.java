@@ -25,16 +25,14 @@ import io.ray.streaming.state.keystate.state.ValueState;
 import io.ray.streaming.state.keystate.state.impl.ValueStateImpl;
 import io.ray.streaming.state.strategy.StateStoreManagerProxy;
 
-/**
- * This class defines ValueState Wrapper, connecting state and backend.
- */
-public class ValueStateStoreManagerProxy<T> extends StateStoreManagerProxy<T> implements
-    KeyValueState<String, T> {
+/** This class defines ValueState Wrapper, connecting state and backend. */
+public class ValueStateStoreManagerProxy<T> extends StateStoreManagerProxy<T>
+    implements KeyValueState<String, T> {
 
   private final ValueStateImpl<T> valueState;
 
-  public ValueStateStoreManagerProxy(KeyStateBackend keyStateBackend,
-                                     ValueStateDescriptor<T> stateDescriptor) {
+  public ValueStateStoreManagerProxy(
+      KeyStateBackend keyStateBackend, ValueStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     this.valueState = new ValueStateImpl<>(stateDescriptor, keyStateBackend);
   }

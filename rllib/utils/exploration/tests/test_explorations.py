@@ -11,9 +11,7 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check, framework_iterator, try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.utils import check, framework_iterator
 
 
 def do_test_explorations(run,
@@ -29,12 +27,7 @@ def do_test_explorations(run,
         core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in framework_iterator(core_config):
-        if fw == "tfe" and run in [
-                ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
-        ]:
-            continue
-
+    for _ in framework_iterator(core_config):
         print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`
@@ -55,7 +48,7 @@ def do_test_explorations(run,
             actions = []
             for _ in range(25):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         observation=dummy_obs,
                         explore=False,
                         prev_action=prev_a,
@@ -65,18 +58,19 @@ def do_test_explorations(run,
             # Make sure actions drawn are different
             # (around some mean value), given constant observations.
             actions = []
-            for _ in range(100):
+            for _ in range(500):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         observation=dummy_obs,
                         explore=True,
                         prev_action=prev_a,
-                        prev_reward=1.0 if prev_a is not None else None))
+                        prev_reward=1.0 if prev_a is not None else None,
+                    ))
             check(
                 np.mean(actions),
                 expected_mean_action
                 if expected_mean_action is not None else 0.5,
-                atol=0.3)
+                atol=0.4)
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
 
@@ -89,7 +83,7 @@ class TestExplorations(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
@@ -99,7 +93,7 @@ class TestExplorations(unittest.TestCase):
         do_test_explorations(
             a3c.A2CTrainer,
             "CartPole-v0",
-            a3c.DEFAULT_CONFIG,
+            a3c.a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
 
@@ -136,7 +130,7 @@ class TestExplorations(unittest.TestCase):
         do_test_explorations(
             impala.ImpalaTrainer,
             "CartPole-v0",
-            impala.DEFAULT_CONFIG,
+            dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0))
 

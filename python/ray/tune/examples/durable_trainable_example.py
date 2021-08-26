@@ -19,11 +19,11 @@ class MockDurableTrainable(DurableTrainable):
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
         # Mock the path as a local path.
         local_dir_suffix = remote_checkpoint_dir.split("://")[1]
-        remote_checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
-                                             local_dir_suffix)
+        remote_checkpoint_dir = os.path.join(
+            ray._private.utils.get_user_temp_dir(), local_dir_suffix)
         # Disallow malformed relative paths for delete safety.
         assert os.path.abspath(remote_checkpoint_dir).startswith(
-            ray.utils.get_user_temp_dir())
+            ray._private.utils.get_user_temp_dir())
         logger.info("Using %s as the mocked remote checkpoint directory.",
                     self.remote_checkpoint_dir)
         super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
@@ -51,7 +51,7 @@ class OptimusFn(object):
 
 def get_optimus_trainable(parent_cls):
     class OptimusTrainable(parent_cls):
-        def _setup(self, config):
+        def setup(self, config):
             self.iter = 0
             if config.get("seed"):
                 np.random.seed(config["seed"])
@@ -61,7 +61,7 @@ def get_optimus_trainable(parent_cls):
             self.initial_samples_per_step = 500
             self.mock_data = open("/dev/urandom", "rb").read(1024)
 
-        def _train(self):
+        def step(self):
             self.iter += 1
             new_loss = self.func.eval(self.iter)
             time.sleep(0.5)
@@ -71,7 +71,7 @@ def get_optimus_trainable(parent_cls):
                 "samples": self.initial_samples_per_step
             }
 
-        def _save(self, checkpoint_dir):
+        def save_checkpoint(self, checkpoint_dir):
             time.sleep(0.5)
             return {
                 "func": cloudpickle.dumps(self.func),
@@ -80,7 +80,7 @@ def get_optimus_trainable(parent_cls):
                 "iter": self.iter
             }
 
-        def _restore(self, checkpoint):
+        def load_checkpoint(self, checkpoint):
             self.func = cloudpickle.loads(checkpoint["func"])
             self.data = checkpoint["data"]
             self.iter = checkpoint["iter"]
@@ -102,6 +102,12 @@ if __name__ == "__main__":
     address = None if args.local else "auto"
     ray.init(address=address)
 
+    sync_config = tune.SyncConfig(
+        sync_to_driver=False,
+        sync_on_checkpoint=False,
+        upload_dir="s3://ray-tune-test/exps/",
+    )
+
     config = {
         "seed": None,
         "startup_delay": 0.001,
@@ -117,12 +123,9 @@ if __name__ == "__main__":
         config=config,
         num_samples=4,
         verbose=1,
-        queue_trials=True,
         # fault tolerance parameters
+        sync_config=sync_config,
         max_failures=-1,
         checkpoint_freq=20,
-        sync_to_driver=False,
-        sync_on_checkpoint=False,
-        upload_dir="s3://ray-tune-test/exps/",
         checkpoint_score_attr="training_iteration",
     )

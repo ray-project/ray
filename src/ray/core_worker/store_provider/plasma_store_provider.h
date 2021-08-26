@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
-#define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -22,10 +21,63 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
+
+class TrackedBuffer;
+
+// Active buffers tracker. This must be allocated as a separate structure since its
+// lifetime can exceed that of the store provider due to TrackedBuffer.
+class BufferTracker {
+ public:
+  // Track an object.
+  void Record(const ObjectID &object_id, TrackedBuffer *buffer,
+              const std::string &call_site);
+  // Release an object from tracking.
+  void Release(const ObjectID &object_id, TrackedBuffer *buffer);
+  // List tracked objects.
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjects() const;
+
+ private:
+  // Guards the active buffers map. This mutex may be acquired during TrackedBuffer
+  // destruction.
+  mutable absl::Mutex active_buffers_mutex_;
+  // Mapping of live object buffers to their creation call site. Destroyed buffers are
+  // automatically removed from this list via destructor. The map key uniquely
+  // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
+  // alive forever (i.e., this is a weak ref map).
+  absl::flat_hash_map<std::pair<ObjectID, TrackedBuffer *>, std::string> active_buffers_
+      GUARDED_BY(active_buffers_mutex_);
+};
+
+/// This can be used to hold the reference to a buffer.
+class TrackedBuffer : public Buffer {
+ public:
+  TrackedBuffer(std::shared_ptr<Buffer> buffer,
+                const std::shared_ptr<BufferTracker> &tracker, const ObjectID &object_id)
+      : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
+
+  uint8_t *Data() const override { return buffer_->Data(); }
+
+  size_t Size() const override { return buffer_->Size(); }
+
+  bool OwnsData() const override { return true; }
+
+  bool IsPlasmaBuffer() const override { return true; }
+
+  ~TrackedBuffer() { tracker_->Release(object_id_, this); }
+
+ private:
+  /// shared_ptr to a buffer which can potentially hold a reference
+  /// for the object (when it's a SharedMemoryBuffer).
+  std::shared_ptr<Buffer> buffer_;
+  std::shared_ptr<BufferTracker> tracker_;
+  ObjectID object_id_;
+};
 
 /// The class provides implementations for accessing plasma store, which includes both
 /// local and remote stores. Local access goes is done via a
@@ -36,13 +88,11 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
-      std::function<Status()> check_signals, bool evict_if_full,
-      std::function<void()> on_store_full = nullptr,
+      const std::shared_ptr<ReferenceCounter> reference_counter,
+      std::function<Status()> check_signals, bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
-
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
 
   /// Create and seal an object.
   ///
@@ -51,10 +101,12 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object The object to create.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
-  Status Put(const RayObject &object, const ObjectID &object_id, bool *object_exists);
+  Status Put(const RayObject &object, const ObjectID &object_id,
+             const rpc::Address &owner_address, bool *object_exists);
 
   /// Create an object in plasma and return a mutable buffer to it. The buffer should be
   /// subsequently written to and then sealed using Seal().
@@ -62,9 +114,11 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] metadata The metadata of the object.
   /// \param[in] data_size The size of the object.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data, bool created_by_worker);
 
   /// Seal an object buffer created with Create().
   ///
@@ -88,14 +142,25 @@ class CoreWorkerPlasmaStoreProvider {
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
+  /// Get objects directly from the local plasma store, without waiting for the
+  /// objects to be fetched from another node. This should only be used
+  /// internally, never by user code.
+  ///
+  /// \param[in] ids The IDs of the objects to get.
+  /// \param[out] results The results will be stored here. A nullptr will be
+  /// added for objects that were not in the local store.
+  /// \return Status OK if the request to the local object store was
+  /// successful.
+  Status GetIfLocal(const std::vector<ObjectID> &ids,
+                    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
   Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only);
 
   /// Lists objects in used (pinned) by the current client.
   ///
@@ -129,40 +194,27 @@ class CoreWorkerPlasmaStoreProvider {
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 
-  /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable. Only the keys in the 'remaining' map are used.
-  ///
-  /// \param[in] num_attemps The number of attempted times.
-  /// \param[in] remaining The remaining objects.
-  static void WarnIfAttemptedTooManyTimes(int num_attempts,
-                                          const absl::flat_hash_set<ObjectID> &remaining);
+  /// Print a warning if we've attempted the fetch for too long and some
+  /// objects are still unavailable.
+  static void WarnIfFetchHanging(int64_t fetch_start_time_ms,
+                                 const absl::flat_hash_set<ObjectID> &remaining);
+
+  /// Put something in the plasma store so that subsequent plasma store accesses
+  /// will be faster. Currently the first access is always slow, and we don't
+  /// want the user to experience this.
+  /// \return status
+  Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
   plasma::PlasmaClient store_client_;
-  std::mutex store_client_mutex_;
+  /// Used to look up a plasma object's owner.
+  const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::function<Status()> check_signals_;
-  const bool evict_if_full_;
-  std::function<void()> on_store_full_;
   std::function<std::string()> get_current_call_site_;
-
-  // Active buffers tracker. This must be allocated as a separate structure since its
-  // lifetime can exceed that of the store provider due to callback references.
-  struct BufferTracker {
-    // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
-    // destruction.
-    mutable absl::Mutex active_buffers_mutex_;
-    // Mapping of live object buffers to their creation call site. Destroyed buffers are
-    // automatically removed from this list via destructor callback. The map key uniquely
-    // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
-    // alive forever (i.e., this is a weak ref map).
-    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
-        GUARDED_BY(active_buffers_mutex_);
-  };
-
+  uint32_t object_store_full_delay_ms_;
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
 };
 
+}  // namespace core
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H

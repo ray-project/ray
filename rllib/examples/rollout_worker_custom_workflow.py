@@ -8,13 +8,14 @@ collection and policy optimization.
 import argparse
 import gym
 import numpy as np
+import os
 
 import ray
 from ray import tune
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
@@ -32,6 +33,7 @@ class CustomPolicy(Policy):
 
     def __init__(self, observation_space, action_space, config):
         super().__init__(observation_space, action_space, config)
+        self.config["framework"] = None
         # example parameter
         self.w = 1.0
 
@@ -44,8 +46,8 @@ class CustomPolicy(Policy):
                         episodes=None,
                         **kwargs):
         # return random actions
-        return np.array([self.action_space.sample()
-                         for _ in obs_batch]), [], {}
+        return np.array(
+            [self.action_space.sample() for _ in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         # implement your learning code here
@@ -67,14 +69,14 @@ def training_workflow(config, reporter):
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = [
-        RolloutWorker.as_remote().remote(lambda c: gym.make("CartPole-v0"),
-                                         CustomPolicy)
+        RolloutWorker.as_remote().remote(
+            env_creator=lambda c: gym.make("CartPole-v0"), policy=CustomPolicy)
         for _ in range(config["num_workers"])
     ]
 
     for _ in range(config["num_iters"]):
         # Broadcast weights to the policy evaluation workers
-        weights = ray.put({"default_policy": policy.get_weights()})
+        weights = ray.put({DEFAULT_POLICY_ID: policy.get_weights()})
         for w in workers:
             w.set_weights.remote(weights)
 
@@ -107,7 +109,8 @@ if __name__ == "__main__":
     tune.run(
         training_workflow,
         resources_per_trial={
-            "gpu": 1 if args.gpu else 0,
+            "gpu": 1 if args.gpu
+            or int(os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) else 0,
             "cpu": 1,
             "extra_cpu": args.num_workers,
         },
@@ -115,4 +118,5 @@ if __name__ == "__main__":
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,
         },
+        verbose=1,
     )

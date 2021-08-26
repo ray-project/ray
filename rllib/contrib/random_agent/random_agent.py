@@ -20,7 +20,7 @@ class RandomAgent(Trainer):
         self.env = env_creator(config["env_config"])
 
     @override(Trainer)
-    def _train(self):
+    def step(self):
         rewards = []
         steps = 0
         for _ in range(self.config["rollouts_per_iteration"]):

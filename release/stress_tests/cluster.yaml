@@ -1,0 +1,54 @@
+cluster_name: ray-stress-tests
+
+min_workers: 100
+max_workers: 100
+
+idle_timeout_minutes: 5
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
+
+auth:
+    ssh_user: ubuntu
+
+
+available_node_types:
+    cpu_64_ondemand:
+        node_config:
+            InstanceType: m4.16xlarge
+        resources: {"CPU": 64}
+        min_workers: 0
+        max_workers: 0
+    cpu_2_spot:
+        node_config:
+            InstanceType: m4.large
+            InstanceMarketOptions:
+                MarketType: spot
+        resources: {"CPU": 2}
+        min_workers: 100
+        max_workers: 100
+
+docker:
+    image: anyscale/ray:nightly
+    container_name: ray_container
+    pull_before_run: False
+
+head_node_type: cpu_64_ondemand
+worker_default_node_type: cpu_2_spot
+
+setup_commands:
+    - pip install -U pip
+    - pip install terminado
+    - pip install boto3 cython==0.29.0
+    - pip install -U {{env["RAY_WHEEL"]}}
+
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --num-gpus=100

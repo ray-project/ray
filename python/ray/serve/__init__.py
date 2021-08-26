@@ -1,20 +1,15 @@
-from ray.serve.api import (
-    init, create_backend, delete_backend, create_endpoint, delete_endpoint,
-    set_traffic, get_handle, stat, update_backend_config, get_backend_config,
-    accept_batch, list_backends, list_endpoints)  # noqa: E402
+from ray.serve.api import (start, get_replica_context, shutdown, ingress,
+                           deployment, get_deployment, list_deployments)
+from ray.serve.batching import batch
+from ray.serve.config import HTTPOptions
+from ray.serve.utils import ServeRequest
+
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray.worker
+ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
-    "init",
-    "create_backend",
-    "delete_backend",
-    "create_endpoint",
-    "delete_endpoint",
-    "set_traffic",
-    "get_handle",
-    "stat",
-    "update_backend_config",
-    "get_backend_config",
-    "accept_batch",
-    "list_backends",
-    "list_endpoints",
+    "batch", "start", "HTTPOptions", "get_replica_context", "ServeRequest",
+    "shutdown", "ingress", "deployment", "get_deployment", "list_deployments"
 ]

@@ -4,7 +4,7 @@ import numpy as np
 from rllib.models.tf.attention_net import TrXLNet
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def bit_shift_generator(seq_length, shift, batch_size):
@@ -33,10 +33,10 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
         model_config={"max_seq_len": seq_length},
         name="trxl",
         num_transformer_units=1,
-        attn_dim=10,
+        attention_dim=10,
         num_heads=5,
         head_dim=20,
-        ff_hidden_dim=20,
+        position_wise_mlp_dim=20,
     )
 
     shift = 10

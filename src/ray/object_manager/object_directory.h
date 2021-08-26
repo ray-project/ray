@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
-#define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
+#pragma once
 
 #include <memory>
 #include <mutex>
@@ -21,36 +20,41 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/object_manager/plasma/client.h"
+#include "ray/gcs/gcs_client.h"
+#include "ray/object_manager/common.h"
 
 namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const ClientID &id) : client_id(id) {}
+  RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
 
   // Returns whether there is enough information to connect to the remote
   // object manager.
   bool Connected() const { return !ip.empty(); }
 
-  ClientID client_id;
+  NodeID node_id;
   std::string ip;
   uint16_t port;
 };
 
-class ObjectDirectoryInterface {
+/// Callback for object location notifications.
+using OnLocationsFound = std::function<void(
+    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
+    const std::string &, const NodeID &, size_t object_size)>;
+
+class IObjectDirectory {
  public:
-  virtual ~ObjectDirectoryInterface() {}
+  virtual ~IObjectDirectory() {}
 
   /// Lookup how to connect to a remote object manager.
   ///
   /// \param connection_info The connection information to fill out. This
-  /// should be pre-populated with the requested client ID. If the directory
-  /// has information about the requested client, then the rest of the fields
+  /// should be pre-populated with the requested node ID. If the directory
+  /// has information about the requested node, then the rest of the fields
   /// in this struct will be populated accordingly.
   virtual void LookupRemoteConnectionInfo(
       RemoteConnectionInfo &connection_info) const = 0;
@@ -60,26 +64,23 @@ class ObjectDirectoryInterface {
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
-  /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                              const std::unordered_set<ray::ClientID> &)>;
-
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
   /// \param object_id The object's ObjectID.
-  /// \param callback Invoked with (possibly empty) list of client ids and object_id.
+  /// \param callback Invoked with (possibly empty) list of node ids and object_id.
   /// \return Status of whether async call to backend succeeded.
   virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const rpc::Address &owner_address,
                                       const OnLocationsFound &callback) = 0;
 
-  /// Handle the removal of an object manager client. This updates the
-  /// locations of all subscribed objects that have the removed client as a
+  /// Handle the removal of an object manager node. This updates the
+  /// locations of all subscribed objects that have the removed node as a
   /// location, and fires the subscribed callbacks for those objects.
   ///
-  /// \param client_id The object manager client that was removed.
-  virtual void HandleClientRemoved(const ClientID &client_id) = 0;
+  /// \param node_id The object manager node that was removed.
+  virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
 
-  /// Subscribe to be notified of locations (ClientID) of the given object.
+  /// Subscribe to be notified of locations (NodeID) of the given object.
   /// The callback will be invoked with the complete list of known locations
   /// whenever the set of locations changes. The callback will also be fired if
   /// the list of known locations is empty. The callback provided to this
@@ -90,10 +91,11 @@ class ObjectDirectoryInterface {
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
-  /// \param success_cb Invoked with non-empty list of client ids and object_id.
+  /// \param success_cb Invoked with non-empty list of node ids and object_id.
   /// \return Status of whether subscription succeeded.
   virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                                const ObjectID &object_id,
+                                               const rpc::Address &owner_address,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
@@ -109,22 +111,24 @@ class ObjectDirectoryInterface {
   /// Report objects added to this node's store to the object directory.
   ///
   /// \param object_id The object id that was put into the store.
-  /// \param client_id The client id corresponding to this node.
+  /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                        const ObjectInfo &object_info) = 0;
 
-  /// Report objects removed from this client's store to the object directory.
+  /// Report objects removed from this node's store to the object directory.
   ///
   /// \param object_id The object id that was removed from the store.
-  /// \param client_id The client id corresponding to this node.
+  /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                          const NodeID &node_id,
+                                          const ObjectInfo &object_info) = 0;
+
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
 
   /// Returns debug string for class.
   ///
@@ -132,70 +136,4 @@ class ObjectDirectoryInterface {
   virtual std::string DebugString() const = 0;
 };
 
-/// Ray ObjectDirectory declaration.
-class ObjectDirectory : public ObjectDirectoryInterface {
- public:
-  /// Create an object directory.
-  ///
-  /// \param io_service The event loop to dispatch callbacks to. This should
-  /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and client
-  /// information from.
-  ObjectDirectory(boost::asio::io_service &io_service,
-                  std::shared_ptr<gcs::GcsClient> &gcs_client);
-
-  virtual ~ObjectDirectory() {}
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
-
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const OnLocationsFound &callback) override;
-
-  void HandleClientRemoved(const ClientID &client_id) override;
-
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
-
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-
-  std::string DebugString() const override;
-
-  /// ObjectDirectory should not be copied.
-  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
-
- private:
-  /// Callbacks associated with a call to GetLocations.
-  struct LocationListenerState {
-    /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
-    /// The current set of known locations of this object.
-    std::unordered_set<ClientID> current_object_locations;
-    /// This flag will get set to true if received any notification of the object.
-    /// It means current_object_locations is up-to-date with GCS. It
-    /// should never go back to false once set to true. If this is true, and
-    /// the current_object_locations is empty, then this means that the object
-    /// does not exist on any nodes due to eviction or the object never getting created.
-    bool subscribed;
-  };
-
-  /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
-  /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
-};
-
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H

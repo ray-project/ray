@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray import Language
+from ray.util.annotations import PublicAPI
 from ray._raylet import JavaFunctionDescriptor
 
 __all__ = [
@@ -52,10 +53,17 @@ def get_function_descriptor_for_actor_method(
             "")
     else:
         raise NotImplementedError("Cross language remote actor method "
-                                  "not support language {}".format(language))
+                                  f"not support language {language}")
 
 
+@PublicAPI(stability="beta")
 def java_function(class_name, function_name):
+    """Define a Java function.
+
+    Args:
+        class_name (str): Java class name.
+        function_name (str): Java function name.
+    """
     from ray.remote_function import RemoteFunction
     return RemoteFunction(
         Language.JAVA,
@@ -66,20 +74,30 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
-        None,  # num_return_vals,
+        None,  # accelerator_type,
+        None,  # num_returns,
         None,  # max_calls,
-        None)  # max_retries)
+        None,  # max_retries
+        None)  # runtime_env
 
 
+@PublicAPI(stability="beta")
 def java_actor_class(class_name):
+    """Define a Java actor class.
+
+    Args:
+        class_name (str): Java class name.
+    """
     from ray.actor import ActorClass
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_restarts,
-        0,  # max_task_retries,
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None)  # resources,
+        max_restarts=0,
+        max_task_retries=0,
+        num_cpus=None,
+        num_gpus=None,
+        memory=None,
+        object_store_memory=None,
+        resources=None,
+        accelerator_type=None,
+        runtime_env=None)

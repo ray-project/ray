@@ -1,36 +1,38 @@
-import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
-from datetime import datetime
+import json
 import logging
-import platform
-import shutil
-import uuid
-import time
-import tempfile
-import os
 from numbers import Number
+import os
+import platform
+import re
+import shutil
+import time
+from typing import Callable, Dict, Sequence, Union
+import uuid
+
+import ray
+import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
-from ray.tune.durable_trainable import DurableTrainable
-from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
-from ray.tune.trainable import TrainableUtil
-from ray.tune.utils import flatten_dict
-from ray.utils import binary_to_hex, hex_to_binary
+from ray.tune.resources import Resources, \
+    json_to_resources, resources_to_json
+from ray.tune.utils.placement_groups import PlacementGroupFactory, \
+    resource_dict_to_pg_factory
+from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils import date_str, flatten_dict
+from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
+from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
 logger = logging.getLogger(__name__)
-
-
-def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class Location:
@@ -49,6 +51,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -57,6 +60,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +74,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -112,11 +116,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -126,7 +136,30 @@ class TrialInfo:
     def trial_id(self):
         return self._trial_id
 
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
 
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
+
+
+def create_logdir(dirname, local_dir):
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -150,6 +183,13 @@ class Trial:
 
     """
 
+    _nonjson_fields = [
+        "results",
+        "best_result",
+        "param_config",
+        "extra_arg",
+    ]
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -164,8 +204,10 @@ class Trial:
                  evaluated_params=None,
                  experiment_tag="",
                  resources=None,
+                 placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
+                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -174,8 +216,8 @@ class Trial:
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
-                 loggers=None,
-                 sync_to_driver_fn=None,
+                 trial_dirname_creator=None,
+                 log_to_file=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -196,20 +238,40 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+
+            # If Trainable returns resources, do not allow manual override via
+            # `resources_per_trial` by the user.
             if default_resources:
-                if resources:
+                if resources or placement_group_factory:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
-                resources = default_resources
+
+                # New way: Trainable returns a PlacementGroupFactory object.
+                if isinstance(default_resources, PlacementGroupFactory):
+                    placement_group_factory = default_resources
+                    resources = None
+                # Set placement group factory to None for backwards
+                # compatibility.
+                else:
+                    placement_group_factory = None
+                    resources = default_resources
         self.location = Location()
+
         self.resources = resources or Resources(cpu=1, gpu=0)
+        self.placement_group_factory = placement_group_factory
+        self._setup_resources()
+
         self.stopping_criterion = stopping_criterion or {}
-        self.loggers = loggers
-        self.sync_to_driver_fn = sync_to_driver_fn
-        self.verbose = True
+
+        self.log_to_file = log_to_file
+        # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
+        if not self.log_to_file or not isinstance(self.log_to_file, Sequence) \
+           or not len(self.log_to_file) == 2:
+            self.log_to_file = (None, None)
+
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
@@ -229,11 +291,12 @@ class Trial:
         self.start_time = None
         self.logdir = None
         self.runner = None
-        self.result_logger = None
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
+        self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
+        self.custom_dirname = None
 
         # Checkpointing fields
         self.saving_to = None
@@ -241,8 +304,11 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
+        self.sync_to_cloud = sync_to_cloud
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
@@ -252,6 +318,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -259,16 +326,48 @@ class Trial:
         self.param_config = None
         self.extra_arg = None
 
-        self._nonjson_fields = [
-            "loggers",
-            "sync_to_driver_fn",
-            "results",
-            "best_result",
-            "param_config",
-            "extra_arg",
-        ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
+
+        if trial_dirname_creator:
+            self.custom_dirname = trial_dirname_creator(self)
+            if os.path.sep in self.custom_dirname:
+                raise ValueError("Trial dirname must not contain '/'. "
+                                 "Got {self.custom_dirname}")
+
+        self._state_json = None
+        self._state_valid = False
+
+    def _setup_resources(self, log_always: bool = False):
+        """Set up resource and placement group requirements.
+
+        This will try to convert the resource request in ``self.resources``
+        to a placement group factory object. If this is unsuccessful,
+        placement groups will not be used.
+
+        Args:
+            log_always (bool): If True, this will always log a warning if
+                conversion from a resource dict to a placement group
+                definition was unsuccessful (e.g. when passing ``extra_``
+                requests).
+
+
+        """
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            try:
+                self.placement_group_factory = resource_dict_to_pg_factory(
+                    self.resources)
+            except ValueError as exc:
+                if log_always or log_once("tune_pg_extra_resources"):
+                    logger.warning(exc)
+                self.placement_group_factory = None
+
+        # Set placement group factory flag to True in Resources object.
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
 
     @property
     def node_ip(self):
@@ -301,32 +400,45 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
-    @classmethod
-    def create_logdir(cls, identifier, local_dir):
-        local_dir = os.path.expanduser(local_dir)
-        os.makedirs(local_dir, exist_ok=True)
-        return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
-            dir=local_dir)
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
 
-    def init_logger(self):
-        """Init logger."""
-        if not self.result_logger:
-            if not self.logdir:
-                self.logdir = Trial.create_logdir(
-                    self._trainable_name() + "_" + self.experiment_tag,
-                    self.local_dir)
-            else:
-                os.makedirs(self.logdir, exist_ok=True)
+    def reset(self):
+        return Trial(
+            self.trainable_name,
+            config=self.config,
+            trial_id=None,
+            local_dir=self.local_dir,
+            evaluated_params=self.evaluated_params,
+            experiment_tag=self.experiment_tag,
+            resources=self.resources,
+            placement_group_factory=self.placement_group_factory,
+            stopping_criterion=self.stopping_criterion,
+            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            checkpoint_freq=self.checkpoint_freq,
+            checkpoint_at_end=self.checkpoint_at_end,
+            sync_on_checkpoint=self.sync_on_checkpoint,
+            keep_checkpoints_num=self.keep_checkpoints_num,
+            checkpoint_score_attr=self.checkpoint_score_attr,
+            export_formats=self.export_formats,
+            restore_path=self.restore_path,
+            trial_name_creator=self.trial_name_creator,
+            log_to_file=self.log_to_file,
+            max_failures=self.max_failures,
+        )
 
-            self.result_logger = UnifiedLogger(
-                self.config,
-                self.logdir,
-                trial=self,
-                loggers=self.loggers,
-                sync_function=self.sync_to_driver_fn)
+    def init_logdir(self):
+        """Init logdir."""
+        if not self.logdir:
+            self.logdir = create_logdir(self._generate_dirname(),
+                                        self.local_dir)
+        else:
+            os.makedirs(self.logdir, exist_ok=True)
+        self.invalidate_json_state()
 
-    def update_resources(self, cpu, gpu, **kwargs):
+    def update_resources(
+            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -336,16 +448,30 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
-        self.resources = Resources(cpu, gpu, **kwargs)
+
+        if isinstance(resources, PlacementGroupFactory):
+            self.placement_group_factory = resources
+        else:
+            self.resources = Resources(**resources)
+
+        self._setup_resources()
+
+        self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner
         self.checkpoint_manager.delete = checkpoint_deleter(
             self._trainable_name(), runner)
+        # No need to invalidate state cache: runner is not stored in json
+        # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        # No need to invalidate state cache: location is not stored in json
+        # self.invalidate_json_state()
 
     def set_status(self, status):
         """Sets the status of the trial."""
@@ -353,12 +479,15 @@ class Trial:
         if status == Trial.RUNNING:
             if self.start_time is None:
                 self.start_time = time.time()
+        self.invalidate_json_state()
 
-    def close_logger(self):
-        """Closes logger."""
-        if self.result_logger:
-            self.result_logger.close()
-            self.result_logger = None
+    def set_config(self, config):
+        self.config = config
+        self.invalidate_json_state()
+
+    def set_experiment_tag(self, experiment_tag):
+        self.experiment_tag = experiment_tag
+        self.invalidate_json_state()
 
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
@@ -369,6 +498,7 @@ class Trial:
                     self.num_failures, date_str()))
                 f.write(error_msg + "\n")
             self.error_msg = error_msg
+        self.invalidate_json_state()
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
@@ -402,6 +532,7 @@ class Trial:
     def clear_checkpoint(self):
         self.checkpoint.value = None
         self.restoring_from = None
+        self.invalidate_json_state()
 
     def on_checkpoint(self, checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
@@ -409,50 +540,15 @@ class Trial:
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if checkpoint.storage == Checkpoint.MEMORY:
-            self.checkpoint_manager.on_checkpoint(checkpoint)
-            return
-        if self.sync_on_checkpoint:
-            try:
-                # Wait for any other syncs to finish. We need to sync again
-                # after this to handle checkpoints taken mid-sync.
-                self.result_logger.wait()
-            except TuneError as e:
-                # Errors occurring during this wait are not fatal for this
-                # checkpoint, so it should just be logged.
-                logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s", self, str(e))
-            # Force sync down and wait before tracking the new checkpoint.
-            try:
-                if self.result_logger.sync_down():
-                    self.result_logger.wait()
-                else:
-                    logger.error(
-                        "Trial %s: Checkpoint sync skipped. "
-                        "This should not happen.", self)
-            except TuneError as e:
-                if issubclass(self.get_trainable_cls(), DurableTrainable):
-                    # Even though rsync failed the trainable can restore
-                    # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", self, str(e))
-                else:
-                    # If the trainable didn't have remote storage to upload
-                    # to then this checkpoint may have been lost, so we
-                    # shouldn't track it with the checkpoint_manager.
-                    raise e
-            if not issubclass(self.get_trainable_cls(), DurableTrainable):
-                if not os.path.exists(checkpoint.value):
-                    raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down.".format(
-                                        self, checkpoint.value))
         self.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
 
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
         self.last_result = self.restoring_from.result
         self.restoring_from = None
+        self.invalidate_json_state()
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
@@ -465,18 +561,12 @@ class Trial:
         return self.num_failures < self.max_failures or self.max_failures < 0
 
     def update_last_result(self, result, terminate=False):
-        result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            self.last_debug = time.time()
+
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
-        self.result_logger.on_result(self.last_result)
 
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
@@ -511,12 +601,10 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]) / len(
                                 self.metric_n_steps[metric][str(n)])
+        self.invalidate_json_state()
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
@@ -554,14 +642,40 @@ class Trial:
             identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
+    def _generate_dirname(self):
+        if self.custom_dirname:
+            generated_dirname = self.custom_dirname
+        else:
+            if "MAX_LEN_IDENTIFIER" in os.environ:
+                logger.error("The MAX_LEN_IDENTIFIER environment variable is "
+                             "deprecated and will be removed in the future. "
+                             "Use TUNE_MAX_LEN_IDENTIFIER instead.")
+            MAX_LEN_IDENTIFIER = int(
+                os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
+                               os.environ.get("MAX_LEN_IDENTIFIER", 130)))
+            generated_dirname = f"{str(self)}_{self.experiment_tag}"
+            generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
+            generated_dirname += f"_{date_str()}"
+        # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
+        return re.sub("[/()]", "_", generated_dirname)
+
+    def invalidate_json_state(self):
+        self._state_valid = False
+
+    def get_json_state(self) -> str:
+        if not self._state_json or not self._state_valid:
+            json_state = json.dumps(
+                self.__getstate__(), indent=2, cls=TuneFunctionEncoder)
+            self._state_json = json_state
+            self._state_valid = True
+        return self._state_json
+
     def __getstate__(self):
         """Memento generator for Trial.
 
-        Sets RUNNING trials to PENDING, and flushes the result logger.
+        Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
-            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
@@ -569,19 +683,17 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
-        state["result_logger"] = None
+        state["location"] = Location()
         # Avoid waiting for events that will never occur on resume.
-        state["resuming_from"] = None
+        state["restoring_from"] = None
         state["saving_to"] = None
-        if self.result_logger:
-            self.result_logger.flush(sync_down=False)
-            state["__logger_started__"] = True
-        else:
-            state["__logger_started__"] = False
+
+        state["_state_json"] = None
+        state["_state_valid"] = False
+
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
-        logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
 
         if state["status"] == Trial.RUNNING:
@@ -591,5 +703,9 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
-        if logger_started:
-            self.init_logger()
+
+        # Avoid creating logdir in client mode for returned trial results,
+        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
+        # of a hack.
+        if not ray.util.client.ray.is_connected():
+            self.init_logdir()  # Create logdir if it does not exist

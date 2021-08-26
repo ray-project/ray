@@ -1,18 +1,32 @@
-import logging
+"""
+Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+==============================================
 
+This file defines the distributed Trainer class for the Deep Q-Networks
+algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
+
+Detailed documentation:
+https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+"""  # noqa: E501
+
+import logging
+from typing import List, Optional, Type
+
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
+    MultiGPUTrainOneStep
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings (Experimental) ===
+    # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
         "type": "EpsilonGreedy",
@@ -69,6 +83,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": True,
     # Alpha parameter for prioritized replay buffer.
@@ -81,13 +98,26 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta_annealing_timesteps": 20000,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
+
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # Callback to run before learning on a multi-agent batch of experiences.
     "before_learn_on_batch": None,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===
@@ -118,96 +148,16 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
-    # by user's config). If we don't set them here, we will get an error
-    # from the config-key checker.
-    "schedule_max_timesteps": DEPRECATED_VALUE,
-    "exploration_final_eps": DEPRECATED_VALUE,
-    "exploration_fraction": DEPRECATED_VALUE,
-    "beta_annealing_fraction": DEPRECATED_VALUE,
-    "per_worker_exploration": DEPRECATED_VALUE,
-    "softmax_temp": DEPRECATED_VALUE,
-    "soft_q": DEPRECATED_VALUE,
-    "parameter_noise": DEPRECATED_VALUE,
-    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    # TODO(sven): Remove at some point.
-    #  Backward compatibility of epsilon-exploration config AND beta-annealing
-    # fraction settings (both based on schedule_max_timesteps, which is
-    # deprecated).
-    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("grad_norm_clipping", "grad_clip")
-        config["grad_clip"] = config.pop("grad_norm_clipping")
-
-    schedule_max_timesteps = None
-    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning(
-            "schedule_max_timesteps",
-            "exploration_config.epsilon_timesteps AND "
-            "prioritized_replay_beta_annealing_timesteps")
-        schedule_max_timesteps = config["schedule_max_timesteps"]
-    if config.get("exploration_final_eps", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("exploration_final_eps",
-                            "exploration_config.final_epsilon")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["final_epsilon"] = \
-                config.pop("exploration_final_eps")
-    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        assert schedule_max_timesteps is not None
-        deprecation_warning("exploration_fraction",
-                            "exploration_config.epsilon_timesteps")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["epsilon_timesteps"] = config.pop(
-                "exploration_fraction") * schedule_max_timesteps
-    if config.get("beta_annealing_fraction", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        assert schedule_max_timesteps is not None
-        deprecation_warning(
-            "beta_annealing_fraction (decimal)",
-            "prioritized_replay_beta_annealing_timesteps (int)")
-        config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
-            "beta_annealing_fraction") * schedule_max_timesteps
-    if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("per_worker_exploration",
-                            "exploration_config.type=PerWorkerEpsilonGreedy")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["type"] = PerWorkerEpsilonGreedy
-    if config.get("softmax_temp", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning(
-            "soft_q", "exploration_config={"
-            "type=StochasticSampling, temperature=[float]"
-            "}")
-        if config.get("softmax_temp", 1.0) < 0.00001:
-            logger.warning("softmax temp very low: Clipped it to 0.00001.")
-            config["softmax_temperature"] = 0.00001
-    if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning(
-            "soft_q", "exploration_config={"
-            "type=SoftQ, temperature=[float]"
-            "}")
-        config["exploration_config"] = {
-            "type": "SoftQ",
-            "temperature": config.get("softmax_temp", 1.0)
-        }
-    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
-
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":
             logger.warning(
@@ -231,9 +181,32 @@ def validate_config(config):
         elif config["replay_sequence_length"] > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
+
+    # Multi-agent mode and multi-GPU optimizer.
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the DQN algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     if config.get("prioritized_replay"):
         prio_args = {
             "prioritized_replay_alpha": config["prioritized_replay_alpha"],
@@ -249,7 +222,9 @@ def execution_plan(workers, config):
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
+        replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
@@ -271,8 +246,9 @@ def execution_plan(workers, config):
                 #  break e.g. DDPPO!).
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
+                samples.policy_batches[policy_id].set_get_interceptor(None)
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .data.get("batch_indexes"), td_error)
+                                        .get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
@@ -280,9 +256,22 @@ def execution_plan(workers, config):
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = MultiGPUTrainOneStep(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
@@ -298,35 +287,42 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config):
+def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+    """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
-    # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
+
+    # Calculate the "native ratio" as:
+    # [train-batch-size] / [size of env-rolled-out sampled data]
+    # This is to set freshly rollout-collected data in relation to
+    # the data we pull from the replay buffer (which also contains old
+    # samples).
+    native_ratio = config["train_batch_size"] / \
+        (config["rollout_fragment_length"] *
+         config["num_envs_per_worker"] * config["num_workers"])
+
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]
     return weights
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
-        from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
-    else:
-        return DQNTFPolicy
 
 
-def get_simple_policy_class(config):
-    if config["framework"] == "torch":
-        from ray.rllib.agents.dqn.simple_q_torch_policy import \
-            SimpleQTorchPolicy
-        return SimpleQTorchPolicy
-    else:
-        return SimpleQTFPolicy
-
-
+# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
+# may build on top of it.
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
@@ -335,8 +331,7 @@ GenericOffPolicyTrainer = build_trainer(
     validate_config=validate_config,
     execution_plan=execution_plan)
 
+# Build a DQN trainer, which uses the framework specific Policy
+# determined in `get_policy_class()` above.
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
-
-SimpleQTrainer = DQNTrainer.with_updates(
-    default_policy=SimpleQTFPolicy, get_policy_class=get_simple_policy_class)

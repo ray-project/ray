@@ -60,6 +60,17 @@ class RoundRobinPartition(Partition):
         return self.__partitions
 
 
+class ForwardPartition(Partition):
+    """Default partition for operator if the operator can be chained with
+     succeeding operators."""
+
+    def __init__(self):
+        self.__partitions = [0]
+
+    def partition(self, key_record, num_partition: int):
+        return self.__partitions
+
+
 class SimplePartition(Partition):
     """Wrap a python function as subclass of :class:`Partition`"""
 

@@ -1,9 +1,7 @@
 import numpy as np
-import timeit
 import unittest
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.utils.test_utils import check
 
 
 class TestSegmentTree(unittest.TestCase):
@@ -95,54 +93,6 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.min(2, 3), 4.0)
         assert np.isclose(tree.min(2, -1), 4.0)
         assert np.isclose(tree.min(3, 4), 3.0)
-
-    def test_microbenchmark_vs_old_version(self):
-        """
-        Results from March 2020 (capacity=1048576):
-
-        New tree:
-        0.049599366000000256s
-        results = timeit.timeit("tree.sum(5, 60000)",
-            setup="from ray.rllib.execution.segment_tree import
-            SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
-            number=10000)
-
-        Old tree:
-        0.13390400999999974s
-        results = timeit.timeit("tree.sum(5, 60000)",
-            setup="from ray.rllib.execution.tests.old_segment_tree import
-            OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
-            number=10000)
-        """
-        capacity = 2**20
-        # Expect reductions to be much faster now.
-        new = timeit.timeit(
-            "tree.sum(5, 60000)",
-            setup="from ray.rllib.execution.segment_tree import "
-            "SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
-            number=10000)
-        old = timeit.timeit(
-            "tree.sum(5, 60000)",
-            setup="from ray.rllib.execution.tests.old_segment_tree import "
-            "OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
-            number=10000)
-        print("Sum performance (time spent) old={} new={}".format(old, new))
-        self.assertGreater(old, new)
-
-        # Expect insertions to be roughly the same.
-        new = timeit.timeit(
-            "tree[50000] = 10; tree[50001] = 11",
-            setup="from ray.rllib.execution.segment_tree import "
-            "SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
-            number=100000)
-        old = timeit.timeit(
-            "tree[50000] = 10; tree[50001] = 11",
-            setup="from ray.rllib.execution.tests.old_segment_tree import "
-            "OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
-            number=100000)
-        print("Insertion performance (time spent) "
-              "old={} new={}".format(old, new))
-        check(old, new, rtol=0.15)
 
 
 if __name__ == "__main__":

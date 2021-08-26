@@ -1,13 +1,13 @@
 import argparse
-import numpy as np
+import os
+
+from filelock import FileLock
 from tensorflow.keras.datasets import mnist
 
-from ray.tune.integration.keras import TuneReporterCallback
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing")
-args, _ = parser.parse_known_args()
+import ray
+from ray import tune
+from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.integration.keras import TuneReportCallback
 
 
 def train_mnist(config):
@@ -17,7 +17,8 @@ def train_mnist(config):
     num_classes = 10
     epochs = 12
 
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    with FileLock(os.path.expanduser("~/.data.lock")):
+        (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
@@ -39,30 +40,24 @@ def train_mnist(config):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReporterCallback()])
+        callbacks=[TuneReportCallback({
+            "mean_accuracy": "accuracy"
+        })])
 
 
-if __name__ == "__main__":
-    import ray
-    from ray import tune
-    from ray.tune.schedulers import AsyncHyperBandScheduler
-    mnist.load_data()  # we do this on the driver because it's not threadsafe
-
-    ray.init(num_cpus=4 if args.smoke_test else None)
+def tune_mnist(num_training_iterations):
     sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
-        max_t=400,
-        grace_period=20)
+        time_attr="training_iteration", max_t=400, grace_period=20)
 
-    tune.run(
+    analysis = tune.run(
         train_mnist,
         name="exp",
         scheduler=sched,
+        metric="mean_accuracy",
+        mode="max",
         stop={
             "mean_accuracy": 0.99,
-            "training_iteration": 5 if args.smoke_test else 300
+            "training_iteration": num_training_iterations
         },
         num_samples=10,
         resources_per_trial={
@@ -71,9 +66,28 @@ if __name__ == "__main__":
         },
         config={
             "threads": 2,
-            "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
-            "momentum": tune.sample_from(
-                lambda spec: np.random.uniform(0.1, 0.9)),
-            "hidden": tune.sample_from(
-                lambda spec: np.random.randint(32, 512)),
+            "lr": tune.uniform(0.001, 0.1),
+            "momentum": tune.uniform(0.1, 0.9),
+            "hidden": tune.randint(32, 512),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+    if args.smoke_test:
+        ray.init(num_cpus=4)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
+
+    tune_mnist(num_training_iterations=5 if args.smoke_test else 300)

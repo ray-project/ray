@@ -5,6 +5,7 @@ Note that Ray must be installed first.
 
 ```
 pip install -r requirements-doc.txt
+pip install -U -r requirements-rtd.txt # important for reproducing the deployment environment
 make html
 open _build/html/index.html
 ```

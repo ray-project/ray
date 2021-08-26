@@ -4,7 +4,7 @@ Contributing to RLlib
 Development Install
 -------------------
 
-You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. However if you have installed ray from source using [these instructions](https://docs.ray.io/en/latest/installation.html) then do not this as these steps should have already created this symlink. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/latest/installation.html>`__ installed.)
+You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/installation.html>`__ then do not this as these steps should have already created this symlink. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
 
 API Stability
 -------------
@@ -31,7 +31,7 @@ Contributing Algorithms
 These are the guidelines for merging new algorithms into RLlib:
 
 * Contributed algorithms (`rllib/contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__):
-    - must subclass Trainer and implement the ``_train()`` method
+    - must subclass Trainer and implement the ``step()`` method
     - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
@@ -46,7 +46,7 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``contrib``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/tree/master/rllib/agents/agent.py>`__ and implement the ``_init`` and ``_train`` methods:
+It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/tree/master/rllib/agents/agent.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../rllib/contrib/random_agent/random_agent.py
    :language: python
@@ -77,3 +77,18 @@ After registration, you can run and visualize training progress using ``rllib tr
 
     rllib train --run=contrib/RandomAgent --env=CartPole-v0
     tensorboard --logdir=~/ray_results
+
+Debugging your Algorithms
+-------------------------
+
+Finding Memory Leaks In Workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
+
+.. autoclass:: ray.rllib.agents.callbacks.MemoryTrackingCallbacks
+
+The objects with the top 20 memory usage in the workers will be added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights and Biases: 
+
+.. image:: MemoryTrackingCallbacks.png
+

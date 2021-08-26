@@ -1,8 +1,8 @@
-import json
 import logging
 import time
 
 import ray
+import ray._private.services
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ class Cluster:
                  connect=False,
                  head_node_args=None,
                  shutdown_at_exit=True):
-        """Initializes the cluster.
+        """Initializes all services of a Ray cluster.
 
         Args:
             initialize_head (bool): Automatically start a Ray cluster
@@ -47,18 +47,19 @@ class Cluster:
     def address(self):
         return self.redis_address
 
-    def connect(self):
+    def connect(self, namespace=None):
         """Connect the driver to the cluster."""
         assert self.redis_address is not None
         assert not self.connected
         output_info = ray.init(
+            namespace=namespace,
             ignore_reinit_error=True,
             address=self.redis_address,
-            redis_password=self.redis_password)
+            _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, **node_args):
+    def add_node(self, wait=True, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
@@ -67,6 +68,7 @@ class Cluster:
             object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
+            wait (bool): Whether to wait until the node is alive.
             node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
@@ -79,11 +81,9 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
+            "dashboard_port": None,
         }
-        if "_internal_config" in node_args:
-            node_args["_internal_config"] = json.loads(
-                node_args["_internal_config"])
-        ray_params = ray.parameter.RayParams(**node_args)
+        ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
@@ -104,7 +104,7 @@ class Cluster:
             # We only need one log monitor per physical node.
             ray_params.update_if_absent(include_log_monitor=False)
             # Let grpc pick a port.
-            ray_params.update(node_manager_port=0)
+            ray_params.update_if_absent(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,
@@ -112,12 +112,13 @@ class Cluster:
                 spawn_reaper=self._shutdown_at_exit)
             self.worker_nodes.add(node)
 
-        # Wait for the node to appear in the client table. We do this so that
-        # the nodes appears in the client table in the order that the
-        # corresponding calls to add_node were made. We do this because in the
-        # tests we assume that the driver is connected to the first node that
-        # is added.
-        self._wait_for_node(node)
+        if wait:
+            # Wait for the node to appear in the client table. We do this so
+            # that the nodes appears in the client table in the order that the
+            # corresponding calls to add_node were made. We do this because in
+            # the tests we assume that the driver is connected to the first
+            # node that is added.
+            self._wait_for_node(node)
 
         return node
 
@@ -128,6 +129,16 @@ class Cluster:
             node (Node): Worker node of which all associated processes
                 will be removed.
         """
+        global_node = ray.worker._global_node
+        if global_node is not None:
+            if node._raylet_socket_name == global_node._raylet_socket_name:
+                ray.shutdown()
+                raise ValueError(
+                    "Removing a node that is connected to this Ray client "
+                    "is not allowed because it will break the driver."
+                    "You can use the get_other_node utility to avoid removing"
+                    "a node that the Ray client is connected.")
+
         if self.head_node == node:
             self.head_node.kill_all_processes(
                 check_alive=False, allow_graceful=allow_graceful)
@@ -153,17 +164,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            object_store_socket_names = [
-                client["ObjectStoreSocketName"] for client in clients
-            ]
-            if node.plasma_store_socket_name in object_store_socket_names:
-                return
-            else:
-                time.sleep(0.1)
-        raise TimeoutError("Timed out while waiting for nodes to join.")
+        ray._private.services.wait_for_node(self.redis_address,
+                                            node.plasma_store_socket_name,
+                                            self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
@@ -193,8 +196,8 @@ class Cluster:
                 return
             else:
                 logger.debug(
-                    "{} nodes are currently registered, but we are expecting "
-                    "{}".format(len(live_clients), expected))
+                    f"{len(live_clients)} nodes are currently registered, "
+                    f"but we are expecting {expected}")
                 time.sleep(0.1)
         raise TimeoutError("Timed out while waiting for nodes to join.")
 

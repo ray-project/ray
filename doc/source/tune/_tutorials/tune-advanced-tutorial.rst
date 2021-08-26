@@ -14,9 +14,8 @@ hyperparameters and allocate resources to promising models. Let's walk through h
     :local:
     :backlinks: none
 
-
-Trainable API with Population Based Training
---------------------------------------------
+Function API with Population Based Training
+-------------------------------------------
 
 PBT takes its inspiration from genetic algorithms where each member of the population
 can exploit information from the remainder of the population. For example, a worker might
@@ -31,23 +30,24 @@ This means that PBT can quickly exploit good hyperparameters, can dedicate more 
 promising models and, crucially, can adapt the hyperparameter values throughout training,
 leading to automatic learning of the best configurations.
 
-First, we define a Trainable that wraps a ConvNet model.
+First we define a training function that trains a ConvNet model using SGD.
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
-   :language: python
-   :start-after: __trainable_begin__
-   :end-before: __trainable_end__
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_function_example.py
+    :language: python
+    :start-after: __train_begin__
+    :end-before: __train_end__
 
 The example reuses some of the functions in ray/tune/examples/mnist_pytorch.py, and is also a good
 demo for how to decouple the tuning logic and original training code.
 
-Here, we also override ``reset_config``. This method is optional but can be implemented to speed
-up algorithms such as PBT, and to allow performance optimizations such as running experiments
-with ``reuse_actors=True``.
+Here, we also need to take in a ``checkpoint_dir`` arg since checkpointing is required for the exploitation process in PBT.
+We have to both load in the checkpoint if one is provided, and periodically save our
+model state in a checkpoint- in this case every 5 iterations. With SGD, there's no need to checkpoint the optimizer
+since it does not depend on previous states, but this is necessary with other optimizers like Adam.
 
 Then, we define a PBT scheduler:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_function_example.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -67,7 +67,7 @@ Some of the most important parameters are:
 
 Now we can kick off the tuning process by invoking tune.run:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_function_example.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
@@ -77,19 +77,19 @@ During the training, we can constantly check the status of the models from conso
 .. code-block:: bash
 
     == Status ==
-    Memory usage on this node: 10.4/16.0 GiB
-    PopulationBasedTraining: 4 checkpoints, 1 perturbs
-    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.42 GiB heap, 0.0/1.17 GiB objects
-    Number of trials: 4 ({'RUNNING': 4})
-    Result logdir: /Users/yuhao.yang/ray_results/pbt_test
-    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
-    | Trial name               | status   | loc                 |       lr |   momentum |   iter |   total time (s) |      acc |
-    |--------------------------+----------+---------------------+----------+------------+--------+------------------+----------|
-    | PytorchTrainble_3b42d914 | RUNNING  | 30.57.180.224:49840 | 0.122032 |   0.302176 |     18 |          3.8689  | 0.8875   |
-    | PytorchTrainble_3b45091e | RUNNING  | 30.57.180.224:49835 | 0.505325 |   0.628559 |     18 |          3.90404 | 0.134375 |
-    | PytorchTrainble_3b454c46 | RUNNING  | 30.57.180.224:49843 | 0.490228 |   0.969013 |     17 |          3.72111 | 0.0875   |
-    | PytorchTrainble_3b458a9c | RUNNING  | 30.57.180.224:49833 | 0.961861 |   0.169701 |     13 |          2.72594 | 0.1125   |
-    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
+    Memory usage on this node: 11.2/16.0 GiB
+    PopulationBasedTraining: 12 checkpoints, 5 perturbs
+    Resources requested: 0/16 CPUs, 0/0 GPUs, 0.0/4.83 GiB heap, 0.0/1.66 GiB objects
+    Result logdir: /Users/foo/ray_results/pbt_test
+    Number of trials: 4 (4 TERMINATED)
+    +---------------------------+------------+-------+-----------+------------+----------+--------+------------------+
+    | Trial name                | status     | loc   |        lr |   momentum |      acc |   iter |   total time (s) |
+    |---------------------------+------------+-------+-----------+------------+----------+--------+------------------|
+    | train_convnet_b2732_00000 | TERMINATED |       | 0.221776  |   0.608416 | 0.95625  |     59 |          13.0862 |
+    | train_convnet_b2732_00001 | TERMINATED |       | 0.0734679 |   0.1484   | 0.934375 |     59 |          13.1084 |
+    | train_convnet_b2732_00002 | TERMINATED |       | 0.0376862 |   0.8      | 0.971875 |     46 |          10.2909 |
+    | train_convnet_b2732_00003 | TERMINATED |       | 0.0471078 |   0.8      | 0.95     |     51 |          11.3355 |
+    +---------------------------+------------+-------+-----------+------------+----------+--------+------------------+
 
 In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in pbt_global.txt
 and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune logs:
@@ -114,8 +114,39 @@ Checking the accuracy:
 
 .. image:: /images/tune_advanced_plot1.png
 
-DCGAN with Trainable and PBT
-----------------------------
+.. _tune-advanced-tutorial-pbt-replay:
+
+Replaying a PBT run
+-------------------
+A run of Population Based Training ends with fully trained models. However, sometimes
+you might like to train the model from scratch, but use the same hyperparameter
+schedule as obtained from PBT. Ray Tune offers a replay utility for this.
+
+All you need to do is pass the policy log file for the trial you want to replay.
+This is usually stored in the experiment directory, for instance
+``~/ray_results/pbt_test/pbt_policy_ba982_00000.txt``.
+
+The replay utility reads the original configuration for the trial and updates it
+each time when it was originally perturbed. You can (and should)
+thus just use the same ``Trainable`` for the replay run.
+
+.. code-block:: python
+
+    from ray import tune
+
+    from ray.tune.examples.pbt_convnet_example import PytorchTrainable
+    from ray.tune.schedulers import PopulationBasedTrainingReplay
+
+    replay = PopulationBasedTrainingReplay(
+        "~/ray_results/pbt_test/pbt_policy_ba982_00003.txt")
+
+    tune.run(
+        PytorchTrainable,
+        scheduler=replay,
+        stop={"training_iteration": 100})
+
+DCGAN with PBT
+--------------
 
 The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
 models via a training paradigm consisting of two competing modules – a generator and a
@@ -128,7 +159,7 @@ Complete code example at `github <https://github.com/ray-project/ray/tree/master
 
 We define the Generator and Discriminator with standard Pytorch API:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/common.py
    :language: python
    :start-after: __GANmodel_begin__
    :end-before: __GANmodel_end__
@@ -138,22 +169,22 @@ the model candidates. For a GAN network, inception score is arguably the most
 commonly used metric. We trained a mnist classification model (LeNet) and use
 it to inference the generated images and evaluate the image quality.
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/common.py
    :language: python
    :start-after: __INCEPTION_SCORE_begin__
    :end-before: __INCEPTION_SCORE_end__
 
-The ``Trainable`` class includes a Generator and a Discriminator, each with an
-independent learning rate and optimizer.
+We define a training function that includes a Generator and a Discriminator, each with an
+independent learning rate and optimizer. We make sure to implement checkpointing for our training.
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py
    :language: python
-   :start-after: __Trainable_begin__
-   :end-before: __Trainable_end__
+   :start-after: __Train_begin__
+   :end-before: __Train_end__
 
 We specify inception score as the metric and start the tuning:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__

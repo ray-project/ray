@@ -1,0 +1,46 @@
+cluster_name: ray-xgboost-release-gpu-small
+
+max_workers: 5
+
+upscaling_speed: 32
+
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray:latest-gpu
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+available_node_types:
+    cpu_4_ondemand:
+        node_config:
+            InstanceType: m5.xlarge
+        resources: {"CPU": 4}
+        min_workers: 0
+        max_workers: 0
+    gpu_1_spot:
+        node_config:
+            InstanceType: p2.xlarge
+            InstanceMarketOptions:
+                MarketType: spot
+        resources: {"CPU": 4, "GPU": 1}
+        min_workers: 4
+        max_workers: 4
+
+auth:
+    ssh_user: ubuntu
+
+head_node_type: cpu_4_ondemand
+worker_default_node_type: gpu_1_spot
+
+file_mounts: {
+    "~/xgboost_tests": "."
+}
+
+file_mounts_sync_continuously: false

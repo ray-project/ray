@@ -1,143 +1,116 @@
 import inspect
+from enum import Enum
+import os
+from typing import Any, List, Optional
 
-from ray.serve.constants import ASYNC_CONCURRENCY
+import pydantic
+from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
 
-
-def _callable_accepts_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "_serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "_serve_accept_batch")
-
-
-def _callable_is_blocking(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class)
-    elif inspect.isclass(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class.__call__)
+from ray import cloudpickle as cloudpickle
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 SERVE_ROOT_URL_ENV_KEY)
 
 
-class BackendConfig:
-    def __init__(self, config_dict, accepts_batches=False, is_blocking=True):
-        assert isinstance(config_dict, dict)
-        # Make a copy so that we don't modify the input dict.
-        config_dict = config_dict.copy()
+class BackendConfig(BaseModel):
+    """Configuration options for a backend, to be set by the user.
 
-        self.accepts_batches = accepts_batches
-        self.is_blocking = is_blocking
-        self.num_replicas = config_dict.pop("num_replicas", 1)
-        self.max_batch_size = config_dict.pop("max_batch_size", None)
-        self.batch_wait_timeout = config_dict.pop("batch_wait_timeout", 0)
-        self.max_concurrent_queries = config_dict.pop("max_concurrent_queries",
-                                                      None)
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
-        if self.max_concurrent_queries is None:
-            # Model serving mode: if the servable is blocking and the wait
-            # timeout is default zero seconds, then we keep the existing
-            # behavior to allow at most max batch size queries.
-            if self.is_blocking and self.batch_wait_timeout == 0:
-                self.max_concurrent_queries = self.max_batch_size or 1
+    Args:
+        num_replicas (Optional[int]): The number of processes to start up that
+            will handle requests to this backend. Defaults to 1.
+        max_concurrent_queries (Optional[int]): The maximum number of queries
+            that will be sent to a replica of this backend without receiving a
+            response. Defaults to 100.
+        user_config (Optional[Any]): Arguments to pass to the reconfigure
+            method of the backend. The reconfigure method is called if
+            user_config is not None.
+        experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
+            that backend workers will wait until there is no more work to be
+            done before shutting down. Defaults to 2s.
+        experimental_graceful_shutdown_timeout_s (Optional[float]):
+            Controller waits for this duration to forcefully kill the replica
+            for shutdown. Defaults to 20s.
+    """
 
-            # Pipeline/async mode: if the servable is not blocking,
-            # router should just keep pushing queries to the worker
-            # replicas until a high limit.
-            if not self.is_blocking:
-                self.max_concurrent_queries = ASYNC_CONCURRENCY
+    num_replicas: PositiveInt = 1
+    max_concurrent_queries: Optional[int] = None
+    user_config: Any = None
 
-            # Batch inference mode: user specifies non zero timeout to wait for
-            # full batch. We will use 2*max_batch_size to perform double
-            # buffering to keep the replica busy.
-            if self.max_batch_size is not None and self.batch_wait_timeout > 0:
-                self.max_concurrent_queries = 2 * self.max_batch_size
+    experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
+    experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
-        if len(config_dict) != 0:
-            raise ValueError("Unknown options in backend config: {}".format(
-                list(config_dict.keys())))
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+        arbitrary_types_allowed = True
 
-        self._validate()
-
-    def update(self, config_dict):
-        """Updates this BackendConfig with options set in the passed config.
-
-        Unspecified keys will remain the same.
-        """
-        if "num_replicas" in config_dict:
-            self.num_replicas = config_dict.pop("num_replicas")
-        if "max_batch_size" in config_dict:
-            self.max_batch_size = config_dict.pop("max_batch_size")
-        if "max_concurrent_queries" in config_dict:
-            self.max_concurrent_queries = config_dict.pop(
-                "max_concurrent_queries")
-
-        if len(config_dict) != 0:
-            raise ValueError("Unknown options in backend config: {}".format(
-                list(config_dict.keys())))
-
-        self._validate()
-
-    def _validate(self):
-        if not isinstance(self.num_replicas, int):
-            raise TypeError("num_replicas must be an int.")
-        elif self.num_replicas < 1:
-            raise ValueError("num_replicas must be >= 1.")
-
-        if self.max_batch_size is not None:
-            if not isinstance(self.max_batch_size, int):
-                raise TypeError("max_batch_size must be an integer.")
-            elif self.max_batch_size < 1:
-                raise ValueError("max_batch_size must be >= 1.")
-
-            if not self.accepts_batches and self.max_batch_size > 1:
-                raise ValueError(
-                    "max_batch_size is set in config but the function or "
-                    "method does not accept batching. Please use "
-                    "@serve.accept_batch to explicitly mark the function or "
-                    "method as batchable and takes in list as arguments.")
+    # Dynamic default for max_concurrent_queries
+    @validator("max_concurrent_queries", always=True)
+    def set_max_queries_by_mode(cls, v, values):  # noqa 805
+        if v is None:
+            v = 100
+        else:
+            if v <= 0:
+                raise ValueError("max_concurrent_queries must be >= 0")
+        return v
 
 
 class ReplicaConfig:
-    def __init__(self, func_or_class, *actor_init_args,
-                 ray_actor_options=None):
-        self.func_or_class = func_or_class
-        self.accepts_batches = _callable_accepts_batch(func_or_class)
-        self.is_blocking = _callable_is_blocking(func_or_class)
-        self.actor_init_args = list(actor_init_args)
+    def __init__(self, backend_def, *init_args, ray_actor_options=None):
+        # Validate that backend_def is an import path, function, or class.
+        if isinstance(backend_def, str):
+            self.func_or_class_name = backend_def
+            pass
+        elif inspect.isfunction(backend_def):
+            self.func_or_class_name = backend_def.__name__
+            if len(init_args) != 0:
+                raise ValueError(
+                    "init_args not supported for function backend.")
+        elif inspect.isclass(backend_def):
+            self.func_or_class_name = backend_def.__name__
+        else:
+            raise TypeError(
+                "Backend must be an import path, function or class, it is {}.".
+                format(type(backend_def)))
+
+        self.serialized_backend_def = cloudpickle.dumps(backend_def)
+        self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
             self.ray_actor_options = ray_actor_options
 
+        self.resource_dict = {}
         self._validate()
 
     def _validate(self):
-        # Validate that func_or_class is a function or class.
-        if inspect.isfunction(self.func_or_class):
-            if len(self.actor_init_args) != 0:
-                raise ValueError(
-                    "actor_init_args not supported for function backend.")
-        elif not inspect.isclass(self.func_or_class):
-            raise TypeError(
-                "Backend must be a function or class, it is {}.".format(
-                    type(self.func_or_class)))
+
+        if "placement_group" in self.ray_actor_options:
+            raise ValueError("Providing placement_group for backend actors "
+                             "is not currently supported.")
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
-        elif "detached" in self.ray_actor_options:
+        elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying detached in actor_init_args is not allowed.")
+                "Specifying lifetime in init_args is not allowed.")
         elif "name" in self.ray_actor_options:
-            raise ValueError(
-                "Specifying name in actor_init_args is not allowed.")
+            raise ValueError("Specifying name in init_args is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "actor_init_args is not allowed.")
+                             "init_args is not allowed.")
         else:
-            num_cpus = self.ray_actor_options.get("num_cpus", 0)
+            # Ray defaults to zero CPUs for placement, we default to one here.
+            if "num_cpus" not in self.ray_actor_options:
+                self.ray_actor_options["num_cpus"] = 1
+            num_cpus = self.ray_actor_options["num_cpus"]
             if not isinstance(num_cpus, (int, float)):
                 raise TypeError(
                     "num_cpus in ray_actor_options must be an int or a float.")
             elif num_cpus < 0:
                 raise ValueError("num_cpus in ray_actor_options must be >= 0.")
+            self.resource_dict["CPU"] = num_cpus
 
             num_gpus = self.ray_actor_options.get("num_gpus", 0)
             if not isinstance(num_gpus, (int, float)):
@@ -145,6 +118,7 @@ class ReplicaConfig:
                     "num_gpus in ray_actor_options must be an int or a float.")
             elif num_gpus < 0:
                 raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+            self.resource_dict["GPU"] = num_gpus
 
             memory = self.ray_actor_options.get("memory", 0)
             if not isinstance(memory, (int, float)):
@@ -152,6 +126,7 @@ class ReplicaConfig:
                     "memory in ray_actor_options must be an int or a float.")
             elif memory < 0:
                 raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+            self.resource_dict["memory"] = memory
 
             object_store_memory = self.ray_actor_options.get(
                 "object_store_memory", 0)
@@ -162,8 +137,46 @@ class ReplicaConfig:
             elif object_store_memory < 0:
                 raise ValueError(
                     "object_store_memory in ray_actor_options must be >= 0.")
+            self.resource_dict["object_store_memory"] = object_store_memory
 
-            if not isinstance(
-                    self.ray_actor_options.get("resources", {}), dict):
+            custom_resources = self.ray_actor_options.get("resources", {})
+            if not isinstance(custom_resources, dict):
                 raise TypeError(
                     "resources in ray_actor_options must be a dictionary.")
+            self.resource_dict.update(custom_resources)
+
+
+class DeploymentMode(str, Enum):
+    NoServer = "NoServer"
+    HeadOnly = "HeadOnly"
+    EveryNode = "EveryNode"
+
+
+class HTTPOptions(pydantic.BaseModel):
+    # Documentation inside serve.start for user's convenience.
+    host: Optional[str] = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    middlewares: List[Any] = []
+    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    num_cpus: int = 0
+    root_url: str = ""
+
+    @validator("location", always=True)
+    def location_backfill_no_server(cls, v, values):
+        if values["host"] is None or v is None:
+            return DeploymentMode.NoServer
+        return v
+
+    @validator("root_url", always=True)
+    def fill_default_root_url(cls, v, values):
+        if v == "":
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            else:
+                return f"http://{values['host']}:{values['port']}"
+        return v
+
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+        arbitrary_types_allowed = True

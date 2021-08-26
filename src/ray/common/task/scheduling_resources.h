@@ -1,66 +1,40 @@
-#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
-#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
 
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
 
 /// Conversion factor that is the amount in internal units is equivalent to
-/// one actual resource. Multiply to convert from actual to interal and
+/// one actual resource. Multiply to convert from actual to internal and
 /// divide to convert from internal to actual.
 constexpr double kResourceConversionFactor = 10000;
 
 const std::string kCPU_ResourceLabel = "CPU";
 const std::string kGPU_ResourceLabel = "GPU";
-const std::string kTPU_ResourceLabel = "TPU";
+const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
 const std::string kMemory_ResourceLabel = "memory";
-
-/// \class FractionalResourceQuantity
-/// \brief Converts the resource quantities to an internal representation to
-/// avoid machine precision errors.
-class FractionalResourceQuantity {
- public:
-  /// \brief Construct a FractionalResourceQuantity representing zero
-  /// resources. This constructor is used by std::unordered_map when we try
-  /// to add a new FractionalResourceQuantity in ResourceSets.
-  FractionalResourceQuantity();
-
-  /// \brief Construct a FractionalResourceQuantity representing
-  /// resource_quantity.
-  FractionalResourceQuantity(double resource_quantity);
-
-  /// \brief Addition of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator+(const FractionalResourceQuantity &rhs) const;
-
-  /// \brief Subtraction of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator-(const FractionalResourceQuantity &rhs) const;
-
-  /// \brief Addition and assignment of FractionalResourceQuantity.
-  void operator+=(const FractionalResourceQuantity &rhs);
-
-  /// \brief Subtraction and assignment of FractionalResourceQuantity.
-  void operator-=(const FractionalResourceQuantity &rhs);
-
-  bool operator==(const FractionalResourceQuantity &rhs) const;
-  bool operator!=(const FractionalResourceQuantity &rhs) const;
-  bool operator<(const FractionalResourceQuantity &rhs) const;
-  bool operator>(const FractionalResourceQuantity &rhs) const;
-  bool operator<=(const FractionalResourceQuantity &rhs) const;
-  bool operator>=(const FractionalResourceQuantity &rhs) const;
-
-  /// \brief Return actual resource amount as a double.
-  double ToDouble() const;
-
- private:
-  /// The resource quantity represented as 1/kResourceConversionFactor-th of a
-  /// unit.
-  int64_t resource_quantity_;
-};
+const std::string kBundle_ResourceLabel = "bundle";
 
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
@@ -76,8 +50,7 @@ class ResourceSet {
   ResourceSet();
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(
-      const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
+  ResourceSet(const std::unordered_map<std::string, FixedPoint> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
@@ -121,8 +94,7 @@ class ResourceSet {
   /// \param resource_name: name/label of the resource to add.
   /// \param capacity: numeric capacity value for the resource to add.
   /// \return True, if the resource was successfully added. False otherwise.
-  void AddOrUpdateResource(const std::string &resource_name,
-                           const FractionalResourceQuantity &capacity);
+  void AddOrUpdateResource(const std::string &resource_name, const FixedPoint &capacity);
 
   /// \brief Delete a resource from the resource set.
   ///
@@ -136,8 +108,7 @@ class ResourceSet {
   ///
   /// \param other: The other resource set to add.
   /// \param total_resources: Total resource set which sets upper limits on capacity for
-  /// each label. \return True if the resource set was added successfully. False
-  /// otherwise.
+  /// each label.
   void AddResourcesCapacityConstrained(const ResourceSet &other,
                                        const ResourceSet &total_resources);
 
@@ -169,7 +140,7 @@ class ResourceSet {
   /// \param resource_name: Resource name for which capacity is requested.
   /// \return The capacity value associated with the specified resource, zero if resource
   /// does not exist.
-  FractionalResourceQuantity GetResource(const std::string &resource_name) const;
+  FixedPoint GetResource(const std::string &resource_name) const;
 
   /// Return the number of CPUs.
   ///
@@ -183,25 +154,24 @@ class ResourceSet {
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
   // TODO(williamma12): Make sure that everywhere we use doubles we don't
-  // convert it back to FractionalResourceQuantity.
+  // convert it back to FixedPoint.
   /// \brief Return a map of the resource and size in doubles. Note, size is in
   /// regular units and does not need to be multiplied by kResourceConversionFactor.
   ///
   /// \return map of resource in string to size in double.
   const std::unordered_map<std::string, double> GetResourceMap() const;
 
-  /// \brief Return a map of the resource and size in FractionalResourceQuantity. Note,
+  /// \brief Return a map of the resource and size in FixedPoint. Note,
   /// size is in kResourceConversionFactor of a unit.
   ///
-  /// \return map of resource in string to size in FractionalResourceQuantity.
-  const std::unordered_map<std::string, FractionalResourceQuantity>
-      &GetResourceAmountMap() const;
+  /// \return map of resource in string to size in FixedPoint.
+  const std::unordered_map<std::string, FixedPoint> &GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
  private:
   /// Resource capacity map.
-  std::unordered_map<std::string, FractionalResourceQuantity> resource_capacity_;
+  std::unordered_map<std::string, FixedPoint> resource_capacity_;
 };
 
 /// \class ResourceIds
@@ -229,16 +199,14 @@ class ResourceIds {
   /// \brief Constructs ResourceIds with a given set of fractional IDs.
   ///
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  explicit ResourceIds(
-      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
+  explicit ResourceIds(const std::vector<std::pair<int64_t, FixedPoint>> &fractional_ids);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs and fractional IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  ResourceIds(
-      const std::vector<int64_t> &whole_ids,
-      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
+  ResourceIds(const std::vector<int64_t> &whole_ids,
+              const std::vector<std::pair<int64_t, FixedPoint>> &fractional_ids);
 
   /// \brief Check if we have at least the requested amount.
   ///
@@ -250,14 +218,14 @@ class ResourceIds {
   ///
   /// \param resource_quantity Either a whole number or a fraction less than 1.
   /// \return True if there we have enough of the resource.
-  bool Contains(const FractionalResourceQuantity &resource_quantity) const;
+  bool Contains(const FixedPoint &resource_quantity) const;
 
   /// \brief Acquire the requested amount of the resource.
   ///
   /// \param resource_quantity The amount to acquire. Either a whole number or a
   /// fraction less than 1.
   /// \return A ResourceIds representing the specific acquired IDs.
-  ResourceIds Acquire(const FractionalResourceQuantity &resource_quantity);
+  ResourceIds Acquire(const FixedPoint &resource_quantity);
 
   /// \brief Return some resource IDs.
   ///
@@ -279,8 +247,7 @@ class ResourceIds {
   /// \brief Return just the fractional IDs.
   ///
   /// \return The fractional IDs.
-  const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &FractionalIds()
-      const;
+  const std::vector<std::pair<int64_t, FixedPoint>> &FractionalIds() const;
 
   /// \brief Check if ResourceIds has any resources.
   ///
@@ -290,7 +257,7 @@ class ResourceIds {
   /// \brief Return the total quantity of resources, ignoring the specific IDs.
   ///
   /// \return The total quantity of the resource.
-  FractionalResourceQuantity TotalQuantity() const;
+  FixedPoint TotalQuantity() const;
 
   /// \brief Return a string representation of the object.
   ///
@@ -328,10 +295,10 @@ class ResourceIds {
   std::vector<int64_t> whole_ids_;
   /// A vector of pairs of resource ID and a fraction of that ID (the fraction
   /// is at least zero and strictly less than 1).
-  std::vector<std::pair<int64_t, FractionalResourceQuantity>> fractional_ids_;
+  std::vector<std::pair<int64_t, FixedPoint>> fractional_ids_;
   /// Quantity to track the total capacity of the resource, since the whole_ids_ vector
   /// keeps changing
-  FractionalResourceQuantity total_capacity_;
+  FixedPoint total_capacity_;
   /// Quantity to track any pending decrements in capacity that weren't executed because
   /// of insufficient available resources. This backlog in cleared in the release method.
   int64_t decrement_backlog_;
@@ -478,18 +445,27 @@ class SchedulingResources {
   /// \return Void.
   void SetAvailableResources(ResourceSet &&newset);
 
+  /// \brief Request the total resources capacity.
+  ///
+  /// \return Immutable set of resources with currently total capacity.
   const ResourceSet &GetTotalResources() const;
+
+  /// \brief Overwrite total resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces total resource capacity.
+  /// \return Void.
+  void SetTotalResources(ResourceSet &&newset);
+
+  /// \brief Request the resource load information.
+  ///
+  /// \return Immutable set of resources describing the load information.
+  const ResourceSet &GetLoadResources() const;
 
   /// \brief Overwrite information about resource load with new resource load set.
   ///
   /// \param newset: The set of resources that replaces resource load information.
   /// \return Void.
   void SetLoadResources(ResourceSet &&newset);
-
-  /// \brief Request the resource load information.
-  ///
-  /// \return Immutable set of resources describing the load information.
-  const ResourceSet &GetLoadResources() const;
 
   /// \brief Release the amount of resources specified.
   ///
@@ -502,6 +478,12 @@ class SchedulingResources {
   /// \param resources: the amount of resources to be acquired.
   /// \return Void.
   void Acquire(const ResourceSet &resources);
+
+  /// \brief Add a new resource to available resource.
+  ///
+  /// \param resources: the amount of resources to be added.
+  /// \return Void.
+  void AddResource(const ResourceSet &resources);
 
   /// Returns debug string for class.
   ///
@@ -522,6 +504,17 @@ class SchedulingResources {
   /// \return Void.
   void DeleteResource(const std::string &resource_name);
 
+  /// \brief Get the resources used by normal tasks.
+  ///
+  /// \return Resources used by normal tasks.
+  const ResourceSet &GetNormalTaskResources() const;
+
+  /// \brief Set the amount of resources used by normal tasks.
+  ///
+  /// \param newset: The new resource set to update.
+  /// \return Void.
+  void SetNormalTaskResources(const ResourceSet &newset);
+
  private:
   /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;
@@ -529,7 +522,11 @@ class SchedulingResources {
   ResourceSet resources_available_;
   /// Resource load.
   ResourceSet resources_load_;
+  /// Resources used by normal tasks.
+  ResourceSet resources_normal_tasks_;
 };
+
+std::string format_resource(std::string resource_name, double quantity);
 
 }  // namespace ray
 
@@ -546,5 +543,3 @@ struct hash<ray::ResourceSet> {
   }
 };
 }  // namespace std
-
-#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

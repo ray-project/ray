@@ -1,0 +1,49 @@
+cluster_name: ray-asan-release-tests
+
+max_workers: 0
+
+upscaling_speed: 32
+
+idle_timeout_minutes: 15
+
+docker:
+    image: "rayproject/ray:latest"
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+available_node_types:
+    cpu_64_ondemand:
+        node_config:
+            InstanceType: m5.16xlarge
+        resources: {"CPU": 64}
+        min_workers: 0
+        max_workers: 0
+
+auth:
+    ssh_user: ubuntu
+
+head_node_type: cpu_64_ondemand
+worker_default_node_type: cpu_64_ondemand
+
+file_mounts: {
+    "~/asan_tests": "."
+}
+
+file_mounts_sync_continuously: false
+
+head_start_ray_commands:
+    - ray stop
+
+worker_start_ray_commands:
+    - ray stop
+
+setup_commands:
+    - sudo apt-get update
+    - sudo apt-get install -y build-essential curl unzip psmisc
+    - pip install cython==0.29.0 pytest

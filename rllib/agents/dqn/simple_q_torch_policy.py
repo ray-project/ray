@@ -1,15 +1,23 @@
-"""Basic example of a DQN policy without any optimizations."""
+"""PyTorch policy class used for Simple Q-Learning"""
 
 import logging
+from typing import Dict, Tuple
 
+import gym
 import ray
-from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_models, \
-    get_distribution_inputs_and_class, compute_q_values
+from ray.rllib.agents.dqn.simple_q_tf_policy import (
+    build_q_models, compute_q_values, get_distribution_inputs_and_class)
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchDistributionWrapper
+from ray.rllib.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils import try_import_torch
+from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -19,27 +27,59 @@ logger = logging.getLogger(__name__)
 
 
 class TargetNetworkMixin:
-    def __init__(self, obs_space, action_space, config):
-        def do_update():
-            # Update_target_fn will be called periodically to copy Q network to
-            # target Q network.
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), \
-                (self.q_func_vars, self.target_q_func_vars)
-            self.target_q_model.load_state_dict(self.q_model.state_dict())
+    """Assign the `update_target` method to the SimpleQTorchPolicy
 
-        self.update_target = do_update
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(self):
+        # Hard initial update from Q-net(s) to target Q-net(s).
+        self.update_target()
+
+    def update_target(self):
+        # Update_target_fn will be called periodically to copy Q network to
+        # target Q networks.
+        state_dict = self.model.state_dict()
+        for target in self.target_models.values():
+            target.load_state_dict(state_dict)
+
+    @override(TorchPolicy)
+    def set_weights(self, weights):
+        # Makes sure that whenever we restore weights for this policy's
+        # model, we sync the target network (from the main model)
+        # at the same time.
+        TorchPolicy.set_weights(self, weights)
+        self.update_target()
 
 
-def build_q_model_and_distribution(policy, obs_space, action_space, config):
+def build_q_model_and_distribution(
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
     return build_q_models(policy, obs_space, action_space, config), \
         TorchCategorical
 
 
-def build_q_losses(policy, model, dist_class, train_batch):
+def build_q_losses(policy: Policy, model, dist_class,
+                   train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for SimpleQTorchPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[ActionDistribution]): The action distribution class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
+    target_model = policy.target_models[model]
+
     # q network evaluation
     q_t = compute_q_values(
         policy,
-        policy.q_model,
+        model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
         is_training=True)
@@ -47,13 +87,13 @@ def build_q_losses(policy, model, dist_class, train_batch):
     # target q network evalution
     q_tp1 = compute_q_values(
         policy,
-        policy.target_q_model,
+        target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
         is_training=True)
 
     # q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
@@ -78,17 +118,30 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
-    """Adds q-values to action out dict."""
+def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
+                        action_dist) -> Dict[str, TensorType]:
+    """Adds q-values to the action out dict."""
     return {"q_values": policy.q_values}
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before SimpleQTorchPolicy
+    initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
+    TargetNetworkMixin.__init__(policy)
 
 
-SimpleQTorchPolicy = build_torch_policy(
+SimpleQTorchPolicy = build_policy_class(
     name="SimpleQPolicy",
+    framework="torch",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     extra_action_out_fn=extra_action_out_fn,
@@ -96,5 +149,5 @@ SimpleQTorchPolicy = build_torch_policy(
     make_model_and_action_dist=build_q_model_and_distribution,
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
-    stats_fn=lambda policy, config: {"td_error": policy.td_error},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
 )

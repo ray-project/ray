@@ -1,38 +1,25 @@
-import os
-import subprocess
-import tempfile
-
 import ray
+from ray._private.test_utils import run_string_as_driver
 from ray import serve
 
 
 def test_new_driver(serve_instance):
     script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="default_test_namespace")
 
 from ray import serve
-serve.init()
 
-def driver(flask_request):
+@serve.deployment
+def driver():
     return "OK!"
 
-serve.create_backend("driver", driver)
-serve.create_endpoint("driver", backend="driver", route="/driver")
+driver.deploy()
 """.format(ray.worker._global_node._redis_address)
+    run_string_as_driver(script)
 
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-        path = f.name
-        f.write(script)
-
-    proc = subprocess.Popen(["python", path])
-    return_code = proc.wait(timeout=10)
-    assert return_code == 0
-
-    handle = serve.get_handle("driver")
+    handle = serve.get_deployment("driver").get_handle()
     assert ray.get(handle.remote()) == "OK!"
-
-    os.remove(path)
 
 
 if __name__ == "__main__":

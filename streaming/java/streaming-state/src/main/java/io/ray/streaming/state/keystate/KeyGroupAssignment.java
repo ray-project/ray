@@ -24,9 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * This class defines key-group assignment algorithm。
- */
+/** This class defines key-group assignment algorithm。 */
 public final class KeyGroupAssignment {
 
   /**
@@ -37,8 +35,10 @@ public final class KeyGroupAssignment {
    * @param index index of the operator instance.
    */
   public static KeyGroup getKeyGroup(int maxParallelism, int parallelism, int index) {
-    Preconditions.checkArgument(maxParallelism >= parallelism,
-        "Maximum parallelism (%s) must not be smaller than parallelism(%s)", maxParallelism,
+    Preconditions.checkArgument(
+        maxParallelism >= parallelism,
+        "Maximum parallelism (%s) must not be smaller than parallelism(%s)",
+        maxParallelism,
         parallelism);
 
     int start = index == 0 ? 0 : ((index * maxParallelism - 1) / parallelism) + 1;
@@ -57,17 +57,17 @@ public final class KeyGroupAssignment {
     return Math.abs(key.hashCode() % maxParallelism);
   }
 
-  public static Map<Integer, List<Integer>> computeKeyGroupToTask(int maxParallelism,
-                                                                  List<Integer> targetTasks) {
+  public static Map<Integer, List<Integer>> computeKeyGroupToTask(
+      int maxParallelism, List<Integer> targetTasks) {
     Map<Integer, List<Integer>> keyGroupToTask = new ConcurrentHashMap<>();
     for (int index = 0; index < targetTasks.size(); index++) {
       KeyGroup taskKeyGroup = getKeyGroup(maxParallelism, targetTasks.size(), index);
-      for (int groupId = taskKeyGroup.getStartIndex(); groupId <= taskKeyGroup.getEndIndex();
+      for (int groupId = taskKeyGroup.getStartIndex();
+          groupId <= taskKeyGroup.getEndIndex();
           groupId++) {
         keyGroupToTask.put(groupId, ImmutableList.of(targetTasks.get(index)));
       }
     }
     return keyGroupToTask;
   }
-
 }

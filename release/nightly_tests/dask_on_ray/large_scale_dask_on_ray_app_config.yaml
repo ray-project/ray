@@ -1,0 +1,14 @@
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {}
+debian_packages: []
+
+python:
+  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, boto, s3fs, pyarrow]
+  conda_packages: []
+
+post_build_cmds:
+  # - pip install fastparquet
+  - pip3 uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - echo {{env["DATESTAMP"]}}

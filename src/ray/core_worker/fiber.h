@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_FIBER_H
-#define RAY_CORE_WORKER_FIBER_H
+#pragma once
 
-#include <ray/util/logging.h>
 #include <boost/fiber/all.hpp>
+
+#include "ray/util/logging.h"
 namespace ray {
+namespace core {
 
 /// Used by async actor mode. The fiber event will be used
 /// from python to switch control among different coroutines.
@@ -141,6 +142,5 @@ class FiberState {
   std::thread fiber_runner_thread_;
 };
 
+}  // namespace core
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_FIBER_H

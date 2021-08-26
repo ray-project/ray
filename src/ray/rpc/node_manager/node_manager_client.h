@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
-#define RAY_RPC_NODE_MANAGER_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
 #include <thread>
 
 #include "ray/common/status.h"
-#include "ray/protobuf/node_manager.grpc.pb.h"
-#include "ray/protobuf/node_manager.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/node_manager.grpc.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -37,17 +36,10 @@ class NodeManagerClient {
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+                    ClientCallManager &client_call_manager) {
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
-
-  /// Forward a task and its uncommitted lineage.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
 
   /// Get current node stats.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
@@ -60,9 +52,6 @@ class NodeManagerClient {
  private:
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 /// Client used by workers for communicating with a node manager server.
@@ -81,20 +70,50 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
+  /// Update cluster resource usage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, UpdateResourceUsage, grpc_client_, )
+
+  /// Request a resource report.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_, )
+
   /// Request a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
   /// Return a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+
+  /// Release unused workers.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
 
   /// Cancel a pending worker lease request.
-  RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+
+  /// Request prepare resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_, )
+
+  /// Request commit resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CommitBundleResources, grpc_client_, )
+
+  /// Return resource lease.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
 
   /// Notify the raylet to pin the provided object IDs.
-  RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 
   /// Trigger global GC across the cluster.
-  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+
+  /// Ask the raylet to spill an object to external storage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
+
+  /// Release unused bundles.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
+
+  /// Get the system config from Raylet.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
+
+  /// Get gcs server address.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_, )
 
  private:
   /// Constructor.
@@ -103,20 +122,14 @@ class NodeManagerWorkerClient
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address, const int port,
-                          ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+                          ClientCallManager &client_call_manager) {
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_NODE_MANAGER_CLIENT_H

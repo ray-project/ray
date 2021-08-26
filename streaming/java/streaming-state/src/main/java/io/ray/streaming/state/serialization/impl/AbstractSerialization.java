@@ -24,9 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * AbstractSerialization. Generate row key.
- */
+/** AbstractSerialization. Generate row key. */
 public abstract class AbstractSerialization {
 
   private static final Logger LOG = LoggerFactory.getLogger(AbstractSerialization.class);

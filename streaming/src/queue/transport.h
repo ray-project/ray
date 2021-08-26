@@ -1,5 +1,4 @@
-#ifndef _STREAMING_QUEUE_TRANSPORT_H_
-#define _STREAMING_QUEUE_TRANSPORT_H_
+#pragma once
 
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
@@ -7,6 +6,8 @@
 
 namespace ray {
 namespace streaming {
+
+using namespace ray::core;
 
 /// Transport is the transfer endpoint to a specific actor, buffers can be sent to peer
 /// through direct actor call.
@@ -49,16 +50,6 @@ class Transport {
       std::shared_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms);
 
  private:
-  /// Send buffer internal
-  /// \param[in] buffer buffer to be sent.
-  /// \param[in] function the function descriptor of peer's function.
-  /// \param[in] return_num return value number of the call.
-  /// \param[out] return_ids return ids from SubmitActorTask.
-  virtual void SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
-                            RayFunction &function, int return_num,
-                            std::vector<ObjectID> &return_ids);
-
- private:
   WorkerID worker_id_;
   ActorID peer_actor_id_;
   RayFunction async_func_;
@@ -66,4 +57,3 @@ class Transport {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif

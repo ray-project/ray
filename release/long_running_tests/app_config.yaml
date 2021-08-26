@@ -1,0 +1,17 @@
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {}
+debian_packages:
+  - curl
+  - unzip
+
+python:
+  pip_packages:
+  conda_packages: []
+
+post_build_cmds:
+  - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
+  - pip uninstall -y numpy ray || true
+  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
+  - pip3 install numpy || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[all] gym[atari]

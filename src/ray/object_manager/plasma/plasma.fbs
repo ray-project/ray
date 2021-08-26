@@ -15,19 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-include "common.fbs";
-
 // Plasma protocol specification
 namespace plasma.flatbuf;
+
+enum ObjectSource:int {
+  // Object was created by a worker (either task returns or `ray.put`).
+  CreatedByWorker = 0,
+  // Object was spilled and restored from external storage.
+  RestoredFromStorage,
+  // Object was received from a remote raylet.
+  ReceivedFromRemoteRaylet,
+  // The object could not be created and the raylet stored an
+  // error as the value.
+  ErrorStoredByRaylet,
+}
 
 enum MessageType:long {
   // Message that gets send when a client hangs up.
   PlasmaDisconnectClient = 0,
   // Create a new object.
   PlasmaCreateRequest,
+  PlasmaCreateRetryRequest,
   PlasmaCreateReply,
-  PlasmaCreateAndSealRequest,
-  PlasmaCreateAndSealReply,
   PlasmaAbortRequest,
   PlasmaAbortReply,
   // Seal an object.
@@ -45,42 +54,15 @@ enum MessageType:long {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
-  // List all objects in the store.
-  PlasmaListRequest,
-  PlasmaListReply,
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
-  // Subscribe to a list of objects or to all objects.
-  PlasmaSubscribeRequest,
-  // Unsubscribe.
-  PlasmaUnsubscribeRequest,
-  // Sending and receiving data.
-  // PlasmaDataRequest initiates sending the data, there will be one
-  // such message per data transfer.
-  PlasmaDataRequest,
-  // PlasmaDataReply contains the actual data and is sent back to the
-  // object store that requested the data. For each transfer, multiple
-  // reply messages get sent. Each one contains a fixed number of bytes.
-  PlasmaDataReply,
-  // Object notifications.
-  PlasmaNotification,
-  // Set memory quota for a client.
-  PlasmaSetOptionsRequest,
-  PlasmaSetOptionsReply,
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
-  // Create and seal a batch of objects. This should be used to save
-  // IPC for creating many small objects.
-  PlasmaCreateAndSealBatchRequest,
-  PlasmaCreateAndSealBatchReply,
-  // Touch a number of objects to bump their position in the LRU cache.
-  PlasmaRefreshLRURequest,
-  PlasmaRefreshLRUReply,
 }
 
 enum PlasmaError:int {
@@ -96,6 +78,12 @@ enum PlasmaError:int {
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
   ObjectInUse,
+  // An unexpected error occurred during object creation, such as trying to get
+  // the result of the same request twice. This is most likely due to a system
+  // bug in the plasma store or caller.
+  UnexpectedError,
+  // Trying to abort an object but it's not sealed.
+  ObjectSealed,
 }
 
 // Plasma store messages
@@ -104,6 +92,8 @@ struct PlasmaObjectSpec {
   // Index of the memory segment (= memory mapped file) that
   // this object is allocated in.
   segment_index: int;
+  // The unique id of the segment fd in case of fd reuse.
+  unique_fd_id: long;
   // The offset in bytes in the memory mapped file of the data.
   data_offset: ulong;
   // The size in bytes of the data.
@@ -114,18 +104,6 @@ struct PlasmaObjectSpec {
   metadata_size: ulong;
   // Device to create buffer on.
   device_num: int;
-}
-
-table PlasmaSetOptionsRequest {
-  // The name of the client.
-  client_name: string;
-  // The size of the output memory limit in bytes.
-  output_memory_quota: long;
-}
-
-table PlasmaSetOptionsReply {
-  // Whether setting options succeeded.
-  error: PlasmaError;
 }
 
 table PlasmaGetDebugStringRequest {
@@ -139,14 +117,33 @@ table PlasmaGetDebugStringReply {
 table PlasmaCreateRequest {
   // ID of the object to be created.
   object_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
+  // Owner raylet ID of this object.
+  owner_raylet_id: string;
+  // Owner IP address of this object.
+  owner_ip_address: string;
+  // Owner port address of this object.
+  owner_port: int;
+  // Unique id for the owner worker.
+  owner_worker_id: string;
   // The size of the object's data in bytes.
   data_size: ulong;
   // The size of the object's metadata in bytes.
   metadata_size: ulong;
+  // The source of the object (worker, raylet, etc.). Used for
+  // debug purposes.
+  source: ObjectSource;
   // Device to create buffer on.
   device_num: int;
+  // Try the creation request immediately. If this is not possible (due to
+  // out-of-memory), the error will be returned immediately to the client.
+  try_immediately: bool;
+}
+
+table PlasmaCreateRetryRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // The ID of the request to retry.
+  request_id: uint64;
 }
 
 table CudaHandle {
@@ -156,6 +153,9 @@ table CudaHandle {
 table PlasmaCreateReply {
   // ID of the object that was created.
   object_id: string;
+  // The client should retry the request if this is > 0. This
+  // is the request ID to include in the retry.
+  retry_with_request_id: uint64;
   // The object that is returned with this reply.
   plasma_object: PlasmaObjectSpec;
   // Error that occurred for this call.
@@ -163,43 +163,13 @@ table PlasmaCreateReply {
   // The file descriptor in the store that corresponds to the file descriptor
   // being sent to the client right after this message.
   store_fd: int;
+  // The unique id of the store file descriptor in case of fd reuse.
+  unique_fd_id: long;
   // The size in bytes of the segment for the store file descriptor (needed to
   // call mmap).
   mmap_size: long;
   // CUDA IPC Handle for objects on GPU.
   ipc_handle: CudaHandle;
-}
-
-table PlasmaCreateAndSealRequest {
-  // ID of the object to be created.
-  object_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
-  // The object's data.
-  data: string;
-  // The object's metadata.
-  metadata: string;
-  // Hash of the object data.
-  digest: string;
-}
-
-table PlasmaCreateAndSealReply {
-  // Error that occurred for this call.
-  error: PlasmaError;
-}
-
-table PlasmaCreateAndSealBatchRequest {
-    object_ids: [string];
-    // Whether to evict other objects to make room for these objects.
-    evict_if_full: bool;
-    data: [string];
-    metadata: [string];
-    digest: [string];
-}
-
-table PlasmaCreateAndSealBatchReply {
-  // Error that occurred for this call.
-  error: PlasmaError;
 }
 
 table PlasmaAbortRequest {
@@ -215,8 +185,6 @@ table PlasmaAbortReply {
 table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaSealReply {
@@ -231,6 +199,8 @@ table PlasmaGetRequest {
   object_ids: [string];
   // The number of milliseconds before the request should timeout.
   timeout_ms: long;
+  // Whether or not the get request is from the core worker. It is used to record how many bytes are consumed by core workers.
+  is_from_worker: bool;
 }
 
 table PlasmaGetReply {
@@ -247,6 +217,8 @@ table PlasmaGetReply {
   // of file descriptors that the store will send to the client after this
   // message.
   store_fds: [int];
+  // List of the unique ids for store_fds above.
+  unique_fd_ids: [long];
   // Size in bytes of the segment for each store file descriptor (needed to call
   // mmap). This list must have the same length as store_fds.
   mmap_sizes: [long];
@@ -294,13 +266,6 @@ table PlasmaContainsReply {
   has_object: int;
 }
 
-table PlasmaListRequest {
-}
-
-table PlasmaListReply {
-  objects: [ObjectInfo];
-}
-
 // PlasmaConnect is used by a plasma client the first time it connects with the
 // store. This is not really necessary, but is used to get some information
 // about the store such as its memory capacity.
@@ -321,37 +286,4 @@ table PlasmaEvictRequest {
 table PlasmaEvictReply {
   // Number of bytes that have been freed.
   num_bytes: ulong;
-}
-
-table PlasmaSubscribeRequest {
-}
-
-table PlasmaNotification {
-  object_info: [ObjectInfo];
-}
-
-table PlasmaDataRequest {
-  // ID of the object that is requested.
-  object_id: string;
-  // The host address where the data shall be sent to.
-  address: string;
-  // The port of the manager the data shall be sent to.
-  port: int;
-}
-
-table PlasmaDataReply {
-  // ID of the object that will be sent.
-  object_id: string;
-  // Size of the object data in bytes.
-  object_size: ulong;
-  // Size of the metadata in bytes.
-  metadata_size: ulong;
-}
-
-table PlasmaRefreshLRURequest {
-  // ID of the objects to be bumped in the LRU cache.
-  object_ids: [string];
-}
-
-table PlasmaRefreshLRUReply {
 }

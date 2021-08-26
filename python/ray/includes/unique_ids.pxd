@@ -40,11 +40,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         size_t Size()
 
-    cdef cppclass CActorCheckpointID "ray::ActorCheckpointID"(CUniqueID):
-
-        @staticmethod
-        CActorCheckpointID FromBinary(const c_string &binary)
-
     cdef cppclass CActorClassID "ray::ActorClassID"(CUniqueID):
 
         @staticmethod
@@ -65,10 +60,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorID Of(CJobID job_id, CTaskID parent_task_id,
                     int64_t parent_task_counter)
 
-    cdef cppclass CClientID "ray::ClientID"(CUniqueID):
+    cdef cppclass CNodeID "ray::NodeID"(CUniqueID):
 
         @staticmethod
-        CClientID FromBinary(const c_string &binary)
+        CNodeID FromBinary(const c_string &binary)
 
     cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
 
@@ -93,6 +88,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CJobID FromInt(uint32_t value)
+
+        uint32_t ToInt()
 
     cdef cppclass CTaskID "ray::TaskID"(CBaseID[CTaskID]):
 
@@ -124,6 +121,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CActorID ActorId() const
 
+        CJobID JobId() const
+
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 
         @staticmethod
@@ -139,11 +138,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         const CObjectID Nil()
 
         @staticmethod
-        CObjectID ForPut(const CTaskID &task_id, int64_t index,
-                         int64_t transport_type)
-
-        @staticmethod
-        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index)
+        CObjectID FromIndex(const CTaskID &task_id, int64_t index)
 
         @staticmethod
         size_t Size()
@@ -158,3 +153,18 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CWorkerID FromBinary(const c_string &binary)
+
+    cdef cppclass CPlacementGroupID "ray::PlacementGroupID" \
+                                    (CBaseID[CPlacementGroupID]):
+
+        @staticmethod
+        CPlacementGroupID FromBinary(const c_string &binary)
+
+        @staticmethod
+        const CActorID Nil()
+
+        @staticmethod
+        size_t Size()
+
+        @staticmethod
+        CPlacementGroupID FromRandom()

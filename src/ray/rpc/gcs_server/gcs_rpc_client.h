@@ -12,14 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GCS_RPC_CLIENT_H
-#define RAY_RPC_GCS_RPC_CLIENT_H
-
-#include <unistd.h>
+#pragma once
 
 #include "ray/common/network_util.h"
-#include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_client.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -64,7 +61,7 @@ class Executor {
         callback(status, reply);                                                       \
         delete executor;                                                               \
       } else {                                                                         \
-        Reconnect();                                                                   \
+        gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT);          \
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
@@ -83,26 +80,61 @@ class GcsRpcClient {
   /// \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  /// \param[in] get_server_address The function used for getting address when reconnect
-  /// rpc server.
-  GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager,
-               std::function<std::pair<std::string, int>()> get_server_address = nullptr,
-               std::function<void()> reconnected_callback = nullptr)
-      : client_call_manager_(client_call_manager),
-        get_server_address_(std::move(get_server_address)),
-        reconnected_callback_(std::move(reconnected_callback)) {
-    Init(address, port, client_call_manager);
+  /// \param[in] gcs_service_failure_detected The function is used to redo subscription
+  /// and reconnect to GCS RPC server when gcs service failure is detected.
+  GcsRpcClient(
+      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
+      : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
+    Reset(address, port, client_call_manager);
   };
 
-  /// Add job info to gcs server.
+  void Reset(const std::string &address, const int port,
+             ClientCallManager &client_call_manager) {
+    job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
+        address, port, client_call_manager);
+    actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
+        address, port, client_call_manager);
+    node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
+        address, port, client_call_manager);
+    node_resource_info_grpc_client_ =
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(address, port,
+                                                                 client_call_manager);
+    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
+        address, port, client_call_manager);
+    object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
+        address, port, client_call_manager);
+    task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
+        address, port, client_call_manager);
+    stats_grpc_client_ =
+        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
+    worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
+        address, port, client_call_manager);
+    placement_group_info_grpc_client_ =
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
+                                                                   client_call_manager);
+    internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
+        address, port, client_call_manager);
+  }
+
+  /// Add job info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_, )
 
-  /// Mark job as finished to gcs server.
+  /// Mark job as finished to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_, )
 
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
+
+  /// Report job error to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_, )
+
+  /// Get next job id from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetNextJobID, job_info_grpc_client_, )
+
+  /// Register actor via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
+                             actor_info_grpc_client_, )
 
   /// Create actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
@@ -114,28 +146,16 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetNamedActorInfo,
                              actor_info_grpc_client_, )
 
+  /// Get all named actor names from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, ListNamedActors,
+                             actor_info_grpc_client_, )
+
   /// Get all actor data from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
                              actor_info_grpc_client_, )
 
-  /// Register an actor to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Update actor info in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Add actor checkpoint data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint id data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID,
+  /// Kill actor via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, KillActorViaGcs,
                              actor_info_grpc_client_, )
 
   /// Register a node to GCS Service.
@@ -147,20 +167,41 @@ class GcsRpcClient {
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
 
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
+  /// Get internal config of the node from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
 
   /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,
+                             node_resource_info_grpc_client_, )
 
   /// Update resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources,
-                             node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, UpdateResources,
+                             node_resource_info_grpc_client_, )
 
   /// Delete resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
-                             node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, DeleteResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Get available resources of all nodes from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Report heartbeat of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
+                             heartbeat_info_grpc_client_, )
+
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
+                             heartbeat_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
@@ -184,9 +225,6 @@ class GcsRpcClient {
   /// Get task information from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, task_info_grpc_client_, )
 
-  /// Delete tasks from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, task_info_grpc_client_, )
-
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
 
@@ -203,93 +241,74 @@ class GcsRpcClient {
   /// Get information of all profiles from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, GetAllProfileInfo, stats_grpc_client_, )
 
-  /// Report a job error to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ErrorInfoGcsService, ReportJobError,
-                             error_info_grpc_client_, )
-
   /// Report a worker failure to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, ReportWorkerFailure,
                              worker_info_grpc_client_, )
 
-  /// Register a worker to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, RegisterWorker,
+  /// Get worker information from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerInfo,
                              worker_info_grpc_client_, )
 
+  /// Get information of all workers from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetAllWorkerInfo,
+                             worker_info_grpc_client_, )
+
+  /// Add worker information to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
+                             worker_info_grpc_client_, )
+
+  /// Create placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Remove placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
+                             placement_group_info_grpc_client_, )
+  /// Get placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Get placement group data from GCS Service by name.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetNamedPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Get information of all placement group from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetAllPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Wait for placement group until ready via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
+                             placement_group_info_grpc_client_, )
+
+  /// Operations for kv (Get, Put, Del, Exists)
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVDel,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVExists,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
+                             internal_kv_grpc_client_, )
+
  private:
-  void Init(const std::string &address, const int port,
-            ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
-    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
-    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
-        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
-    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
-        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
-    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
-        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
-  }
-
-  void Reconnect() {
-    absl::MutexLock lock(&mutex_);
-    if (get_server_address_) {
-      std::pair<std::string, int> address;
-      int index = 0;
-      for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
-        address = get_server_address_();
-        RAY_LOG(DEBUG) << "Attempt to reconnect to GCS server: " << address.first << ":"
-                       << address.second;
-        if (Ping(address.first, address.second, 100)) {
-          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                        << address.second;
-          break;
-        }
-        usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
-      }
-
-      if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
-        Init(address.first, address.second, client_call_manager_);
-        if (reconnected_callback_) {
-          reconnected_callback_();
-        }
-      } else {
-        RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
-                          "server address was "
-                       << address.first << ":" << address.second;
-      }
-    }
-  }
-
-  absl::Mutex mutex_;
-
-  ClientCallManager &client_call_manager_;
-  std::function<std::pair<std::string, int>()> get_server_address_;
-
-  /// The callback that will be called when we reconnect to GCS server.
-  /// Currently, we use this function to reestablish subscription to GCS.
-  /// Note, we use ping to detect whether the reconnection is successful. If the ping
-  /// succeeds but the RPC connection fails, this function might be called called again.
-  /// So it needs to be idempotent.
-  std::function<void()> reconnected_callback_;
+  std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
+  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
-  std::unique_ptr<GrpcClient<ErrorInfoGcsService>> error_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
+      placement_group_info_grpc_client_;
+  std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
 };
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_RPC_GCS_RPC_CLIENT_H

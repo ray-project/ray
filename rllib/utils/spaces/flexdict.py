@@ -12,6 +12,7 @@ class FlexDict(gym.spaces.Dict):
        space['key'] = spaces.Box(4,)
     See also: documentation for gym.spaces.Dict
     """
+
     def __init__(self, spaces=None, **spaces_kwargs):
         err = "Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)"
         assert (spaces is None) or (not spaces_kwargs), err

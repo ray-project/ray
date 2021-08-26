@@ -15,14 +15,16 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
-
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
 
+#include "absl/time/clock.h"
+
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
 extern "C" {
@@ -37,8 +39,9 @@ namespace ray {
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 /// A helper function to generate the unique bytes by hash.
-std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
-                                size_t parent_task_counter, size_t length) {
+__suppress_ubsan__("undefined") std::string
+    GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
+                        size_t parent_task_counter, size_t extra_bytes, size_t length) {
   RAY_CHECK(length <= DIGEST_SIZE);
   SHA256_CTX ctx;
   sha256_init(&ctx);
@@ -46,51 +49,14 @@ std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_i
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
                 parent_task_id.Size());
   sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+  if (extra_bytes > 0) {
+    sha256_update(&ctx, (const BYTE *)&extra_bytes, sizeof(extra_bytes));
+  }
 
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
   return std::string(buff, buff + length);
 }
-
-namespace {
-
-/// The bit offset of the flag `CreatedByTask` in a flags bytes.
-constexpr uint8_t kCreatedByTaskBitsOffset = 15;
-
-/// The bit offset of the flag `ObjectType` in a flags bytes.
-constexpr uint8_t kObjectTypeBitsOffset = 14;
-
-/// The mask that is used to mask the flag `CreatedByTask`.
-constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBitsOffset;
-
-/// The mask that is used to mask a bit to indicates the type of this object.
-/// So it can represent for 2 types.
-constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
-
-/// The implementations of helper functions.
-inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
-  const ObjectIDFlagsType object_type_bits =
-      static_cast<ObjectIDFlagsType>(created_by_task) << kCreatedByTaskBitsOffset;
-  *flags = (*flags bitor object_type_bits);
-}
-
-inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) {
-  const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type)
-                                             << kObjectTypeBitsOffset;
-  *flags = (*flags bitor object_type_bits);
-}
-
-inline bool CreatedByTask(ObjectIDFlagsType flags) {
-  return ((flags bitand kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
-}
-
-inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
-  const ObjectIDFlagsType object_type =
-      (flags bitand kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
-  return static_cast<ObjectType>(object_type);
-}
-
-}  // namespace
 
 template <typename T>
 void FillNil(T *data) {
@@ -108,25 +74,10 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
-ObjectIDFlagsType ObjectID::GetFlags() const {
-  ObjectIDFlagsType flags;
-  std::memcpy(&flags, id_ + TaskID::kLength, sizeof(flags));
-  return flags;
-}
-
-bool ObjectID::CreatedByTask() const { return ::ray::CreatedByTask(this->GetFlags()); }
-
-bool ObjectID::IsPutObject() const {
-  return ::ray::GetObjectType(this->GetFlags()) == ObjectType::PUT_OBJECT;
-}
-
-bool ObjectID::IsReturnObject() const {
-  return ::ray::GetObjectType(this->GetFlags()) == ObjectType::RETURN_OBJECT;
-}
-
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
+__suppress_ubsan__("undefined") uint64_t
+    MurmurHash64A(const void *key, int len, unsigned int seed) {
   const uint64_t m = 0xc6a4a7935bd1e995;
   const int r = 47;
 
@@ -175,8 +126,12 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 
 ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
                     const size_t parent_task_counter) {
-  auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
-                                  ActorID::kUniqueBytesLength);
+  // NOTE(swang): Include the current time in the hash for the actor ID so that
+  // we avoid duplicating a previous actor ID, which is not allowed by the GCS.
+  // See https://github.com/ray-project/ray/issues/10481.
+  auto data =
+      GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
+                          absl::GetCurrentTimeNanos(), ActorID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
@@ -221,7 +176,7 @@ TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
 
 TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
                             size_t parent_task_counter, const ActorID &actor_id) {
-  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
+  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, 0,
                                          TaskID::kUniqueBytesLength);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
@@ -230,7 +185,7 @@ TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
 
 TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
                              size_t parent_task_counter) {
-  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
+  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, 0,
                                          TaskID::kUniqueBytesLength);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
@@ -256,69 +211,51 @@ TaskID ObjectID::TaskId() const {
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
-  RAY_CHECK(put_index >= 1 && put_index <= kMaxObjectIndex) << "index=" << put_index;
-
-  ObjectIDFlagsType flags = 0x0000;
-  SetCreatedByTaskFlag(true, &flags);
-  SetObjectTypeFlag(ObjectType::PUT_OBJECT, &flags);
-
-  return GenerateObjectId(task_id.Binary(), flags, put_index);
-}
-
 ObjectIDIndexType ObjectID::ObjectIndex() const {
   ObjectIDIndexType index;
-  std::memcpy(&index, id_ + TaskID::kLength + kFlagsBytesLength, sizeof(index));
+  std::memcpy(&index, id_ + TaskID::kLength, sizeof(index));
   return index;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxObjectIndex)
-      << "index=" << return_index;
+ObjectID ObjectID::FromIndex(const TaskID &task_id, ObjectIDIndexType index) {
+  RAY_CHECK(index >= 1 && index <= kMaxObjectIndex) << "index=" << index;
 
-  ObjectIDFlagsType flags = 0x0000;
-  SetCreatedByTaskFlag(true, &flags);
-  SetObjectTypeFlag(ObjectType::RETURN_OBJECT, &flags);
-
-  return GenerateObjectId(task_id.Binary(), flags, return_index);
+  return GenerateObjectId(task_id.Binary(), index);
 }
 
 ObjectID ObjectID::FromRandom() {
-  ObjectIDFlagsType flags = 0x0000;
-  SetCreatedByTaskFlag(false, &flags);
-  // No need to set transport type for a random object id.
-  // No need to assign put_index/return_index bytes.
   std::vector<uint8_t> task_id_bytes(TaskID::kLength, 0x0);
   FillRandom(&task_id_bytes);
 
-  return GenerateObjectId(
-      std::string(reinterpret_cast<const char *>(task_id_bytes.data()),
-                  task_id_bytes.size()),
-      flags);
+  return GenerateObjectId(std::string(
+      reinterpret_cast<const char *>(task_id_bytes.data()), task_id_bytes.size()));
 }
 
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
-  return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
-                                 /*return_index=*/1);
+  return ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id),
+                             /*return_index=*/1);
 }
 
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
-                                    ObjectIDFlagsType flags,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
   ObjectID ret;
   std::memcpy(ret.id_, task_id_binary.c_str(), TaskID::kLength);
-  std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));
-  std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &object_index,
-              sizeof(object_index));
+  std::memcpy(ret.id_ + TaskID::kLength, &object_index, sizeof(object_index));
   return ret;
 }
 
-JobID JobID::FromInt(uint16_t value) {
+JobID JobID::FromInt(uint32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+}
+
+uint32_t JobID::ToInt() {
+  uint32_t value;
+  std::memcpy(&value, &id_, JobID::Size());
+  return value;
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
@@ -336,5 +273,5 @@ ID_OSTREAM_OPERATOR(JobID);
 ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
-
+ID_OSTREAM_OPERATOR(PlacementGroupID);
 }  // namespace ray

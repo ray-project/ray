@@ -20,11 +20,11 @@
     "additionalProperties": false,
 	"properties": {
         "cluster_name": {
-            "description": "An unique identifier for the head node and workers of this cluster.",
+            "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
         "min_workers": {
-            "description": "The minimum number of workers nodes to launch in addition to the head node. This number should be >= 0",
+            "description": "DEPRECATED. Use the per node_type min_workers field instead.",
             "type": "integer",
             "minimum": 0
         },
@@ -34,20 +34,25 @@
             "minimum": 0
         },
         "initial_workers": {
-            "description": "The number of workers to launch initially, in addition to the head node.",
+            "description": "DEPRECATED.",
             "type": "integer",
             "minimum": 0
         },
         "autoscaling_mode": {
-            "description": "The mode of the autoscaler e.g. default, aggressive",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "string",
             "enum": [ "default", "aggressive" ]
         },
         "target_utilization_fraction": {
-            "description": "The autoscaler will scale up the cluster to this target fraction of resources usage. For example, if a cluster of 8 nodes is 100% busy # and target_utilization was 0.8, it would resize the cluster to 10.",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "number",
             "minimum": 0,
             "maximum": 1
+        },
+        "upscaling_speed": {
+            "description": "The autoscaler will scale up the cluster faster with higher upscaling speed. E.g., if the task requires adding more nodes then autoscaler will gradually scale up the cluster in chunks of upscaling_speed*currently_running_nodes. This number should be > 0.",
+            "type": "number",
+            "minimum": 0
         },
         "idle_timeout_minutes": {
             "description": "If a node is idle for this many minutes, it will be removed.",
@@ -139,6 +144,42 @@
                 "project_id": {
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
+                },
+                "security_group": {
+                    "type": "object",
+                    "description": "AWS security group",
+                    "additionalProperties": false,
+                    "properties": {
+                      "GroupName": {
+                        "type": "string",
+                        "description": "Security group name"
+                      },
+                      "IpPermissions": {
+                        "type": "array",
+                        "description": "Security group in bound rules"
+                      }
+                    }
+                },
+				"disable_node_updaters": {
+					"type": "boolean",
+					"description": "Disables node updaters if set to True. Default is False. (For Kubernetes operator usage.)"
+				},
+                "gcp_credentials": {
+                    "type": "object",
+                    "description": "Credentials for authenticating with the GCP client",
+                    "required": [ "type" ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["credentials_token", "service_account"],
+                            "description": "Credentials type: either temporary OAuth 2.0 token or permanent service account credentials blob."
+                        },
+                        "credentials": {
+                            "type": "string",
+                            "description": "Oauth token or JSON string constituting service account credentials"
+                        }
+                    }
                 }
             }
         },
@@ -156,6 +197,10 @@
                 },
                 "ssh_private_key": { 
                     "type": "string"
+                },
+                "ssh_proxy_command": {
+                    "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
+                    "type": "string"
                 }
             }
         },
@@ -167,7 +212,7 @@
                 "image": {
                     "type": "string",
                     "description": "the docker image name",
-                    "default": "tensorflow/tensorflow:1.5.0-py3"
+                    "default": "rayproject/ray:latest"
                 },
                 "container_name": {
                     "type": "string",
@@ -196,8 +241,31 @@
                 "worker_run_options": {
                     "type": "array",
                     "description": "analogous to head_run_options"
+                }, 
+                "disable_automatic_runtime_detection" : {
+                    "type": "boolean",
+                    "description": "disable Ray from automatically using the NVIDIA runtime if available",
+                    "default": false
+                },
+                "disable_shm_size_detection" : {
+                    "type": "boolean",
+                    "description": "disable Ray from automatically detecting /dev/shm size for the container",
+                    "default": false
+                },
+              "use_podman"  :  {
+                "type": "boolean",
+                "description": "Use 'podman' command in place of 'docker'",
+                "default": false
                 }
             }
+        },
+        "head_node_type": {
+            "type": "string",
+            "description": "If using multiple node types, specifies the head node type."
+        },
+        "worker_default_node_type": {
+            "type": "string",
+            "description": "DEPRECATED."
         },
         "head_node": {
             "type": "object",
@@ -210,6 +278,26 @@
         "file_mounts": {
             "type": "object",
             "description": "Map of remote paths to local paths, e.g. {\"/tmp/data\": \"/my/local/data\"}"
+        },
+        "cluster_synced_files": {
+            "type": "array",
+            "description": "List of paths on the head node which should sync to the worker nodes, e.g. [\"/some/data/somehwere\"]"
+        },
+        "file_mounts_sync_continuously": {
+            "type": "boolean",
+            "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
+        },
+        "rsync_exclude": {
+            "type": "array",
+            "description": "File pattern to not sync up or down when using the rsync command. Matches the format of rsync's --exclude param."
+        },
+        "rsync_filter": {
+            "type": "array",
+            "description": "Pattern files to lookup patterns to exclude when using rsync up or rsync down. This file is checked for recursively in all directories. For example, if .gitignore is provided here, the behavior will match git's .gitignore behavior."
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata field that can be used to store user-defined data in the cluster config. Ray does not interpret these fields."
         },
         "initialization_commands": {
             "$ref": "#/definitions/commands",
@@ -237,6 +325,62 @@
         },
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
+        },
+        "available_node_types": {
+            "type": "object",
+            "description": "A list of node types for multi-node-type autoscaling.",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "required": [ "resources", "node_config" ],
+                    "properties": {
+                       "node_config": {
+                           "type": "object",
+                           "description": "Provider-specific config for the node, e.g. instance type."
+                       },
+                       "min_workers": {"type": "integer"},
+                       "max_workers": {"type": "integer"},
+                       "resources": {
+						   "type": "object",
+						   "patternProperties": {
+							   ".*":{
+								   "type": "integer",
+								   "minimum": 0
+							   }
+						   }
+                       },
+                       "initialization_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
+                       },
+                       "worker_setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
+                       },
+                       "docker": {
+                        "description": "Configuration of Worker nodes.",
+                        "type": "object",
+                        "properties": {
+                            "pull_before_run": {
+                                "type": "boolean",
+                                "description": "run `docker pull` first"
+                            },
+                            "worker_image": {
+                                "type": "string",
+                                "description": "analogous to head_image"
+                            },
+                            "worker_run_options": {
+                                "type": "array",
+                                "description": "analogous to head_run_options, merged with the global docker run_options."
+                            }
+                        },
+                        "additionalProperties": false
+                    }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
         }
     }
 }

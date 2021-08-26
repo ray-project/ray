@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_SERVICE_BASED_GCS_CLIENT_H
-#define RAY_GCS_SERVICE_BASED_GCS_CLIENT_H
+#pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
@@ -24,17 +26,19 @@ namespace gcs {
 
 class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
-  explicit ServiceBasedGcsClient(const GcsClientOptions &options);
+  explicit ServiceBasedGcsClient(const GcsClientOptions &options,
+                                 std::function<bool(std::pair<std::string, int> *)>
+                                     get_gcs_server_address_func = {});
 
-  Status Connect(boost::asio::io_service &io_service) override;
+  Status Connect(instrumented_io_context &io_service) override;
 
   void Disconnect() override;
 
   GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
 
-  RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
-
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+
+  std::pair<std::string, int> GetGcsServerAddress() override;
 
  private:
   /// Get gcs server address from redis.
@@ -42,19 +46,40 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   ///
   /// \param context The context of redis.
   /// \param address The address of gcs server.
-  void GetGcsServerAddressFromRedis(redisContext *context,
-                                    std::pair<std::string, int> *address);
+  /// \param max_attempts The maximum number of times to get gcs server rpc address.
+  /// \return Returns true if gcs server address is obtained, False otherwise.
+  bool GetGcsServerAddressFromRedis(redisContext *context,
+                                    std::pair<std::string, int> *address,
+                                    int max_attempts = 1);
 
-  std::unique_ptr<RedisGcsClient> redis_gcs_client_;
+  /// Fire a periodic timer to check if GCS sever address has changed.
+  void PeriodicallyCheckGcsServerAddress();
+
+  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
+  /// service failure is detected.
+  ///
+  /// \param type The type of GCS service failure.
+  void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
+
+  /// Reconnect to GCS RPC server.
+  void ReconnectGcsServer();
+
+  std::shared_ptr<RedisClient> redis_client_;
 
   std::unique_ptr<GcsPubSub> gcs_pub_sub_;
 
   // Gcs rpc client
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // The runner to run function periodically.
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
+  std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
+  std::function<void(bool)> resubscribe_func_;
+  std::pair<std::string, int> current_gcs_server_address_;
+  int64_t last_reconnect_timestamp_ms_;
+  std::pair<std::string, int> last_reconnect_address_;
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_SERVICE_BASED_GCS_CLIENT_H

@@ -8,7 +8,7 @@ date: 2017-05-20 14:00:00
 This post announces Ray, a framework for efficiently running Python code on
 clusters and large multi-core machines. The project is open source.
 You can check out [the code](https://github.com/ray-project/ray) and
-[the documentation](http://docs.ray.io/en/latest/?badge=latest).
+[the documentation](http://docs.ray.io/en/master/?badge=latest).
 
 Many AI algorithms are computationally intensive and exhibit complex
 communication patterns. As a result, many researchers spend most of their

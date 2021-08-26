@@ -3,20 +3,90 @@
 Tune Distributed Experiments
 ============================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview:
-
-  1. How to setup and launch a distributed experiment,
-  2. :ref:`Commonly used commands <tune-distributed-common>`, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
-
-**Quick Summary**: To run a distributed experiment with Tune, you need to:
-
-  1. Make sure your script has ``ray.init(address=...)`` to connect to the existing Ray cluster.
-  2. If a ray cluster does not exist, start a Ray cluster.
-  3. Run the script on the head node (or use ``ray submit``).
+Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
 
 .. contents::
     :local:
     :backlinks: none
+
+Summary
+-------
+
+To run a distributed experiment with Tune, you need to:
+
+1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
+2. Specify ``ray.init(address=...)`` in your script :ref:`to connect to the existing Ray cluster <using-ray-on-a-cluster>`.
+3. Run the script on the head node (or use :ref:`ray submit <ray-submit-doc>`).
+
+
+.. _tune-distributed-local:
+
+Local Cluster Setup
+-------------------
+
+If you already have a list of nodes, you can follow the local :ref:`private cluster setup <cluster-private-setup>`. Below is an example cluster configuration as ``tune-default.yaml``:
+
+.. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
+   :language: yaml
+
+``ray up`` starts Ray on the cluster of nodes.
+
+.. code-block:: bash
+
+    ray up tune-default.yaml
+
+``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py [args]``.
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
+
+Manual Local Cluster Setup
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you run into issues using the local cluster setup (or want to add nodes manually), you can use :ref:`the manual cluster setup <cluster-index>`. At a glance,
+
+.. tune-distributed-cloud:
+
+Launching a cloud cluster
+-------------------------
+
+.. tip::
+
+    If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
+
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-cloud>`. Save the below cluster configuration (``tune-default.yaml``):
+
+.. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
+   :language: yaml
+   :name: tune-default.yaml
+
+``ray up`` starts Ray on the cluster of nodes.
+
+.. code-block:: bash
+
+    ray up tune-default.yaml
+
+``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py [args]``.
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py --start -- --ray-address=localhost:6379
+
+.. image:: /images/tune-upload.png
+    :scale: 50%
+    :align: center
+
+Analyze your results on TensorBoard by starting TensorBoard on the remote head machine.
+
+.. code-block:: bash
+
+    # Go to http://localhost:6006 to access TensorBoard.
+    ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
+
+
+Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+
 
 Running a distributed experiment
 --------------------------------
@@ -57,103 +127,11 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
-.. _tune-distributed-local:
-
-Local Cluster Setup
--------------------
-
-If you already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
-
-.. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
-   :language: yaml
-
-``ray up`` starts Ray on the cluster of nodes.
-
-.. code-block:: bash
-
-    ray up tune-default.yaml
-
-``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py [args]``.
-
-.. code-block:: bash
-
-    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
-
-Manual Local Cluster Setup
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you run into issues using the local cluster setup (or want to add nodes manually), you can use the manual cluster setup. `Full documentation here <using-ray-on-a-cluster.html>`__. At a glance,
-
-**On the head node**:
-
-.. code-block:: bash
-
-    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
-    $ ray start --head --redis-port=6379
-
-The command will print out the address of the Redis server that was started (and some other address information).
-
-**Then on all of the other nodes**, run the following. Make sure to replace ``<address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
-
-.. code-block:: bash
-
-    $ ray start --address=<address>
-
-Then, you can run your Tune Python script on the head node like:
-
-.. code-block:: bash
-
-    # On the head node, execute using existing ray cluster
-    $ python tune_script.py --ray-address=<address>
-
-.. tune-distributed-cloud:
-
-Launching a cloud cluster
--------------------------
-
-.. tip::
-
-    If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
-
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <ref-automatic-cluster>`. Save the below cluster configuration (``tune-default.yaml``):
-
-.. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
-   :language: yaml
-   :name: tune-default.yaml
-
-``ray up`` starts Ray on the cluster of nodes.
-
-.. code-block:: bash
-
-    ray up tune-default.yaml
-
-``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py [args]``.
-
-.. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
-
-.. code-block:: bash
-
-    ray submit tune-default.yaml tune_script.py --start -- --ray-address=localhost:6379
-
-.. image:: /images/tune-upload.png
-    :scale: 50%
-    :align: center
-
-Analyze your results on TensorBoard by starting TensorBoard on the remote head machine.
-
-.. code-block:: bash
-
-    # Go to http://localhost:6006 to access TensorBoard.
-    ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
-
-
-Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
-
 Syncing
 -------
 
-Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`autoscaler <ref-automatic-cluster>`.
-By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
+Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>`.
+By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.SyncConfig`` by providing either a function or a string.
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
 
@@ -169,7 +147,9 @@ If a string is provided, then it must include replacement fields ``{source}`` an
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_to_driver=custom_sync_func,
+        sync_config=tune.SyncConfig(
+            sync_to_driver=custom_sync_func
+        )
     )
 
 When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -215,16 +195,7 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through checkpointing.
-
-The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in the example below:
-
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_trainable.py
-   :language: python
-   :start-after: __trainable_example_begin__
-   :end-before: __trainable_example_end__
-
-This can then be used similarly to the Function API as before:
+Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through :ref:`checkpointing <tune-function-checkpointing>`.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
     :language: python
@@ -270,7 +241,7 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+You can also specify ``tune.run(sync_config=tune.SyncConfig(upload_dir=...))`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-fault-tol:
 
@@ -279,7 +250,7 @@ Fault Tolerance
 
 Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
-Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the cluster launcher with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
@@ -290,10 +261,10 @@ Tune automatically persists the progress of your entire experiment (a ``tune.run
 
 **Settings:**
 
- - The default setting of ``resume=False`` creates a new experiment.
- - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
- - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
- - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+- The default setting of ``resume=False`` creates a new experiment.
+- ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
+- ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
+- ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 
@@ -319,7 +290,7 @@ Upon a second run, this will restore the entire experiment state from ``~/path/t
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <ref-automatic-cluster>` to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <cluster-cloud>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 
@@ -329,7 +300,8 @@ Below are some commonly used commands for submitting experiments. Please see the
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
-    # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
+    # In `tune_experiment.py`, set `tune.SyncConfig(upload_dir="s3://...")`
+    # and pass it to `tune.run(sync_config=...)` to persist results
     $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
     # To start or update your cluster:

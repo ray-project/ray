@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GRPC_CLIENT_H
-#define RAY_RPC_GRPC_CLIENT_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
+
 #include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
@@ -29,23 +29,15 @@ namespace rpc {
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
-  ({                                                                    \
-    rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
-        &SERVICE::Stub::PrepareAsync##METHOD, request, callback);       \
-  })
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback,          \
+      #SERVICE ".grpc_client." #METHOD))
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
-    RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client)); \
-  }
-
-// Define a RPC client method that returns ray::Status.
-#define RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  ray::Status METHOD(const METHOD##Request &request,                        \
-                     const ClientCallback<METHOD##Reply> &callback) SPECS { \
-    return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
+  void METHOD(const METHOD##Request &request,                        \
+              const ClientCallback<METHOD##Reply> &callback) SPECS { \
+    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
   }
 
 template <class GrpcService>
@@ -57,8 +49,8 @@ class GrpcClient {
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -73,8 +65,8 @@ class GrpcClient {
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -93,12 +85,13 @@ class GrpcClient {
   ///
   /// \return Status.
   template <class Request, class Reply>
-  ray::Status CallMethod(
+  void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
+      const Request &request, const ClientCallback<Reply> &callback,
+      std::string call_name = "UNKNOWN_RPC") {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_, prepare_async_function, request, callback);
-    return call->GetStatus();
+        *stub_, prepare_async_function, request, callback, std::move(call_name));
+    RAY_CHECK(call != nullptr);
   }
 
  private:
@@ -109,5 +102,3 @@ class GrpcClient {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

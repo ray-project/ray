@@ -1,8 +1,0 @@
-diff --git cpp/src/arrow/io/mman.h cpp/src/arrow/io/mman.h
---- cpp/src/arrow/io/mman.h
-+++ cpp/src/arrow/io/mman.h
-@@ -3,0 +3,3 @@
-+#ifdef _WIN32
-+typedef long long off_t;
-+#endif
--- 

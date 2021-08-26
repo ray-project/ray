@@ -1,9 +1,11 @@
+import sys
+
 import ray
 from ray.streaming import StreamingContext
 
 
 def test_data_stream():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder().build()
     stream = ctx.from_values(1, 2, 3)
     java_stream = stream.as_java_stream()
@@ -17,7 +19,7 @@ def test_data_stream():
 
 
 def test_key_data_stream():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder().build()
     key_stream = ctx.from_values(
         "a", "b", "c").map(lambda x: (x, 1)).key_by(lambda x: x[0])
@@ -32,7 +34,7 @@ def test_key_data_stream():
 
 
 def test_stream_config():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder().build()
     stream = ctx.from_values(1, 2, 3)
     stream.with_config("k1", "v1")

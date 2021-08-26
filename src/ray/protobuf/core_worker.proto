@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/pubsub.proto";
 
 message ActiveObjectIDs {
   repeated bytes object_ids = 1;
@@ -55,24 +56,6 @@ message ActorHandle {
   int64 max_task_retries = 9;
 }
 
-message AssignTaskRequest {
-  // The ID of the worker this message is intended for. This is used to
-  // ensure that workers don't try to execute tasks assigned to workers
-  // that used to be bound to the same port.
-  bytes intended_worker_id = 1;
-
-  // The task to be pushed.
-  Task task = 2;
-
-  // A list of the resources reserved for this worker.
-  // TODO(zhijunfu): `resource_ids` is represented as
-  // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 3;
-}
-
-message AssignTaskReply {
-}
-
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
@@ -84,9 +67,19 @@ message ReturnObject {
   // Metadata of the object.
   bytes metadata = 4;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 5;
+  repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
+}
+
+message StealTasksRequest {
+  // The address of the thief that is requesting to steal tasks.
+  Address thief_addr = 1;
+}
+
+message StealTasksReply {
+  // The TaskIDs of the tasks that were stolen
+  repeated bytes stolen_tasks_ids = 2;
 }
 
 message PushTaskRequest {
@@ -112,8 +105,10 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Set to true if the task was stolen before its execution at the worker.
+  bool task_stolen = 2;
   // Set to true if the worker will be exiting.
-  bool worker_exiting = 2;
+  bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
   // borrower is a process that is currently using the object ID, in one of 3
   // ways:
@@ -128,7 +123,7 @@ message PushTaskReply {
   // counts for any IDs that were nested inside these objects that the worker
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
-  repeated ObjectReferenceCount borrowed_refs = 3;
+  repeated ObjectReferenceCount borrowed_refs = 4;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -143,17 +138,36 @@ message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
-  // The owner of the object. Note that we do not need to include
-  // intended_worker_id since the new worker can service this request too by
-  // inspecting the owner_id field.
-  bytes owner_id = 1;
+  // The ID of the worker that owns this object. This is also
+  // the ID of the worker that this message is intended for.
+  bytes owner_worker_id = 1;
   // Wait for this object's status.
   bytes object_id = 2;
 }
 
+message RayObject {
+  // Data of the object.
+  bytes data = 1;
+  // Metadata of the object.
+  bytes metadata = 2;
+  // ObjectRefs that were nested in this object.
+  repeated ObjectReference nested_inlined_refs = 3;
+}
+
 message GetObjectStatusReply {
-  enum ObjectStatus { CREATED = 0; }
+  enum ObjectStatus {
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+    FREED = 2;
+  }
   ObjectStatus status = 1;
+  // The Ray object: either a concrete value, an in-Plasma indicator, or an
+  // exception.
+  RayObject object = 2;
+  // This object's locations.
+  repeated bytes node_ids = 3;
+  // The size of the object in bytes.
+  uint64 object_size = 4;
 }
 
 message WaitForActorOutOfScopeRequest {
@@ -166,14 +180,30 @@ message WaitForActorOutOfScopeRequest {
 message WaitForActorOutOfScopeReply {
 }
 
-message WaitForObjectEvictionRequest {
-  // The ID of the worker this message is intended for.
+message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
-  // ObjectID of the pinned object.
   bytes object_id = 2;
+  bytes node_id = 3;
 }
 
-message WaitForObjectEvictionReply {
+message AddObjectLocationOwnerReply {
+}
+
+message RemoveObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes node_id = 3;
+}
+
+message RemoveObjectLocationOwnerReply {
+}
+
+message GetObjectLocationsOwnerRequest {
+  WorkerObjectLocationsSubMessage object_location_request = 1;
+}
+
+message GetObjectLocationsOwnerReply {
+  WorkerObjectLocationsPubMessage object_location_info = 1;
 }
 
 message KillActorRequest {
@@ -193,6 +223,8 @@ message CancelTaskRequest {
   bytes intended_task_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message CancelTaskReply {
@@ -205,6 +237,8 @@ message RemoteCancelTaskRequest {
   bytes remote_object_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message RemoteCancelTaskReply {
@@ -223,59 +257,6 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The task or actor ID of the object's owner.
-  bytes owner_id = 2;
-  // The address of the object's owner.
-  Address owner_address = 3;
-}
-
-message WaitForRefRemovedRequest {
-  // The ID of the worker this message is intended for.
-  bytes intended_worker_id = 1;
-  // Object whose removal we are waiting for.
-  ObjectReference reference = 2;
-  // ObjectID that contains object_id. This is used when an ObjectID is stored
-  // inside another object ID that we do not own. Then, we must notify the
-  // outer ID's owner that the ID contains object_id.
-  bytes contained_in_id = 3;
-}
-
-message ObjectReferenceCount {
-  // The reference that the worker has or had a reference to.
-  ObjectReference reference = 1;
-  // Whether the worker is still using the ObjectID locally. This means that
-  // it has a copy of the ObjectID in the language frontend, has a pending task
-  // that depends on the object, and/or owns an ObjectID that is in scope and
-  // that contains the ObjectID.
-  bool has_local_ref = 2;
-  // Any other borrowers that the worker created (by passing the ID on to them).
-  repeated Address borrowers = 3;
-  // The borrower may have returned the object ID nested inside the return
-  // value of a task that it executed. This list contains all task returns that
-  // were owned by a process other than the borrower. Then, the process that
-  // owns the task's return value is also a borrower for as long as it has the
-  // task return ID in scope. Note that only the object ID and owner address
-  // are used for elements in this list.
-  repeated ObjectReference stored_in_objects = 4;
-  // The borrowed object ID that contained this object, if any. This is used
-  // for nested object IDs.
-  bytes contained_in_borrowed_id = 5;
-  // The object IDs that this object contains, if any. This is used for nested
-  // object IDs.
-  repeated bytes contains = 6;
-}
-
-message WaitForRefRemovedReply {
-  // The reference counts for the object that the worker was borrowing and
-  // any objects nested inside. The worker should no longer be using the object
-  // ID by the time it replies, but may have accumulated other borrowers or may
-  // still be borrowing an object ID that was nested inside.
-  repeated ObjectReferenceCount borrowed_refs = 1;
-}
-
 message LocalGCRequest {
 }
 
@@ -284,18 +265,97 @@ message LocalGCReply {
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
-  int64 data_size = 2;
-  int64 metadata_size = 3;
 }
 
 message PlasmaObjectReadyReply {
 }
 
+message SpillObjectsRequest {
+  // The IDs of objects to be spilled.
+  repeated bytes object_ids_to_spill = 1;
+  // The owner addresses of the objects to be spilled. Must be in the same order as
+  // object_ids_to_spill.
+  repeated Address owner_addresses = 2;
+}
+
+message SpillObjectsReply {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message RestoreSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+  // Object ids to restore. The order of object ids
+  // must be the same as spilled_objects_url.
+  repeated bytes object_ids_to_restore = 2;
+}
+
+message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
+}
+
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {
+}
+
+message AddSpilledUrlRequest {
+  // Object that was spilled.
+  bytes object_id = 1;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 2;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 3;
+  // The size of the object in bytes.
+  int64 size = 4;
+}
+
+message AddSpilledUrlReply {
+}
+
+message ExitRequest {
+}
+
+message ExitReply {
+  /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
+  bool success = 1;
+}
+
+message RunOnUtilWorkerRequest {
+  string request = 1;
+  repeated string args = 2;
+}
+
+message RunOnUtilWorkerReply {
+}
+
+message AssignObjectOwnerRequest {
+  // The ID of added object.
+  bytes object_id = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The IDs of contained objects.
+  repeated bytes contained_object_ids = 3;
+  // The borrower address.
+  Address borrower_address = 4;
+  // Description of the call site where the reference was created.
+  string call_site = 5;
+}
+
+message AssignObjectOwnerReply {
+}
+
 service CoreWorkerService {
-  // Push a task to a worker from the raylet.
-  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Steal tasks from a worker if it has a surplus of work
+  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
@@ -306,10 +366,21 @@ service CoreWorkerService {
   // actor process, if still alive.
   rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
       returns (WaitForActorOutOfScopeReply);
-  // Notify the object's owner that it has been pinned by a raylet. Replying
-  // to this message indicates that the raylet should unpin the object.
-  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
-      returns (WaitForObjectEvictionReply);
+  /// The long polling request sent to the core worker for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+  // Add object location to the ownership-based object directory.
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
+      returns (AddObjectLocationOwnerReply);
+  // Remove object location from the ownership-based object directory.
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
+      returns (RemoveObjectLocationOwnerReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
@@ -318,10 +389,25 @@ service CoreWorkerService {
   rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
-  // Wait for a borrower to finish using an object. Sent by the object's owner.
-  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Spill objects to external storage. Caller: raylet; callee: I/O worker.
+  rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
+  // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
+      returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
+  // Add spilled URL, spilled node ID, and update object size for owned object.
+  // Caller: raylet; callee: owner worker.
+  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Run a request on io worker
+  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
+  // Request for a worker to exit.
+  rpc Exit(ExitRequest) returns (ExitReply);
+  // Assign the owner of an object to the intended worker.
+  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
 }

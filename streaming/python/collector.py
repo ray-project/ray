@@ -68,7 +68,7 @@ class OutputCollector(Collector):
                     python_buffer = self.python_serializer.serialize(record)
                 self._writer.write(
                     self._channel_ids[partition_index],
-                    serialization._PYTHON_TYPE_ID + python_buffer)
+                    bytes([serialization.PYTHON_TYPE_ID]) + python_buffer)
             else:
                 # avoid repeated serialization
                 if cross_lang_buffer is None:
@@ -76,4 +76,5 @@ class OutputCollector(Collector):
                         record)
                 self._writer.write(
                     self._channel_ids[partition_index],
-                    serialization._CROSS_LANG_TYPE_ID + cross_lang_buffer)
+                    bytes([serialization.CROSS_LANG_TYPE_ID]) +
+                    cross_lang_buffer)

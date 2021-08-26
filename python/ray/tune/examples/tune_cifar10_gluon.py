@@ -13,6 +13,9 @@ from mxnet.gluon.data.vision import transforms
 from gluoncv.model_zoo import get_model
 from gluoncv.data import transforms as gcv_transforms
 
+from ray.tune.schedulers import create_scheduler
+from ray import tune
+
 # Training settings
 parser = argparse.ArgumentParser(description="CIFAR-10 Example")
 parser.add_argument(
@@ -86,7 +89,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def train_cifar10(args, config, reporter):
+def train_cifar10(config):
+    args = config.pop("args")
     vars(args).update(config)
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -151,8 +155,8 @@ def train_cifar10(args, config, reporter):
             with ag.record():
                 outputs = [finetune_net(X) for X in data]
                 loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
-            for l in loss:
-                l.backward()
+            for ls in loss:
+                ls.backward()
 
             trainer.step(batch_size)
         mx.nd.waitall()
@@ -167,42 +171,25 @@ def train_cifar10(args, config, reporter):
             outputs = [finetune_net(X) for X in data]
             loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
 
-            test_loss += sum(l.mean().asscalar() for l in loss) / len(loss)
+            test_loss += sum(ls.mean().asscalar() for ls in loss) / len(loss)
             metric.update(label, outputs)
 
         _, test_acc = metric.get()
         test_loss /= len(test_data)
-        reporter(mean_loss=test_loss, mean_accuracy=test_acc)
+        return test_loss, test_acc
 
     for epoch in range(1, args.epochs + 1):
         train(epoch)
-        test()
+        test_loss, test_acc = test()
+        tune.report(mean_loss=test_loss, mean_accuracy=test_acc)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    sched = create_scheduler(args.scheduler)
 
-    import ray
-    from ray import tune
-    from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler
-
-    ray.init()
-    if args.scheduler == "fifo":
-        sched = FIFOScheduler()
-    elif args.scheduler == "asynchyperband":
-        sched = AsyncHyperBandScheduler(
-            time_attr="training_iteration",
-            metric="mean_loss",
-            mode="min",
-            max_t=400,
-            grace_period=60)
-    else:
-        raise NotImplementedError
-    tune.register_trainable(
-        "TRAIN_FN",
-        lambda config, reporter: train_cifar10(args, config, reporter))
-    tune.run(
-        "TRAIN_FN",
+    analysis = tune.run(
+        train_cifar10,
         name=args.expname,
         verbose=2,
         scheduler=sched,
@@ -216,8 +203,8 @@ if __name__ == "__main__":
         },
         num_samples=1 if args.smoke_test else args.num_samples,
         config={
-            "lr": tune.sample_from(
-                lambda spec: np.power(10.0, np.random.uniform(-4, -1))),
-            "momentum": tune.sample_from(
-                lambda spec: np.random.uniform(0.85, 0.95)),
+            "args": args,
+            "lr": tune.loguniform(1e-4, 1e-1),
+            "momentum": tune.uniform(0.85, 0.95),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)

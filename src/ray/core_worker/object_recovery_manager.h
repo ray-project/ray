@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H
-#define RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -21,9 +20,10 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
                                                            int port)>
@@ -47,12 +47,12 @@ class ObjectRecoveryManager {
                         std::function<void(const ObjectID &object_id, bool pin_object)>
                             reconstruction_failure_callback,
                         bool lineage_reconstruction_enabled)
-      : rpc_address_(rpc_address),
+      : task_resubmitter_(task_resubmitter),
+        reference_counter_(reference_counter),
+        rpc_address_(rpc_address),
         client_factory_(client_factory),
         local_object_pinning_client_(local_object_pinning_client),
         object_lookup_(object_lookup),
-        task_resubmitter_(task_resubmitter),
-        reference_counter_(reference_counter),
         in_memory_store_(in_memory_store),
         reconstruction_failure_callback_(reconstruction_failure_callback),
         lineage_reconstruction_enabled_(lineage_reconstruction_enabled) {}
@@ -80,11 +80,12 @@ class ObjectRecoveryManager {
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
   ///
-  /// \return OK if recovery for the object has successfully started, Invalid
-  /// if the object is not recoverable because we do not own it. Note that the
-  /// Status::OK value only indicates that the recovery operation has started,
-  /// but does not guarantee that the recovery operation is successful.
-  Status RecoverObject(const ObjectID &object_id);
+  /// \return True if recovery for the object has successfully started, false
+  /// if the object is not recoverable because we do not have any metadata
+  /// about the object. If this returns true, then eventually recovery will
+  /// either succeed (a value will be put into the memory store) or fail (the
+  /// reconstruction failure callback will be called for this object).
+  bool RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
@@ -138,7 +139,7 @@ class ObjectRecoveryManager {
   mutable absl::Mutex mu_;
 
   /// Cache of gRPC clients to remote raylets for pinning objects.
-  absl::flat_hash_map<ClientID, std::shared_ptr<PinObjectsInterface>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<PinObjectsInterface>>
       remote_object_pinning_clients_ GUARDED_BY(mu_);
 
   /// Objects that are currently pending recovery. Calls to RecoverObject for
@@ -146,6 +147,5 @@ class ObjectRecoveryManager {
   absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mu_);
 };
 
+}  // namespace core
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_OBJECT_RECOVERY_MANAGER_H

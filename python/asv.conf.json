@@ -7,7 +7,7 @@
     "project": "ray",
 
     // The project's homepage
-    "project_url": "http://docs.ray.io/en/latest/index.html",
+    "project_url": "http://docs.ray.io/en/master/index.html",
 
     // The URL or local path of the source code repository for the
     // project being benchmarked

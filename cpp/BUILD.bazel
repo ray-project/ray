@@ -3,24 +3,19 @@
 
 load("//bazel:ray.bzl", "COPTS")
 
-cc_library(
-    name = "libray_api_header",
-    hdrs = glob([
-        "include/ray/*.h",
-        "include/ray/**/*.h",
-        "include/ray/**/**/*.h",
-    ]),
+cc_binary(
+    name = "libray_api.so",
     copts = COPTS,
-    strip_include_prefix = "include",
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
-        "//:core_worker_lib",
-        "//:ray_common",
-        "@msgpack",
+        ":ray_api",
     ],
 )
 
-cc_binary(
-    name = "libray_api.so",
+cc_library(
+    name = "ray_api",
     srcs = glob([
         "src/ray/api.cc",
         "src/ray/api/*.cc",
@@ -38,50 +33,166 @@ cc_binary(
         "src/ray/*.cc",
         "src/ray/*.h",
     ]),
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
     copts = COPTS,
     linkopts = ["-ldl"],
-    linkshared = 1,
-    linkstatic = False,
+    linkstatic = True,
+    strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "libray_api_header",
         "//:core_worker_lib",
+        "//:global_state_accessor_lib",
         "//:ray_common",
         "//:ray_util",
-        "@boost//:asio",
-        "@boost//:thread",
-        "@com_google_absl//absl/synchronization",
+        "@boost//:callable_traits",
+        "@boost//:dll",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@msgpack",
     ],
-)
-
-cc_import(
-    name = "ray_api",
-    shared_library = "libray_api.so",
+    alwayslink = True,
 )
 
 cc_binary(
-    name = "example",
-    testonly = 1,
-    srcs = [
-        "src/example/example.cc",
-    ],
+    name = "default_worker",
+    srcs = glob([
+        "src/ray/worker/default_worker.cc",
+    ]),
     copts = COPTS,
+    linkstatic = True,
     deps = [
-        "libray_api_header",
         "ray_api",
     ],
 )
 
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "default_worker",
+        "ray_api",
+        "libray_api.so",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
+        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
+        rm -rf $$PY_CPP_DIR &&
+        BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
+        mkdir -p "$$BOOST_DIR" &&
+        mkdir -p "$$PY_CPP_DIR/lib/" &&
+        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/config" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/container_hash" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/core" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/detail" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/dll" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/exception" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/filesystem" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/functional" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/io" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/iterator" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/lexical_cast" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/move" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/mpl" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/optional" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/parameter" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/preprocessor" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/system" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$BOOST_DIR" &&
+        cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
+        cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
+        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
+        rm -rf $$THIRDPARTY_DIR &&
+        mkdir $$THIRDPARTY_DIR &&
+        ln -s "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
+        ln -s "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
+        cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)
+
+# test
 cc_test(
     name = "api_test",
     srcs = glob([
         "src/ray/test/*.cc",
     ]),
     copts = COPTS,
+    linkstatic = False,
+    tags = ["team:serverless"],
     deps = [
-        "libray_api_header",
+        "ray_api",
+        "@boost//:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_mode_test",
+    srcs = glob([
+        "src/ray/test/cluster/*.cc",
+        "src/ray/test/cluster/*.h",
+    ]),
+    args = [
+        "--ray_code_search_path=$(location plus.so):$(location counter.so)",
+    ],
+    copts = COPTS,
+    data = [
+        "counter.so",
+        "plus.so",
+        "ray_cpp_pkg",
+    ],
+    linkstatic = True,
+    tags = ["team:serverless"],
+    deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "plus.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/plus.cc",
+        "src/ray/test/cluster/plus.h",
+    ],
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_api",
+    ],
+)
+
+cc_binary(
+    name = "counter.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/counter.cc",
+        "src/ray/test/cluster/counter.h",
+    ],
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_api",
     ],
 )

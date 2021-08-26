@@ -1,51 +1,62 @@
+.. _installation:
+
 Installing Ray
 ==============
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+Ray currently supports MacOS and Linux.
+Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
 
-Ray currently supports MacOS and Linux. Windows support is planned for the future.
+Official Releases
+-----------------
 
-Latest stable version
----------------------
-
-You can install the latest stable version of Ray as follows.
+You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/release/RELEASE_PROCESS.rst>`__.
 
 .. code-block:: bash
 
-  pip install -U ray  # also recommended: ray[debug]
+  pip install -U ray
 
+**Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
 .. _install-nightlies:
 
-Latest Snapshots (Nightlies)
-----------------------------
+Daily Releases (Nightlies)
+--------------------------
 
-Here are links to the latest wheels (which are built for each commit on the
-master branch). To install these wheels, run the following command:
+You can install the nightly Ray wheels via the following links. These daily releases are tested via automated tests but do not go through the full release process. To install these wheels, use the following ``pip`` command and wheels:
 
 .. code-block:: bash
 
   pip install -U [link to wheel]
 
 
-===================  ===================
-       Linux                MacOS
-===================  ===================
-`Linux Python 3.8`_  `MacOS Python 3.8`_
-`Linux Python 3.7`_  `MacOS Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_
-`Linux Python 3.5`_  `MacOS Python 3.5`_
-===================  ===================
+===================  ===================  ======================
+       Linux                MacOS         Windows (experimental)
+===================  ===================  ======================
+`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
+`Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
+`Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
+`Linux Python 3.6`_  `MacOS Python 3.6`_  `Windows Python 3.6`_
+===================  ===================  ======================
 
+.. note::
 
-.. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-manylinux1_x86_64.whl
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+  Python 3.9 support is currently experimental.
+
+.. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
+.. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+
+.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
+
+.. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-win_amd64.whl
+.. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-win_amd64.whl
+.. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-win_amd64.whl
+.. _`Windows Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-win_amd64.whl
+
 
 Installing from a specific commit
 ---------------------------------
@@ -54,101 +65,114 @@ You can install the Ray wheels of any particular commit on ``master`` with the f
 
 .. code-block:: bash
 
-    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}.whl
 
-For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
-
-.. code-block:: bash
-
-    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
-
-Building Ray from Source
-------------------------
-
-Installing from ``pip`` should be sufficient for most Ray users.
-
-However, should you need to build from source, follow instructions below for
-both Linux and MacOS.
-
-Dependencies
-~~~~~~~~~~~~
-
-To build Ray, first install the following dependencies.
-
-For Ubuntu, run the following commands:
+For example, here are the Ray 2.0.0.dev0 wheels for Python 3.7, MacOS for commit ``ba6cebe30fab6925e5b2d9e859ad064d53015246``:
 
 .. code-block:: bash
 
-  sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
 
-  pip install cython==0.29.0 pytest
+There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the :ref:`Nightlies section <install-nightlies>`.
+Here's a summary of the variations:
 
-For MacOS, run the following commands:
+* For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
+
+* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instad of ``macosx_10_15``.
+
+.. _ray-install-java:
+
+Install Ray Java with Maven
+---------------------------
+Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
+Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
+
+The latest Ray Java release can be found in `central repository <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray Java release in your application, add the following entries in your ``pom.xml``:
+
+.. code-block:: xml
+
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+
+The latest Ray Java snapshot can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
+
+.. code-block:: xml
+
+  <!-- only needed for snapshot version of ray -->
+  <repositories>
+    <repository>
+      <id>sonatype</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+  </dependencies>
+
+.. note::
+
+  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
+
+  If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
+
+.. _windows-support:
+
+Windows Support
+---------------
+
+Windows support is currently limited and "alpha" quality.
+Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
+Unusual, unattended, or production usage is **not** recommended.
+
+To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
+
+If you encounter any issues, please try the following:
+
+- Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
+- In the case that your issue has been addressed, try installing the :ref:`latest nightly wheels <install-nightlies>`.
+
+If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
+
+.. _windows-dependencies:
+
+Windows Dependencies
+~~~~~~~~~~~~~~~~~~~~
+
+For Windows, ensure the latest `Visual C++ runtime`_ (`install link`_) is installed before using Ray.
+
+Otherwise, you may receive an error similar to the following when Ray fails to find
+the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
 
 .. code-block:: bash
 
-  brew update
-  brew install wget
+  FileNotFoundError: Could not find module '_raylet.pyd' (or one of its dependencies).
 
-  pip install cython==0.29.0 pytest
-
-
-Install Ray
-~~~~~~~~~~~
-
-Ray can be built from the repository as follows.
-
-.. code-block:: bash
-
-  git clone https://github.com/ray-project/ray.git
-
-  # Install Bazel.
-  ray/ci/travis/install-bazel.sh
-
-  # Optionally build the dashboard (requires Node.js, see below for more information).
-  pushd ray/python/ray/dashboard/client
-  npm ci
-  npm run build
-  popd
-
-  # Install Ray.
-  cd ray/python
-  pip install -e . --verbose  # Add --user if you see a permission denied error.
-
-
-[Optional] Dashboard support
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you would like to use the dashboard, you will additionally need to install
-`Node.js`_ and build the dashboard before installing Ray. The relevant build
-steps are included in the installation instructions above.
-
-.. _`Node.js`: https://nodejs.org/
-
-The dashboard requires a few additional Python packages, which can be installed
-via pip.
-
-.. code-block:: bash
-
-  pip install ray[dashboard]
-
-The command ``ray.init()`` or ``ray start --head`` will print out the address of
-the dashboard. For example,
-
-.. code-block:: python
-
-  >>> import ray
-  >>> ray.init()
-  ======================================================================
-  View the dashboard at http://127.0.0.1:8265.
-  Note: If Ray is running on a remote node, you will need to set up an
-  SSH tunnel with local port forwarding in order to access the dashboard
-  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
-  <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
-  the call to ray.init() to allow direct access from external machines.
-  ======================================================================
-
+.. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+.. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
 
 
 Installing Ray on Arch Linux
@@ -176,12 +200,12 @@ on the AUR page of ``python-ray`` `here`_.
 .. _`yay`: https://aur.archlinux.org/packages/yay
 .. _`here`: https://aur.archlinux.org/packages/python-ray
 
-
+.. _ray_anaconda:
 
 Installing Ray with Anaconda
 ----------------------------
 
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
 
@@ -193,26 +217,76 @@ If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray`
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
+.. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
 
+
+
+
+Building Ray from Source
+------------------------
+
+Installing from ``pip`` should be sufficient for most Ray users.
+
+However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
+
+
+.. _docker-images:
 
 Docker Source Images
 --------------------
 
-Run the script to create Docker images.
+Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.docker.com/r/rayproject/>`_
+
+- The ``rayproject/ray`` `image has ray and all required dependencies. It comes with anaconda and Python 3.7. <https://hub.docker.com/r/rayproject/ray>`_
+- The ``rayproject/ray-ml`` `image has the above features as well as many additional libraries. <https://hub.docker.com/r/rayproject/ray-ml>`_
+- The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
+
+Image releases are `tagged` using the following format:
+
+
+.. list-table::
+   :widths: 25 50
+   :header-rows: 1
+
+   * - Tag
+     - Description
+   * - latest
+     - The most recent Ray release.
+   * - 1.x.x
+     - A specific Ray release.
+   * - nightly
+     - The most recent Ray build (the most recent commit on Github ``master``)
+   * - Git SHA
+     - A specific nightly build (uses a SHA from the Github ``master``).
+
+
+Each tag has `variants` that add or change functionality:
+
+.. list-table::
+   :widths: 16 40
+   :header-rows: 1
+
+   * - Variant
+     - Description
+   * - -gpu
+     - These are based off of an NVIDIA CUDA image. They require the Nvidia Docker Runtime.
+   * - -cpu
+     - These are based off of an Ubuntu image.
+   * - <no tag>
+     - Aliases to ``-cpu`` tagged images
+
+
+If you want to tweak some aspect of these images and build them locally, refer to the following script:
 
 .. code-block:: bash
 
   cd ray
   ./build-docker.sh
 
-This script creates several Docker images:
+Beyond creating the above Docker images, this script can also produce the following two images.
 
-- The ``ray-project/deploy`` image is a self-contained copy of code and binaries
-  suitable for end users.
-- The ``ray-project/examples`` adds additional libraries for running examples.
-- The ``ray-project/base-deps`` image builds from Ubuntu Xenial and includes
-  Anaconda and other basic dependencies and can serve as a starting point for
-  developers.
+- The ``rayproject/development`` image has the ray source code included and is setup for development.
+- The ``rayproject/examples`` image adds additional libraries for running examples.
 
 Review images by listing them:
 
@@ -225,10 +299,10 @@ Output should look something like the following:
 .. code-block:: bash
 
   REPOSITORY                          TAG                 IMAGE ID            CREATED             SIZE
-  ray-project/examples                latest              7584bde65894        4 days ago          3.257 GB
-  ray-project/deploy                  latest              970966166c71        4 days ago          2.899 GB
-  ray-project/base-deps               latest              f45d66963151        4 days ago          2.649 GB
-  ubuntu                              xenial              f49eec89601e        3 weeks ago         129.5 MB
+  rayproject/ray                      latest              7243a11ac068        2 days ago          1.11 GB
+  rayproject/ray-deps                 latest              b6b39d979d73        8 days ago          996  MB
+  rayproject/base-deps                latest              5606591eeab9        8 days ago          512  MB
+  ubuntu                              focal               1e4467b07108        3 weeks ago         73.9 MB
 
 
 Launch Ray in Docker
@@ -238,11 +312,18 @@ Start out by launching the deployment container.
 
 .. code-block:: bash
 
-  docker run --shm-size=<shm-size> -t -i ray-project/deploy
+  docker run --shm-size=<shm-size> -t -i rayproject/ray
 
 Replace ``<shm-size>`` with a limit appropriate for your system, for example
-``512M`` or ``2G``. The ``-t`` and ``-i`` options here are required to support
+``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is
+what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
+
+If you use a GPU version Docker image, remember to add ``--gpus all`` option. Replace ``<ray-version>`` with your target ray version in the following command:
+
+.. code-block:: bash
+
+  docker run --shm-size=<shm-size> -t -i --gpus all rayproject/ray:<ray-version>-gpu
 
 **Note:** Ray requires a **large** amount of shared memory because each object
 store keeps all of its objects in shared memory, so the amount of shared memory
@@ -264,23 +345,31 @@ that you've cloned the git repository.
 
   python -m pytest -v python/ray/tests/test_mini.py
 
+Troubleshooting
+---------------
 
-Troubleshooting installing Arrow
---------------------------------
+If importing Ray (``python3 -c "import ray"``) in your development clone results
+in this error:
 
-Some candidate possibilities.
+.. code-block:: python
 
-You have a different version of Flatbuffers installed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+    File ".../ray/python/ray/__init__.py", line 63, in <module>
+      import ray._raylet  # noqa: E402
+    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
+      import ray.memory_monitor as memory_monitor
+    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
+      import psutil  # noqa E402
+    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
+      from . import _psosx as _psplatform
+    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
+      from . import _psutil_osx as cext
+  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
 
-Arrow pulls and builds its own copy of Flatbuffers, but if you already have
-Flatbuffers installed, Arrow may find the wrong version. If a directory like
-``/usr/local/include/flatbuffers`` shows up in the output, this may be the
-problem. To solve it, get rid of the old version of flatbuffers.
+Then you should run the following commands:
 
-There is some problem with Boost
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: bash
 
-If a message like ``Unable to find the requested Boost libraries`` appears when
-installing Arrow, there may be a problem with Boost. This can happen if you
-installed Boost using MacPorts. This is sometimes solved by using Brew instead.
+  rm -rf python/ray/thirdparty_files/
+  python3 -m pip install setproctitle

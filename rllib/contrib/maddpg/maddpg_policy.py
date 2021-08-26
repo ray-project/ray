@@ -1,13 +1,13 @@
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import try_import_tf, try_import_tfp
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
 import logging
 from gym.spaces import Box, Discrete
@@ -15,7 +15,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 
@@ -28,9 +28,9 @@ class MADDPGPostprocessing:
                                other_agent_batches=None,
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
-        # supported now.
-        sample_batch.data["dones"] = self.get_done_from_info(
-            sample_batch.data["infos"])
+        #  supported now.
+        sample_batch[SampleBatch.DONES] = self.get_done_from_info(
+            sample_batch[SampleBatch.INFOS])
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
@@ -49,7 +49,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         # _____ Initial Configuration
         config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
         self.config = config
-        self.global_step = tf.train.get_or_create_global_step()
+        self.global_step = tf1.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
         # supported now.
@@ -74,31 +74,33 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     "Space {} is not supported.".format(space))
 
         obs_space_n = [
-            _make_continuous_space(space) for _, (_, space, _, _) in
-            sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space)
+            for _, (_, space, _,
+                    _) in config["multiagent"]["policies"].items()
         ]
         act_space_n = [
-            _make_continuous_space(space) for _, (_, _, space, _) in
-            sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space)
+            for _, (_, _, space,
+                    _) in config["multiagent"]["policies"].items()
         ]
 
         # _____ Placeholders
         # Placeholders for policy evaluation and updates
         def _make_ph_n(space_n, name=""):
             return [
-                tf.placeholder(
+                tf1.placeholder(
                     tf.float32,
                     shape=(None, ) + space.shape,
                     name=name + "_%d" % i) for i, space in enumerate(space_n)
             ]
 
-        obs_ph_n = _make_ph_n(obs_space_n, "obs")
-        act_ph_n = _make_ph_n(act_space_n, "actions")
-        new_obs_ph_n = _make_ph_n(obs_space_n, "new_obs")
+        obs_ph_n = _make_ph_n(obs_space_n, SampleBatch.OBS)
+        act_ph_n = _make_ph_n(act_space_n, SampleBatch.ACTIONS)
+        new_obs_ph_n = _make_ph_n(obs_space_n, SampleBatch.NEXT_OBS)
         new_act_ph_n = _make_ph_n(act_space_n, "new_actions")
-        rew_ph = tf.placeholder(
+        rew_ph = tf1.placeholder(
             tf.float32, shape=None, name="rewards_{}".format(agent_id))
-        done_ph = tf.placeholder(
+        done_ph = tf1.placeholder(
             tf.float32, shape=None, name="dones_{}".format(agent_id))
 
         if config["use_local_critic"]:
@@ -188,12 +190,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # _____ Optimizers
         self.optimizers = {
-            "critic": tf.train.AdamOptimizer(config["critic_lr"]),
-            "actor": tf.train.AdamOptimizer(config["actor_lr"])
+            "critic": tf1.train.AdamOptimizer(config["critic_lr"]),
+            "actor": tf1.train.AdamOptimizer(config["actor_lr"])
         }
 
         # _____ Build variable update ops.
-        self.tau = tf.placeholder_with_default(
+        self.tau = tf1.placeholder_with_default(
             config["tau"], shape=(), name="tau")
 
         def _make_target_update_op(vs, target_vs, tau):
@@ -211,7 +213,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             for v in variables.values():
                 vs += v
             phs = [
-                tf.placeholder(
+                tf1.placeholder(
                     tf.float32,
                     shape=v.get_shape(),
                     name=v.name.split(":")[0] + "_ph") for v in vs
@@ -228,7 +230,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # _____ TensorFlow Initialization
 
-        self.sess = tf.get_default_session()
+        sess = tf1.get_default_session()
+        assert sess
 
         def _make_loss_inputs(placeholders):
             return [(ph.name.split("/")[-1].split(":")[0], ph)
@@ -242,14 +245,17 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             obs_space,
             act_space,
             config=config,
-            sess=self.sess,
+            sess=sess,
             obs_input=obs_ph_n[agent_id],
             sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
 
-        self.sess.run(tf.global_variables_initializer())
+        del self.view_requirements["prev_actions"]
+        del self.view_requirements["prev_rewards"]
+
+        self.get_session().run(tf1.global_variables_initializer())
 
         # Hard initial update
         self.update_target(1.0)
@@ -260,17 +266,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):
-        if self.config["grad_norm_clipping"] is not None:
-            self.gvs = {
-                k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
-                                     self.config["grad_norm_clipping"])
-                for k, optimizer in self.optimizers.items()
-            }
-        else:
-            self.gvs = {
-                k: optimizer.compute_gradients(self.losses[k], self.vars[k])
-                for k, optimizer in self.optimizers.items()
-            }
+        self.gvs = {
+            k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
+                                 self.config["grad_norm_clipping"])
+            for k, optimizer in self.optimizers.items()
+        }
         return self.gvs["critic"] + self.gvs["actor"]
 
     @override(TFPolicy)
@@ -278,8 +278,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         critic_apply_op = self.optimizers["critic"].apply_gradients(
             self.gvs["critic"])
 
-        with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
-            with tf.control_dependencies([critic_apply_op]):
+        with tf1.control_dependencies([tf1.assign_add(self.global_step, 1)]):
+            with tf1.control_dependencies([critic_apply_op]):
                 actor_apply_op = self.optimizers["actor"].apply_gradients(
                     self.gvs["actor"])
 
@@ -298,12 +298,13 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         var_list = []
         for var in self.vars.values():
             var_list += var
-        return self.sess.run(var_list)
+        return {"_state": self.get_session().run(var_list)}
 
     @override(TFPolicy)
     def set_weights(self, weights):
-        self.sess.run(
-            self.update_vars, feed_dict=dict(zip(self.vars_ph, weights)))
+        self.get_session().run(
+            self.update_vars,
+            feed_dict=dict(zip(self.vars_ph, weights["_state"])))
 
     @override(Policy)
     def get_state(self):
@@ -322,11 +323,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                               hiddens,
                               activation=None,
                               scope=None):
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
+        with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model_n = [
                     ModelCatalog.get_model({
-                        "obs": obs,
+                        SampleBatch.OBS: obs,
                         "is_training": self._get_is_training_placeholder(),
                     }, obs_space, act_space, 1, self.config["model"])
                     for obs, obs_space, act_space in zip(
@@ -339,11 +340,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = tf.concat(obs_n + act_n, axis=1)
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
+                out = tf1.layers.dense(
+                    out, units=hidden, activation=activation)
             feature = out
-            out = tf.layers.dense(feature, units=1, activation=None)
+            out = tf1.layers.dense(feature, units=1, activation=None)
 
-        return out, feature, model_n, tf.global_variables(scope.name)
+        return out, feature, model_n, tf1.global_variables(scope.name)
 
     def _build_actor_network(self,
                              obs,
@@ -353,10 +355,10 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              hiddens,
                              activation=None,
                              scope=None):
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
+        with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model = ModelCatalog.get_model({
-                    "obs": obs,
+                    SampleBatch.OBS: obs,
                     "is_training": self._get_is_training_placeholder(),
                 }, obs_space, act_space, 1, self.config["model"])
                 out = model.last_layer
@@ -365,16 +367,17 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = obs
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
-            feature = tf.layers.dense(
+                out = tf1.layers.dense(
+                    out, units=hidden, activation=activation)
+            feature = tf1.layers.dense(
                 out, units=act_space.shape[0], activation=None)
             sampler = tfp.distributions.RelaxedOneHotCategorical(
                 temperature=1.0, logits=feature).sample()
 
-        return sampler, feature, model, tf.global_variables(scope.name)
+        return sampler, feature, model, tf1.global_variables(scope.name)
 
     def update_target(self, tau=None):
         if tau is not None:
-            self.sess.run(self.update_target_vars, {self.tau: tau})
+            self.get_session().run(self.update_target_vars, {self.tau: tau})
         else:
-            self.sess.run(self.update_target_vars)
+            self.get_session().run(self.update_target_vars)

@@ -1,0 +1,71 @@
+# Experimental: an example of configuring a mixed-node-type cluster.
+cluster_name: multi_node_type
+max_workers: 40
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    cpu_4_ondemand:
+        node_config:
+            InstanceType: m4.xlarge
+        # For AWS instances, autoscaler will automatically add the available
+        # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
+        # resources: {"CPU": 4}
+        min_workers: 1
+        max_workers: 5
+    cpu_16_spot:
+        node_config:
+            InstanceType: m4.4xlarge
+            InstanceMarketOptions:
+                MarketType: spot
+        # Autoscaler will auto fill the CPU resources below.
+        resources: {"Custom1": 1, "is_spot": 1}
+        max_workers: 10
+    gpu_1_ondemand:
+        node_config:
+            InstanceType: p2.xlarge
+        # Autoscaler will auto fill the CPU/GPU resources below.
+        resources: {"Custom2": 2}
+        max_workers: 4
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
+    gpu_8_ondemand:
+        node_config:
+            InstanceType: p3.8xlarge
+        # Autoscaler autofills the "resources" below.
+        # resources: {"CPU": 32, "GPU": 4, "accelerator_type:V100": 1}
+        max_workers: 2
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
+
+# Specify the node type of the head node (as configured above).
+head_node_type: cpu_4_ondemand
+
+# The default settings for the head node. This will be merged with the per-node
+# type configs given above.
+head_node:
+    ImageId: latest_dlami
+
+# The default settings for worker nodes. This will be merged with the per-node
+# type configs given above.
+worker_nodes:
+    ImageId: latest_dlami
+
+idle_timeout_minutes: 2
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu

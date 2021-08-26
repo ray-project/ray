@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_RAY_OBJECT_H
-#define RAY_COMMON_RAY_OBJECT_H
+#pragma once
 
+#include "absl/time/clock.h"
 #include "absl/types/optional.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -37,14 +37,15 @@ class RayObject {
   ///
   /// \param[in] data Data of the ray object.
   /// \param[in] metadata Metadata of the ray object.
-  /// \param[in] nested_ids ObjectIDs that were serialized in data.
+  /// \param[in] nested_rfs ObjectRefs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-            const std::vector<ObjectID> &nested_ids, bool copy_data = false)
+            const std::vector<rpc::ObjectReference> &nested_refs, bool copy_data = false)
       : data_(data),
         metadata_(metadata),
-        nested_ids_(nested_ids),
-        has_data_copy_(copy_data) {
+        nested_refs_(nested_refs),
+        has_data_copy_(copy_data),
+        creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
@@ -64,14 +65,19 @@ class RayObject {
 
   RayObject(rpc::ErrorType error_type);
 
+  RayObject(rpc::ErrorType error_type, const std::string &append_data);
+
+  RayObject(rpc::ErrorType error_type, const uint8_t *append_data,
+            size_t append_data_size);
+
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; }
 
   /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
 
-  /// Return the object IDs that were serialized in data.
-  const std::vector<ObjectID> &GetNestedIds() const { return nested_ids_; }
+  /// Return the ObjectRefs that were serialized in data.
+  const std::vector<rpc::ObjectReference> &GetNestedRefs() const { return nested_refs_; }
 
   uint64_t GetSize() const {
     uint64_t size = 0;
@@ -93,14 +99,25 @@ class RayObject {
   /// large to return directly as part of a gRPC response).
   bool IsInPlasmaError() const;
 
+  /// Mark this object as accessed before.
+  void SetAccessed() { accessed_ = true; };
+
+  /// Check if this object was accessed before.
+  bool WasAccessed() const { return accessed_; }
+
+  /// Return the absl time in nanoseconds when this object was created.
+  int64_t CreationTimeNanos() const { return creation_time_nanos_; }
+
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
-  const std::vector<ObjectID> nested_ids_;
+  const std::vector<rpc::ObjectReference> nested_refs_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
+  /// Whether this object was accessed.
+  bool accessed_ = false;
+  /// The timestamp at which this object was created locally.
+  int64_t creation_time_nanos_;
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_RAY_OBJECT_H

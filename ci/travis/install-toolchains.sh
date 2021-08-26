@@ -30,7 +30,7 @@ install_clang() {
   if ! command -v "${cc}"; then
     case "${osversion}" in
       linux-gnu-ubuntu*)
-        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 install clang clang-format clang-tidy
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 clang clang-format clang-tidy
         ;;
       *)  # Fallback for all platforms is to download from LLVM's site, but avoided until necessary
         local target="./${url##*/}"
@@ -50,4 +50,16 @@ install_clang() {
   "${cc}" --version
 }
 
-install_clang "$@"
+install_toolchains() {
+  local uses_clang=1 some_lightweight_target="//:sha256"
+  if bazel aquery --config=get-toolchain --output=textproto "${some_lightweight_target}" |
+     grep "external_Slocal_Uconfig_Ucc_Cmsvc_Ucompiler_Ufiles" > /dev/null; then
+    # We detected that we use MSVC, not Clang
+    uses_clang=0
+  fi
+  if [ 0 -ne "${uses_clang}" ]; then
+    install_clang "$@"
+  fi
+}
+
+install_toolchains "$@"

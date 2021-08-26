@@ -36,6 +36,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
         ),
     )
 
+    # Use FileLock to prevent parallel writes that may corrupt data.
     with FileLock("/tmp/load_and_cache_examples.lock"):
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s",
@@ -133,7 +134,7 @@ def save_and_evaluate_checkpoints(args, model, tokenizer):
             model.to(args.device)
             result = evaluate(args, model, tokenizer, prefix=prefix)
             result = dict(
-                (k + "_{}".format(global_step), v) for k, v in result.items())
+                (k + f"_{global_step}", v) for k, v in result.items())
             results.update(result)
 
     return results
@@ -163,7 +164,7 @@ def evaluate(args, model, tokenizer, prefix=""):
             batch_size=args.eval_batch_size)
 
         # Eval!
-        logger.info("***** Running evaluation {} *****".format(prefix))
+        logger.info(f"***** Running evaluation {prefix} *****")
         logger.info("  Num examples = %d", len(eval_dataset))
         logger.info("  Batch size = %d", args.eval_batch_size)
         eval_loss = 0.0

@@ -13,19 +13,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Represents a stream of data whose transformations will be executed in python.
- */
+/** Represents a stream of data whose transformations will be executed in python. */
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator) {
+  protected PythonDataStream(StreamingContext streamingContext, PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator,
-                             Partition<Object> partition) {
+  protected PythonDataStream(
+      StreamingContext streamingContext,
+      PythonOperator pythonOperator,
+      Partition<Object> partition) {
     super(streamingContext, pythonOperator, partition);
   }
 
@@ -33,15 +31,14 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
     super(input, pythonOperator);
   }
 
-  public PythonDataStream(PythonDataStream input,
-                          PythonOperator pythonOperator,
-                          Partition<Object> partition) {
+  public PythonDataStream(
+      PythonDataStream input, PythonOperator pythonOperator, Partition<Object> partition) {
     super(input, pythonOperator, partition);
   }
 
   /**
-   * Create a python stream that reference passed java stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a python stream that reference passed java stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public PythonDataStream(DataStream referencedStream) {
     super(referencedStream);
@@ -85,8 +82,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    * Apply a filter function to this stream.
    *
    * @param func The python FilterFunction.
-   * @return A new PythonDataStream that contains only the elements satisfying
-   *     the given filter predicate.
+   * @return A new PythonDataStream that contains only the elements satisfying the given filter
+   *     predicate.
    */
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
@@ -94,8 +91,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
    * @param stream The DataStream to union output with.
    * @param others The other DataStreams to union output with.
@@ -109,8 +106,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
    * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
@@ -147,7 +144,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a key-by function to this stream.
    *
-   * @param func the  python keyFunction.
+   * @param func the python keyFunction.
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(PythonFunction func) {
@@ -178,20 +175,21 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * If parent stream is a python stream, we can't call partition related methods
-   * in the java stream.
+   * If parent stream is a python stream, we can't call partition related methods in the java
+   * stream.
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
-      throw new RuntimeException("Partition related methods can't be called on a " +
-          "python stream if parent stream is a java stream.");
+      throw new RuntimeException(
+          "Partition related methods can't be called on a "
+              + "python stream if parent stream is a java stream.");
     }
   }
 
   /**
-   * Convert this stream as a java stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a java stream. The converted stream and this stream are the same logical
+   * stream, which has same stream id. Changes in converted stream will be reflected in this stream
+   * and vice versa.
    */
   public DataStream<Object> asJavaStream() {
     return new DataStream<>(this);
@@ -201,5 +199,4 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   public Language getLanguage() {
     return Language.PYTHON;
   }
-
 }

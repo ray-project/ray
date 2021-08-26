@@ -1,56 +1,79 @@
-"""This test checks that Nevergrad is functional.
+"""This example demonstrates the usage of Nevergrad with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
-import ray
-from ray.tune import run
+import time
+
+from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.nevergrad import NevergradSearch
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
-    for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+def evaluation_fn(step, width, height):
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
+
+
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
     import argparse
-    from nevergrad.optimization import optimizerlib
+    import nevergrad as ng
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
-    ray.init()
 
-    config = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
-        }
-    }
-    instrumentation = 2
-    parameter_names = ["height", "width"]
-    # With nevergrad v0.2.0+ the following is also possible:
-    # from nevergrad import instrumentation as inst
-    # instrumentation = inst.Instrumentation(
-    #     height=inst.var.Array(1).bounded(0, 200).asfloat(),
-    #     width=inst.var.OrderedDiscrete([0, 10, 20, 30, 40, 50]))
-    # parameter_names = None  # names are provided by the instrumentation
-    optimizer = optimizerlib.OnePlusOne(instrumentation)
+    if args.server_address:
+        import ray
+        ray.init(f"ray://{args.server_address}")
+
+    # Optional: Pass the parameter space yourself
+    # space = ng.p.Dict(
+    #     width=ng.p.Scalar(lower=0, upper=20),
+    #     height=ng.p.Scalar(lower=-100, upper=100),
+    #     activation=ng.p.Choice(choices=["relu", "tanh"])
+    # )
+
     algo = NevergradSearch(
-        optimizer, parameter_names, metric="mean_loss", mode="min")
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    run(easy_objective,
+        optimizer=ng.optimizers.OnePlusOne,
+        # space=space,  # If you want to set the space manually
+    )
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+
+    scheduler = AsyncHyperBandScheduler()
+
+    analysis = tune.run(
+        easy_objective,
+        metric="mean_loss",
+        mode="min",
         name="nevergrad",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
+        })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

@@ -5,9 +5,8 @@ import logging
 from collections import defaultdict
 import random
 
-from ray.util import log_once
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,7 @@ def averaged(kv, axis=None):
 
     For non-scalar values, we simply pick the first value.
 
-    Arguments:
+    Args:
         kv (dict): dictionary with values that are lists of floats.
 
     Returns:
@@ -36,7 +35,7 @@ def averaged(kv, axis=None):
 def standardized(array):
     """Normalize the values in an array.
 
-    Arguments:
+    Args:
         array (np.ndarray): Array of values to normalize.
 
     Returns:
@@ -45,10 +44,10 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size):
+def minibatches(samples, sgd_minibatch_size, shuffle=True):
     """Return a generator yielding minibatches from a sample batch.
 
-    Arguments:
+    Args:
         samples (SampleBatch): batch of samples to split up.
         sgd_minibatch_size (int): size of minibatches to return.
 
@@ -63,34 +62,37 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    if "state_in_0" in samples.data:
-        if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
-    else:
+    if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
 
-    i = 0
-    slices = []
-    while i < samples.count:
-        slices.append((i, i + sgd_minibatch_size))
-        i += sgd_minibatch_size
-    random.shuffle(slices)
+    all_slices = samples._get_slice_indices(sgd_minibatch_size)
+    data_slices, state_slices = all_slices
 
-    for i, j in slices:
-        yield samples.slice(i, j)
+    if len(state_slices) == 0:
+        if shuffle:
+            random.shuffle(data_slices)
+        for i, j in data_slices:
+            yield samples.slice(i, j)
+    else:
+        all_slices = list(zip(data_slices, state_slices))
+        if shuffle:
+            # Make sure to shuffle data and states while linked together.
+            random.shuffle(all_slices)
+        for (i, j), (si, sj) in all_slices:
+            yield samples.slice(i, j, si, sj)
 
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                      sgd_minibatch_size, standardize_fields):
     """Execute minibatch SGD.
 
-    Arguments:
-        samples (SampleBatch): batch of samples to optimize.
-        policies (dict): dictionary of policies to optimize.
-        local_worker (RolloutWorker): master rollout worker instance.
-        num_sgd_iter (int): number of epochs of optimization to take.
-        sgd_minibatch_size (int): size of minibatches to use for optimization.
-        standardize_fields (list): list of sample field names that should be
+    Args:
+        samples (SampleBatch): Batch of samples to optimize.
+        policies (dict): Dictionary of policies to optimize.
+        local_worker (RolloutWorker): Master rollout worker instance.
+        num_sgd_iter (int): Number of epochs of optimization to take.
+        sgd_minibatch_size (int): Size of minibatches to use for optimization.
+        standardize_fields (list): List of sample field names that should be
             normalized prior to optimization.
 
     Returns:
@@ -99,8 +101,8 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
-    fetches = {}
-    for policy_id, policy in policies.items():
+    fetches = defaultdict(dict)
+    for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
 
@@ -108,15 +110,23 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
 
+        learner_stats = defaultdict(list)
+        model_stats = defaultdict(list)
+        custom_callbacks_stats = defaultdict(list)
+
         for i in range(num_sgd_iter):
-            iter_extra_fetches = defaultdict(list)
             for minibatch in minibatches(batch, sgd_minibatch_size):
                 batch_fetches = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
                 for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
-                    iter_extra_fetches[k].append(v)
-            logger.debug("{} {}".format(i, averaged(iter_extra_fetches)))
-        fetches[policy_id] = averaged(iter_extra_fetches)
+                    learner_stats[k].append(v)
+                for k, v in batch_fetches.get("model", {}).items():
+                    model_stats[k].append(v)
+                for k, v in batch_fetches.get("custom_metrics", {}).items():
+                    custom_callbacks_stats[k].append(v)
+        fetches[policy_id][LEARNER_STATS_KEY] = averaged(learner_stats)
+        fetches[policy_id]["model"] = averaged(model_stats)
+        fetches[policy_id]["custom_metrics"] = averaged(custom_callbacks_stats)
     return fetches

@@ -5,7 +5,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,13 +49,16 @@ public class MultiThreadingTest extends BaseTest {
 
     public ActorId getCurrentActorId() throws Exception {
       final Object[] result = new Object[1];
-      Thread thread = new Thread(Ray.wrapRunnable(() -> {
-        try {
-          result[0] = Ray.getRuntimeContext().getCurrentActorId();
-        } catch (Exception e) {
-          result[0] = e;
-        }
-      }));
+      Thread thread =
+          new Thread(
+              Ray.wrapRunnable(
+                  () -> {
+                    try {
+                      result[0] = Ray.getRuntimeContext().getCurrentActorId();
+                    } catch (Exception e) {
+                      result[0] = e;
+                    }
+                  }));
       thread.start();
       thread.join();
       if (result[0] instanceof Exception) {
@@ -70,49 +72,59 @@ public class MultiThreadingTest extends BaseTest {
   static String testMultiThreading() {
     Random random = new Random();
     // Test calling normal functions.
-    runTestCaseInMultipleThreads(() -> {
-      int arg = random.nextInt();
-      ObjectRef<Integer> obj = Ray.task(MultiThreadingTest::echo, arg).remote();
-      Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER);
+    runTestCaseInMultipleThreads(
+        () -> {
+          int arg = random.nextInt();
+          ObjectRef<Integer> obj = Ray.task(MultiThreadingTest::echo, arg).remote();
+          Assert.assertEquals(arg, (int) obj.get());
+        },
+        LOOP_COUNTER);
 
     // Test calling actors.
     ActorHandle<Echo> echoActor = Ray.actor(Echo::new).remote();
-    runTestCaseInMultipleThreads(() -> {
-      int arg = random.nextInt();
-      ObjectRef<Integer> obj = echoActor.task(Echo::echo, arg).remote();
-      Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER);
+    runTestCaseInMultipleThreads(
+        () -> {
+          int arg = random.nextInt();
+          ObjectRef<Integer> obj = echoActor.task(Echo::echo, arg).remote();
+          Assert.assertEquals(arg, (int) obj.get());
+        },
+        LOOP_COUNTER);
 
     // Test creating multi actors
-    runTestCaseInMultipleThreads(() -> {
-      int arg = random.nextInt();
-      ActorHandle<Echo> echoActor1 = Ray.actor(Echo::new).remote();
-      try {
-        // Sleep a while to test the case that another actor is created before submitting
-        // tasks to this actor.
-        TimeUnit.MILLISECONDS.sleep(10);
-      } catch (InterruptedException e) {
-        LOGGER.warn("Got exception while sleeping.", e);
-      }
-      ObjectRef<Integer> obj = echoActor1.task(Echo::echo, arg).remote();
-      Assert.assertEquals(arg, (int) obj.get());
-    }, 1);
+    runTestCaseInMultipleThreads(
+        () -> {
+          int arg = random.nextInt();
+          ActorHandle<Echo> echoActor1 = Ray.actor(Echo::new).remote();
+          try {
+            // Sleep a while to test the case that another actor is created before submitting
+            // tasks to this actor.
+            TimeUnit.MILLISECONDS.sleep(10);
+          } catch (InterruptedException e) {
+            LOGGER.warn("Got exception while sleeping.", e);
+          }
+          ObjectRef<Integer> obj = echoActor1.task(Echo::echo, arg).remote();
+          Assert.assertEquals(arg, (int) obj.get());
+        },
+        1);
 
     // Test put and get.
-    runTestCaseInMultipleThreads(() -> {
-      int arg = random.nextInt();
-      ObjectRef<Integer> obj = Ray.put(arg);
-      Assert.assertEquals(arg, (int) obj.get());
-    }, LOOP_COUNTER);
+    runTestCaseInMultipleThreads(
+        () -> {
+          int arg = random.nextInt();
+          ObjectRef<Integer> obj = Ray.put(arg);
+          Assert.assertEquals(arg, (int) obj.get());
+        },
+        LOOP_COUNTER);
 
     TestUtils.warmUpCluster();
     // Test wait for one object in multi threads.
     ObjectRef<Integer> obj = Ray.task(MultiThreadingTest::echo, 100).remote();
-    runTestCaseInMultipleThreads(() -> {
-      WaitResult<Integer> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
-      Assert.assertEquals(1, result.getReady().size());
-    }, 1);
+    runTestCaseInMultipleThreads(
+        () -> {
+          WaitResult<Integer> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
+          Assert.assertEquals(1, result.getReady().size());
+        },
+        1);
 
     return "ok";
   }
@@ -121,35 +133,32 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
+  // Single-process mode doesn't have real workers.
+  @Test(groups = {"cluster"})
   public void testInWorker() {
-    // Single-process mode doesn't have real workers.
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<String> obj = Ray.task(MultiThreadingTest::testMultiThreading).remote();
     Assert.assertEquals("ok", obj.get());
   }
 
   public void testGetCurrentActorId() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();
     Assert.assertEquals(actorId, actorIdTester.getId());
   }
 
-  /**
-   * Call this method each time to avoid hitting the cache in {@link ObjectRef#get()}.
-   */
+  /** Call this method each time to avoid hitting the cache in {@link ObjectRef#get()}. */
   static Runnable[] generateRunnables() {
     final ObjectRef<Integer> fooObject = Ray.put(1);
     final ActorHandle<Echo> fooActor = Ray.actor(Echo::new).remote();
-    return new Runnable[]{
-        () -> Ray.put(1),
-        () -> Ray.get(fooObject.getId(), fooObject.getType()),
-        fooObject::get,
-        () -> Ray.wait(ImmutableList.of(fooObject)),
-        Ray::getRuntimeContext,
-        () -> Ray.task(MultiThreadingTest::echo, 1).remote(),
-        () -> Ray.actor(Echo::new).remote(),
-        () -> fooActor.task(Echo::echo, 1),
+    return new Runnable[] {
+      () -> Ray.put(1),
+      () -> Ray.get(ImmutableList.of(fooObject)),
+      fooObject::get,
+      () -> Ray.wait(ImmutableList.of(fooObject)),
+      Ray::getRuntimeContext,
+      () -> Ray.task(MultiThreadingTest::echo, 1).remote(),
+      () -> Ray.actor(Echo::new).remote(),
+      () -> fooActor.task(Echo::echo, 1).remote(),
     };
   }
 
@@ -166,16 +175,19 @@ public class MultiThreadingTest extends BaseTest {
 
     {
       Runnable[] runnables = generateRunnables();
-      Thread thread = new Thread(Ray.wrapRunnable(() -> {
-        try {
-          // It would be OK to run them in another thread if wrapped the runnable.
-          for (Runnable runnable : runnables) {
-            runnable.run();
-          }
-        } catch (Throwable ex) {
-          throwable[0] = ex;
-        }
-      }));
+      Thread thread =
+          new Thread(
+              Ray.wrapRunnable(
+                  () -> {
+                    try {
+                      // It would be OK to run them in another thread if wrapped the runnable.
+                      for (Runnable runnable : runnables) {
+                        runnable.run();
+                      }
+                    } catch (Throwable ex) {
+                      throwable[0] = ex;
+                    }
+                  }));
       thread.start();
       thread.join();
       if (throwable[0] != null) {
@@ -185,16 +197,18 @@ public class MultiThreadingTest extends BaseTest {
 
     {
       Runnable[] runnables = generateRunnables();
-      Thread thread = new Thread(() -> {
-        try {
-          // It wouldn't be OK to run them in another thread if not wrapped the runnable.
-          for (Runnable runnable : runnables) {
-            Assert.expectThrows(RayException.class, runnable::run);
-          }
-        } catch (Throwable ex) {
-          throwable[0] = ex;
-        }
-      });
+      Thread thread =
+          new Thread(
+              () -> {
+                try {
+                  // It wouldn't be OK to run them in another thread if not wrapped the runnable.
+                  for (Runnable runnable : runnables) {
+                    Assert.expectThrows(RuntimeException.class, runnable::run);
+                  }
+                } catch (Throwable ex) {
+                  throwable[0] = ex;
+                }
+              });
       thread.start();
       thread.join();
       if (throwable[0] != null) {
@@ -222,28 +236,23 @@ public class MultiThreadingTest extends BaseTest {
     return true;
   }
 
-  @Test
-  public void testMissingWrapRunnableInDriver() throws InterruptedException {
-    testMissingWrapRunnable();
-  }
-
-  @Test
   public void testMissingWrapRunnableInWorker() {
     Ray.task(MultiThreadingTest::testMissingWrapRunnable).remote().get();
   }
 
-  @Test
   public void testGetAndSetAsyncContext() throws InterruptedException {
     Object asyncContext = Ray.getAsyncContext();
     Throwable[] throwable = new Throwable[1];
-    Thread thread = new Thread(() -> {
-      try {
-        Ray.setAsyncContext(asyncContext);
-        Ray.put(1);
-      } catch (Throwable ex) {
-        throwable[0] = ex;
-      }
-    });
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                Ray.setAsyncContext(asyncContext);
+                Ray.put(1);
+              } catch (Throwable ex) {
+                throwable[0] = ex;
+              }
+            });
     thread.start();
     thread.join();
     if (throwable[0] != null) {
@@ -257,13 +266,15 @@ public class MultiThreadingTest extends BaseTest {
     try {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
-        Callable<String> task = Ray.wrapCallable(() -> {
-          for (int j = 0; j < numRepeats; j++) {
-            TimeUnit.MILLISECONDS.sleep(1);
-            testCase.run();
-          }
-          return "ok";
-        });
+        Callable<String> task =
+            Ray.wrapCallable(
+                () -> {
+                  for (int j = 0; j < numRepeats; j++) {
+                    TimeUnit.MILLISECONDS.sleep(1);
+                    testCase.run();
+                  }
+                  return "ok";
+                });
         futures.add(service.submit(task));
       }
       for (Future<String> future : futures) {
@@ -281,14 +292,16 @@ public class MultiThreadingTest extends BaseTest {
   private static boolean testGetAsyncContextAndSetAsyncContext() throws Exception {
     final Object asyncContext = Ray.getAsyncContext();
     final Object[] result = new Object[1];
-    Thread thread = new Thread(() -> {
-      try {
-        Ray.setAsyncContext(asyncContext);
-        Ray.put(0);
-      } catch (Exception e) {
-        result[0] = e;
-      }
-    });
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                Ray.setAsyncContext(asyncContext);
+                Ray.put(0);
+              } catch (Exception e) {
+                result[0] = e;
+              }
+            });
     thread.start();
     thread.join();
     if (result[0] instanceof Exception) {
@@ -302,9 +315,8 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    ObjectRef<Boolean> obj = Ray.task(
-        MultiThreadingTest::testGetAsyncContextAndSetAsyncContext).remote();
+    ObjectRef<Boolean> obj =
+        Ray.task(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext).remote();
     Assert.assertTrue(obj.get());
   }
-
 }

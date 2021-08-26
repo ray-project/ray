@@ -12,45 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskExecutor.h"
+#include "io_ray_runtime_task_NativeTaskExecutor.h"
+
 #include <jni.h>
+
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-using ray::ClientID;
-
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env, jclass) {
-  auto &core_worker = ray::CoreWorkerProcess::GetCoreWorker();
-  const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
-  const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();
-  RAY_CHECK(task_spec->IsActorTask());
-  ActorCheckpointID checkpoint_id;
-  auto status = core_worker.PrepareActorCheckpoint(actor_id, &checkpoint_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  jbyteArray result = env->NewByteArray(checkpoint_id.Size());
-  env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
-                          reinterpret_cast<const jbyte *>(checkpoint_id.Data()));
-  return result;
-}
-
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
-    JNIEnv *env, jclass, jbyteArray checkpointId) {
-  const auto &actor_id =
-      ray::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
-  const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().NotifyActorResumedFromCheckpoint(
-      actor_id, checkpoint_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
+using ray::NodeID;
 
 #ifdef __cplusplus
 }

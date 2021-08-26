@@ -7,7 +7,7 @@ from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -69,14 +69,12 @@ class AutoregressiveActionModel(TFModelV2):
 
         # Base layers
         self.base_model = tf.keras.Model(obs_input, [context, value_out])
-        self.register_variables(self.base_model.variables)
         self.base_model.summary()
 
         # Autoregressive action sampler
         self.action_model = tf.keras.Model([ctx_input, a1_input],
                                            [a1_logits, a2_logits])
         self.action_model.summary()
-        self.register_variables(self.action_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         context, self._value_out = self.base_model(input_dict["obs"])

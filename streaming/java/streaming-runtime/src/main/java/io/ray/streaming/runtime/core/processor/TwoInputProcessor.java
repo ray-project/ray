@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TwoInputProcessor<T, O> extends StreamProcessor<Record, TwoInputOperator<T, O>> {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(TwoInputProcessor.class);
 
   private String leftStream;

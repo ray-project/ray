@@ -17,12 +17,13 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
+        config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
             trainer.train()
             trainer.stop()
@@ -31,6 +32,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
+        config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
@@ -43,21 +45,19 @@ class TestApexDQN(unittest.TestCase):
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             check_compute_single_action(trainer)
 
-            # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
-            #            for i in range(1):
-            #                results = trainer.train()
-            #                print(results)
+            for i in range(2):
+                print(trainer.train())
 
             # Test again per-worker epsilon distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()

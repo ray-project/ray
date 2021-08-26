@@ -7,6 +7,14 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+pushd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+popd
+
 echo "build ray streaming"
 bazel build //streaming/java:all
 
@@ -17,9 +25,6 @@ if [ -n "${symbols_conflict}" ]; then
     echo "streaming should not include symbols from ray: ${symbols_conflict}"
     exit 1
 fi
-
-echo "Linting Java code with checkstyle."
-bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_only
 
 echo "Running streaming tests."
 java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
@@ -39,7 +44,7 @@ fi
 if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
     if [ -d "/tmp/ray_streaming_java_test_output/" ] ; then
       echo "all test output"
-      for f in /tmp/ray_streaming_java_test_output/*; do
+      for f in /tmp/ray_streaming_java_test_output/*.{log,xml}; do
         if [ -f "$f" ]; then
           echo "Cat file $f"
           cat "$f"
@@ -62,7 +67,7 @@ cd "$ROOT_DIR"/../../java
 echo "build ray maven deps"
 bazel build gen_maven_deps
 echo "maven install ray"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 cd "$ROOT_DIR"
 echo "maven install ray streaming"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip

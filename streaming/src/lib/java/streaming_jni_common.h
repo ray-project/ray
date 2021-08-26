@@ -1,11 +1,14 @@
-#ifndef RAY_STREAMING_JNI_COMMON_H
-#define RAY_STREAMING_JNI_COMMON_H
+#pragma once
 
 #include <jni.h>
+
 #include <string>
-#include "channel.h"
+
+#include "channel/channel.h"
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
+
+using namespace ray::core;
 
 class UniqueIdFromJByteArray {
  private:
@@ -99,9 +102,8 @@ jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwChannelInitException(JNIEnv *env, const char *message,
                                const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwChannelInterruptException(JNIEnv *env, const char *message);
-std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
-    JNIEnv *env, jobject functionDescriptor);
+std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(JNIEnv *env,
+                                                             jobject functionDescriptor);
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
     std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
-#endif  // RAY_STREAMING_JNI_COMMON_H

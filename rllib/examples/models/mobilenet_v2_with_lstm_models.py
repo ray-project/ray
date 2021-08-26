@@ -7,7 +7,7 @@ from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -68,7 +68,6 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
         self.rnn_model = tf.keras.Model(
             inputs=[inputs, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
     @override(RecurrentNetwork)
@@ -89,14 +88,15 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchMobileV2PlusRNNModel(TorchRNN):
+class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
     """A conv. + recurrent torch net example using a pre-trained MobileNet."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, cnn_shape):
 
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+        TorchRNN.__init__(self, obs_space, action_space, num_outputs,
+                          model_config, name)
+        nn.Module.__init__(self)
 
         self.lstm_state_size = 16
         self.cnn_shape = list(cnn_shape)

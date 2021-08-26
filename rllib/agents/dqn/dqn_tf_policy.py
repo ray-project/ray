@@ -1,23 +1,30 @@
-from gym.spaces import Discrete
-import numpy as np
+"""TensorFlow policy class used for DQN"""
 
+from typing import Dict
+
+import gym
+import numpy as np
 import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
-    minimize_and_clip
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.tf_ops import (huber_loss, make_tf_callable,
+                                    minimize_and_clip, reduce_mean_ignore_inf)
+from ray.rllib.utils.typing import (ModelGradients, TensorType,
+                                    TrainerConfigDict)
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -28,18 +35,18 @@ PRIO_WEIGHTS = "weights"
 
 class QLoss:
     def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_dist_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
-                 gamma=0.99,
-                 n_step=1,
-                 num_atoms=1,
-                 v_min=-10.0,
-                 v_max=10.0):
+                 q_t_selected: TensorType,
+                 q_logits_t_selected: TensorType,
+                 q_tp1_best: TensorType,
+                 q_dist_tp1_best: TensorType,
+                 importance_weights: TensorType,
+                 rewards: TensorType,
+                 done_mask: TensorType,
+                 gamma: float = 0.99,
+                 n_step: int = 1,
+                 num_atoms: int = 1,
+                 v_min: float = -10.0,
+                 v_max: float = 10.0):
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
@@ -54,11 +61,11 @@ class QLoss:
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
             lb = tf.floor(b)
-            ub = tf.ceil(b)
+            ub = tf.math.ceil(b)
             # indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
+            floor_equal_ceil = tf.cast(tf.less(ub - lb, 0.5), tf.float32)
 
             l_project = tf.one_hot(
                 tf.cast(lb, dtype=tf.int32),
@@ -105,6 +112,11 @@ class QLoss:
 
 
 class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to the DQNTFPolicy
+
+    This allows us to prioritize on the worker side.
+    """
+
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
@@ -125,20 +137,34 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def build_q_model(policy, obs_space, action_space, config):
+def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
+                  action_space: gym.spaces.Space,
+                  config: TrainerConfigDict) -> ModelV2:
+    """Build q_model and target_model for DQN
 
-    if not isinstance(action_space, Discrete):
+    Args:
+        policy (Policy): The Policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        ModelV2: The Model for the Policy to use.
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_model`.
+    """
+    if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
     if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
-        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        num_outputs = ([256] + list(config["model"]["fcnet_hiddens"]))[-1]
         config["model"]["no_final_linear"] = True
     else:
         num_outputs = action_space.n
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -159,7 +185,7 @@ def build_q_model(policy, obs_space, action_space, config):
             getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -180,39 +206,52 @@ def build_q_model(policy, obs_space, action_space, config):
             getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    return policy.q_model
+    return q_model
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
+def get_distribution_inputs_and_class(policy: Policy,
+                                      model: ModelV2,
+                                      obs_batch: TensorType,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = compute_q_values(policy, model, obs_batch, explore)
+    q_vals = compute_q_values(
+        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = model.variables()
+
     return policy.q_values, Categorical, []  # state-out
 
 
-def build_q_losses(policy, model, _, train_batch):
+def build_q_losses(policy: Policy, model, _,
+                   train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for DQNTFPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     config = policy.config
     # q network evaluation
-    q_t, q_logits_t, q_dist_t = compute_q_values(
+    q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
+        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        state_batches=None,
         explore=False)
 
     # target q network evalution
-    q_tp1, q_logits_tp1, q_dist_tp1 = compute_q_values(
+    q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model,
-        train_batch[SampleBatch.NEXT_OBS],
+        policy.target_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        state_batches=None,
         explore=False)
-    policy.target_q_func_vars = policy.target_q_model.variables()
+    if not hasattr(policy, "target_q_func_vars"):
+        policy.target_q_func_vars = policy.target_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
@@ -225,9 +264,10 @@ def build_q_losses(policy, model, _, train_batch):
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = compute_q_values(
-                policy, policy.q_model,
-                train_batch[SampleBatch.NEXT_OBS],
+            q_dist_tp1_using_online_net, _ = compute_q_values(
+                policy, model,
+                {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                state_batches=None,
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
@@ -252,50 +292,57 @@ def build_q_losses(policy, model, _, train_batch):
     return policy.q_loss.loss
 
 
-def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
-
-
-def clip_gradients(policy, optimizer, loss):
-    if policy.config["grad_clip"] is not None:
-        grads_and_vars = minimize_and_clip(
-            optimizer,
-            loss,
-            var_list=policy.q_func_vars,
-            clip_val=policy.config["grad_clip"])
+def adam_optimizer(policy: Policy, config: TrainerConfigDict
+                   ) -> "tf.keras.optimizers.Optimizer":
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        return tf.keras.optimizers.Adam(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
     else:
-        grads_and_vars = optimizer.compute_gradients(
-            loss, var_list=policy.q_func_vars)
-    grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
-    return grads_and_vars
+        return tf1.train.AdamOptimizer(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
-def build_q_stats(policy, batch):
+def clip_gradients(policy: Policy, optimizer: "tf.keras.optimizers.Optimizer",
+                   loss: TensorType) -> ModelGradients:
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+
+    return minimize_and_clip(
+        optimizer,
+        loss,
+        var_list=policy.q_func_vars,
+        clip_val=policy.config["grad_clip"])
+
+
+def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return dict({
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
     }, **policy.q_loss.stats)
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
+def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-
-
-def setup_mid_mixins(policy, obs_space, action_space, config):
     ComputeTDErrorMixin.__init__(policy)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def compute_q_values(policy, model, obs, explore):
+def compute_q_values(policy: Policy,
+                     model: ModelV2,
+                     input_dict,
+                     state_batches=None,
+                     seq_lens=None,
+                     explore=None,
+                     is_training: bool = False):
+
     config = policy.config
 
-    model_out, state = model({
-        SampleBatch.CUR_OBS: obs,
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
+    input_dict["is_training"] = policy._get_is_training_placeholder()
+    model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -328,10 +375,12 @@ def compute_q_values(policy, model, obs, explore):
     else:
         value = action_scores
 
-    return value, logits, dist
+    return value, logits, dist, state
 
 
-def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
+                  actions: TensorType, rewards: TensorType,
+                  new_obs: TensorType, dones: TensorType):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
@@ -356,8 +405,11 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
-    # N-step Q adjustments
+def postprocess_nstep_and_prio(policy: Policy,
+                               batch: SampleBatch,
+                               other_agent=None,
+                               episode=None) -> SampleBatch:
+    # N-step Q adjustments.
     if policy.config["n_step"] > 1:
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
                       batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
@@ -367,15 +419,15 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
-    # Prioritize on the worker side
+    # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
-        new_priorities = (
-            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
-        batch.data[PRIO_WEIGHTS] = new_priorities
+        new_priorities = (np.abs(convert_to_numpy(td_errors)) +
+                          policy.config["prioritized_replay_eps"])
+        batch[PRIO_WEIGHTS] = new_priorities
 
     return batch
 
@@ -389,13 +441,11 @@ DQNTFPolicy = build_tf_policy(
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
-    gradients_fn=clip_gradients,
-    extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+    compute_gradients_fn=clip_gradients,
+    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
-    before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False,
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,

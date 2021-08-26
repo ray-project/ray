@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON_PROTOCOL_H
-#define COMMON_PROTOCOL_H
+#pragma once
 
 #include <flatbuffers/flatbuffers.h>
+
 #include <unordered_set>
 
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 /// Convert an unique ID to a flatbuffer string.
 ///
@@ -202,4 +203,23 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
   return fbb.CreateVector(results);
 }
 
-#endif
+static inline ray::rpc::ObjectReference ObjectIdToRef(
+    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
+  ray::rpc::ObjectReference ref;
+  ref.set_object_id(object_id.Binary());
+  ref.mutable_owner_address()->CopyFrom(owner_address);
+  return ref;
+}
+
+static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &object_ref) {
+  return ray::ObjectID::FromBinary(object_ref.object_id());
+}
+
+static inline std::vector<ray::ObjectID> ObjectRefsToIds(
+    const std::vector<ray::rpc::ObjectReference> &object_refs) {
+  std::vector<ray::ObjectID> object_ids;
+  for (const auto &ref : object_refs) {
+    object_ids.push_back(ObjectRefToId(ref));
+  }
+  return object_ids;
+}

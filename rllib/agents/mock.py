@@ -16,8 +16,6 @@ class _MockTrainer(Trainer):
         "test_variable": 1,
         "num_workers": 0,
         "user_checkpoint_freq": 0,
-        "object_store_memory_per_worker": 0,
-        "object_store_memory": 0,
         "framework": "tf",
     })
 
@@ -29,7 +27,7 @@ class _MockTrainer(Trainer):
         self.info = None
         self.restored = False
 
-    def _train(self):
+    def step(self):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
@@ -43,19 +41,19 @@ class _MockTrainer(Trainer):
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
         return result
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
         with open(path, "wb") as f:
             pickle.dump(self.info, f)
         return path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as f:
             info = pickle.load(f)
         self.info = info
         self.restored = True
 
-    def _register_if_needed(self, env_object):
+    def _register_if_needed(self, env_object, config):
         pass
 
     def set_info(self, info):
@@ -79,11 +77,9 @@ class _SigmoidFakeData(_MockTrainer):
         "iter_time": 10,
         "iter_timesteps": 1,
         "num_workers": 0,
-        "object_store_memory_per_worker": 0,
-        "object_store_memory": 0,
     })
 
-    def _train(self):
+    def step(self):
         i = max(0, self.iteration - self.config["offset"])
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
@@ -105,11 +101,9 @@ class _ParameterTuningTrainer(_MockTrainer):
         "iter_time": 10,
         "iter_timesteps": 1,
         "num_workers": 0,
-        "object_store_memory_per_worker": 0,
-        "object_store_memory": 0,
     })
 
-    def _train(self):
+    def step(self):
         return dict(
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
@@ -118,14 +112,14 @@ class _ParameterTuningTrainer(_MockTrainer):
             info={})
 
 
-def _agent_import_failed(trace):
+def _trainer_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
-    class _AgentImportFailed(Trainer):
-        _name = "AgentImportFailed"
+    class _TrainerImportFailed(Trainer):
+        _name = "TrainerImportFailed"
         _default_config = with_common_config({})
 
-        def _setup(self, config):
+        def setup(self, config):
             raise ImportError(trace)
 
-    return _AgentImportFailed
+    return _TrainerImportFailed

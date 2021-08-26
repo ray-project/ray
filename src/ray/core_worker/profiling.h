@@ -12,23 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_PROFILING_H
-#define RAY_CORE_WORKER_PROFILING_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/core_worker/context.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client.h"
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
 class Profiler {
  public:
   Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-           boost::asio::io_service &io_service,
+           instrumented_io_context &io_service,
            const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
@@ -42,14 +44,17 @@ class Profiler {
   absl::Mutex mutex_;
 
   // ASIO IO service event loop. Must be started by the caller.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 
-  // Timer used to periodically flush events to the GCS.
-  boost::asio::steady_timer timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
   std::shared_ptr<rpc::ProfileTableData> rpc_profile_data_ GUARDED_BY(mutex_);
+
+  /// Whether a profile flush is already in progress.
+  bool profile_flush_active_ GUARDED_BY(mutex_) = false;
 
   // Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
@@ -80,6 +85,5 @@ class ProfileEvent {
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_PROFILING_H

@@ -15,9 +15,15 @@ from libcpp.memory cimport (
 
 from ray.includes.common cimport (
     CBuffer,
-    CRayObject
+    CRayObject,
+    CAddress,
 )
-from ray.includes.libcoreworker cimport CActorHandle, CFiberEvent
+from ray.includes.libcoreworker cimport (
+    ActorHandleSharedPtr,
+    CActorHandle,
+    CFiberEvent,
+)
+
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
@@ -25,6 +31,21 @@ from ray.includes.unique_ids cimport (
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
+
+cdef extern from *:
+    """
+    #if __OPTIMIZE__ && __OPTIMIZE__ == 1
+    #undef __OPTIMIZE__
+    int __OPTIMIZE__ = 1;
+    #define __OPTIMIZE__ 1
+    #elif defined(BAZEL_OPT)
+    // For compilers that don't define __OPTIMIZE__
+    int __OPTIMIZE__ = 1;
+    #else
+    int __OPTIMIZE__ = 0;
+    #endif
+    """
+    int __OPTIMIZE__
 
 cdef extern from "Python.h":
     # Note(simon): This is used to configure asyncio actor stack size.
@@ -53,10 +74,10 @@ cdef class BaseID:
     # here `cdef size_t` is required.
     cdef size_t hash(self)
 
-cdef class ObjectID(BaseID):
+cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
-        # Flag indicating whether or not this object ID was added to the set
+        # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
@@ -76,17 +97,23 @@ cdef class CoreWorker:
         object async_thread
         object async_event_loop
         object plasma_event_handler
+        object job_config
+        object current_runtime_env_dict
         c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectID object_id,
+                            size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data)
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            c_bool created_by_worker,
+                            owner_address=*,
+                            c_bool inline_small_object=*)
+    cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
-    cdef make_actor_handle(self, CActorHandle *c_actor_handle)
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
 
 cdef class FunctionDescriptor:
     cdef:

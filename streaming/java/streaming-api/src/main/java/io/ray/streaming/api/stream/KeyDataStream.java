@@ -23,8 +23,8 @@ public class KeyDataStream<K, T> extends DataStream<T> {
   }
 
   /**
-   * Create a java stream that reference passed python stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a java stream that reference passed python stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public KeyDataStream(PythonDataStream referencedStream) {
     super(referencedStream);
@@ -53,12 +53,11 @@ public class KeyDataStream<K, T> extends DataStream<T> {
   }
 
   /**
-   * Convert this stream as a python stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a python stream. The converted stream and this stream are the same
+   * logical stream, which has same stream id. Changes in converted stream will be reflected in this
+   * stream and vice versa.
    */
   public PythonKeyDataStream asPythonStream() {
     return new PythonKeyDataStream(this);
   }
-
 }

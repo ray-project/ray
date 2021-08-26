@@ -8,17 +8,28 @@ import io.ray.streaming.api.function.RichFunction;
 import io.ray.streaming.api.function.internal.Functions;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
+import java.io.Serializable;
 import java.util.List;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
+
   protected final String name;
-  protected final F function;
-  protected final RichFunction richFunction;
+  protected F function;
+  protected RichFunction richFunction;
   protected List<Collector> collectorList;
   protected RuntimeContext runtimeContext;
+  private ChainStrategy chainStrategy = ChainStrategy.ALWAYS;
 
-  public StreamOperator(F function) {
+  protected StreamOperator() {
     this.name = getClass().getSimpleName();
+  }
+
+  protected StreamOperator(F function) {
+    this();
+    setFunction(function);
+  }
+
+  public void setFunction(F function) {
     this.function = function;
     this.richFunction = Functions.wrap(function);
   }
@@ -31,9 +42,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public void finish() {
-
-  }
+  public void finish() {}
 
   @Override
   public void close() {
@@ -62,7 +71,27 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     }
   }
 
+  @Override
+  public Serializable saveCheckpoint() {
+    return function.saveCheckpoint();
+  }
+
+  @Override
+  public void loadCheckpoint(Serializable checkpointObject) {
+    function.loadCheckpoint(checkpointObject);
+  }
+
+  @Override
   public String getName() {
     return name;
+  }
+
+  public void setChainStrategy(ChainStrategy chainStrategy) {
+    this.chainStrategy = chainStrategy;
+  }
+
+  @Override
+  public ChainStrategy getChainStrategy() {
+    return chainStrategy;
   }
 }

@@ -23,6 +23,19 @@ pkg_install_helper() {
 }
 
 install_bazel() {
+  if command -v bazel; then
+    if [[ -n "${BUILDKITE-}" ]]; then
+      # Only reinstall Bazel if we need to upgrade to a different version.
+      python="$(command -v python3 || command -v python || echo python)"
+      current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
+      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+      if [[ "$current_version" == "$new_version" ]]; then
+        echo "Bazel of the same version already exists, skipping the install"
+        return
+      fi
+    fi
+  fi
+
   "${ROOT_DIR}"/install-bazel.sh
   if [ -f /etc/profile.d/bazel.sh ]; then
     . /etc/profile.d/bazel.sh
@@ -30,6 +43,11 @@ install_bazel() {
 }
 
 install_base() {
+  if [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping install_base in Buildkite"
+    return
+  fi
+
   case "${OSTYPE}" in
     linux*)
       # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
@@ -51,8 +69,13 @@ install_base() {
 }
 
 install_miniconda() {
-  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
+  if [ "${OSTYPE}" = msys ]; then
+    # Windows is on GitHub Actions, whose built-in Python installations we added direct support for.
+    python --version
+    return 0
+  fi
 
+  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
   if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
     conda="$(command -v conda || true)"
   fi
@@ -65,11 +88,16 @@ install_miniconda() {
       msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
     esac
 
-    local miniconda_version="Miniconda3-py37_4.8.2" miniconda_platform="" exe_suffix=".sh"
+    local miniconda_version="Miniconda3-py37_4.9.2" miniconda_platform="" exe_suffix=".sh"
     case "${OSTYPE}" in
       linux*) miniconda_platform=Linux;;
       darwin*) miniconda_platform=MacOSX;;
       msys*) miniconda_platform=Windows; exe_suffix=".exe";;
+    esac
+
+    case "${OSTYPE}" in
+      # The hosttype variable is deprecated.
+      darwin*) HOSTTYPE="x86_64";;
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
@@ -122,8 +150,34 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
+install_shellcheck() {
+  local shellcheck_version="0.7.1"
+  if [ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]; then
+    local osname=""
+    case "${OSTYPE}" in
+      linux*) osname="linux";;
+      darwin*) osname="darwin";;
+    esac
+    local name="shellcheck-v${shellcheck_version}"
+    if [ "${osname}" = linux ] || [ "${osname}" = darwin ]; then
+      sudo mkdir -p /usr/local/bin || true
+      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+        sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
+      }
+    else
+      mkdir -p /usr/local/bin
+      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      unzip "${name}.zip" "${name}.exe"
+      mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
+    fi
+    test "${shellcheck_version}" = "$(shellcheck --version | sed -n "s/version: //p")"
+  fi
+}
+
 install_linters() {
-  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0
+  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+
+  install_shellcheck
 }
 
 install_nvm() {
@@ -144,50 +198,74 @@ install_nvm() {
       )
       printf "%s\n" \
         "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
-        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping nvm on Buildkite because we will use apt-get."
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade --quiet pip
+    "${python}" -m pip install --quiet pip==21.0.1
 
     # If we're in a CI environment, do some configuration
-    if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
       "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
+
+    "${python}" -m ensurepip
   fi
 }
 
 install_node() {
-  if [ "${OSTYPE}" = msys ]; then
+  if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
-  else
-    # Install the latest version of Node.js in order to build the dashboard.
-    (
-      set +x # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
-      npm config set loglevel warn  # make NPM quieter
-    )
+    return
   fi
+
+  if [ -n "${BUILDKITE-}" ] ; then
+    if [[ "${OSTYPE}" = darwin* ]]; then
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+    else
+      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      return
+    fi
+  fi
+
+  # Install the latest version of Node.js in order to build the dashboard.
+  (
+    set +x # suppress set -x since it'll get very noisy here
+    . "${HOME}/.nvm/nvm.sh"
+    nvm install node
+    nvm use --silent node
+    npm config set loglevel warn  # make NPM quieter
+  )
 }
 
 install_toolchains() {
-  "${ROOT_DIR}"/install-toolchains.sh
+  if [ -z "${BUILDKITE-}" ]; then
+    "${ROOT_DIR}"/install-toolchains.sh
+  fi
+}
+
+download_mnist() {
+  mkdir -p "${HOME}/data"
+  curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
+  unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
 install_dependencies() {
@@ -195,38 +273,33 @@ install_dependencies() {
   install_bazel
   install_base
   install_toolchains
-  install_nvm
-  install_pip
 
+  install_upgrade_pip
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
+    install_upgrade_pip
+  fi
+
+  install_nvm
+  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+    install_node
   fi
 
   # Install modules needed in all jobs.
-  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  alias pip="python -m pip"
+  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
-    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
-    # We want to install the CPU version only.
-    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-    case "${OSTYPE}" in
-      darwin*) pip install torch torchvision;;
-      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
-    esac
-
-    local tf_version
-    case "${OSTYPE}" in
-      msys) tf_version="${TF_VERSION:-2.2.0}";;
-      *) tf_version="${TF_VERSION:-2.1.0}";;
-    esac
-    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
-      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
-      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3)
-    if [ "${OSTYPE}" != msys ]; then
-      # These packages aren't Windows-compatible
-      pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
+    # Remove this entire section once Serve dependencies are fixed.
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+      # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+      # We want to install the CPU version only.
+      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+      case "${OSTYPE}" in
+        darwin*) pip install torch torchvision;;
+        *) pip install torch==1.8.1+cpu torchvision==0.9.1+cpu -f "${torch_url}";;
+      esac
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
@@ -234,15 +307,17 @@ install_dependencies() {
     # after n seconds.
     local status="0";
     local errmsg="";
-    for i in {1..3};
-    do
-      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
   fi
+
+  # Default requirements
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -253,27 +328,64 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
-  # Additional RLlib dependencies.
-  if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+  # Additional RLlib test dependencies.
+  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
+    # install the following packages for testing on travis only
+    pip install 'recsim>=0.2.4'
   fi
 
-  # Additional streaming dependencies.
-  if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install "msgpack>=1.0.0"
+  # Additional Tune/SGD/Doc test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
+    download_mnist
   fi
 
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
+  # For Tune, install upstream dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
   fi
 
-  CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  # Data processing test dependencies.
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+  fi
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+  fi
+
+  # Remove this entire section once Serve dependencies are fixed.
+  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    # If CI has deemed that a different version of Torch
+    # should be installed, then upgrade/downgrade to that specific version.
+    if [ -n "${TORCH_VERSION-}" ]; then
+      case "${TORCH_VERSION-1.8.1}" in
+        1.8.1) TORCHVISION_VERSION=0.9.1;;
+        1.5) TORCHVISION_VERSION=0.6.0;;
+        *) TORCHVISION_VERSION=0.5.0;;
+      esac
+      pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.8.1}" torchvision=="${TORCHVISION_VERSION}"
+    fi
+  fi
+
+  # RLlib testing with TF 1.x.
+  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+  fi
+
+  # Additional Tune dependency for Horovod.
+  # This must be run last (i.e., torch cannot be re-installed after this)
+  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
+  fi
+
+  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

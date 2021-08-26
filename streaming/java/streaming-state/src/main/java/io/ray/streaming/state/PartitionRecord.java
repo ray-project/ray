@@ -20,19 +20,15 @@ package io.ray.streaming.state;
 
 import java.io.Serializable;
 
-/**
- * value record for partition.
- */
+/** value record for partition. */
 public class PartitionRecord<T> implements Serializable {
 
-  /**
-   * The partition number of the partitioned value.
-   */
+  /** The partition number of the partitioned value. */
   private int partitionID;
+
   private T value;
 
-  public PartitionRecord() {
-  }
+  public PartitionRecord() {}
 
   public PartitionRecord(int partitionID, T value) {
     this.partitionID = partitionID;
