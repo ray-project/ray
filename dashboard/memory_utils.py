@@ -432,7 +432,7 @@ entries per group...\n\n\n"
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22
                 if len(entry["call_site"]) == 0:
-                    entry["call_site"] = ["?"]
+                    entry["call_site"] = ["disabled"]
                 else:
                     entry["call_site"] = [
                         entry["call_site"][i:i + call_site_length] for i in
