@@ -470,7 +470,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
-
         if self.env is not None:
             # Validate environment (general validation function).
             self.env = _validate_env(self.env)
@@ -1479,7 +1478,6 @@ def _determine_spaces_for_multi_agent_dict(
         if hasattr(env, "action_space") and isinstance(env.action_space,
                                                        gym.Space):
             env_act_space = env.action_space
-
     # Last resort: Try getting the env's spaces from the spaces
     # dict's special __env__ key.
     if spaces is not None:
