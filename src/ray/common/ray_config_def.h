@@ -455,4 +455,4 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)

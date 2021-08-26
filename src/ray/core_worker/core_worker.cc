@@ -739,6 +739,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         },
         event_stats_print_interval_ms);
   }
+
+  // Set event context for current core worker thread.
+  RayEventContext::Instance().SetEventContext(
+      ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+      {{"worker_id", worker_id.Hex()}});
 }
 
 void CoreWorker::Shutdown() {
