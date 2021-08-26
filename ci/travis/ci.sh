@@ -439,6 +439,12 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
+  if command -v clang-tidy > /dev/null; then
+    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+  else
+    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
+  fi
+
   # Run script linting
   lint_scripts
 

@@ -32,8 +32,11 @@ RUN apt-get install -y -qq \
     sudo unzip apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
-    openjdk-8-jre openjdk-8-jdk clang-format-7
-RUN ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+    openjdk-8-jre openjdk-8-jdk clang-format-7 jq \
+    clang-tidy-12 clang-12
+RUN ln -s /usr/bin/clang-format-7 /usr/bin/clang-format && \
+    ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
+    ln -s /usr/bin/clang-12 /usr/bin/clang
 RUN curl -o- https://get.docker.com | sh
 
 # System conf for tests
