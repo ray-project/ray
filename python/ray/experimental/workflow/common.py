@@ -23,6 +23,13 @@ def get_qualname(f):
                                      "__qualname__") else "__anonymous_func__"
 
 
+def assert_ray_initialized():
+    from ray import is_initialized
+    if not is_initialized():
+        raise RuntimeError(
+            "Please connect to ray cluster by calling `ray.init`")
+
+
 @dataclass
 class WorkflowRef:
     """This class represents a dynamic reference of a workflow output.

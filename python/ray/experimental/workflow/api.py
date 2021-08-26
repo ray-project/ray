@@ -9,7 +9,7 @@ from ray.experimental.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
-from ray.experimental.workflow.common import WorkflowStatus
+from ray.experimental.workflow.common import WorkflowStatus, assert_ray_initialized
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
 
@@ -152,7 +152,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
     Returns:
         A virtual actor.
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     return virtual_actor_class.get_actor(actor_id,
                                          storage_base.get_global_storage())
 
@@ -176,7 +176,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     return execution.resume(workflow_id)
 
 
@@ -201,7 +201,7 @@ def get_output(workflow_id: str, *,
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     return execution.get_output(workflow_id, name)
 
 
@@ -229,7 +229,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     if isinstance(status_filter, str):
         status_filter = set({WorkflowStatus(status_filter)})
     elif isinstance(status_filter, WorkflowStatus):
@@ -273,7 +273,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     return execution.resume_all(include_failed)
 
 
@@ -291,7 +291,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Returns:
         The status of that workflow
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
@@ -312,7 +312,7 @@ def cancel(workflow_id: str) -> None:
     Returns:
         None
     """
-    storage_base.assert_initialized()
+    assert_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
