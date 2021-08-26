@@ -1,4 +1,4 @@
-.. _datasets:
+.. _workflows:
 
 Ray Workflows: Fast and General Workflow Engine
 ===============================================
