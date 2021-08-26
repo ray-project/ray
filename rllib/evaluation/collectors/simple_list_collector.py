@@ -192,8 +192,10 @@ class _AgentCollector:
                         d.itemsize * int(np.product(d.shape[i + 1:]))
                         for i in range(1, len(d.shape))
                     ]
+                    start = self.shift_before - shift_win + 1 + obs_shift + \
+                            view_req.shift_to
                     data = np.lib.stride_tricks.as_strided(
-                        d[self.shift_before - shift_win:],
+                        d[start:start + self.agent_steps],
                         [self.agent_steps, shift_win
                          ] + [d.shape[i] for i in range(1, len(d.shape))],
                         [data_size, data_size] + strides)

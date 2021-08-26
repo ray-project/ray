@@ -942,21 +942,28 @@ class SampleBatch(dict):
                 data_col = last_mappings.get(data_col, data_col)
                 # Range needed.
                 if view_req.shift_from is not None:
-                    data = self[view_col][-1]
-                    traj_len = len(self[data_col])
-                    missing_at_end = traj_len % view_req.batch_repeat_value
-                    obs_shift = -1 if data_col in [
-                        SampleBatch.OBS, SampleBatch.NEXT_OBS
-                    ] else 0
-                    from_ = view_req.shift_from + obs_shift
-                    to_ = view_req.shift_to + obs_shift + 1
-                    if to_ == 0:
-                        to_ = None
-                    input_dict[view_col] = np.array([
-                        np.concatenate(
-                            [data,
-                             self[data_col][-missing_at_end:]])[from_:to_]
-                    ])
+                    # Batch repeat value > 1: We have single frames in the
+                    # batch at each timestep.
+                    if view_req.batch_repeat_value > 1:
+                        data = self[view_col][-1]
+                        traj_len = len(self[data_col])
+                        missing_at_end = traj_len % view_req.batch_repeat_value
+                        obs_shift = -1 if data_col in [
+                            SampleBatch.OBS, SampleBatch.NEXT_OBS
+                        ] else 0
+                        from_ = view_req.shift_from + obs_shift
+                        to_ = view_req.shift_to + obs_shift + 1
+                        if to_ == 0:
+                            to_ = None
+                        input_dict[view_col] = np.array([
+                            np.concatenate(
+                                [self[data_col][-missing_at_end:],
+                                 data])[from_:to_]
+                        ])
+                    # Batch repeat value = 1: We already have framestacks
+                    # at each timestep.
+                    else:
+                        input_dict[view_col] = self[view_col][-1][None]
                 # Single index.
                 else:
                     data = self[data_col][-1]

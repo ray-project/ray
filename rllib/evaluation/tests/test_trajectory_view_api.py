@@ -19,6 +19,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.test_utils import framework_iterator, check
 
 
@@ -111,7 +112,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 19, view_req_policy
+            assert len(view_req_policy) == 20, view_req_policy
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -324,6 +325,40 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         self.assertLess(results["agent_timesteps_total"],
                         (num_iterations + 1) * config["train_batch_size"])
         trainer.stop()
+
+    def test_traj_view_framestacking(self):
+        """Tests, whether Policy/Model return framestacked obs.
+        """
+        config = ppo.DEFAULT_CONFIG.copy()
+        config["model"] = config["model"].copy()
+        config["model"]["num_framestacks"] = "auto"
+        config["seed"] = 42
+        config["num_workers"] = 0
+        config["env"] = "MsPacman-v0"
+
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            config["model"]["framestack"] = DEPRECATED_VALUE
+            trainer_w_new_framestacking = ppo.PPOTrainer(config)
+            rw = trainer_w_new_framestacking.workers.local_worker()
+            sample_new = rw.sample()
+
+            config["model"]["framestack"] = True
+            trainer_w_old_framestacking = ppo.PPOTrainer(config)
+            rw = trainer_w_old_framestacking.workers.local_worker()
+            sample_old = rw.sample()
+            sample_old[SampleBatch.OBS] = np.transpose(
+                sample_old[SampleBatch.OBS], [0, 3, 1, 2])
+            sample_old[SampleBatch.NEXT_OBS] = np.transpose(
+                sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
+
+            for k in [
+                    SampleBatch.OBS, SampleBatch.NEXT_OBS, SampleBatch.ACTIONS,
+                    SampleBatch.REWARDS
+            ]:
+                check(sample_new[k], sample_old[k])
+
+            trainer_w_new_framestacking.stop()
+            trainer_w_old_framestacking.stop()
 
 
 def analyze_rnn_batch(batch, max_seq_len):

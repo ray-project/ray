@@ -1136,13 +1136,12 @@ py_test(
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["team:ml", "evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+py_test(
+    name = "evaluation/tests/test_trajectory_view_api",
+    tags = ["team:ml", "evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+)
 
 
 # --------------------------------------------------------------------

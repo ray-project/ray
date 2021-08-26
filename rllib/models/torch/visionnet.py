@@ -217,6 +217,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
             self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift="-{}:1".format(from_ - 1),
+                used_for_compute_actions=False,
                 space=self.view_requirements[SampleBatch.OBS].space,
             )
 
