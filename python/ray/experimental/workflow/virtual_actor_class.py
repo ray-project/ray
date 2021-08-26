@@ -5,8 +5,6 @@ import logging
 from typing import List, TYPE_CHECKING, Any, Tuple, Dict
 import uuid
 import weakref
-import copy
-import functools
 import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
@@ -130,6 +128,7 @@ class ActorMethod(ActorMethodBase):
     def __setstate__(self, state):
         self.__init__(state["actor"], state["method_name"])
 
+
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
     the signatures of its methods etc."""
@@ -163,6 +162,7 @@ class VirtualActorMetadata:
                 method, ignore_first=not is_bound)
 
         for method_name, method in actor_methods:
+
             def step(method_name, method, *args, **kwargs):
                 readonly = getattr(method, "__virtual_actor_readonly__", False)
                 flattened_args = self.flatten_args(method_name, args, kwargs)
@@ -174,12 +174,14 @@ class VirtualActorMetadata:
                         ws = WorkflowStorage(actor_id, get_global_storage())
                         state_ref = WorkflowRef(ws.get_entrypoint_step_id())
                     # This is a hack to insert a positional argument.
-                    flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
+                    flattened_args = [signature.DUMMY_TYPE, state_ref
+                                      ] + flattened_args
                 workflow_inputs = serialization_context.make_workflow_inputs(
                     flattened_args)
 
                 if readonly:
-                    _actor_method = _wrap_readonly_actor_method(actor_id, self.cls, method_name)
+                    _actor_method = _wrap_readonly_actor_method(
+                        actor_id, self.cls, method_name)
                     step_type = StepType.READONLY_ACTOR_METHOD
                 else:
                     _actor_method = _wrap_actor_method(self.cls, method_name)
@@ -195,8 +197,8 @@ class VirtualActorMetadata:
                 )
                 wf = Workflow(workflow_data)
                 return wf
-            method.step = functools.partial(step, method_name, method)
 
+            method.step = functools.partial(step, method_name, method)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""

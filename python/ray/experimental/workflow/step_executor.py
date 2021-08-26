@@ -347,7 +347,8 @@ def _workflow_step_executor(
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     if isinstance(volatile_output, Workflow):
         assert step_type == StepType.ACTOR_METHOD
-        volatile_output = volatile_output.run_async(workflow_context.get_current_workflow_id())
+        volatile_output = volatile_output.run_async(
+            workflow_context.get_current_workflow_id())
     return persisted_output, volatile_output
 
 

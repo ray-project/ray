@@ -100,14 +100,15 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
     cnt.write_text(str(0))
-    lock = tmp_path / "lock"
+    lock_file = tmp_path / "lock"
+
     @workflow.step
     def start_session():
         if fail_flag.exists():
             raise Exception()
         v = int(cnt.read_text()) + 1
         cnt.write_text(str(v))
-        with FileLock(str(lock)):
+        with FileLock(str(lock_file)):
             return "UP"
 
     @workflow.virtual_actor
@@ -161,8 +162,8 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     fail_flag.touch()
     assert isinstance(actor.session_start_with_status.run(), Exception)
     assert cnt.read_text() == "3"
-    l = FileLock(str(lock))
-    l.acquire()
+    lock = FileLock(str(lock_file))
+    lock.acquire()
     fail_flag.unlink()
     ret = actor.session_start_with_status.run_async()
     for i in range(0, 60):
@@ -174,7 +175,7 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     # This means when return from session_start_with_status,
     # the session got updated
     assert actor.get_status.run() == "STARTING"
-    l.release()
+    lock.release()
     assert ray.get(ret) == "UP"
 
 
