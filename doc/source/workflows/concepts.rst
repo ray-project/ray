@@ -1,34 +1,37 @@
 .. _workflows:
 
-Ray Workflows: Fast and General Workflow Engine
-===============================================
+Workflows: Fast, Durable Workflow Engine
+========================================
 
 .. tip::
 
-  Ray Workflows is available as **alpha** in Ray 1.7+. Please file feature requests and bug reports on GitHub Issues.
+  Workflows is available as **alpha** in Ray 1.7+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Ray Workflows is a library built on Ray tasks to support high-performance, *durable* workflows. It is intended to support both business workflows (e.g., thousands of long-running user workflows as in Cadence), and large-scale workflows (e.g., ML and data pipelines).
+Workflows provides high-performance, *durable* workflows using Ray tasks as the underlying execution engine. It is intended to support both business workflows (e.g., thousands of long-running user workflows as in Cadence), and large-scale workflows (e.g., ML and data pipelines).
+
+.. image:: workflows.svg
+
+..
+  https://docs.google.com/drawings/d/113uAs-i4YjGBNxonQBC89ns5VqL3WeQHkUOWPSpeiXk/edit
 
 Why Workflows?
 --------------
 
-Ray Workflows builds on the dynamicity of Ray tasks to support a broad range of use cases with high performance. It offers:
+**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow steps.
 
-**Greater flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow steps.
-
-**Higher performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of steps. Take advantage of the Ray object store to pass distributed datasets between steps with zero-copy overhead.
+**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of steps. Take advantage of the Ray object store to pass distributed datasets between steps with zero-copy overhead.
 
 **Dependency management:** Workflows leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows and virtual actors as code is upgraded over time.
 
-You might find that workflows is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This means it focuses more on core workflow primitives as opposed to management tools and integrations.
+You might find that workflows is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This means workflows focuses more on core workflow primitives over tools and integrations.
 
 Concepts
 --------
 
-**Steps**: Functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which enables recoverability.
+**Steps**: Functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
 
 .. code-block:: python
-    :caption: Composing steps together into a workflow.
+    :caption: Composing steps together into a workflow:
 
     from ray import workflow
 
@@ -42,10 +45,10 @@ Concepts
 
     output: Workflow[int] = add.step(100, one.step())
 
-**Workflows**: Running DAGs of steps created with ``output.run(workflow_id=<id>)`` or ``output.run_async(workflow_id=<id>)``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+**Workflows**: An execution graph of steps created with ``Workflow.run()`` or ``Workflow.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
 
 .. code-block:: python
-    :caption: Creating a new workflow run.
+    :caption: Creating a new workflow run:
 
     workflow.init(storage="/tmp/data")
     assert output.run(workflow_id="run_1") == 101
@@ -55,7 +58,7 @@ Concepts
 **Objects**: Large data objects stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
 
 .. code-block:: python
-    :caption: Returning Ray objects from a workflow.
+    :caption: Using Ray objects in a workflow:
 
     @ray.remote
     def hello():
@@ -75,7 +78,7 @@ Concepts
 **Dynamic Workflows**: Workflows that generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
 
 .. code-block:: python
-    :caption: The Fibonacci recursive workflow.
+    :caption: The Fibonacci recursive workflow:
 
     @workflow.step
     def fib(n: int) -> int:
@@ -85,4 +88,25 @@ Concepts
 
     assert fib.step(10).run() == 55
 
-**Virtual Actors**: (This feature is under development)
+**Virtual Actors**: Actors with state durably logged to workflow storage. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [This feature is under development.]
+.. code-block:: python
+    :caption: A persistent virtual actor counter:
+
+    @workflow.virtual_actor
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def incr(self):
+            self.count += 1
+            return self.count
+
+        def __getstate__(self):
+            return self.count
+
+        def __setstate__(self, state):
+            self.count = state
+
+    workflow.init(storage="/tmp/data")
+    c1 = Counter.get_or_create("counter_1")
+    assert c1.incr.run() == 1

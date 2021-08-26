@@ -287,16 +287,6 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Workflows
-   workflows/concepts.rst
-   workflows/management.rst
-   workflows/actors.rst
-   workflows/comparison.rst
-   workflows/package-ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -336,6 +326,17 @@ Papers
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
 
 .. toctree::
    :hidden:
