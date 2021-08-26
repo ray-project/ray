@@ -4,17 +4,17 @@ from typing import Optional, List, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.block import BlockAccessor
+from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
-    _resolve_paths_and_filesystem)
-from ray.data.impl.arrow_block import ArrowRow
+    FileBasedDatasource, _resolve_paths_and_filesystem)
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
 
-class ParquetDatasource(Datasource[ArrowRow]):
+class ParquetDatasource(FileBasedDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     Examples:
@@ -31,8 +31,12 @@ class ParquetDatasource(Datasource[ArrowRow]):
             columns: Optional[List[str]] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
             **reader_args) -> List[ReadTask]:
-        """Creates and returns read tasks for a file-based datasource.
+        """Creates and returns read tasks for a Parquet file-based datasource.
         """
+        # NOTE: We override the base class FileBasedDatasource.prepare_read
+        # method in order to leverage pyarrow's ParquetDataset abstraction,
+        # which simplifies partitioning logic. We still use
+        # FileBasedDatasource's write side (do_write), however.
         _check_pyarrow_version()
         from ray import cloudpickle
         import pyarrow.parquet as pq
@@ -104,6 +108,16 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 ReadTask(lambda pieces=pieces_: read_pieces(pieces), metadata))
 
         return read_tasks
+
+    def _write_block(
+            self, f: "pyarrow.NativeFile", block: BlockAccessor,
+            **writer_args):
+        import pyarrow.parquet as pq
+
+        pq.write_table(block.to_arrow(), f, **writer_args)
+
+    def _file_format(self):
+        return "parquet"
 
 
 def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],

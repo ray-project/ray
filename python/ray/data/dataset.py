@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
@@ -25,7 +24,8 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
-    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource)
+    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
+    ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -789,7 +789,8 @@ class Dataset(Generic[T]):
             self,
             path: str,
             *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -807,27 +808,16 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_parquet_args: Options to pass to
+                pyarrow.parquet.write_table(), which is used to write out each
+                block to a file.
         """
-        import pyarrow.parquet as pq
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def parquet_write(write_path, block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow()
-            with pq.ParquetWriter(write_path, table.schema) as writer:
-                writer.write_table(table)
-
-        refs = [
-            parquet_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.parquet"),
-                block) for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            ParquetDatasource(),
+            path=path,
+            uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_parquet_args)
 
     def write_json(
             self,
