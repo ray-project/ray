@@ -185,7 +185,7 @@ class WorkflowStorage:
         Returns:
             None
         """
-        return asyncio_run(_save_object_ref(ref))
+        return asyncio_run(self._save_object_ref(obj_ref))
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -325,9 +325,8 @@ class WorkflowStorage:
             self._put(self._key_step_args(step_id), args_obj)
         ]
         save_tasks.extend(
-            self._save_object_ref(obj_id, ref)
-            for obj_id, ref in zip(metadata["object_refs"], inputs.inputs.object_refs)
-        )
+            self._save_object_ref(obj_id, ref) for obj_id, ref in zip(
+                metadata["object_refs"], inputs.inputs.object_refs))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
