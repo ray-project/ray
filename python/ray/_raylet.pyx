@@ -440,7 +440,15 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
-        worker.actors[actor_id] = actor_class.__new__(actor_class)
+        actor = actor_class.__new__(actor_class)
+        worker.actors[actor_id] = actor
+        # Generate the repr used for logging prefixes.
+        if "__repr__" in actor_class.__ray_actor_class__.__dict__:
+            print("{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
+        else:
+            print("{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -458,6 +466,7 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
         function_executor = execution_info.function
+        print("{}{}".format(ray_constants.LOG_PREFIX_TASK_NAME, task_name))
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
