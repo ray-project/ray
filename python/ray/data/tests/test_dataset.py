@@ -21,6 +21,8 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.extensions.tensor_extension import (
+    TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
 from ray.data.tests.conftest import *  # noqa
 
@@ -185,6 +187,300 @@ def test_tensors(ray_start_regular_shared):
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=4, "
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
+
+
+def test_tensor_array_ops(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    df = pd.DataFrame({"one": [1, 2, 3], "two": TensorArray(arr)})
+
+    def apply_arithmetic_ops(arr):
+        return 2 * (arr + 1) / 3
+
+    def apply_comparison_ops(arr):
+        return arr % 2 == 0
+
+    def apply_logical_ops(arr):
+        return arr & (3 * arr) | (5 * arr)
+
+    # Op tests, using NumPy as the groundtruth.
+    np.testing.assert_equal(
+        apply_arithmetic_ops(arr), apply_arithmetic_ops(df["two"]))
+
+    np.testing.assert_equal(
+        apply_comparison_ops(arr), apply_comparison_ops(df["two"]))
+
+    np.testing.assert_equal(
+        apply_logical_ops(arr), apply_logical_ops(df["two"]))
+
+
+def test_tensor_array_reductions(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+
+    # Reduction tests, using NumPy as the groundtruth.
+    for name, reducer in TensorArray.SUPPORTED_REDUCERS.items():
+        np_kwargs = {}
+        if name in ("std", "var"):
+            # Pandas uses a ddof default of 1 while NumPy uses 0.
+            # Give NumPy a ddof kwarg of 1 in order to ensure equivalent
+            # standard deviation calculations.
+            np_kwargs["ddof"] = 1
+        np.testing.assert_equal(df["two"].agg(name),
+                                reducer(arr, axis=0, **np_kwargs))
+
+
+def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": list(arr)})
+    # Cast column to tensor extension dtype.
+    df["two"] = df["two"].astype(TensorDtype())
+    ds = ray.data.from_pandas([ray.put(df)])
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_pandas_roundtrip(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds_df = ray.get(ds.to_pandas())[0]
+    assert ds_df.equals(df)
+
+
+def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared,
+                                             tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared,
+                                               tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    schema = pa.schema([
+        ("one", pa.int32()),
+        ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
+    ])
+    ds = ray.data.read_parquet(str(tmp_path), schema=schema)
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_pickle_manual_serde(
+        ray_start_regular_shared, tmp_path):
+    import pickle
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [pickle.dumps(a) for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    def deser_mapper(batch: pd.DataFrame):
+        batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
+        return batch
+
+    ds = ds.map_batches(deser_mapper, batch_format="pandas")
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde(ray_start_regular_shared,
+                                                      tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    tensor_col_name = "two"
+
+    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    def np_deser_mapper(batch: pa.Table):
+        # NOTE(Clark): We use NumPy to consolidate these potentially
+        # non-contiguous buffers, and to do buffer bookkeeping in general.
+        np_col = np.array([
+            np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
+            for buf in batch.column(tensor_col_name)
+        ])
+
+        return batch.set_column(
+            batch._ensure_integer_index(tensor_col_name), tensor_col_name,
+            ArrowTensorArray.from_numpy(np_col))
+
+    ds = ds.map_batches(np_deser_mapper, batch_format="pyarrow")
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+@pytest.mark.skip(
+    reason=("Waiting for Arrow to support registering custom ExtensionType "
+            "casting kernels. See "
+            "https://issues.apache.org/jira/browse/ARROW-5890#"))
+def test_tensors_in_tables_parquet_bytes_with_schema(ray_start_regular_shared,
+                                                     tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    schema = pa.schema([
+        ("one", pa.int32()),
+        ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
+    ])
+    ds = ray.data.read_parquet(str(tmp_path), schema=schema)
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+@pytest.mark.skip(
+    reason=("Waiting for pytorch to support tensor creation from objects that "
+            "implement the __array__ interface. See "
+            "https://github.com/pytorch/pytorch/issues/51156"))
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
+    import torch
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": TensorArray(arr),
+        "label": [1.0, 2.0, 3.0]
+    })
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": TensorArray(arr2),
+        "label": [4.0, 5.0, 6.0]
+    })
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = maybe_pipeline(ds, pipelined)
+    torchd = ds.to_torch(label_column="label", batch_size=2)
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in iter(torchd):
+            iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+        combined_iterations = np.concatenate(iterations)
+        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.skip(
+    reason=(
+        "Waiting for Pandas DataFrame.values for extension arrays fix to be "
+        "released. See https://github.com/pandas-dev/pandas/pull/43160"))
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
+    import tensorflow as tf
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape).astype(np.float)
+    # TODO(Clark): Ensure that heterogeneous columns is properly supported
+    # (tf.RaggedTensorSpec)
+    df1 = pd.DataFrame({
+        "one": TensorArray(arr),
+        "two": TensorArray(arr),
+        "label": TensorArray(arr),
+    })
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
+    df2 = pd.DataFrame({
+        "one": TensorArray(arr2),
+        "two": TensorArray(arr2),
+        "label": TensorArray(arr2),
+    })
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = maybe_pipeline(ds, pipelined)
+    tfd = ds.to_tf(
+        label_column="label",
+        output_signature=(tf.TensorSpec(
+            shape=(None, 2, 2, 2, 2), dtype=tf.float32),
+                          tf.TensorSpec(
+                              shape=(None, 1, 2, 2, 2), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(np.concatenate((batch[0], batch[1]), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    arr = np.array(
+        [[np.asarray(v) for v in values] for values in df.to_numpy()])
+    np.testing.assert_array_equal(arr, combined_iterations)
 
 
 @pytest.mark.parametrize(

@@ -42,7 +42,16 @@ class ArrowRow:
         return self.as_pydict().items()
 
     def __getitem__(self, key: str) -> Any:
-        return self._row[key][0].as_py()
+        col = self._row[key]
+        if len(col) == 0:
+            return None
+        else:
+            item = col[0]
+            if isinstance(item, np.ndarray):
+                return item
+            else:
+                # Assuming that this is a pyarrow.Scalar value.
+                return item.as_py()
 
     def __eq__(self, other: Any) -> bool:
         return self.as_pydict() == other
