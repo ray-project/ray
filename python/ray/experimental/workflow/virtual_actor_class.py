@@ -194,6 +194,7 @@ class VirtualActorMetadata:
                     max_retries=1,
                     catch_exceptions=False,
                     ray_options={},
+                    name=None,
                 )
                 wf = Workflow(workflow_data)
                 return wf

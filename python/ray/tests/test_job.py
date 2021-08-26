@@ -56,11 +56,11 @@ _ = Actor.remote()
 def test_job_gc_with_detached_actor(call_ray_start):
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
     driver = """
 import ray
 
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 
 @ray.remote
 class Actor:
