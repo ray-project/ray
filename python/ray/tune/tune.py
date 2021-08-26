@@ -469,7 +469,7 @@ def run(
                     "You have specified `max_concurrent_trials="
                     f"{max_concurrent_trials}`, but the `search_alg` is "
                     "already a `ConcurrencyLimiter`. `max_concurrent_trials` "
-                    "will  be ignored.")
+                    "will be ignored.")
         else:
             if max_concurrent_trials < 1:
                 raise ValueError(
