@@ -28,7 +28,9 @@ You might find that workflows is *lower level* compared to engines such as `AirF
 Concepts
 --------
 
-**Steps**: Functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
+Steps
+~~~~~
+Steps are functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
 
 .. code-block:: python
     :caption: Composing steps together into a workflow:
@@ -45,7 +47,9 @@ Concepts
 
     output: Workflow[int] = add.step(100, one.step())
 
-**Workflows**: An execution graph of steps created with ``Workflow.run()`` or ``Workflow.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+Workflows
+~~~~~~~~~
+A workflow is an execution graph of steps created with ``Workflow.run()`` or ``Workflow.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
 
 .. code-block:: python
     :caption: Creating a new workflow run:
@@ -55,7 +59,9 @@ Concepts
     assert workflow.get_status("run_1") == workflow.WorkflowStatus.SUCCESSFUL
     assert workflow.get_output("run_1") == 101
 
-**Objects**: Large data objects stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
+Objects
+~~~~~~~~~
+Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
 
 .. code-block:: python
     :caption: Using Ray objects in a workflow:
@@ -75,7 +81,9 @@ Concepts
     workflow.init()
     assert concat.step(words.step()).run() == "hello world"
 
-**Dynamic Workflows**: Workflows that generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
+Dynamic Workflows
+~~~~~~~~~~~~~~~~~
+Workflows can generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
 
 .. code-block:: python
     :caption: The Fibonacci recursive workflow:
@@ -92,7 +100,9 @@ Concepts
 
     assert fib.step(10).run() == 55
 
-**Virtual Actors**: Actors with state durably logged to workflow storage. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [This feature is under development.]
+Virtual Actors
+~~~~~~~~~~~~~~
+Virtual actors have their state durably logged to workflow storage. This enables the management of long-running business workflows. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [This feature is under development.]
 
 .. code-block:: python
     :caption: A persistent virtual actor counter:
