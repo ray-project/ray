@@ -18,14 +18,14 @@ logger.propagate = False
 
 
 class LogstreamClient:
-    def __init__(self, channel: "grpc._channel.Channel", metadata: list):
+    def __init__(self, client_worker: "ray.util.client.worker.Worker", metadata: list):
         """Initializes a thread-safe log stream over a Ray Client gRPC channel.
 
         Args:
             channel: connected gRPC channel
             metadata: metadata to pass to gRPC requests
         """
-        self.channel = channel
+        self.client_worker = client_worker
         self._metadata = metadata
         self.request_queue = queue.Queue()
         self.log_thread = self._start_logthread()
@@ -35,30 +35,36 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
-        stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
-        log_stream = stub.Logstream(
-            iter(self.request_queue.get, None), metadata=self._metadata)
-        try:
-            for record in log_stream:
-                if record.level < 0:
-                    self.stdstream(level=record.level, msg=record.msg)
-                self.log(level=record.level, msg=record.msg)
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.CANCELLED:
-                # Graceful shutdown. We've cancelled our own connection.
-                logger.info("Cancelling logs channel")
-            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                              grpc.StatusCode.RESOURCE_EXHAUSTED):
-                # TODO(barakmich): The server may have
-                # dropped. In theory, we can retry, as per
-                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-                # in practice we may need to think about the correct semantics
-                # here.
-                logger.info("Server disconnected from logs channel")
-            else:
-                # Some other, unhandled, gRPC error
-                logger.exception(
-                    f"Got Error from logger channel -- shutting down: {e}")
+        while True:
+            stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.client_worker.channel)
+            log_stream = stub.Logstream(
+                iter(self.request_queue.get, None), metadata=self._metadata)
+            try:
+                for record in log_stream:
+                    if record.level < 0:
+                        self.stdstream(level=record.level, msg=record.msg)
+                    self.log(level=record.level, msg=record.msg)
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.CANCELLED:
+                    # Graceful shutdown. We've cancelled our own connection.
+                    logger.info("Logs channel cancelled")
+                    return
+                elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                                grpc.StatusCode.RESOURCE_EXHAUSTED):
+                    # TODO(barakmich): The server may have
+                    # dropped. In theory, we can retry, as per
+                    # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                    # in practice we may need to think about the correct semantics
+                    # here.
+                    logger.info("Server disconnected from logs channel")
+                else:
+                    # Some other, unhandled, gRPC error
+                    logger.exception(
+                        f"Got Error from logger channel: {e}")
+                self.client_worker._connect_grpc_channel()
+                if not self.client_worker.is_connected():
+                    logger.info("Reconnection failed, cancelling logs channel.")
+                    return
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.

@@ -4,8 +4,9 @@ import grpc
 from queue import Queue
 import sys
 
-from typing import Any, Iterator, TYPE_CHECKING, Union
+from typing import Any, Dict, Iterator, TYPE_CHECKING, Union
 from threading import Lock, Thread
+import time
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 QUEUE_JOIN_SECONDS = 5
+WAIT_FOR_CLIENT_RECONNECT_SECONDS = 30
 
 
 def fill_queue(
@@ -46,6 +48,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.basic_service = basic_service
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
+        self.client_last_seen: Dict[str, float] = {} # guarded by self.clients_lock
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
@@ -57,6 +60,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         accepted_connection = self._init(client_id, context)
         if not accepted_connection:
             return
+        start_time = self.client_last_seen[client_id]
         try:
             request_queue = Queue()
             queue_filler_thread = Thread(
@@ -125,14 +129,26 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             logger.debug(f"Closing data channel: {e}")
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
-            self.basic_service.release_all(client_id)
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
+            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
             with self.clients_lock:
                 # Could fail before client accounting happens
+                if client_id not in self.client_last_seen:
+                    # Some other connection has already cleaned up this
+                    # this client's session
+                    return
+                last_seen = self.client_last_seen[client_id]
+                if last_seen > start_time:
+                    # The client reconnected at some point, don't clean up
+                    # session
+                    return
+                # Client didn't reconnect in time, clean up
+                self.basic_service.release_all(client_id)
+                del self.client_last_seen[client_id]
                 self.num_clients -= 1
                 logger.debug(f"Removed clients. {self.num_clients}")
 
@@ -163,10 +179,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 return False
-            self.num_clients += 1
-            logger.debug(f"Accepted data connection from {client_id}. "
-                         f"Total clients: {self.num_clients}")
-
+            if client_id in self.client_last_seen:
+                self.client_last_seen[client_id] = time.time()
+                logger.debug(f"Client {client_id} has reconnected.")
+            else:
+                self.num_clients += 1
+                self.client_last_seen[client_id] = time.time()
+                logger.debug(f"Accepted data connection from {client_id}. "
+                            f"Total clients: {self.num_clients}")
             return True
 
     def _build_connection_response(self):

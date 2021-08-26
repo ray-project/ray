@@ -178,6 +178,10 @@ class ProxyManager():
 
         return self._node
 
+    def get_specific_server(self, client_id) -> Optional[SpecificServer]:
+        with self.server_lock:
+            return self.servers.get(client_id)
+
     def create_specific_server(self, client_id: str) -> SpecificServer:
         """
         Create, but not start a SpecificServer for a given client. This
@@ -426,40 +430,48 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         if client_id == "":
             return
 
+        server = self.proxy_manager.get_specific_server(client_id)
         # Create Placeholder *before* reading the first request.
-        server = self.proxy_manager.create_specific_server(client_id)
-        try:
-            with self.clients_lock:
-                self.num_clients += 1
-
-            logger.info(f"New data connection from client {client_id}: ")
-            init_req = next(request_iterator)
+        if server is not None:
+            channel = self.proxy_manager.get_channel(client_id)
+        else:
+            # Specific server doesn't already exist, this is a new connection
+            server = self.proxy_manager.create_specific_server(client_id)
             try:
-                modified_init_req, job_config = prepare_runtime_init_req(
-                    init_req)
-                if not self.proxy_manager.start_specific_server(
-                        client_id, job_config):
-                    logger.error(
-                        f"Server startup failed for client: {client_id}, "
-                        f"using JobConfig: {job_config}!")
-                    raise RuntimeError(
-                        "Starting up Server Failed! Check "
-                        "`ray_client_server_[port].err` on the cluster.")
-                channel = self.proxy_manager.get_channel(client_id)
-                if channel is None:
-                    logger.error(f"Channel not found for {client_id}")
-                    raise RuntimeError(
-                        "Proxy failed to Connect to backend! Check "
-                        "`ray_client_server.err` on the cluster.")
-                stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-            except Exception:
-                init_resp = ray_client_pb2.DataResponse(
-                    init=ray_client_pb2.InitResponse(
-                        ok=False, msg=traceback.format_exc()))
-                init_resp.req_id = init_req.req_id
-                yield init_resp
-                return None
+                with self.clients_lock:
+                    self.num_clients += 1
 
+                logger.info(f"New data connection from client {client_id}: ")
+                init_req = next(request_iterator)
+                try:
+                    modified_init_req, job_config = prepare_runtime_init_req(
+                        init_req)
+                    if not self.proxy_manager.start_specific_server(
+                            client_id, job_config):
+                        logger.error(
+                            f"Server startup failed for client: {client_id}, "
+                            f"using JobConfig: {job_config}!")
+                        raise RuntimeError(
+                            "Starting up Server Failed! Check "
+                            "`ray_client_server_[port].err` on the cluster.")
+                    channel = self.proxy_manager.get_channel(client_id)
+                    if channel is None:
+                        logger.error(f"Channel not found for {client_id}")
+                        raise RuntimeError(
+                            "Proxy failed to Connect to backend! Check "
+                            "`ray_client_server.err` on the cluster.")
+                    stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+                except Exception:
+                    init_resp = ray_client_pb2.DataResponse(
+                        init=ray_client_pb2.InitResponse(
+                            ok=False, msg=traceback.format_exc()))
+                    init_resp.req_id = init_req.req_id
+                    yield init_resp
+                    return None
+            except Exception:
+                logger.exception("Proxying Datapath failed!")
+
+        try:
             new_iter = chain([modified_init_req], request_iterator)
             resp_stream = stub.Datapath(
                 new_iter, metadata=[("client_id", client_id)])
