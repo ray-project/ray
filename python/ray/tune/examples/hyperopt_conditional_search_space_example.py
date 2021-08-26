@@ -15,6 +15,7 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from hyperopt import hp
 
+
 def f_unpack_dict(dct):
     """
     Unpacks all sub-dictionaries in given dictionary recursively. There should be no duplicated keys 
@@ -30,15 +31,16 @@ def f_unpack_dict(dct):
     ----------------
     : unpacked dictionary
     """
-    
+
     res = {}
     for (k, v) in dct.items():
         if isinstance(v, dict):
             res = {**res, **f_unpack_dict(v)}
         else:
             res[k] = v
-            
+
     return res
+
 
 def evaluation_fn(step, width, height, mult=1):
     return (0.1 + width * step / 100)**(-1) + height * 0.1 * mult
@@ -61,17 +63,22 @@ def easy_objective(config_in):
 
 config_space = {
     "activation": hp.choice("activation", [
-        {"activation": "relu", "mult": hp.uniform("mult", 1, 2)},
-        {"activation": "tanh"},  
+        {
+            "activation": "relu",
+            "mult": hp.uniform("mult", 1, 2)
+        },
+        {
+            "activation": "tanh"
+        },
     ]),
     "width": hp.uniform("width", 0, 20),
     "height": hp.uniform("heright", -100, 100),
-    "steps":100
+    "steps": 100
 }
 
+
 def run_optuna_tune(config_dict=config_space, smoke_test=False):
-    algo = HyperOptSearch(
-        space=config_dict, metric="mean_loss", mode="min")
+    algo = HyperOptSearch(space=config_dict, metric="mean_loss", mode="min")
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
     analysis = tune.run(
