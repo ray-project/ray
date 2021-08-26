@@ -18,10 +18,9 @@ def get_cli_args():
     parser.add_argument("--local-mode",
                         action="store_true",
                         help="Init Ray in local mode for easier debugging.")
-    parser.add_argument(
-        "--output-dir",
-        default="output_bare_metal_policy",
-        help="Define the output directory for storing results.")
+    parser.add_argument("--output-dir",
+                        default="output_bare_metal_policy",
+                        help="Define the output directory for storing results.")
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
