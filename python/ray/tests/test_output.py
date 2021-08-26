@@ -20,10 +20,6 @@ def foo(out_str, err_str):
     print(out_str)
     print(err_str, file=sys.stderr)
 
-@ray.remote
-def bar():
-    print("OK")
-
 ray.get(foo.remote("abc", "def"))
     """
 
@@ -33,8 +29,40 @@ ray.get(foo.remote("abc", "def"))
 
     assert out_str.endswith("abc\n"), out_str
     assert "(foo pid=" in out_str, out_str
-    assert "(bar pid=" in out_str, out_str
     assert err_str.split("\n")[-2].endswith("def")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_multi_stdout():
+    script = """
+import ray
+import sys
+
+ray.init(num_cpus=1)
+
+@ray.remote
+def foo():
+    print()
+
+@ray.remote
+def bar():
+    print()
+
+@ray.remote
+def baz():
+    print()
+
+ray.get(foo.remote())
+ray.get(bar.remote())
+ray.get(baz.remote())
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+
+    assert "(foo pid=" in out_str, out_str
+    assert "(bar pid=" in out_str, out_str
+    assert "(baz pid=" in out_str, out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

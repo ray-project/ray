@@ -254,10 +254,29 @@ class LogMonitor:
             True if anything was published and false otherwise.
         """
         anything_published = False
+        lines_to_publish = []
+
+        def flush():
+            nonlocal lines_to_publish
+            nonlocal anything_published
+            if len(lines_to_publish) > 0:
+                self.redis_client.publish(
+                    gcs_utils.LOG_FILE_CHANNEL,
+                    json.dumps({
+                        "ip": self.ip,
+                        "pid": file_info.worker_pid,
+                        "job": file_info.job_id,
+                        "is_err": file_info.is_err_file,
+                        "lines": lines_to_publish,
+                        "actor_name": file_info.actor_name,
+                        "task_name": file_info.task_name,
+                    }))
+                anything_published = True
+                lines_to_publish = []
+
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
 
-            lines_to_publish = []
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
@@ -272,11 +291,13 @@ class LogMonitor:
                         next_line = next_line[:-1]
                     if next_line.startswith(
                             ray_constants.LOG_PREFIX_ACTOR_NAME):
+                        flush()  # Possible change of task/actor name.
                         file_info.actor_name = next_line.split(
                             ray_constants.LOG_PREFIX_ACTOR_NAME, 1)[1]
                         file_info.task_name = None
                     elif next_line.startswith(
                             ray_constants.LOG_PREFIX_TASK_NAME):
+                        flush()  # Possible change of task/actor name.
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
                     else:
@@ -300,20 +321,7 @@ class LogMonitor:
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
-
-            if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish,
-                        "actor_name": file_info.actor_name,
-                        "task_name": file_info.task_name,
-                    }))
-                anything_published = True
+            flush()
 
         return anything_published
 
