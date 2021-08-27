@@ -9,6 +9,7 @@ from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
+import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -332,37 +333,56 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_framestacking(self):
         """Tests, whether Policy/Model return framestacked obs/next-obs.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
+        config = appo.DEFAULT_CONFIG.copy()
         config["model"] = config["model"].copy()
         config["model"]["num_framestacks"] = "auto"
+        config["model"]["dim"] = 42
+        config["train_batch_size"] = 200
+        config["num_sgd_iter"] = 2
+        #config["sgd_minibatch_size"] = 100
         config["seed"] = 42
-        config["num_workers"] = 0
-        config["env"] = "MsPacman-v0"
+        config["num_workers"] = 1
+        config["create_env_on_driver"] = True
+        config["env"] = "Pong-v0"
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             config["model"]["framestack"] = DEPRECATED_VALUE
-            trainer_w_new_framestacking = ppo.PPOTrainer(config)
-            rw = trainer_w_new_framestacking.workers.local_worker()
-            sample_new = rw.sample()
+            trainer_w_new_framestacking = appo.APPOTrainer(config)
+            rw_new = trainer_w_new_framestacking.workers.local_worker()
 
             config["model"]["framestack"] = True
-            trainer_w_old_framestacking = ppo.PPOTrainer(config)
-            rw = trainer_w_old_framestacking.workers.local_worker()
-            sample_old = rw.sample()
-            sample_old[SampleBatch.OBS] = np.transpose(
-                sample_old[SampleBatch.OBS], [0, 3, 1, 2])
-            if SampleBatch.NEXT_OBS in sample_old:
-                sample_old[SampleBatch.NEXT_OBS] = np.transpose(
-                    sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
+            trainer_w_old_framestacking = appo.APPOTrainer(config)
+            rw_old = trainer_w_old_framestacking.workers.local_worker()
 
-            for k in [
-                SampleBatch.OBS, SampleBatch.NEXT_OBS,
-                SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                SampleBatch.VF_PREDS, "value_targets",
-            ]:
-                if k == SampleBatch.NEXT_OBS and k not in sample_old:
-                    continue
-                check(sample_new[k], sample_old[k])
+            for _ in range(10):
+                sample_new = rw_new.sample()
+                sample_old = rw_old.sample()
+
+                # Compare both rollouts and make sure they are identical.
+                sample_old[SampleBatch.OBS] = np.transpose(
+                    sample_old[SampleBatch.OBS], [0, 3, 1, 2])
+                if SampleBatch.NEXT_OBS in sample_old:
+                    sample_old[SampleBatch.NEXT_OBS] = np.transpose(
+                        sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
+                for k in [
+                    SampleBatch.OBS, SampleBatch.NEXT_OBS,
+                    SampleBatch.ACTIONS, SampleBatch.REWARDS,
+                    #SampleBatch.VF_PREDS,
+                    #"value_targets",
+                    #"advantages",
+                    #SampleBatch.ACTION_LOGP,
+                    #SampleBatch.ACTION_DIST_INPUTS
+                ]:
+                    if k == SampleBatch.NEXT_OBS and k not in sample_old:
+                        continue
+                    check(sample_new[k], sample_old[k])
+
+            results_new = trainer_w_new_framestacking.train()
+            results_old = trainer_w_old_framestacking.train()
+            check(results_new["info"]["learner"]["default_policy"][
+                      "learner_stats"],
+                  results_old["info"]["learner"]["default_policy"][
+                      "learner_stats"])
 
             trainer_w_new_framestacking.stop()
             trainer_w_old_framestacking.stop()

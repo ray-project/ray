@@ -20,7 +20,8 @@ from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
+    _update_global_seed
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -678,6 +679,8 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
+        _update_global_seed(config, config.get("seed"))
+
         env = self._env_id
         if env:
             config["env"] = env
@@ -730,48 +733,41 @@ class Trainer(Trainable):
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
-        def get_scope():
-            if tf1 and not tf1.executing_eagerly():
-                return tf1.Graph().as_default()
-            else:
-                return open(os.devnull)  # fake a no-op scope
+        self._init(self.config, self.env_creator)
 
-        with get_scope():
-            self._init(self.config, self.env_creator)
-
-            # Evaluation setup.
-            self.evaluation_workers = None
-            self.evaluation_metrics = {}
-            # Do automatic evaluation from time to time.
-            if self.config.get("evaluation_interval"):
-                # Update env_config with evaluation settings:
-                extra_config = copy.deepcopy(self.config["evaluation_config"])
-                # Assert that user has not unset "in_evaluation".
-                assert "in_evaluation" not in extra_config or \
-                    extra_config["in_evaluation"] is True
-                evaluation_config = merge_dicts(self.config, extra_config)
-                # Validate evaluation config.
-                self._validate_config(
-                    evaluation_config, trainer_obj_or_none=self)
-                # Switch on complete_episode rollouts (evaluations are
-                # always done on n complete episodes) and set the
-                # `in_evaluation` flag.
-                evaluation_config.update({
-                    "batch_mode": "complete_episodes",
-                    "in_evaluation": True,
-                })
-                logger.debug(
-                    "using evaluation_config: {}".format(extra_config))
-                # Create a separate evaluation worker set for evaluation.
-                # If evaluation_num_workers=0, use the evaluation set's local
-                # worker for evaluation, otherwise, use its remote workers
-                # (parallelized evaluation).
-                self.evaluation_workers = self._make_workers(
-                    env_creator=self.env_creator,
-                    validate_env=None,
-                    policy_class=self._policy_class,
-                    config=evaluation_config,
-                    num_workers=self.config["evaluation_num_workers"])
+        # Evaluation setup.
+        self.evaluation_workers = None
+        self.evaluation_metrics = {}
+        # Do automatic evaluation from time to time.
+        if self.config.get("evaluation_interval"):
+            # Update env_config with evaluation settings:
+            extra_config = copy.deepcopy(self.config["evaluation_config"])
+            # Assert that user has not unset "in_evaluation".
+            assert "in_evaluation" not in extra_config or \
+                extra_config["in_evaluation"] is True
+            evaluation_config = merge_dicts(self.config, extra_config)
+            # Validate evaluation config.
+            self._validate_config(
+                evaluation_config, trainer_obj_or_none=self)
+            # Switch on complete_episode rollouts (evaluations are
+            # always done on n complete episodes) and set the
+            # `in_evaluation` flag.
+            evaluation_config.update({
+                "batch_mode": "complete_episodes",
+                "in_evaluation": True,
+            })
+            logger.debug(
+                "using evaluation_config: {}".format(extra_config))
+            # Create a separate evaluation worker set for evaluation.
+            # If evaluation_num_workers=0, use the evaluation set's local
+            # worker for evaluation, otherwise, use its remote workers
+            # (parallelized evaluation).
+            self.evaluation_workers = self._make_workers(
+                env_creator=self.env_creator,
+                validate_env=None,
+                policy_class=self._policy_class,
+                config=evaluation_config,
+                num_workers=self.config["evaluation_num_workers"])
 
     @override(Trainable)
     def cleanup(self):

@@ -158,6 +158,13 @@ def make_learner_thread(local_worker, config):
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
             format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
+        if config["num_multi_gpu_tower_stacks"] < \
+                config["minibatch_buffer_size"]:
+            raise ValueError(
+                "In multi-GPU mode you must have at least as many "
+                "parallel multi-GPU towers as minibatch buffers: "
+                "{} vs {}".format(config["num_multi_gpu_tower_stacks"],
+                                  config["minibatch_buffer_size"]))
         learner_thread = MultiGPULearnerThread(
             local_worker,
             num_gpus=config["num_gpus"],

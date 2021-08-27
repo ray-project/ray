@@ -773,8 +773,10 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
-            raise ValueError("RolloutWorker has no `input_reader` object! "
-                             "Cannot call `sample()`.")
+            raise ValueError(
+                "RolloutWorker has no `input_reader` object! "
+                "Cannot call `sample()`. You can try setting "
+                "`create_env_on_driver` to True.")
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
