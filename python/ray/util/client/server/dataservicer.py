@@ -201,13 +201,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 # cleaned up.
                 context.set_code(grpc.StatusCode.CANCELLED)
                 return False
-            self.client_last_seen[client_id] = start_time
             if client_id in self.client_last_seen:
                 logger.debug(f"Client {client_id} has reconnected.")
             else:
                 self.num_clients += 1
                 logger.debug(f"Accepted data connection from {client_id}. "
                              f"Total clients: {self.num_clients}")
+            self.client_last_seen[client_id] = start_time
             return True
 
     def _build_connection_response(self):
