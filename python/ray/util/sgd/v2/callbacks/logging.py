@@ -111,7 +111,7 @@ class JsonLoggerCallback(SGDSingleFileLoggingCallback):
         with open(self._log_path, "w") as f:
             json.dump([], f, cls=SafeFallbackEncoder)
 
-    def handle_result(self, results: Optional[List[Dict]], **info):
+    def handle_result(self, results: List[Dict], **info):
         if self._workers_to_log is None or results is None:
             results_to_log = results
         else:
@@ -196,7 +196,7 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
 
         self._file_writer = SummaryWriter(self.log_path, flush_secs=30)
 
-    def handle_result(self, results: Optional[List[Dict]], **info):
+    def handle_result(self, results: List[Dict], **info):
         result = results[self._workers_to_log]
         step = result[TRAINING_ITERATION]
         result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}

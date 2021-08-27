@@ -5,11 +5,11 @@ from typing import List, Optional, Dict
 class SGDCallback(metaclass=abc.ABCMeta):
     """Abstract SGD callback class."""
 
-    def handle_result(self, results: Optional[List[Dict]], **info):
+    def handle_result(self, results: List[Dict], **info):
         """Called every time sgd.report() is called.
 
         Args:
-            results (Optional[List[Dict]]): List of results from the training
+            results (List[Dict]): List of results from the training
                 function. Each value in the list corresponds to the output of
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
