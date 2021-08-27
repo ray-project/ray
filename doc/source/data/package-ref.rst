@@ -20,6 +20,7 @@ Creating a Dataset
 .. autofunction:: ray.data.from_modin
 .. autofunction:: ray.data.from_mars
 .. autofunction:: ray.data.from_pandas
+.. autofunction:: ray.data.from_numpy
 
 Dataset API
 -----------

@@ -75,6 +75,9 @@ Datasource Compatibility Matrices
    * - Pandas Dataframe Objects
      - ``ray.data.from_pandas()``
      - ✅
+   * - NumPy ndarray Objects
+     - ``ray.data.from_numpy()``
+     - ✅
    * - Arrow Table Objects
      - ``ray.data.from_arrow()``
      - ✅
@@ -121,6 +124,9 @@ Datasource Compatibility Matrices
      - ✅
    * - Pandas Dataframe Objects
      - ``ds.to_pandas()``
+     - ✅
+   * - NumPy ndarray Objects
+     - ``ds.to_numpy()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``
@@ -359,6 +365,17 @@ Tensor datasets are also created whenever an array type is returned from a map f
     ds = ds.map_batches(lambda x: np.array(x))
     # -> Dataset(num_blocks=10, num_rows=10,
     #            schema=<Tensor: shape=(None,), dtype=int64>)
+
+Tensor datasets can also be created from NumPy ndarrays that are already stored in the Ray object store:
+
+.. code-block:: python
+
+    import numpy as np
+
+    # Create a Dataset from a list of NumPy ndarray objects.
+    arr1 = np.arange(0, 10)
+    arr2 = np.arange(10, 20)
+    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
 
 Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 

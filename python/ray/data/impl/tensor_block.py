@@ -57,6 +57,9 @@ class TensorBlockAccessor(BlockAccessor):
         import pandas
         return pandas.DataFrame(self._tensor)
 
+    def to_numpy(self) -> np.ndarray:
+        return self._tensor
+
     def to_arrow(self) -> "pyarrow.Tensor":
         import pyarrow
         return pyarrow.Tensor.from_numpy(self._tensor)
