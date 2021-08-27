@@ -1,3 +1,10 @@
+try:
+    TUNE_INSTALLED = True
+    from ray import tune
+except ImportError:
+    TUNE_INSTALLED = False
+
+
 # Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 from pathlib import Path
 

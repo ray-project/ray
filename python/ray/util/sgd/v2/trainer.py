@@ -10,22 +10,21 @@ from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
+from ray.util.sgd.v2.constants import TUNE_INSTALLED
 
 # Ray SGD should be usable even if Tune is not installed.
-try:
-    TUNE_INSTALLED = True
+if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import Trainable
     from ray.tune import PlacementGroupFactory
     from ray.tune.function_runner import wrap_function
-except ImportError:
-    TUNE_INSTALLED = False
+else:
     tune = PlacementGroupFactory = Trainable = object
 
     def noop():
         return
-
     wrap_function = noop
+
 
 T = TypeVar("T")
 S = TypeVar("S")

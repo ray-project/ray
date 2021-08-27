@@ -9,11 +9,16 @@ from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    DEFAULT_RESULTS_DIR
+    DEFAULT_RESULTS_DIR, TUNE_INSTALLED
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path
 from ray.util.sgd.v2.worker_group import WorkerGroup
+
+if TUNE_INSTALLED:
+    from ray import tune
+else:
+    tune = None
 
 T = TypeVar("T")
 
@@ -56,6 +61,8 @@ class BackendExecutor:
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
             ``start_training``.
+        latest_checkpoint_filename (Optional[str]): Filename for the latest
+            checkpoint.
         latest_checkpoint_path (Optional[Path]): Path to the latest persisted
             checkpoint from the latest run.
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
@@ -248,6 +255,15 @@ class BackendExecutor:
         self.latest_checkpoint = checkpoint
         # Increment checkpoint id.
         self._latest_checkpoint_id += 1
+
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        if tune is not None and tune.is_session_enabled():
+            with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
+                checkpoint_dir:
+                ...
+            return
+
+
         if self._checkpoint_strategy.num_to_keep == 0:
             # Checkpoints should not be persisted to disk.
             return
@@ -434,10 +450,18 @@ class BackendExecutor:
         return construct_path(checkpoint_dir, self.latest_run_dir)
 
     @property
+    def latest_checkpoint_file_name(self) -> Optional[str]:
+        """Filename to use for the latest checkpoint."""
+        if self._latest_checkpoint_id > 0:
+            return f"checkpoint_{self._latest_checkpoint_id:06d}"
+        else:
+            return None
+
+    @property
     def latest_checkpoint_path(self) -> Optional[Path]:
         """Path to the latest persisted checkpoint."""
         if self._latest_checkpoint_id > 0:
-            checkpoint_file = f"checkpoint_{self._latest_checkpoint_id:06d}"
+            checkpoint_file = self.latest_checkpoint_file_name
             return self.latest_checkpoint_dir.joinpath(checkpoint_file)
         else:
             return None
