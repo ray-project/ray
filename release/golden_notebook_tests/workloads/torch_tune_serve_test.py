@@ -10,6 +10,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune
+from ray.tune.utils import force_on_current_node
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import override
@@ -87,24 +88,11 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         checkpoint_at_end=True)
 
 
-def get_remote_model(remote_model_checkpoint_path, client=None):
-    if client:
-        # Download training results to local client.
-        local_dir = "~/ray_results"
-        # TODO(matt): remove the following line when Anyscale Connect
-        # supports tilde expansion.
-        local_dir = os.path.expanduser(local_dir)
-        remote_dir = "/home/ray/ray_results/"
-        client.download_results(local_dir=local_dir, remote_dir=remote_dir)
-
-        # Compute local path.
-        rel_model_checkpoint_path = os.path.relpath(
-            remote_model_checkpoint_path, remote_dir)
-        local_model_checkpoint_path = os.path.join(local_dir,
-                                                   rel_model_checkpoint_path)
-
-        # Load model reference.
-        return get_model(local_model_checkpoint_path)
+def get_remote_model(remote_model_checkpoint_path):
+    if ray.util.client.ray.is_connected():
+        remote_load = ray.remote(get_model)
+        remote_load = force_on_current_node(remote_load)
+        return ray.get(remote_load.remote(remote_model_checkpoint_path))
     else:
         get_best_model_remote = ray.remote(get_model)
         return ray.get(
@@ -225,7 +213,7 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint
-    model_id = get_remote_model(best_checkpoint, client)
+    model_id = get_remote_model(best_checkpoint)
 
     print("Setting up Serve.")
     setup_serve(model_id)
