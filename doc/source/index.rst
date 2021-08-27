@@ -333,6 +333,7 @@ Papers
    :caption: Ray Workflows
 
    workflows/concepts.rst
+   workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
    workflows/comparison.rst
