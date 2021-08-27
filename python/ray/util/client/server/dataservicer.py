@@ -136,8 +136,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp.req_id = req.req_id
                 yield resp
         except grpc.RpcError as e:
-            logger.debug(f"Closing data channel: {e}")
-            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
+            # Ignore exceptions due to cancel -- intentional shutdown
+            if e.code() != grpc.StatusCode.CANCELLED:
+                logger.exception(f"Unexpected GRPC exception! Delaying cleanup.")
+                # Delay cleanup, since client may attempt a reconnect
+                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
