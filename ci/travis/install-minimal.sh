@@ -4,7 +4,7 @@ ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 # Installs conda and python 3.7
-MINIMAL_INSTALL=1 PYTHON=3.7 "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
+MINIMAL_INSTALL=1 PYTHON=${PYTHON-3.7} "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
 
 # Re-install Ray wheels
 rm -rf "${WORKSPACE_DIR}/python/ray/thirdparty_files"
