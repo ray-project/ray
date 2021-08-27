@@ -99,7 +99,6 @@ void LocalDependencyResolver::ResolveDependencies(
       }
     }
   }
-  RAY_LOG(ERROR) << "Num?? " << actor_dependences.size();
   if (local_dependencies.empty() && actor_dependences.empty()) {
     on_complete(Status::OK());
     return;
