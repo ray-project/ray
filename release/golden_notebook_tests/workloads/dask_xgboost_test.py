@@ -57,7 +57,7 @@ def tune_xgboost(train_df, test_df, target_column):
     }
 
     ray_params = RayParams(
-        max_actor_restarts=1, gpus_per_actor=0, cpus_per_actor=2, num_actors=2)
+        max_actor_restarts=1, gpus_per_actor=0, num_actors=4)
 
     analysis = tune.run(
         tune.with_parameters(
@@ -101,13 +101,12 @@ def main():
         "eval_metric": ["logloss", "error"],
     }
 
-    bst = train_xgboost(
-        config, df_train, df_validation, "label",
-        RayParams(max_actor_restarts=1, num_actors=4, cpus_per_actor=2))
+    bst = train_xgboost(config, df_train, df_validation, "label",
+                        RayParams(max_actor_restarts=1, num_actors=4))
     tune_xgboost(df_train, df_validation, "label")
     inference_df = RayDMatrix(
         df_train[sorted(df_train.columns)], ignore=["label", "partition"])
-    predict(bst, inference_df, ray_params=RayParams(num_actors=8))
+    predict(bst, inference_df, ray_params=RayParams(num_actors=16))
 
 
 if __name__ == "__main__":
