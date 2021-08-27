@@ -1,7 +1,7 @@
 .. _datasets:
 
-Datasets: Fast, Flexible Data Loading
-=====================================
+Datasets: Flexible Distributed Data Loading
+===========================================
 
 .. tip::
 
