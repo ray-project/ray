@@ -141,6 +141,10 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
+  if (!HasRuntimeEnv()) {
+    return 0;
+  }
+
   std::unordered_map<std::string, double> required_resource{};
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();

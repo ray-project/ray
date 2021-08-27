@@ -41,6 +41,9 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
+// TODO(swang): Are we worried about hash collisions with int type?
+using RuntimeEnvHash = int;
+
 enum PopWorkerStatus {
   // OK.
   // A registered worker will be returned with callback.
@@ -444,6 +447,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
+    RuntimeEnvHash runtime_env_hash;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -480,13 +484,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
-    /// A map for looking up the task by the pid of starting worker process.
-    std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
     /// starting worker process. Note that this is used for the dedicated worker
     /// processes.
     std::unordered_map<Process, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
+    /// A map from runtime env hash to tasks that require that runtime env.
+    /// The runtime envs for tasks in this map have been successfully created,
+    /// and the tasks are now waiting for a worker to start. Note that this map
+    /// does not include tasks that have a dedicated worker assigned to them.
+    std::unordered_map<RuntimeEnvHash, std::deque<TaskWaitingForWorkerInfo>> waiting_tasks_by_env_hash;
+    /// A map from runtime env hash to workers that are starting in that
+    /// runtime env. Note that this map does not include dedicated workers that
+    /// have already been assigned to a task.
+    std::unordered_map<RuntimeEnvHash, std::unordered_set<Process>> starting_workers_by_env_hash;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -574,6 +585,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   virtual void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
                                       std::shared_ptr<WorkerInterface> worker,
                                       PopWorkerStatus status = PopWorkerStatus::OK);
+
+  void TriggerAsyncCallbacksForFailedWorkerStart(State &state, const RuntimeEnvHash &runtime_env_hash, const PopWorkerCallback &dedicated_callback, const PopWorkerStatus &status);
 
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
