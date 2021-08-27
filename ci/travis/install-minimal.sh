@@ -6,8 +6,6 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 # Installs conda and python 3.7
 MINIMAL_INSTALL=1 PYTHON=3.7 "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
 
-python -W ignore -m pip config -q --user set global.quiet False
-
 # Install Ray wheels
 python -m pip install -e "${WORKSPACE_DIR}/python/"
 
