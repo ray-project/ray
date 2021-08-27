@@ -381,6 +381,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void TryKillingIdleWorkers();
 
  protected:
+
+  struct TaskWaitingForWorkerInfo {
+    /// The id of task.
+    TaskID task_id;
+    /// The callback function which should be called when worker registered.
+    PopWorkerCallback callback;
+  };
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -403,6 +411,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      absl::optional<TaskWaitingForWorkerInfo> dedicated_task_info,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
@@ -450,13 +459,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// The type of the worker.
     rpc::WorkerType worker_type;
     RuntimeEnvHash runtime_env_hash;
-  };
-
-  struct TaskWaitingForWorkerInfo {
-    /// The id of task.
-    TaskID task_id;
-    /// The callback function which should be called when worker registered.
-    PopWorkerCallback callback;
   };
 
   /// An internal data structure that maintains the pool state per language.
