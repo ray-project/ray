@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class SGDLoggingMixin:
-    def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
-        if not filename:
-            raise ValueError("filename cannot be None or empty.")
-        return logdir_path.joinpath(Path(filename))
-
     def start_training(self, logdir: str, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
@@ -89,6 +84,11 @@ class SGDSingleFileLoggingCallback(
                     "At least one worker must be specified in workers_to_log.")
         return workers_to_log
 
+    def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
+        if not filename:
+            raise ValueError("filename cannot be None or empty.")
+        return logdir_path.joinpath(Path(filename))
+
 
 class JsonLoggerCallback(SGDSingleFileLoggingCallback):
     """Logs SGD results in json format.
@@ -139,6 +139,9 @@ class SGDSingleFileSingleWorkerLoggingCallback(
             worker with index 0.
     """
 
+    _filename: Union[str, Path, None] = None
+    _default_filename: Union[str, Path, None] = None
+
     # it's still workers_to_log, not worker, for easier switching
     # this is defined again for different type hints
     def __init__(self, logdir: Optional[str] = None,
@@ -173,7 +176,6 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
             worker with index 0.
     """
 
-    _default_filename: Union[str, Path] = None
     VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
                                         np.int32, np.int64)
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
