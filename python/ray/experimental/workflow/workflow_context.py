@@ -84,13 +84,13 @@ def get_current_workflow_id() -> str:
     return _context.workflow_id
 
 
-def get_step_name() -> str:
+def get_name() -> str:
     return f"{get_current_workflow_id()}@{get_current_step_id()}"
 
 
 def get_step_status_info(status: WorkflowStatus) -> str:
     assert _context is not None
-    return f"Step status [{status}]\t[{get_step_name()}]"
+    return f"Step status [{status}]\t[{get_name()}]"
 
 
 def get_scope():
