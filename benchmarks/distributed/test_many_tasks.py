@@ -48,9 +48,11 @@ def no_resource_leaks():
 
 
 @click.command()
-@click.option(
-    "--num-tasks", required=True, type=int, help="Number of tasks to launch.")
-def test(num_tasks):
+@click.option("--num-tasks",
+              required=True,
+              type=int,
+              help="Number of tasks to launch.")
+def run(num_tasks):
     ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
@@ -76,4 +78,4 @@ def test(num_tasks):
 
 
 if __name__ == "__main__":
-    test()
+    run()

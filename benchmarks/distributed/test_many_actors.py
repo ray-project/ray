@@ -36,25 +36,30 @@ def no_resource_leaks():
     return ray.available_resources() == ray.cluster_resources()
 
 
-ray.init(address="auto")
+def run():
+    ray.init(address="auto")
 
-test_utils.wait_for_condition(no_resource_leaks)
-start_time = time.time()
-test_max_actors()
-end_time = time.time()
-test_utils.wait_for_condition(no_resource_leaks)
+    test_utils.wait_for_condition(no_resource_leaks)
+    start_time = time.time()
+    test_max_actors()
+    end_time = time.time()
+    test_utils.wait_for_condition(no_resource_leaks)
 
-rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
+    rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 
-print(f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
-      f"{end_time - start_time}s. ({rate} actors/s)")
+    print(f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
+          f"{end_time - start_time}s. ({rate} actors/s)")
 
-if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "actors_per_second": rate,
-        "num_actors": MAX_ACTORS_IN_CLUSTER,
-        "time": end_time - start_time,
-        "success": "1"
-    }
-    json.dump(results, out_file)
+    if "TEST_OUTPUT_JSON" in os.environ:
+        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+        results = {
+            "actors_per_second": rate,
+            "num_actors": MAX_ACTORS_IN_CLUSTER,
+            "time": end_time - start_time,
+            "success": "1"
+        }
+        json.dump(results, out_file)
+
+
+if __name__ == "__main__":
+    run()

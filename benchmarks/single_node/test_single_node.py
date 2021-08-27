@@ -137,73 +137,78 @@ def test_large_object():
     assert big_obj[-1] == 0
 
 
-ray.init(address="auto")
+def run(num_tasks):
+    ray.init(address="auto")
 
-args_start = perf_counter()
-test_many_args()
-args_end = perf_counter()
+    args_start = perf_counter()
+    test_many_args()
+    args_end = perf_counter()
 
-time.sleep(5)
-assert_no_leaks()
-print("Finished many args")
+    time.sleep(5)
+    assert_no_leaks()
+    print("Finished many args")
 
-returns_start = perf_counter()
-test_many_returns()
-returns_end = perf_counter()
+    returns_start = perf_counter()
+    test_many_returns()
+    returns_end = perf_counter()
 
-time.sleep(5)
-assert_no_leaks()
-print("Finished many returns")
+    time.sleep(5)
+    assert_no_leaks()
+    print("Finished many returns")
 
-get_start = perf_counter()
-test_ray_get_args()
-get_end = perf_counter()
+    get_start = perf_counter()
+    test_ray_get_args()
+    get_end = perf_counter()
 
-time.sleep(5)
-assert_no_leaks()
-print("Finished ray.get on many objects")
+    time.sleep(5)
+    assert_no_leaks()
+    print("Finished ray.get on many objects")
 
-queued_start = perf_counter()
-test_many_queued_tasks()
-queued_end = perf_counter()
+    queued_start = perf_counter()
+    test_many_queued_tasks()
+    queued_end = perf_counter()
 
-time.sleep(5)
-assert_no_leaks()
-print("Finished queueing many tasks")
+    time.sleep(5)
+    assert_no_leaks()
+    print("Finished queueing many tasks")
 
-large_object_start = perf_counter()
-test_large_object()
-large_object_end = perf_counter()
+    large_object_start = perf_counter()
+    test_large_object()
+    large_object_end = perf_counter()
 
-time.sleep(5)
-assert_no_leaks()
-print("Done")
+    time.sleep(5)
+    assert_no_leaks()
+    print("Done")
 
-args_time = args_end - args_start
-returns_time = returns_end - returns_start
-get_time = get_end - get_start
-queued_time = queued_end - queued_start
-large_object_time = large_object_end - large_object_start
+    args_time = args_end - args_start
+    returns_time = returns_end - returns_start
+    get_time = get_end - get_start
+    queued_time = queued_end - queued_start
+    large_object_time = large_object_end - large_object_start
 
-print(f"Many args time: {args_time} ({MAX_ARGS} args)")
-print(f"Many returns time: {returns_time} ({MAX_RETURNS} returns)")
-print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
-print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
-print(f"Ray.get large object time: {large_object_time} "
-      f"({MAX_RAY_GET_SIZE} bytes)")
+    print(f"Many args time: {args_time} ({MAX_ARGS} args)")
+    print(f"Many returns time: {returns_time} ({MAX_RETURNS} returns)")
+    print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
+    print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
+    print(f"Ray.get large object time: {large_object_time} "
+          f"({MAX_RAY_GET_SIZE} bytes)")
 
-if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "args_time": args_time,
-        "num_args": MAX_ARGS,
-        "returns_time": returns_time,
-        "num_returns": MAX_RETURNS,
-        "get_time": MAX_RAY_GET_ARGS,
-        "queued_time": queued_time,
-        "num_queued": MAX_QUEUED_TASKS,
-        "large_object_time": large_object_time,
-        "large_object_size": MAX_RAY_GET_SIZE,
-        "success": "1"
-    }
-    json.dump(results, out_file)
+    if "TEST_OUTPUT_JSON" in os.environ:
+        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+        results = {
+            "args_time": args_time,
+            "num_args": MAX_ARGS,
+            "returns_time": returns_time,
+            "num_returns": MAX_RETURNS,
+            "get_time": MAX_RAY_GET_ARGS,
+            "queued_time": queued_time,
+            "num_queued": MAX_QUEUED_TASKS,
+            "large_object_time": large_object_time,
+            "large_object_size": MAX_RAY_GET_SIZE,
+            "success": "1"
+        }
+        json.dump(results, out_file)
+
+
+if __name__ == "__main__":
+    run()
