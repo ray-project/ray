@@ -275,7 +275,7 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
         if n == 0:
             raise ValueError()
         else:
-            return f1.step(n-1)
+            return f1.step(n - 1)
 
     ret, err = f1.options(catch_exceptions=True).step(5).run()
     assert ret is None
