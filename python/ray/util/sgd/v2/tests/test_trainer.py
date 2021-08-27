@@ -581,7 +581,7 @@ def test_horovod_torch_mnist(ray_start_2_cpus):
 def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
     num_workers = 2
     num_epochs = 2
-    trainer = Trainer("horovod", num_workers)
+    trainer = Trainer("horovod", num_workers, use_gpu=True)
     trainer.start()
     results = trainer.run(
         horovod_torch_train_func,
