@@ -1381,25 +1381,6 @@ def connect(node,
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
-    elif mode == WORKER_MODE:
-        # TODO(ekl) get rid of the env var hack and get runtime env from the
-        # task spec and/or job config only.
-        uris = []
-        global_job_config = worker.core_worker.get_job_config()
-        override_runtime_env = json.loads(runtime_env_json)
-
-        if os.environ.get("RAY_PACKAGING_URI"):
-            uris = [os.environ.get("RAY_PACKAGING_URI")]
-        if global_job_config.runtime_env.uris:
-            uris = global_job_config.runtime_env.uris
-        if override_runtime_env.get("uris"):
-            # TODO(simon): should we combine the uris from package and global
-            # job config if they are present?
-            uris = override_runtime_env["uris"]
-
-        working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
-        if working_dir is not None:
-            os.chdir(working_dir)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

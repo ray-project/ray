@@ -2,6 +2,7 @@ import contextlib
 import json
 import logging
 import threading
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 thread_local_logger = threading.local()
@@ -36,6 +37,10 @@ class RuntimeEnvContext:
 
     def __init__(self, conda_env_name=None):
         self.conda_env_name = conda_env_name
+        self.working_dir = None
+
+    def set_working_dir(self, working_dir: Optional[str]):
+        self.working_dir = working_dir
 
     def serialize(self) -> str:
         # serialize the context to json string.

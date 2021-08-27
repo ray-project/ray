@@ -164,7 +164,9 @@ def setup_worker(input_args):
                 args.serialized_runtime_env_context)
 
     # activate conda
-    if runtime_env_context and runtime_env_context.conda_env_name:
+    if runtime_env_context and runtime_env_context.working_dir is not None:
+        commands += ["cd", runtime_env_context.working_dir]
+    if runtime_env_context and runtime_env_context.conda_env_name is not None:
         worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
@@ -200,8 +202,7 @@ def setup_worker(input_args):
         ]
 
     commands += [" ".join(worker_command)]
-    command_separator = " && "
-    command_str = command_separator.join(commands)
+    command_str = " && ".join(commands)
 
     # update env vars
     if runtime_env.get("env_vars"):

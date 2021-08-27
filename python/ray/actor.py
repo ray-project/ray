@@ -735,6 +735,14 @@ class ActorClass:
         else:
             runtime_env_dict = {}
 
+        # If per-actor URIs aren't specified, override them with those in the
+        # job config.
+        # XXX: handle packaging URIs.
+        if not "uris" in runtime_env_dict:
+            job_config = worker.core_worker.get_job_config()
+            if job_config.runtime_env.uris:
+                runtime_env_dict["uris"] = job_config.runtime_env.uris
+
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
                            "will be removed in Ray 1.6.  Please use "
