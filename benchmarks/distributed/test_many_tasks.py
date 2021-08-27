@@ -3,7 +3,6 @@ import click
 import json
 import os
 import ray
-from ray.cluster_utils import Cluster
 import time
 import tqdm
 import numpy as np
@@ -79,11 +78,14 @@ def test_max_running_tasks(num_tasks):
     ray.get(signal_actor.reset.remote(num_tasks))
 
     refs = [
-        task.options(num_cpus=cpus_per_task).remote(i, signal_actor, semaphore_actor) for i in tqdm.trange(num_tasks, desc="Launching tasks")
+        task.options(num_cpus=cpus_per_task).remote(i, signal_actor,
+                                                    semaphore_actor)
+        for i in tqdm.trange(num_tasks, desc="Launching tasks")
     ]
 
     timestamps = []
-    with tqdm.tqdm(total=num_tasks, desc="Waiting for tasks to be scheduled") as pbar:
+    with tqdm.tqdm(
+            total=num_tasks, desc="Waiting for tasks to be scheduled") as pbar:
         while len(timestamps) < num_tasks:
             new_timestamps = ray.get(signal_actor.get_timestamps.remote())
             pbar.update(len(new_timestamps) - len(timestamps))
@@ -112,18 +114,24 @@ def no_resource_leaks():
 @click.command()
 @click.option(
     "--num-tasks", required=True, type=int, help="Number of tasks to launch.")
-def test(num_tasks):
-    cluster = Cluster()
-    cluster.add_node(num_cpus=16)
-    ray.init(address=cluster.address)
+@click.option(
+    "--local",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="Whether to run the test locally, with a simulated cluster.")
+def test(num_tasks, local):
+    if local:
+        num_cpus = 2 * num_tasks // 4
+        ray.init(num_cpus=num_cpus)
+    else:
+        ray.init(address="auto")
 
-    #ray.init(address="auto")
-
-    #wait_for_condition(no_resource_leaks)
+    wait_for_condition(no_resource_leaks)
     start_time = time.time()
     timestamps = test_max_running_tasks(num_tasks)
     end_time = time.time()
-    #wait_for_condition(no_resource_leaks)
+    wait_for_condition(no_resource_leaks)
 
     max_timestamp = max(timestamps)
     rate = num_tasks / max_timestamp
