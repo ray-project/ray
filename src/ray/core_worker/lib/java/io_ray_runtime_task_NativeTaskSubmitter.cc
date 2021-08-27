@@ -308,6 +308,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   CoreWorkerProcess::GetCoreWorker().SubmitTask(
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
+      /*retry_exceptions=*/false,
       /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint*/ "");
