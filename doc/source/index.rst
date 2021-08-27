@@ -312,7 +312,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
