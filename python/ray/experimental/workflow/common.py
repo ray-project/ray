@@ -136,9 +136,7 @@ class WorkflowData:
             "object_refs": self._cached_locs,
             "workflows": [w.id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
-            "workflow_refs": [
-                wr.step_id for wr in self.inputs.workflow_refs
-            ],
+            "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
