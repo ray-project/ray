@@ -274,7 +274,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Workflow
+   :caption: Ray Workflows
 
    workflows/concepts.rst
    workflows/basics.rst
