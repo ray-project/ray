@@ -31,6 +31,8 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
+  virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
+
   virtual bool PendingTaskFailed(
       const TaskID &task_id, rpc::ErrorType error_type, Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
@@ -117,6 +119,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr) override;
+
+  bool RetryTaskIfPossible(const TaskID &task_id) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.

@@ -91,6 +91,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
                                          const rpc::Address &addr));
+
+  MOCK_METHOD1(RetryTaskIfPossible, bool(const TaskID &task_id));
+
   MOCK_METHOD5(PendingTaskFailed,
                bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
                     const std::shared_ptr<rpc::RayException> &creation_task_exception,
