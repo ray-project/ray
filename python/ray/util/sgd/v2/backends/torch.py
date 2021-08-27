@@ -5,7 +5,8 @@ import os
 from datetime import timedelta
 from typing import Optional, List
 
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
+import ray
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
 
@@ -83,14 +84,14 @@ def setup_torch_process_group(backend: str,
         timeout=timedelta(seconds=timeout_s))
 
 
-def shutdown_torch(destroy_pg=False):
-    if destroy_pg:
+def shutdown_torch(destroy_process_group=False):
+    if destroy_process_group:
         dist.destroy_process_group()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
-class TorchBackend(BackendInterface):
+class TorchBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if len(worker_group) > 1 and dist.is_available():
             # Set the appropriate training backend.
@@ -132,18 +133,14 @@ class TorchBackend(BackendInterface):
                         world_size=len(worker_group),
                         init_method=url,
                         timeout_s=backend_config.timeout_s))
-            self.run_with_failure_handling(setup_futures, worker_group,
-                                           backend_config)
+            ray.get(setup_futures)
         else:
             logger.info("Distributed torch is not being used.")
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
 
-        shutdown_futures = worker_group.execute_async(
-            shutdown_torch, destroy_pg=len(worker_group) > 1)
-        self.run_with_failure_handling(shutdown_futures, worker_group,
-                                       backend_config)
+        worker_group.execute(shutdown_torch, destroy_pg=len(worker_group) > 1)
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],

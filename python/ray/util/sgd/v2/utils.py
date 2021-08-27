@@ -3,15 +3,16 @@ import logging
 import socket
 from pathlib import Path
 from threading import Thread
-from typing import Tuple
+from typing import Tuple, List
 
 import ray
 from ray.exceptions import RayActorError
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(remote_values):
+def check_for_failure(remote_values: List[ObjectRef]):
     """Check for actor failure when retrieving the remote values.
 
     Args:

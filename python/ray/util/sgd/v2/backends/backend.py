@@ -1,3 +1,4 @@
+import abc
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -7,10 +8,9 @@ import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.types import ObjectRef
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    DEFAULT_RESULTS_DIR
+    DEFAULT_RESULTS_DIR, MAX_FAILURE_RETRIES
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, check_for_failure
@@ -78,6 +78,8 @@ class BackendExecutor:
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
+        self._max_failures = env_integer(MAX_FAILURE_RETRIES, 3)
+        self._num_failures = 0
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
@@ -107,9 +109,13 @@ class BackendExecutor:
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
-        if initialization_hook:
-            self.worker_group.execute(initialization_hook)
-        self._backend.on_start(self.worker_group, self._backend_config)
+        try:
+            if initialization_hook:
+                self.worker_group.execute(initialization_hook)
+            self._backend.on_start(self.worker_group, self._backend_config)
+        except RayActorError:
+            self._num_failures += 1
+            self._restart()
 
     def start_training(
             self,
@@ -383,6 +389,12 @@ class BackendExecutor:
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
 
+        This method should be called instead of ``ray.get()`` directly in
+        order to handle worker failures.
+
+        If a worker failure is identified, backend specific failure handling
+        is executed and a ``TrainingWorkerError`` is raised.
+
         Args:
             remote_values (list): List of object refs representing functions
                 that may fail in the middle of execution. For example, running
@@ -394,8 +406,13 @@ class BackendExecutor:
         if success:
             return ray.get(remote_values)
         else:
-            self._backend.handle_failure(
-                self.worker_group, failed_worker_indexes, self._backend_config)
+            self._num_failures += 1
+            try:
+                self._backend.handle_failure(self.worker_group,
+                                             failed_worker_indexes,
+                                             self._backend_config)
+            except RayActorError:
+                self._restart()
             raise TrainingWorkerError
 
     def shutdown(self):
@@ -436,28 +453,40 @@ class BackendExecutor:
         else:
             return None
 
+    def _restart(self):
+        if self._num_failures >= self._max_failures:
+            raise RuntimeError("Training has failed even after "
+                               f"{self._num_failures} "
+                               "attempts.")
+        self.worker_group.shutdown()
+        self.worker_group.start()
+        try:
+            self._backend.on_start(self.worker_group, self._backend_config)
+        except RayActorError:
+            self._num_failures += 1
+            self._restart()
 
-class BackendInterface:
+
+class Backend(metaclass=abc.ABCMeta):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
-        raise NotImplementedError
+        """Logic for starting this backend."""
+        pass
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
-        raise NotImplementedError
-
-    def run_with_failure_handling(self, futures: List[ObjectRef],
-                                  worker_group: WorkerGroup,
-                                  backend_config: BackendConfig):
-        success, failed_workers = check_for_failure(futures)
-        if success:
-            ray.get(futures)
-        else:
-            self.handle_failure(worker_group, failed_workers, backend_config)
+        """Logic for shutting down the backend."""
+        pass
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
                        backend_config: BackendConfig):
+        """Logic for handling failures.
+
+        By default, the failed workers are removed from the ``WorkerGroup``.
+        The backend and session are shutdown on the remaining workers. Then
+        new workers are added back in.
+        """
         worker_group.remove_workers(failed_worker_indexes)
         if len(worker_group) > 0:
             self.on_shutdown(worker_group, backend_config)

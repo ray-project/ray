@@ -84,9 +84,7 @@ class WorkerGroup:
                                "restart them.")
 
         logger.debug(f"Starting {self.num_workers} workers.")
-        self.workers = []
-        for _ in range(self.num_workers):
-            self.workers.append(self._create_worker())
+        self.add_workers(self.num_workers)
         logger.debug(f"{len(self.workers)} workers have successfully started.")
 
     def shutdown(self, patience_s: float = 5):

@@ -4,14 +4,12 @@ from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
     Type, Iterator
 
-from ray.ray_constants import env_integer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
-from ray.util.sgd.v2.constants import MAX_FAILURE_RETRIES
 
 # Ray SGD should be usable even if Tune is not installed.
 try:
@@ -375,8 +373,6 @@ class SGDIterator:
         self._train_func = train_func
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(train_func, checkpoint, checkpoint_strategy)
-        self._max_failures = env_integer(MAX_FAILURE_RETRIES, 3)
-        self._num_failures = 0
 
         self._final_results = None
         self._finished_training = False
@@ -396,10 +392,6 @@ class SGDIterator:
         try:
             return func()
         except TrainingWorkerError:
-            if self._num_failures >= self._max_failures:
-                raise RuntimeError("Training has failed even after "
-                                   f"{self._num_failures} "
-                                   "attempts.")
             # Workers have already been restarted.
             self._start_training(self._train_func,
                                  self._executor.latest_checkpoint,

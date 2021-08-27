@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import List
 
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.utils import get_address_and_port
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
@@ -39,7 +39,7 @@ def setup_tensorflow_environment(worker_addresses: List[str], index: int):
     os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
 
-class TensorflowBackend(BackendInterface):
+class TensorflowBackend(Backend):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: TensorflowConfig):
         if len(worker_group) > 1:
@@ -59,13 +59,8 @@ class TensorflowBackend(BackendInterface):
                         setup_tensorflow_environment,
                         worker_addresses=urls,
                         index=i))
-            self.run_with_failure_handling(setup_futures, worker_group,
+            self.get_with_failure_handling(setup_futures, worker_group,
                                            backend_config)
 
         else:
             logger.info("Distributed Tensorflow is not being used.")
-
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: BackendConfig):
-        # Currently no additional steps are needed to shut down Tensorflow.
-        pass
