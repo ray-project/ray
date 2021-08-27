@@ -104,8 +104,9 @@ class _AgentCollector:
         # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
         self.episode_id = episode_id
-        self.unroll_id = self._next_unroll_id
-        self._next_unroll_id += 1
+        if self.unroll_id is None:
+            self.unroll_id = self._next_unroll_id
+            self._next_unroll_id += 1
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -137,6 +138,9 @@ class _AgentCollector:
                 row) to be added to buffer. Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
+        if self.unroll_id is None:
+            self.unroll_id = self._next_unroll_id
+            self._next_unroll_id += 1
 
         # Next obs -> obs.
         assert SampleBatch.OBS not in values
@@ -156,15 +160,20 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            # Do not flatten infos or state_out_... (their values may be
-            # structs that change from timestep to timestep).
-            if k == SampleBatch.INFOS or k.startswith("state_out_"):
+            # Do not flatten infos, state_out_ and actions.
+            # Infos/state-outs may be structs that change from timestep to
+            # timestep. Actions - on the other hand - are already flattened
+            # in the sampler.
+            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith("state_out_"):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
                 flattened = tree.flatten(v)
                 for i, sub_list in enumerate(self.buffers[k]):
-                    sub_list.append(flattened[i])
+                    try:#TODO
+                        sub_list.append(flattened[i])
+                    except Exception as e:
+                        raise e
         self.agent_steps += 1
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
@@ -336,6 +345,9 @@ class _AgentCollector:
                         self.buffers[k][i] = data[i][-self.shift_before:]
             self.agent_steps = 0
 
+        # Reset our unroll_id.
+        self.unroll_id = None
+
         return batch
 
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
@@ -358,7 +370,7 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col == SampleBatch.INFOS or col.startswith("state_out_"):
+            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS] or col.startswith("state_out_"):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

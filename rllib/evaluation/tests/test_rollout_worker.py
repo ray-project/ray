@@ -113,21 +113,18 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_batch_ids(self):
+        fragment_len = 20
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
-            rollout_fragment_length=1)
+            rollout_fragment_length=fragment_len)
         batch1 = ev.sample()
         batch2 = ev.sample()
-        self.assertEqual(len(set(batch1["unroll_id"])), 1)
-        self.assertEqual(len(set(batch2["unroll_id"])), 1)
-        self.assertEqual(
-            len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
+        check(batch1[SampleBatch.UNROLL_ID], [0] * fragment_len)
+        check(batch2[SampleBatch.UNROLL_ID], [1] * fragment_len)
         ev.stop()
 
     def test_global_vars_update(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",
