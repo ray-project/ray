@@ -78,7 +78,7 @@ spec:
                 {{- end }}
           {{- if .nodeSelector }}
           nodeSelector:
-          {{- toYaml $val.nodeSelector | nindent 10 }}
+          {{- toYaml $val.nodeSelector | nindent 12 }}
           {{- end }}
           {{- if $val.tolerations }}
           tolerations:

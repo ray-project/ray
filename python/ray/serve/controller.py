@@ -19,7 +19,6 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import ALL_HTTP_METHODS
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -229,9 +228,7 @@ class ServeController:
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
             endpoint_info = EndpointInfo(
-                ALL_HTTP_METHODS,
-                route=route_prefix,
-                python_methods=python_methods)
+                route=route_prefix, python_methods=python_methods)
             self.endpoint_state.update_endpoint(name, endpoint_info)
             return goal_id, updating
 

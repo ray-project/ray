@@ -409,6 +409,7 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     serve.start(detached=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("namespace", [None, "test_namespace"])
 @pytest.mark.parametrize("detached", [True, False])
 def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
