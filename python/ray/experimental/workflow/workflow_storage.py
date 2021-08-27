@@ -460,7 +460,8 @@ class WorkflowStorage:
                 pickler = cloudpickle.CloudPickler(output_buffer)
                 # NOTE: dispatch table is (unintuitively) a class variable.
                 # That means modifying the class variable will change the
-                # serialization context for `ray.put` too.
+                # serialization context for `ray.put` too. Therefore, we have
+                # to explicitely make dispatch_table an instance variable.
                 pickler.dispatch_table = pickler.dispatch_table.copy()
                 pickler.dispatch_table[
                     ray.ObjectRef] = lambda ref: self._put_object_ref(ref)
