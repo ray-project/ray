@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import time
 
 import pytest
@@ -233,7 +234,11 @@ def test_pinned_object_call_site(ray_start_regular):
 
 
 def test_multi_node_stats(shutdown_only):
-    cluster = Cluster(head_node_args={"_system_config": ray_config})
+    # NOTE(mwtian): using env var only enables the feature on workers, while
+    # using head_node_args={"_system_config": ray_config} only enables the
+    # feature on the driver.
+    os.environ["RAY_record_ref_creation_sites"] = "1"
+    cluster = Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=1)
 
