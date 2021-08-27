@@ -6,11 +6,10 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 # Installs conda and python 3.7
 MINIMAL_INSTALL=1 PYTHON=3.7 "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
 
-# Install Ray wheels
-python -m pip install -e "${WORKSPACE_DIR}/python/"
-
-# Re-install psutil
-CC=gcc python -m pip install -U psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+# Re-install Ray wheels
+rm -rf "${WORKSPACE_DIR}/python/ray/thirdparty_files"
+rm -rf "${WORKSPACE_DIR}/python/ray/pickle5_files"
+eval "${WORKSPACE_DIR}/ci/travis/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
