@@ -74,7 +74,7 @@ def get_global_worker() -> "RolloutWorker":
     return _global_worker
 
 
-def _update_global_seed(policy_config: TrainerConfigDict, seed: int):
+def _maybe_update_global_seed(policy_config: TrainerConfigDict, seed: int):
     """Set Python random, numpy, env, and torch/tf seeds.
 
     This is useful for debugging and testing purposes.
@@ -112,13 +112,11 @@ def _update_global_seed(policy_config: TrainerConfigDict, seed: int):
         tf1.set_random_seed(seed)
 
 
-def _update_env_seed(env: EnvType, seed: int, worker_idx: int,
-                     vector_idx: int):
+def _maybe_update_env_seed(env: EnvType, seed: int, worker_idx: int,
+                           vector_idx: int):
     """Set a deterministic random seed on environment.
 
-    TODO: does remote envs have seed() func?
-    TODO: if a gym env is wrapped in a gym.wrappers.Monitor,
-        is there still seed() func?
+    NOTE: this may not work with remote environments (issue #18154).
     """
     if not seed:
         return
@@ -461,7 +459,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
-        _update_global_seed(policy_config, seed)
+        _maybe_update_global_seed(policy_config, seed)
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
@@ -553,7 +551,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # to create self.env, but wrap(env) and self.env has a cyclic
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
-            _update_env_seed(self.env, seed, worker_index, 0)
+            _maybe_update_env_seed(self.env, seed, worker_index, 0)
 
         def make_env(vector_index):
             env = wrap(
@@ -566,7 +564,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # during environment vectorization below.
             # So we make sure a deterministic random seed is set on
             # all the environments if specified.
-            _update_env_seed(env, seed, worker_index, vector_index)
+            _maybe_update_env_seed(env, seed, worker_index, vector_index)
             return env
 
         self.make_env_fn = make_env
