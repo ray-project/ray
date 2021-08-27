@@ -37,10 +37,11 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
     bool fallback_allocator) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
-  if (object_store_->GetObject(object_info.object_id) != nullptr) {
-    return {nullptr, PlasmaError::ObjectExists};
+  auto entry = object_store_->GetObject(object_info.object_id);
+  if (entry != nullptr) {
+    return {entry, PlasmaError::ObjectExists};
   }
-  auto entry = CreateObjectInternal(object_info, source, fallback_allocator);
+  entry = CreateObjectInternal(object_info, source, fallback_allocator);
 
   if (entry == nullptr) {
     return {nullptr, PlasmaError::OutOfMemory};

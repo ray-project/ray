@@ -92,23 +92,26 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
     // Another thread may have succeeded in creating the chunk while the lock
     // was released. In that case skip the remainder of the creation block.
     if (create_buffer_state_.count(object_id) == 0) {
-      std::vector<boost::asio::mutable_buffer> buffer;
-      if (!s.ok()) {
-        // Create failed. The object may already exist locally. If something else went
+      if (s.ok() || s.IsObjectExists()) {
+        // If the failiure is due to that object already exists, 
+        // that means there is a concurrent create operations that's not replied from the client.
+        // In this case, just proceeds.
+        // Read object into store.
+        uint8_t *mutable_data = data->Data();
+        uint64_t num_chunks = GetNumChunks(data_size);
+        create_buffer_state_.emplace(
+            std::piecewise_construct, std::forward_as_tuple(object_id),
+            std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size, data)));
+        RAY_LOG(DEBUG) << "Created object " << object_id
+                      << " in plasma store, number of chunks: " << num_chunks
+                      << ", chunk index: " << chunk_index;
+        RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
+      } else {
+        // Create failed. If something went
         // wrong, another chunk will succeed in creating the buffer, and this
         // chunk will eventually make it here via pull requests.
         return ray::Status::IOError(s.message());
       }
-      // Read object into store.
-      uint8_t *mutable_data = data->Data();
-      uint64_t num_chunks = GetNumChunks(data_size);
-      create_buffer_state_.emplace(
-          std::piecewise_construct, std::forward_as_tuple(object_id),
-          std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size, data)));
-      RAY_LOG(DEBUG) << "Created object " << object_id
-                     << " in plasma store, number of chunks: " << num_chunks
-                     << ", chunk index: " << chunk_index;
-      RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
     }
   }
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=

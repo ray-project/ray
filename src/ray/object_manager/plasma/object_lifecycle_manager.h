@@ -43,7 +43,8 @@ class ObjectLifecycleManager {
   /// \param fallback_allocator Whether to allow fallback allocation.
   /// \return
   ///   - pointer to created object and PlasmaError::OK when succeeds.
-  ///   - nullptr and error message, including ObjectExists/OutOfMemory
+  ///   - pointer to created object and PlasmaError::ObjectExists when the object already exists.
+  ///   - nullptr and error message, including OutOfMemory
   /// TODO(scv119): use RAII instead of pointer for returned object.
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
       const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
