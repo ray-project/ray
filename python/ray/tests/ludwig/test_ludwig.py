@@ -37,7 +37,6 @@ from ray.tests.ludwig.ludwig_test_utils import h3_feature
 from ray.tests.ludwig.ludwig_test_utils import numerical_feature
 from ray.tests.ludwig.ludwig_test_utils import sequence_feature
 from ray.tests.ludwig.ludwig_test_utils import set_feature
-from ray.tests.ludwig.ludwig_test_utils import text_feature
 from ray.tests.ludwig.ludwig_test_utils import train_with_backend
 from ray.tests.ludwig.ludwig_test_utils import vector_feature
 
@@ -65,35 +64,44 @@ def ray_start_2_cpus():
 def run_api_experiment(config, data_parquet):
     # Sanity check that we get 4 slots over 1 host
     kwargs = get_horovod_kwargs()
-    assert kwargs.get('num_hosts') == 1
-    assert kwargs.get('num_slots') == 2
+    assert kwargs.get("num_hosts") == 1
+    assert kwargs.get("num_slots") == 2
 
     # Train on Parquet
     dask_backend = RayBackend()
-    train_with_backend(dask_backend, config, dataset=data_parquet, evaluate=False)
+    train_with_backend(
+        dask_backend, config, dataset=data_parquet, evaluate=False)
 
 
 @spawn
-def run_test_parquet(
-    input_features,
-    output_features,
-    num_examples=100,
-    run_fn=run_api_experiment,
-    expect_error=False
-):
+def run_test_parquet(input_features,
+                     output_features,
+                     num_examples=100,
+                     run_fn=run_api_experiment,
+                     expect_error=False):
     tf.config.experimental_run_functions_eagerly(True)
     with ray_start_2_cpus():
         config = {
-            'input_features': input_features,
-            'output_features': output_features,
-            'combiner': {'type': 'concat', 'fc_size': 14},
-            'training': {'epochs': 2, 'batch_size': 8}
+            "input_features": input_features,
+            "output_features": output_features,
+            "combiner": {
+                "type": "concat",
+                "fc_size": 14
+            },
+            "training": {
+                "epochs": 2,
+                "batch_size": 8
+            }
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            csv_filename = os.path.join(tmpdir, 'dataset.csv')
-            dataset_csv = generate_data(input_features, output_features, csv_filename, num_examples=num_examples)
-            dataset_parquet = create_data_set_to_use('parquet', dataset_csv)
+            csv_filename = os.path.join(tmpdir, "dataset.csv")
+            dataset_csv = generate_data(
+                input_features,
+                output_features,
+                csv_filename,
+                num_examples=num_examples)
+            dataset_parquet = create_data_set_to_use("parquet", dataset_csv)
 
             if expect_error:
                 with pytest.raises(ValueError):
@@ -104,8 +112,8 @@ def run_test_parquet(
 
 def test_ray_tabular():
     input_features = [
-        sequence_feature(reduce_output='sum'),
-        numerical_feature(normalization='zscore'),
+        sequence_feature(reduce_output="sum"),
+        numerical_feature(normalization="zscore"),
         set_feature(),
         binary_feature(),
         bag_feature(),
@@ -114,10 +122,10 @@ def test_ray_tabular():
         date_feature(),
     ]
     output_features = [
-        category_feature(vocab_size=2, reduce_input='sum'),
+        category_feature(vocab_size=2, reduce_input="sum"),
         binary_feature(),
         set_feature(max_len=3, vocab_size=5),
-        numerical_feature(normalization='zscore'),
+        numerical_feature(normalization="zscore"),
         vector_feature(),
     ]
     run_test_parquet(input_features, output_features)
