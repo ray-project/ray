@@ -813,7 +813,7 @@ class Dataset(Generic[T]):
         self.write_datasource(
             ParquetDatasource(),
             path=path,
-            uuid=self._uuid,
+            dataset_uuid=self._uuid,
             filesystem=filesystem,
             **arrow_parquet_args)
 
@@ -847,7 +847,7 @@ class Dataset(Generic[T]):
         self.write_datasource(
             JSONDatasource(),
             path=path,
-            uuid=self._uuid,
+            dataset_uuid=self._uuid,
             filesystem=filesystem,
             **pandas_json_args)
 
@@ -878,7 +878,7 @@ class Dataset(Generic[T]):
         self.write_datasource(
             CSVDatasource(),
             path=path,
-            uuid=self._uuid,
+            dataset_uuid=self._uuid,
             filesystem=filesystem,
             **arrow_csv_args)
 
@@ -908,7 +908,7 @@ class Dataset(Generic[T]):
         self.write_datasource(
             NumpyDatasource(),
             path=path,
-            uuid=self._uuid,
+            dataset_uuid=self._uuid,
             filesystem=filesystem)
 
     def write_datasource(self, datasource: Datasource[T],
@@ -925,15 +925,15 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.do_write(self._blocks,
-                                          self._blocks.get_metadata(),
-                                          **write_args)
-        progress = ProgressBar("Write Progress", len(write_tasks))
+        write_results = datasource.do_write(self._blocks,
+                                            self._blocks.get_metadata(),
+                                            **write_args)
+        progress = ProgressBar("Write Progress", len(write_results))
         try:
-            progress.block_until_complete(write_tasks)
-            datasource.on_write_complete(write_tasks)
+            progress.block_until_complete(write_results)
+            datasource.on_write_complete(ray.get(write_results))
         except Exception as e:
-            datasource.on_write_failed(write_tasks, e)
+            datasource.on_write_failed(write_results, e)
             raise
         finally:
             progress.close()

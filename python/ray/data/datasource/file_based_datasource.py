@@ -109,7 +109,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  blocks: List[ObjectRef[Block]],
                  metadata: List[BlockMetadata],
                  path: str,
-                 uuid: str,
+                 dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -131,8 +131,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         file_format = self._file_format()
         write_tasks = []
         for block_idx, block in enumerate(blocks):
-            write_path = os.path.join(path,
-                                      f"{uuid}_{block_idx:06}.{file_format}")
+            write_path = os.path.join(
+                path, f"{dataset_uuid}_{block_idx:06}.{file_format}")
             write_task = write_block.remote(write_path, block)
             write_tasks.append(write_task)
 

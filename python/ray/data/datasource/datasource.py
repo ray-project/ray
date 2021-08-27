@@ -52,11 +52,11 @@ class Datasource(Generic[T]):
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
-            A list of Ray futures representing the output of the write tasks.
+            A list of the output of the write tasks.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_tasks: List[ObjectRef[WriteResult]],
+    def on_write_complete(self, write_results: List[WriteResult],
                           **kwargs) -> None:
         """Callback for when a write job completes.
 
@@ -65,19 +65,19 @@ class Datasource(Generic[T]):
         method fails, then ``on_write_failed()`` will be called.
 
         Args:
-            write_tasks: The list of the write task futures.
+            write_results: The list of the write task results.
             kwargs: Forward-compatibility placeholder.
         """
         pass
 
-    def on_write_failed(self, write_tasks: List[ObjectRef[WriteResult]],
+    def on_write_failed(self, write_results: List[ObjectRef[WriteResult]],
                         error: Exception, **kwargs) -> None:
         """Callback for when a write job fails.
 
         This is called on a best-effort basis on write failures.
 
         Args:
-            write_tasks: The list of the write task futures.
+            write_results: The list of the write task result futures.
             error: The first error encountered.
             kwargs: Forward-compatibility placeholder.
         """
@@ -206,11 +206,10 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
             tasks.append(self.data_sink.write.remote(b))
         return tasks
 
-    def on_write_complete(self,
-                          write_tasks: List[ObjectRef[WriteResult]]) -> None:
-        assert all(w == "ok" for w in ray.get(write_tasks)), write_tasks
+    def on_write_complete(self, write_results: List[WriteResult]) -> None:
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
-    def on_write_failed(self, write_tasks: List[ObjectRef[WriteResult]],
+    def on_write_failed(self, write_results: List[ObjectRef[WriteResult]],
                         error: Exception) -> None:
         self.num_failed += 1
