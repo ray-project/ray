@@ -256,7 +256,14 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
 
     if catch_exceptions:
         if step_type == StepType.FUNCTION:
-            persisted_output, volatile_output = (result, exception), None
+            if isinstance(result, Workflow):
+                # When it returns a nested workflow, catch_exception
+                # should be passed recursively.
+                assert exception is None
+                result.data.catch_exceptions = True
+                persisted_output, volatile_output = result, None
+            else:
+                persisted_output, volatile_output = (result, exception), None
         elif step_type == StepType.ACTOR_METHOD:
             # virtual actors do not persist exception
             persisted_output, volatile_output = result[0], (result[1],
