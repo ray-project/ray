@@ -123,6 +123,9 @@ ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
     const ray::internal::PlacementGroupCreationOptions &create_options) {
   ray::PlacementGroup placement_group{ray::PlacementGroupID::FromRandom().Binary(),
                                       create_options};
+  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+    return WaitPlacementGroupReady(id, timeout_seconds);
+  });
   placement_groups_.emplace(placement_group.GetID(), placement_group);
   return placement_group;
 }

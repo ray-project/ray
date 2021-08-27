@@ -77,10 +77,15 @@ class PlacementGroup {
     return options_.bundles;
   }
   internal::PlacementStrategy GetStrategy() { return options_.strategy; }
+  bool Wait(int timeout_seconds) { return callback_(id_, timeout_seconds); }
+  void SetWaitCallbak(std::function<bool(const std::string &, int)> callback) {
+    callback_ = std::move(callback);
+  }
 
  private:
   std::string id_;
   internal::PlacementGroupCreationOptions options_;
+  std::function<bool(const std::string &, int)> callback_;
 };
 
 }  // namespace ray

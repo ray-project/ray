@@ -104,7 +104,12 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
     throw RayException(status.message());
   }
 
-  return {placement_group_id.Binary(), create_options};
+  ray::PlacementGroup placement_group{placement_group_id.Binary(), create_options};
+  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+    return WaitPlacementGroupReady(id, timeout_seconds);
+  });
+
+  return placement_group;
 }
 
 void NativeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
