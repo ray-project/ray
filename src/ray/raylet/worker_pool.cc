@@ -1064,7 +1064,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
-                                 int64_t backlog_size) {
+                                 int64_t backlog_size,
+                                 int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 || task_spec.HasRuntimeEnv()) {
@@ -1086,8 +1087,12 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
       num_workers_total++;
     }
   }
+  // Some workers may be holding less than 1 CPU each, so we should start as
+  // many workers as needed to fill up the remaining CPUs.
+  auto worker_margin = std::max<int64_t>(num_workers_soft_limit_ - num_workers_total,
+      num_available_cpus);
   auto desired_usable_workers =
-      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+      std::min<int64_t>(worker_margin, backlog_size);
   if (num_usable_workers < desired_usable_workers) {
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
