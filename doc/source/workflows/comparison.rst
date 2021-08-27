@@ -28,6 +28,8 @@ Note: these comparisons are inspired by the `Serverless workflows comparisons re
 Argo API Comparison
 ~~~~~~~~~~~~~~~~~~~
 
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-argo.md>`__.
+
 Conditionals
 ^^^^^^^^^^^^
 
@@ -108,6 +110,8 @@ Retries
 Metaflow API Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+The original source of these comparisons can be `found here <https://docs.metaflow.org/metaflow/basics#foreach>`__.
+
 Foreach
 ^^^^^^^
 
@@ -121,6 +125,8 @@ Foreach
 
 Cadence API Comparison
 ~~~~~~~~~~~~~~~~~~~~~~
+
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md>`__.
 
 Sub Workflows
 ^^^^^^^^^^^^^
@@ -157,6 +163,8 @@ Trip Booking
 
 Google Cloud Workflows API Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-google-cloud-workflows.md>`__.
 
 Data Conditional
 ^^^^^^^^^^^^^^^^
