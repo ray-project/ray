@@ -18,7 +18,8 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (check_call_ray, run_string_as_driver,
+                                     wait_for_condition)
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
@@ -433,6 +434,42 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 
     assert ray.get_actor(
         client._controller_name, namespace=controller_namespace)
+
+
+def test_checkpoint_isolation_namespace():
+    check_call_ray(["start", "--head"])
+
+    deployment_ns1 = """
+import ray
+from ray import serve
+
+ray.init(address="auto", namespace="ns1")
+
+serve.start(detached=True)
+
+@serve.deployment
+class A:
+    pass
+
+A.deploy()"""
+    run_string_as_driver(deployment_ns1)
+
+    deployment_ns2 = """
+import ray
+from ray import serve
+
+ray.init(address="auto", namespace="ns2")
+
+serve.start(detached=True)
+
+@serve.deployment
+class A:
+    pass
+
+A.deploy()"""
+    run_string_as_driver(deployment_ns2)
+
+    check_call_ray(["stop"])
 
 
 if __name__ == "__main__":
