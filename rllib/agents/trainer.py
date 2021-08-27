@@ -1476,6 +1476,12 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if config["preprocessor_pref"] is None:
+            model_config["_no_preprocessor"] = True
+
+        # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",
                                     DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:

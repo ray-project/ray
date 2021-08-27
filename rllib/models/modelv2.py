@@ -217,9 +217,17 @@ class ModelV2:
         else:
             restored = input_dict.copy()
 
+        # No Preprocessor used: `config.preprocessor_pref`=None.
+        # TODO: This is unnecessary for when no preprocessor is used.
+        #  Obs are not flat then anymore. We keep this here for
+        #  backward-compatibility until Preprocessors have been fully
+        #  deprecated.
+        if self.model_config.get("_no_preprocessing"):
+            restored["obs_flat"] = input_dict["obs"]
         # Input to this Model went through a Preprocessor.
-        # Generate extra keys: "obs_flat" vs "obs".
-        if hasattr(self.obs_space, "original_space"):
+        # Generate extra keys: "obs_flat" (vs "obs", which will hold the
+        # original obs).
+        else:
             restored["obs"] = restore_original_dimensions(
                 input_dict["obs"], self.obs_space, self.framework)
             try:
@@ -230,13 +238,6 @@ class ModelV2:
                     restored["obs_flat"] = input_dict["obs"]
             except AttributeError:
                 restored["obs_flat"] = input_dict["obs"]
-        # No Preprocessor used: `config.preprocessor_pref`=None.
-        # TODO: This is unnecessary for when no preprocessor is used.
-        #  Obs are not flat then anymore. We keep this here for
-        #  backward-compatibility until Preprocessors have been fully
-        #  deprecated.
-        else:
-            restored["obs_flat"] = input_dict["obs"]
 
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
