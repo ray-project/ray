@@ -9,10 +9,11 @@ printInfo() {
 }
 
 log_err() {
-    printError "Running clang-tidy encountered an error"
+    printError "Setting up clang-tidy encountered an error"
 }
 
-set -ex
+set -eo pipefail
+
 trap '[ $? -eq 0 ] || log_err' EXIT
 
 printInfo "Fetching workspace info ..."
@@ -22,8 +23,8 @@ BAZEL_ROOT=$(bazel info execution_root)
 
 printInfo "Generating compilation database ..."
 
-CC=clang bazel build --experimental_action_listener=//:compile_command_listener \
-    //:extract_compile_command //:ray_pkg
+CC=clang bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
+    --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener
 
 printInfo "Assembling compilation database ..."
 
@@ -60,12 +61,16 @@ else
   printInfo "Running clang-tidy against parent commit $base_commit from master branch"
 fi
 
-output="$(git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1)"
-if [ "$output" = "" ] || [ "$output" = "No relevant changes found." ] ; then
+trap - EXIT
+
+if git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1 -fix; then
   printInfo "clang-tidy passed."
-  exit 0
 else
-  printError "clang-tidy failed:"
-  echo "$output"
-  exit 1
+  printError "clang-tidy failed. See above for details including suggested fixes."
+  printError
+  printError "If you think a warning is too aggressive, the proposed fix is incorrect or are unsure about how to fix "
+  printError "a warning, feel free to raise the issue on the PR or Anyscale #learning-cplusplus Slack channel."
+  printError
+  printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and "
+  printError "available in PATH, then run scripts/check-git-clang-tidy-output.sh from repo root."
 fi

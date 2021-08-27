@@ -439,12 +439,6 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
-  if command -v clang-tidy > /dev/null; then
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
-  else
-    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
-  fi
-
   # Run script linting
   lint_scripts
 
@@ -466,6 +460,13 @@ _lint() {
        bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
        bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
+
+    # Run clang-tidy last since it needs to rebuild.
+    if command -v clang-tidy > /dev/null; then
+      "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    else
+      { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
+    fi
   fi
 }
 

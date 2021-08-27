@@ -1,3 +1,6 @@
+# Disabled checks are due to frequent false positives and noisiness.
+# They can be re-enabled later on if the benefit outweighs the cost.
+# TODO: enable google-* and readability-* families of checks.
 Checks: >
   abseil-*,
   bugprone-*,
@@ -11,3 +14,6 @@ Checks: >
   -modernize-return-braced-init-list,
   -modernize-use-emplace,
   -modernize-use-trailing-return-type,
+
+# Turn all the warnings from the checks above into errors.
+WarningsAsErrors: "*"

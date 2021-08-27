@@ -9,6 +9,10 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
+package(
+    default_visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "msvc-cl",
     flag_values = {"@bazel_tools//tools/cpp:compiler": "msvc-cl"},
@@ -1781,31 +1785,6 @@ extra_action(
         ":iwyu_sh",
         "@com_google_protobuf//:protoc",
     ],
-)
-
-cc_binary(
-    name = "extract_compile_command",
-    srcs = ["ci/generate_compile_commands/extract_compile_command.cc"],
-    deps = [
-        ":extra_actions_cc_proto_lib",
-        "@rapidjson//:rapidjson",
-        "@com_google_protobuf//:protobuf",
-    ],
-)
-
-action_listener(
-    name = "compile_command_listener",
-    extra_actions = [":compile_command_action"],
-    mnemonics = ["CppCompile"],
-)
-
-extra_action(
-    name = "compile_command_action",
-    cmd = "$(location :extract_compile_command) \
-        $(EXTRA_ACTION_FILE) \
-        $(output $(ACTION_ID).compile_command.json)",
-    out_templates = ["$(ACTION_ID).compile_command.json"],
-    tools = [":extract_compile_command"],
 )
 
 cc_library(
