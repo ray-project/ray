@@ -97,12 +97,16 @@ def main():
         "eval_metric": ["logloss", "error"],
     }
 
-    bst = train_xgboost(config, df_train, df_validation, "label",
-                        RayParams(max_actor_restarts=1, cpus_per_actor=8, num_actors=4))
+    bst = train_xgboost(
+        config, df_train, df_validation, "label",
+        RayParams(max_actor_restarts=1, cpus_per_actor=8, num_actors=4))
     tune_xgboost(df_train, df_validation, "label")
     inference_df = RayDMatrix(
         df_train[sorted(df_train.columns)], ignore=["label", "partition"])
-    predict(bst, inference_df, ray_params=RayParams(cpus_per_actor=2, num_actors=16))
+    predict(
+        bst,
+        inference_df,
+        ray_params=RayParams(cpus_per_actor=2, num_actors=16))
 
 
 if __name__ == "__main__":
