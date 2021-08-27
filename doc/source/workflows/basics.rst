@@ -38,6 +38,7 @@ Here we created the workflow:
 
 .. image:: basic.png
    :width: 500px
+   :align: center
 
 Workflow steps behave similarly to Ray tasks. They are declared via the ``@workflow.step`` annotation, and can take in either concrete values or the output of another workflow step as an argument.
 
@@ -205,6 +206,7 @@ Here the workflow initially just consists of the ``book_trip`` step. Once execut
 
 .. image:: trip.png
    :width: 500px
+   :align: center
 
 The execution order here will be:
 1. Run the ``book_trip`` step.
