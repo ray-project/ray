@@ -27,7 +27,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
       RAY_UNUSED(task_finisher_->PendingTaskFailed(
-          task_spec.TaskId(), rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status));
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
@@ -107,13 +107,6 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
   };
   if (task_spec.IsActorCreationTask()) {
-    // Synchronously register the actor to GCS server.
-    // Previously, we asynchronously registered the actor after all its dependencies were
-    // resolved. This caused a problem: if the owner of the actor dies before dependencies
-    // are resolved, the actor will never be created. But the actor handle may already be
-    // passed to other workers. In this case, the actor tasks will hang forever.
-    // So we fixed this issue by synchronously registering the actor. If the owner dies
-    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
     auto status = actor_creator_->AsyncRegisterActor(
         task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
                     this](Status status) mutable {

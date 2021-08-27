@@ -102,7 +102,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
           auto task_id = it->second.first.TaskId();
           queue->second.requests.erase(it);
           task_finisher_.PendingTaskFailed(
-              task_id, rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status);
+              task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
         }
       }
     });

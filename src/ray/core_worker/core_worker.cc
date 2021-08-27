@@ -3160,7 +3160,6 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
       actor_ids.emplace_back(ObjectID::ToActorID(id));
     }
   }
-  RAY_LOG(ERROR) << "DBG: actor_ids.size(): " << actor_ids.size();
   if (actor_ids.empty()) {
     return Status::OK();
   }
@@ -3173,12 +3172,10 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     for (const auto &id : actor_ids) {
       if (actor_creator_->IsActorInRegistering(id)) {
         ++counter;
-        RAY_LOG(ERROR) << "DBG: counter: " << counter;
         actor_creator_->AsyncWaitForActorRegisterFinish(
             id, [&counter, &promise, &ret](Status status) {
               ret.push_back(status);
               --counter;
-              RAY_LOG(ERROR) << "DBG: After: counter: " << counter;
               if (counter == 0) {
                 promise.set_value();
               }
