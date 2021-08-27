@@ -1,5 +1,5 @@
 import abc
-from typing import List, Optional, Dict
+from typing import List, Dict
 
 
 class SGDCallback(metaclass=abc.ABCMeta):

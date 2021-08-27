@@ -16,7 +16,7 @@ from ray.util.sgd.v2.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
 logger = logging.getLogger(__name__)
 
 
-class SGDLoggingMixin:
+class SGDLogdirMixin:
     def start_training(self, logdir: str, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
@@ -26,24 +26,18 @@ class SGDLoggingMixin:
         if not logdir_path.is_dir():
             raise ValueError(f"logdir '{logdir}' must be a directory.")
 
-        if not self._filename:
-            filename = self._default_filename
-        else:
-            filename = self._filename
-
-        self._log_path = self._create_log_path(logdir_path, filename)
+        self._logdir_path = logdir_path
 
     @property
-    def log_path(self) -> Optional[Path]:
-        """Path to the log file.
-
-        Will be None before `start_training` is called for the first time.
-        """
-        return self._log_path
+    def logdir(self) -> Optional[Path]:
+        """Path to currently used logging directory."""
+        if not hasattr(self, "_logdir_path"):
+            return Path(self._logdir)
+        return Path(self._logdir_path)
 
 
 class SGDSingleFileLoggingCallback(
-        SGDLoggingMixin, SGDCallback, metaclass=abc.ABCMeta):
+        SGDLogdirMixin, SGDCallback, metaclass=abc.ABCMeta):
     """Abstract SGD logging callback class.
 
     Args:
@@ -89,6 +83,24 @@ class SGDSingleFileLoggingCallback(
             raise ValueError("filename cannot be None or empty.")
         return logdir_path.joinpath(Path(filename))
 
+    def start_training(self, logdir: str, **info):
+        super().start_training(logdir, **info)
+
+        if not self._filename:
+            filename = self._default_filename
+        else:
+            filename = self._filename
+
+        self._log_path = self._create_log_path(self.logdir, filename)
+
+    @property
+    def log_path(self) -> Optional[Path]:
+        """Path to the log file.
+
+        Will be None before `start_training` is called for the first time.
+        """
+        return self._log_path
+
 
 class JsonLoggerCallback(SGDSingleFileLoggingCallback):
     """Logs SGD results in json format.
@@ -106,6 +118,7 @@ class JsonLoggerCallback(SGDSingleFileLoggingCallback):
 
     def start_training(self, logdir: str, **info):
         super().start_training(logdir, **info)
+
         # Create a JSON file with an empty list
         # that will be latter appended to
         with open(self._log_path, "w") as f:
@@ -126,8 +139,8 @@ class JsonLoggerCallback(SGDSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class SGDSingleFileSingleWorkerLoggingCallback(
-        SGDLoggingMixin, SGDCallback, metaclass=abc.ABCMeta):
+class SGDSingleWorkerLoggingCallback(
+        SGDLogdirMixin, SGDCallback, metaclass=abc.ABCMeta):
     """Abstract SGD logging callback class.
 
     Allows only for single-worker logging.
@@ -139,11 +152,6 @@ class SGDSingleFileSingleWorkerLoggingCallback(
             worker with index 0.
     """
 
-    _filename: Union[str, Path, None] = None
-    _default_filename: Union[str, Path, None] = None
-
-    # it's still workers_to_log, not worker, for easier switching
-    # this is defined again for different type hints
     def __init__(self, logdir: Optional[str] = None,
                  worker_to_log: int = 0) -> None:
         self._logdir = logdir
@@ -166,7 +174,7 @@ class SGDSingleFileSingleWorkerLoggingCallback(
         return worker_to_log
 
 
-class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
+class TBXLoggerCallback(SGDSingleWorkerLoggingCallback):
     """Logs SGD results in TensorboardX format.
 
     Args:
@@ -180,9 +188,6 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
                                         np.int32, np.int64)
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
-    def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
-        return logdir_path
-
     def start_training(self, logdir: str, **info):
         super().start_training(logdir, **info)
 
@@ -194,7 +199,7 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
                     "pip install 'tensorboardX' to see TensorBoard files.")
             raise
 
-        self._file_writer = SummaryWriter(self.log_path, flush_secs=30)
+        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
 
     def handle_result(self, results: List[Dict], **info):
         result = results[self._workers_to_log]
