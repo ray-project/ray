@@ -49,8 +49,8 @@ try:
 except ValueError:
     print("ValueError")
     sys.exit(0)
-except TypeError:
-    print("TypeError")
+except TypeError as e:
+    print(str(e))
     sys.exit(0)
 except Exception as e:
     print("ERROR:", str(e))
@@ -260,10 +260,13 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Setup runtime env here
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    print(runtime_env)
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
+    print(out)
+    assert False, out
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0

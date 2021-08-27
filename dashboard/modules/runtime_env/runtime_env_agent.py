@@ -8,6 +8,8 @@ from typing import Dict
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
+from ray.experimental.internal_kv import (_initialize_internal_kv,
+                                          _internal_kv_initialized)
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
@@ -50,7 +52,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_client = self._dashboard_agent.gcs_client
+
+        # Initialize internal KV to be used by the working_dir setup code.
+        _initialize_internal_kv(self._dashboard_agent.gcs_client)
+        assert _internal_kv_initialized()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -75,7 +80,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     env_context = self._setup(runtime_env, session_dir)
                     if "uris" in runtime_env:
                         working_dir = runtime_env_pkg.ensure_runtime_env_setup(
-                            runtime_env["uris"], gcs_client=self._gcs_client)
+                            runtime_env["uris"])
                         env_context.working_dir = working_dir
 
                 return env_context
