@@ -320,6 +320,7 @@ def _workflow_step_executor(
     """
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
+    store = workflow_storage.get_workflow_storage()
     try:
         persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
                                                       catch_exceptions,
@@ -329,7 +330,6 @@ def _workflow_step_executor(
         raise e
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
-        store = workflow_storage.get_workflow_storage()
         # Save workflow output
         commit_step(store, step_id, persisted_output, None, outer_most_step_id)
         # We MUST execute the workflow after saving the output.

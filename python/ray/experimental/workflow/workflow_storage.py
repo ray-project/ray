@@ -100,6 +100,7 @@ class WorkflowStorage:
         tasks = [self._get(self._key_step_output(step_id), no_exception=True),
                  self._get(self._key_step_exception(step_id), no_exception=True)]
         (output, exception) = asyncio_run(asyncio.gather(*tasks))
+        print("result:", output, exception)
         if output[0] is not None:
             return output[0]
         if exception[0] is not None:
@@ -468,6 +469,7 @@ class WorkflowStorage:
         try:
             key = self._storage.make_key(*paths)
             ret = await self._storage.get(key, is_json=is_json)
+            print("load\t", key, ret)
         except KeyNotFoundError as e:
             err = e
         except Exception as e:
@@ -501,7 +503,7 @@ class WorkflowStorage:
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
 
-    def _key_step_output(self, step_id):
+    def _key_step_exception(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_EXCEPTION]
 
     def _key_step_output_metadata(self, step_id):
@@ -518,9 +520,6 @@ class WorkflowStorage:
 
     def _key_step_prefix(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, ""]
-
-    def _key_step_exception(self, step_id):
-        return [self._workflow_id, STEPS_DIR, step_id, STEP_EXCEPTION]
 
     def _key_class_body(self):
         return [self._workflow_id, CLASS_BODY]

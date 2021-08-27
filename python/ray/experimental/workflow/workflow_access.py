@@ -319,7 +319,6 @@ class WorkflowManagementActor:
                 step_id, None)
             if output is not None:
                 return ray.put(_SelfDereferenceObject(None, output.output))
-
         @ray.remote
         def load(wf_store, step_id):
             return wf_store.load_step_output(step_id)

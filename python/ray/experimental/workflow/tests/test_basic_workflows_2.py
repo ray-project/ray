@@ -84,6 +84,35 @@ def test_get_output_2(workflow_start_regular, tmp_path):
     assert ray.get([obj, obj2]) == [0, 0]
 
 
+def test_get_output_3(workflow_start_regular, tmp_path):
+    cnt_file = tmp_path / "counter"
+    cnt_file.write_text("0")
+    error_flag = tmp_path / "error"
+    error_flag.touch()
+    @workflow.step
+    def incr():
+        v = int(cnt_file.read_text())
+        cnt_file.write_text(str(v + 1))
+        if error_flag.exists():
+            raise ValueError()
+        return 10
+
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        incr.step().run("incr")
+
+    assert cnt_file.read_text() == "1"
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        ray.get(workflow.get_output("incr"))
+
+    assert cnt_file.read_text() == "1"
+    error_flag.unlink()
+    with pytest.raises(ray.exceptions.RaySystemError):
+        ray.get(workflow.get_output("incr"))
+    assert ray.get(workflow.resume("incr")) == 10
+
+
 def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
     @workflow.step
     def double(v):
