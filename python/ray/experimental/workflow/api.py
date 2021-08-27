@@ -9,7 +9,8 @@ from ray.experimental.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
-from ray.experimental.workflow.common import WorkflowStatus, assert_ray_initialized
+from ray.experimental.workflow.common import (WorkflowStatus,
+                                              assert_ray_initialized)
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
 

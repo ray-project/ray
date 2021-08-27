@@ -224,7 +224,8 @@ class Workflow:
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
 
-    def run(self, workflow_id: Optional[str] = None, from_begin: bool = False) -> Any:
+    def run(self, workflow_id: Optional[str] = None,
+            from_begin: bool = False) -> Any:
         """Run a workflow.
 
         Examples:
@@ -254,7 +255,9 @@ class Workflow:
         """
         return ray.get(self.run_async(workflow_id, from_begin))
 
-    def run_async(self, workflow_id: Optional[str] = None, from_begin: bool = False) -> ObjectRef:
+    def run_async(self,
+                  workflow_id: Optional[str] = None,
+                  from_begin: bool = False) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:

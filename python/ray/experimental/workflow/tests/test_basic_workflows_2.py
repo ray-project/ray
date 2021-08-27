@@ -232,10 +232,12 @@ def test_no_init(shutdown_only):
 def test_wf_run(workflow_start_regular, tmp_path):
     counter = tmp_path / "counter"
     counter.write_text("0")
+
     @workflow.step
     def f():
         v = int(counter.read_text()) + 1
         counter.write_text(str(v))
+
     f.step().run("abc")
     assert counter.read_text() == "1"
     # This will not rerun the job from beginning

@@ -3,8 +3,8 @@ from typing import Callable
 
 from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import (
-    Workflow, WorkflowData, StepType, assert_ray_initialized)
+from ray.experimental.workflow.common import (Workflow, WorkflowData, StepType,
+                                              assert_ray_initialized)
 
 
 class WorkflowStepFunction:
