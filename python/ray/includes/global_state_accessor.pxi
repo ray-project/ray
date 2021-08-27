@@ -164,7 +164,10 @@ cdef class GlobalStateAccessor:
         return None
 
     def get_system_config(self):
-        return self.inner.get().GetSystemConfig()
+        cdef c_pair[c_bool, c_string] res = self.inner.get().GetSystemConfig()
+        if not res.first:
+            raise RuntimeError("Failed! Get system config timed out!")
+        return res.secondreturn self.inner.get().GetSystemConfig()
 
     def get_node_to_connect_for_driver(self, node_ip_address):
         cdef CRayStatus status

@@ -268,7 +268,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 
-std::string GlobalStateAccessor::GetSystemConfig() {
+std::pair<bool, std::string> GlobalStateAccessor::GetSystemConfig() {
   std::promise<std::string> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
       [&promise](const Status &status,
@@ -280,9 +280,10 @@ std::string GlobalStateAccessor::GetSystemConfig() {
   if (future.wait_for(std::chrono::seconds(
           RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
-    RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
+    RAY_LOG(WARNING) << "Failed to get system config within the timeout setting.";
+    return std::make_pair(false, std::string());
   }
-  return future.get();
+  return std::make_pair(true, future.get());
 }
 
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(

@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = 20
+GET_SYSTEM_CONFIG_RETRY_NUM = 3
 
 
 def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
@@ -921,7 +922,17 @@ class Node:
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(
                 self.redis_address, redis_password=self.redis_password)
-            new_config = global_state.get_system_config()
+
+            get_system_config_ok = False
+            for i in range(GET_SYSTEM_CONFIG_RETRY_NUM):
+                try:
+                    new_config = global_state.get_system_config()
+                    get_system_config_ok = True
+                    break
+                except RuntimeError:
+                    logger.exception("Get system config failed, retry {}", i)
+            assert get_system_config_ok
+
             assert self._config.items() <= new_config.items(), (
                 "The system config from GCS is not a superset of the local"
                 " system config. There might be a configuration inconsistency"
