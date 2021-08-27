@@ -164,12 +164,11 @@ class ConcatBatches:
         _check_sample_batch_type(batch)
         self.buffer.append(batch)
 
+        # Count by env_steps (one env step contains N agent steps).
         if self.count_steps_by == "env_steps":
             self.count += batch.count
+        # Count by individual agent steps.
         else:
-            assert isinstance(batch, MultiAgentBatch), \
-                "`count_steps_by=agent_steps` only allowed in multi-agent " \
-                "environments!"
             self.count += batch.agent_steps()
 
         if self.count >= self.min_batch_size:
