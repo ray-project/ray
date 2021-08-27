@@ -1,8 +1,6 @@
 Virtual Actors
 ==============
 
-[Note: this feature is in development]
-
 Introduction
 ------------
 
