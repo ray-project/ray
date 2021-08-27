@@ -260,7 +260,7 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
                 # When it returns a nested workflow, catch_exception
                 # should be passed recursively.
                 assert exception is None
-                result.data.catch_exception = True
+                result.data.catch_exceptions = True
                 persisted_output, volatile_output = result, None
             else:
                 persisted_output, volatile_output = (result, exception), None
