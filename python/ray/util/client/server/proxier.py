@@ -19,7 +19,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
-from ray.util.client.server.dataservicer import WAIT_FOR_CLIENT_RECONNECT_SECONDS
+from ray.util.client.server.dataservicer import WAIT_FOR_CLIENT_RECONNECT_SECONDS, _get_reconnecting_from_context
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
@@ -51,16 +51,6 @@ def _get_client_id_from_context(context: Any) -> str:
         logger.error("Client connecting with no client_id")
         context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
     return client_id
-
-def _get_reconnecting_from_context(context: Any) -> bool:
-    """
-    Get `reconnecting` from gRPC metadata, or False if not present
-    """
-    metadata = {k: v for k, v in context.invocation_metadata()}
-    val = metadata.get("reconnecting") or "False"
-    assert val in ("True", "False")
-    return val == "True"
-
 
 @dataclass
 class SpecificServer:

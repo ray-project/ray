@@ -67,7 +67,7 @@ class DataClient:
             metadata = self._metadata + [("reconnecting", reconnecting)]
             resp_stream = stub.Datapath(
                 iter(self.request_queue.get, None),
-                metadata=self._metadata + metadata,
+                metadata=metadata,
                 wait_for_ready=True)
             try:
                 for response in resp_stream:

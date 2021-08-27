@@ -24,6 +24,16 @@ QUEUE_JOIN_SECONDS = 5
 WAIT_FOR_CLIENT_RECONNECT_SECONDS = 30
 
 
+def _get_reconnecting_from_context(context: Any) -> bool:
+    """
+    Get `reconnecting` from gRPC metadata, or False if not present
+    """
+    metadata = {k: v for k, v in context.invocation_metadata()}
+    val = metadata.get("reconnecting") or "False"
+    assert val in ("True", "False")
+    return val == "True"
+
+
 def fill_queue(
         grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
         output_queue:
@@ -163,8 +173,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         Returns a boolean indicating if initialization was successful.
         """
         with self.clients_lock:
-            metadata = {k: v for k, v in context.invocation_metadata()}
-            reconnecting = metadata.get("reconnecting") or False
+            reconnecting = _get_reconnecting_from_context(context)
             threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
             if self.num_clients >= threshold:
                 logger.warning(
@@ -182,7 +191,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             if reconnecting and client_id not in self.client_last_seen:
                 # Client took too long to reconnect, session has been
                 # cleaned up. TODO: how to handle?
-                context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+                context.set_code(grpc.StatusCode.CANCELLED)
                 return False
             if client_id in self.client_last_seen:
                 self.client_last_seen[client_id] = time.time()
