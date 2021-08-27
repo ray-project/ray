@@ -151,7 +151,6 @@ class WorkflowStorage:
                         self._update_dynamic_output(outer_most_step_id,
                                                     dynamic_output_id))
             else:
-                print("Exception!!!!!!!")
                 assert ret is None
                 tasks.append(
                     self._put(self._key_step_exception(step_id), exception))
@@ -398,7 +397,6 @@ class WorkflowStorage:
         metadata = {
             "status": metadata.status.value,
         }
-        print("SAVE:", metadata)
         asyncio_run(self._put(self._key_workflow_metadata(), metadata, True))
 
     def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
@@ -474,7 +472,6 @@ class WorkflowStorage:
         try:
             key = self._storage.make_key(*paths)
             ret = await self._storage.get(key, is_json=is_json)
-            print("load\t", key, ret)
         except KeyNotFoundError as e:
             err = e
         except Exception as e:

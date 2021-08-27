@@ -224,7 +224,6 @@ class WorkflowManagementActor:
             self._step_status.pop(workflow_id)
         else:
             # remaining = 0
-            print("SUCCESSFULLY")
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
