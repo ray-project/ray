@@ -4,6 +4,7 @@ back to the ray clientserver.
 import logging
 import queue
 import threading
+import time
 import grpc
 
 from typing import Any, Callable, Dict, Optional
@@ -60,7 +61,7 @@ class DataClient:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
 
     def _data_main(self) -> None:
-        reconnecting = False
+        reconnecting = "False"
         while True:
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
@@ -97,13 +98,14 @@ class DataClient:
                     # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
                     # in practice we may need to think about the correct semantics
                     # here.
-                    logger.info("Server disconnected from data channel")
+                    logger.exception("Server disconnected from data channel")
                 else:
                     logger.exception(
                         "Got Error from data channel:")
                 try:
+                    time.sleep(3)
                     self.client_worker._connect_grpc_channel()
-                    reconnecting = True
+                    reconnecting = "True"
                     continue
                 except ConnectionError:
                     logger.info("Reconnection failed, cancelling data channel.")
