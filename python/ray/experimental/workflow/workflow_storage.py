@@ -102,7 +102,6 @@ class WorkflowStorage:
             self._get(self._key_step_exception(step_id), no_exception=True)
         ]
         (output, exception) = asyncio_run(asyncio.gather(*tasks))
-        print("result:", output, exception)
         if output[0] is not None:
             return output[0]
         if exception[0] is not None:
