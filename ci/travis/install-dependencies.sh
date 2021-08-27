@@ -144,6 +144,12 @@ install_miniconda() {
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
+  elif [ "${MINIMAL_INSTALL}" = "1" ]; then  # Reset environment
+    (
+      set +x
+      echo "Resetting Anaconda Python ${python_version}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
+    )
   fi
 
   command -V python
@@ -275,7 +281,7 @@ install_dependencies() {
   install_toolchains
 
   install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL}" = "1" ]; then
     install_miniconda
     # Upgrade the miniconda pip.
     install_upgrade_pip
