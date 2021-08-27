@@ -477,6 +477,26 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
 
 
 @PublicAPI(stability="beta")
+def from_numpy(ndarrays: List[ObjectRef[np.ndarray]],
+               *,
+               parallelism: int = 200) -> Dataset["np.ndarray"]:
+    """Create a dataset from a set of NumPy ndarrays.
+
+    Args:
+        ndarrays: A list of Ray object references to NumPy ndarrays.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding the given ndarrays.
+    """
+    ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
+
+    res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
+    blocks, metadata = zip(*res)
+    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+
+
+@PublicAPI(stability="beta")
 def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
                *,
                parallelism: int = 200) -> Dataset[ArrowRow]:
@@ -515,6 +535,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     block = pa.table(df)
     return (block,
             BlockAccessor.for_block(block).get_metadata(input_files=None))
+
+
+def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
+    return (ndarray,
+            BlockAccessor.for_block(ndarray).get_metadata(input_files=None))
 
 
 def _get_schema(block: Block) -> Any:
