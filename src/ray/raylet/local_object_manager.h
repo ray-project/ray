@@ -32,9 +32,63 @@ namespace ray {
 
 namespace raylet {
 
+class ILocalObjectManager {
+ public:
+  virtual ~ILocalObjectManager() = default;
+  /// Pin objects.
+  ///
+  /// \param object_ids The objects to be pinned.
+  /// \param objects Pointers to the objects to be pinned. The pointer should
+  /// be kept in scope until the object can be released.
+  /// \param owner_address The owner of the objects to be pinned.
+  virtual void PinObjects(const std::vector<ObjectID> &object_ids,
+                          std::vector<std::unique_ptr<RayObject>> &&objects,
+                          const rpc::Address &owner_address) = 0;
+
+  /// Release an object that has been freed by its owner.
+  virtual void ReleaseFreedObject(const ObjectID &object_id) = 0;
+
+  /// Spill objects as much as possible as fast as possible up to the max throughput.
+  ///
+  /// \return True if spilling is in progress.
+  virtual void SpillObjectUptoMaxThroughput() = 0;
+
+  /// Restore a spilled object from external storage back into local memory.
+  /// Note: This is no-op if the same restoration request is in flight or the requested
+  /// object wasn't spilled yet. The caller should ensure to retry object restoration in
+  /// this case.
+  ///
+  /// \param object_id The ID of the object to restore.
+  /// \param object_url The URL where the object is spilled.
+  /// \param callback A callback to call when the restoration is done.
+  /// Status will contain the error during restoration, if any.
+  virtual void AsyncRestoreSpilledObject(
+      const ObjectID &object_id, const std::string &object_url,
+      std::function<void(const ray::Status &)> callback) = 0;
+
+  /// Clear any freed objects. This will trigger the callback for freed
+  /// objects.
+  virtual void FlushFreeObjects() = 0;
+
+  /// Return True if spilling is in progress.
+  /// This is a narrow interface that is accessed by plasma store.
+  /// We are using the narrow interface here because plasma store is running in a
+  /// different thread, and we'd like to avoid making this component thread-safe,
+  /// which is against the general raylet design.
+  ///
+  /// \return True if spilling is still in progress. False otherwise.
+  virtual bool IsSpillingInProgress() const = 0;
+
+  /// Return the spilled object URL if the object is spilled locally,
+  /// or the empty string otherwise.
+  /// If the external storage is cloud, this will always return an empty string.
+  /// In that case, the URL is supposed to be obtained by the object directory.
+  virtual std::string GetLocalSpilledObjectURL(const ObjectID &object_id) = 0;
+};
+
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
-class LocalObjectManager {
+class LocalObjectManager : public ILocalObjectManager {
  public:
   LocalObjectManager(
       instrumented_io_context &context, const NodeID &node_id,
@@ -70,15 +124,15 @@ class LocalObjectManager {
   /// \param owner_address The owner of the objects to be pinned.
   void PinObjects(const std::vector<ObjectID> &object_ids,
                   std::vector<std::unique_ptr<RayObject>> &&objects,
-                  const rpc::Address &owner_address);
+                  const rpc::Address &owner_address) override;
 
   /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
+  void ReleaseFreedObject(const ObjectID &object_id) override;
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
   /// \return True if spilling is in progress.
-  void SpillObjectUptoMaxThroughput();
+  void SpillObjectUptoMaxThroughput() override;
 
   /// Spill objects to external storage.
   ///
@@ -97,12 +151,13 @@ class LocalObjectManager {
   /// \param object_url The URL where the object is spilled.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
-                                 std::function<void(const ray::Status &)> callback);
+  void AsyncRestoreSpilledObject(
+      const ObjectID &object_id, const std::string &object_url,
+      std::function<void(const ray::Status &)> callback) override;
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
-  void FlushFreeObjects();
+  void FlushFreeObjects() override;
 
   /// Return True if spilling is in progress.
   /// This is a narrow interface that is accessed by plasma store.
@@ -111,7 +166,7 @@ class LocalObjectManager {
   /// which is against the general raylet design.
   ///
   /// \return True if spilling is still in progress. False otherwise.
-  bool IsSpillingInProgress() const;
+  bool IsSpillingInProgress() const override;
 
   /// Populate object spilling stats.
   ///
@@ -125,7 +180,7 @@ class LocalObjectManager {
   /// or the empty string otherwise.
   /// If the external storage is cloud, this will always return an empty string.
   /// In that case, the URL is supposed to be obtained by the object directory.
-  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id) override;
 
   std::string DebugString() const;
 
