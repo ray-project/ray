@@ -86,7 +86,7 @@ def main():
 
     dask.config.set(scheduler=ray_dask_get)
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    data = dd.read_csv(FILE_URL, colnames=colnames)
+    data = dd.read_csv(FILE_URL, names=colnames)
 
     print("Loaded HIGGS data.")
 
