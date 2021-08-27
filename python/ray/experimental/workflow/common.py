@@ -118,25 +118,31 @@ class WorkflowData:
     catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
-    # metadata cache
-    _metadata: Dict[str, Any] = None
+
+    # Cache the intended locations of object refs. These are expensive
+    # calculations since they require computing the hash over a large value.
+    _cached_refs: List[ObjectRef] = None
+    _cached_locs: List[str] = None
 
     def to_metadata(self) -> Dict[str, Any]:
-        if not self._metadata:
-            f = self.func_body
-            self._metadata = {
-                "name": get_module(f) + "." + get_qualname(f),
-                "step_type": self.step_type,
-                "object_refs": calculate_identifiers(self.inputs.object_refs),
-                "workflows": [w.id for w in self.inputs.workflows],
-                "max_retries": self.max_retries,
-                "workflow_refs": [
-                    wr.step_id for wr in self.inputs.workflow_refs
-                ],
-                "catch_exceptions": self.catch_exceptions,
-                "ray_options": self.ray_options,
-            }
-        return self._metadata
+        if self._cached_refs != self.inputs.object_refs:
+            self._cached_refs = self.inputs.object_refs
+            self._cached_locs = calculate_identifiers(self._cached_refs)
+
+        f = self.func_body
+        metadata = {
+            "name": get_module(f) + "." + get_qualname(f),
+            "step_type": self.step_type,
+            "object_refs": self._cached_locs,
+            "workflows": [w.id for w in self.inputs.workflows],
+            "max_retries": self.max_retries,
+            "workflow_refs": [
+                wr.step_id for wr in self.inputs.workflow_refs
+            ],
+            "catch_exceptions": self.catch_exceptions,
+            "ray_options": self.ray_options,
+        }
+        return metadata
 
 
 @dataclass

@@ -94,7 +94,6 @@ def _construct_resume_workflow_from_step(
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
-    # TODO (Alex): We need to resolve and pass in object refs here.
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
@@ -123,6 +122,7 @@ def _resume_workflow_step_executor(
                 execute_workflow)
             result = execute_workflow(r, last_step_of_workflow=True)
             return result.persisted_output, result.volatile_output
+    assert isinstance(r, StepID)
     return wf_store.load_step_output(r), None
 
 

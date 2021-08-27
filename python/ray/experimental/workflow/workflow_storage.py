@@ -6,17 +6,20 @@ workflows.
 import asyncio
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
+import io
 
 import ray
+from ray import cloudpickle
 from ray._private import signature
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
                                               WorkflowMetaData, WorkflowStatus,
-                                              WorkflowRef, StepType)
+                                              WorkflowRef, StepType, calculate_identifiers)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
+from ray.types import ObjectRef
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -433,18 +436,58 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
+    def _put_object_ref(self, obj_ref: ObjectRef) -> str:
+        @ray.remote
+        def put_helper(identifier: str,
+                        obj: Any,
+                       wf_storage: WorkflowStorage) -> str:
+            key = wf_storage._key_obj_id(identifier)
+            loc = asyncio.get_event_loop().run_until_complete(
+                wf_storage._put(key, obj))
+
+            return _load_object_ref, (loc, self._storage)
+
+
+        identifier = calculate_identifiers([obj_ref]).pop()
+        # TODO (Alex): We should dedupe these puts with the global coordinator.
+        result = ray.get(put_helper.remote(identifier, obj_ref, self))
+        return result
+
     async def _put(self, paths: List[str], data: Any,
-                   is_json: bool = False) -> None:
+                   is_json: bool = False) -> str:
         try:
+            if not is_json:
+                # Setup our custom serializer.
+                output_buffer = io.BytesIO()
+                pickler = cloudpickle.CloudPickler(output_buffer)
+                # NOTE: dispatch table is (unintuitively) a class variable.
+                # That means modifying the class variable will change the
+                # serialization context for `ray.put` too.
+                pickler.dispatch_table = pickler.dispatch_table.copy()
+                pickler.dispatch_table[ray.ObjectRef] = lambda ref: self._put_object_ref(ref)
+                pickler.dump(data)
+                output_buffer.seek(0)
+                value = output_buffer.read()
+            else:
+                value = data
+
             key = self._storage.make_key(*paths)
-            await self._storage.put(key, data, is_json=is_json)
+
+            await self._storage.put(key, value, is_json=is_json)
         except Exception as e:
             raise DataSaveError from e
+
+        return key
 
     async def _get(self, paths: List[str], is_json: bool = False) -> Any:
         try:
             key = self._storage.make_key(*paths)
-            return await self._storage.get(key, is_json=is_json)
+            unmarshaled = await self._storage.get(key, is_json=is_json)
+            if is_json:
+                marshaled = unmarshaled
+            else:
+                marshaled = cloudpickle.loads(unmarshaled)
+            return marshaled
         except KeyNotFoundError:
             raise
         except Exception as e:
@@ -504,3 +547,11 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     if workflow_id is None:
         workflow_id = workflow_context.get_workflow_step_context().workflow_id
     return WorkflowStorage(workflow_id, store)
+
+
+def _load_object_ref(key: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
+    @ray.remote
+    def load_ref(key: List[str], wf_storage: WorkflowStorage):
+        return asyncio.get_event_loop().run_until_complete(
+                wf_storage._get(key))
+    return load_ref.remote(key, wf_storage)
