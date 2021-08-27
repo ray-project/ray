@@ -437,6 +437,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 
 
 def test_checkpoint_isolation_namespace():
+    check_call_ray(["stop"])
     check_call_ray(["start", "--head"])
 
     deployment_ns1 = """
