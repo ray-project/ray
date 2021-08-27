@@ -97,6 +97,7 @@ def step(*args, **kwargs):
 
 class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
+
     The class that is based on must have the "__getstate__" and
      "__setstate__" method.
 
