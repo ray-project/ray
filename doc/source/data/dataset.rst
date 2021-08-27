@@ -1,7 +1,7 @@
 .. _datasets:
 
-Datasets: Distributed Arrow on Ray
-==================================
+Datasets: Fast, Flexible Data Loading
+=====================================
 
 .. tip::
 
