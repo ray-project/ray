@@ -93,18 +93,17 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
     // was released. In that case skip the remainder of the creation block.
     if (create_buffer_state_.count(object_id) == 0) {
       if (s.ok() || s.IsObjectExists()) {
-        // If the failiure is due to that object already exists, 
-        // that means there is a concurrent create operations that's not replied from the client.
-        // In this case, just proceeds.
-        // Read object into store.
+        // If the failiure is due to that object already exists,
+        // that means there is a concurrent create operations that's not replied from the
+        // client. In this case, just proceeds. Read object into store.
         uint8_t *mutable_data = data->Data();
         uint64_t num_chunks = GetNumChunks(data_size);
         create_buffer_state_.emplace(
             std::piecewise_construct, std::forward_as_tuple(object_id),
             std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size, data)));
         RAY_LOG(DEBUG) << "Created object " << object_id
-                      << " in plasma store, number of chunks: " << num_chunks
-                      << ", chunk index: " << chunk_index;
+                       << " in plasma store, number of chunks: " << num_chunks
+                       << ", chunk index: " << chunk_index;
         RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
       } else {
         // Create failed. If something went

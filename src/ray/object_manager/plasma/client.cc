@@ -302,8 +302,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     RAY_CHECK(unused == 0);
   }
 
-  // If the CreateReply included an error (except ObjectExists error), then the store will not send a file
-  // descriptor.
+  // If the CreateReply included an error (except ObjectExists error), then the store will
+  // not send a file descriptor.
   if (object.device_num == 0) {
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
