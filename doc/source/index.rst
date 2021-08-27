@@ -353,7 +353,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst
