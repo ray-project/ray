@@ -5,8 +5,8 @@
 
   run:
     use_connect: True
-    autosuspend_mins: 30
-    timeout: 1800
+    autosuspend_mins: 10
+    timeout: 600
     prepare: python wait_cluster.py 4 600
     script: python workloads/train_small.py
 
