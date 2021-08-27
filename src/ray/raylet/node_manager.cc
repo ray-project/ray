@@ -1569,7 +1569,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
-    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+    int64_t available_cpus = std::ceil(cluster_resource_scheduler_->GetLocalAvailableCpus());
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
   cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
