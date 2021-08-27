@@ -274,18 +274,6 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Workflows
-
-   workflows/concepts.rst
-   workflows/basics.rst
-   workflows/management.rst
-   workflows/actors.rst
-   workflows/comparison.rst
-   workflows/package-ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
    :caption: Ray Data
 
    data/dataset.rst
@@ -295,6 +283,18 @@ Papers
    data/mars-on-ray.rst
    data/modin/index.rst
    data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
 
 .. toctree::
    :hidden:
