@@ -1,13 +1,13 @@
 .. _workflows:
 
-Workflows: Fast, Durable Workflows
-==================================
+Workflows: Fast, Durable Application Workflows
+==============================================
 
 .. warning::
 
   Workflows is available as **alpha** in Ray 1.7+. Expect rough corners and for its APIs and storage format to change. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Workflows provides high-performance, *durable* workflows using Ray tasks as the underlying execution engine. It is intended to support both large-scale workflows (e.g., ML and data pipelines) and long-running business workflows (e.g., thousands of user workflows as in Cadence).
+Workflows provides high-performance, *durable* application workflows using Ray tasks as the underlying execution engine. It is intended to support both large-scale workflows (e.g., ML and data pipelines) and long-running business workflows (e.g., thousands of user workflows as in Cadence).
 
 .. image:: workflows.svg
 
