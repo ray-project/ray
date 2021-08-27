@@ -16,6 +16,7 @@
 // under the License.
 
 #pragma once
+#include <stddef.h>
 
 #include <memory>
 #include <string>
@@ -23,7 +24,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
@@ -64,6 +64,4 @@ enum class ObjectStatus : int {
   /// The object was found.
   OBJECT_FOUND = 1
 };
-
-void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_sealed);
 }  // namespace plasma

@@ -34,7 +34,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
     auto entry = object_lifecycle_mgr_->GetObject(object_id);
     if (entry && entry->Sealed()) {
       // Update the get request to take into account the present object.
-      ToPlasmaObject(*entry, &get_req->objects[object_id], /* checksealed */ true);
+      entry->ToPlasmaObject(&get_req->objects[object_id], /* checksealed */ true);
       get_req->num_satisfied += 1;
       get_req->object_satisfied[object_id] = true;
     } else {
@@ -128,7 +128,7 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
     auto get_req = get_requests[index];
     auto entry = object_lifecycle_mgr_->GetObject(object_id);
     RAY_CHECK(entry != nullptr);
-    ToPlasmaObject(*entry, &get_req->objects[object_id], /* check sealed */ true);
+    entry->ToPlasmaObject(&get_req->objects[object_id], /* check sealed */ true);
     get_req->num_satisfied += 1;
     get_req->object_satisfied[object_id] = true;
     // If this get request is done, reply to the client.

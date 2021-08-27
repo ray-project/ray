@@ -175,7 +175,7 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   if (entry == nullptr) {
     return error;
   }
-  ToPlasmaObject(*entry, result, /* check sealed */ false);
+  entry->ToPlasmaObject(result, /* check sealed */ false);
   // Record that this client is using this object.
   AddToClientObjectIds(object_info.object_id, client);
   return PlasmaError::OK;
@@ -235,7 +235,7 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     int64_t timeout_ms, bool is_from_worker) {
   get_request_queue_.AddRequest(
       client, object_ids, timeout_ms, is_from_worker,
-      std::bind(&PlasmaStore::ReturnFromGet, this, std::placeholders::_1));
+      [this](const auto &request) { this->ReturnFromGet(request); });
 }
 
 int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,

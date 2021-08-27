@@ -24,6 +24,7 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "src/ray/protobuf/common.pb.h"
