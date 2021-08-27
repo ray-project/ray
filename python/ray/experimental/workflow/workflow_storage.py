@@ -97,8 +97,10 @@ class WorkflowStorage:
             Output of the workflow step.
         """
 
-        tasks = [self._get(self._key_step_output(step_id), no_exception=True),
-                 self._get(self._key_step_exception(step_id), no_exception=True)]
+        tasks = [
+            self._get(self._key_step_output(step_id), no_exception=True),
+            self._get(self._key_step_exception(step_id), no_exception=True)
+        ]
         (output, exception) = asyncio_run(asyncio.gather(*tasks))
         print("result:", output, exception)
         if output[0] is not None:
@@ -106,7 +108,6 @@ class WorkflowStorage:
         if exception[0] is not None:
             raise exception[0]
         raise output[1]
-
 
     def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
                          exception: Optional[Exception],
@@ -142,9 +143,9 @@ class WorkflowStorage:
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
 
-                # outer_most_step_id == "" indicates the root step of a workflow.
-                # This would directly update "outputs.json" in the workflow dir,
-                # and we want to avoid it.
+                # outer_most_step_id == "" indicates the root step of a
+                # workflow. This would directly update "outputs.json" in
+                # the workflow dir, and we want to avoid it.
                 if outer_most_step_id is not None and outer_most_step_id != "":
                     tasks.append(
                         self._update_dynamic_output(outer_most_step_id,
@@ -152,7 +153,8 @@ class WorkflowStorage:
             else:
                 print("Exception!!!!!!!")
                 assert ret is None
-                tasks.append(self._put(self._key_step_exception(step_id), exception))
+                tasks.append(
+                    self._put(self._key_step_exception(step_id), exception))
 
         asyncio_run(asyncio.gather(*tasks))
 
@@ -463,7 +465,10 @@ class WorkflowStorage:
         except Exception as e:
             raise DataSaveError from e
 
-    async def _get(self, paths: List[str], is_json: bool = False, no_exception: bool = False) -> Any:
+    async def _get(self,
+                   paths: List[str],
+                   is_json: bool = False,
+                   no_exception: bool = False) -> Any:
         err = None
         ret = None
         try:

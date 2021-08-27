@@ -299,14 +299,14 @@ class WorkflowManagementActor:
         if meta is None:
             raise ValueError(f"No such workflow {workflow_id}")
         if meta == common.WorkflowStatus.CANCELED:
-            raise ValueError(
-                f"Workflow {workflow_id} is canceled")
+            raise ValueError(f"Workflow {workflow_id} is canceled")
         if name is None:
             # For resumable workflow, the workflow result is not ready.
             # It has to be resumed first.
             if meta == common.WorkflowStatus.RESUMABLE:
                 raise ValueError(
-                    f"Workflow {workflow_id} is in resumable status, please resume it")
+                    f"Workflow {workflow_id} is in resumable status, "
+                    "please resume it")
 
         if name is None:
             step_id = wf_store.get_entrypoint_step_id()
@@ -319,11 +319,13 @@ class WorkflowManagementActor:
                 step_id, None)
             if output is not None:
                 return ray.put(_SelfDereferenceObject(None, output.output))
+
         @ray.remote
         def load(wf_store, step_id):
             return wf_store.load_step_output(step_id)
-        return ray.put(_SelfDereferenceObject(None, load.remote(wf_store, step_id)))
 
+        return ray.put(
+            _SelfDereferenceObject(None, load.remote(wf_store, step_id)))
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

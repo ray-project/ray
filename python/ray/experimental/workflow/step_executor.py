@@ -322,9 +322,9 @@ def _workflow_step_executor(
     args, kwargs = _resolve_step_inputs(baked_inputs)
     store = workflow_storage.get_workflow_storage()
     try:
-        persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
-                                                      catch_exceptions,
-                                                      max_retries, *args, **kwargs)
+        persisted_output, volatile_output = _wrap_run(
+            func, step_type, step_id, catch_exceptions, max_retries, *args,
+            **kwargs)
     except Exception as e:
         commit_step(store, step_id, None, e, outer_most_step_id)
         raise e

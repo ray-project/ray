@@ -89,6 +89,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
     cnt_file.write_text("0")
     error_flag = tmp_path / "error"
     error_flag.touch()
+
     @workflow.step
     def incr():
         v = int(cnt_file.read_text())
@@ -96,7 +97,6 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         if error_flag.exists():
             raise ValueError()
         return 10
-
 
     with pytest.raises(ray.exceptions.RaySystemError):
         incr.step().run("incr")
