@@ -5,7 +5,6 @@ import logging
 from ray._private.ray_logging import setup_component_logger
 from typing import Dict
 
-from ray.experimental.internal_kv import _internal_kv_list
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
@@ -73,12 +72,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # The logger needs to be thread local because there can be
                 # setup hooks ran for arbitrary job in arbitrary threads.
                 with using_thread_local_logger(per_job_logger):
-                    working_dir = None
+                    env_context = self._setup(runtime_env, session_dir)
                     if "uris" in runtime_env:
                         working_dir = runtime_env_pkg.ensure_runtime_env_setup(
-                                runtime_env["uris"], gcs_client=self._gcs_client)
-                    env_context = self._setup(runtime_env, session_dir)
-                    env_context.set_working_dir(working_dir)
+                            runtime_env["uris"], gcs_client=self._gcs_client)
+                        env_context.working_dir = working_dir
 
                 return env_context
 
@@ -111,7 +109,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         error_message=error_message)
 
             logger.info(f"Creating runtime env: {serialized_env}")
-            runtime_env_dict = json.loads(serialized_env or "{}")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):

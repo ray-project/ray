@@ -437,7 +437,8 @@ def create_project_package(working_dir: str, py_modules: List[str],
             _zip_module(module_path, module_path.parent, None, zip_handler)
 
 
-def fetch_package(pkg_uri: str, gcs_client: "ray._raylet.GcsClient" = None) -> int:
+def fetch_package(pkg_uri: str,
+                  gcs_client: "ray._raylet.GcsClient" = None) -> int:
     """Fetch a package from a given uri if not exists locally.
 
     This function is used to fetch a pacakge from the given uri and unpack it.
@@ -472,12 +473,16 @@ def fetch_package(pkg_uri: str, gcs_client: "ray._raylet.GcsClient" = None) -> i
     return local_dir
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes, gcs_client: "ray._raylet.GcsClient" = None) -> int:
+def _store_package_in_gcs(gcs_key: str,
+                          data: bytes,
+                          gcs_client: "ray._raylet.GcsClient" = None) -> int:
     _internal_kv_put(gcs_key, data, gcs_client=gcs_client)
     return len(data)
 
 
-def push_package(pkg_uri: str, pkg_path: str, gcs_client: "ray._raylet.GcsClient" = None) -> int:
+def push_package(pkg_uri: str,
+                 pkg_path: str,
+                 gcs_client: "ray._raylet.GcsClient" = None) -> int:
     """Push a package to uri.
 
     This function is to push a local file to remote uri. Right now, only GCS
@@ -498,7 +503,8 @@ def push_package(pkg_uri: str, pkg_path: str, gcs_client: "ray._raylet.GcsClient
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def package_exists(pkg_uri: str, gcs_client: "ray._raylet.GcsClient" = None) -> bool:
+def package_exists(pkg_uri: str,
+                   gcs_client: "ray._raylet.GcsClient" = None) -> bool:
     """Check whether the package with given uri exists or not.
 
     Args:
@@ -541,7 +547,9 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
             [Protocol.GCS.value + "://" + pkg_name])
 
 
-def upload_runtime_env_package_if_needed(job_config: JobConfig, gcs_client: "ray._raylet.GcsClient" = None) -> None:
+def upload_runtime_env_package_if_needed(
+        job_config: JobConfig,
+        gcs_client: "ray._raylet.GcsClient" = None) -> None:
     """Upload runtime env if it's not there.
 
     It'll check whether the runtime environment exists in the cluster or not.
@@ -572,7 +580,9 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig, gcs_client: "ray
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uris: List[str], gcs_client: "ray._raylet.GcsClient" = None) -> Optional[str]:
+def ensure_runtime_env_setup(pkg_uris: List[str],
+                             gcs_client: "ray._raylet.GcsClient" = None
+                             ) -> Optional[str]:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded

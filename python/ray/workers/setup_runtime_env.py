@@ -153,19 +153,20 @@ def setup_worker(input_args):
     worker_language: str = args.worker_language
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
+    if args.serialized_runtime_env_context:
+        runtime_env_context = RuntimeEnvContext.deserialize(
+            args.serialized_runtime_env_context)
 
     # Ray client server setups runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
         if not args.serialized_runtime_env_context:
             runtime_env_context = setup_runtime_env(runtime_env,
                                                     args.session_dir)
-        else:
-            runtime_env_context = RuntimeEnvContext.deserialize(
-                args.serialized_runtime_env_context)
+
+    if runtime_env_context and runtime_env_context.working_dir is not None:
+        commands += [f"cd {runtime_env_context.working_dir}"]
 
     # activate conda
-    if runtime_env_context and runtime_env_context.working_dir is not None:
-        commands += ["cd", runtime_env_context.working_dir]
     if runtime_env_context and runtime_env_context.conda_env_name is not None:
         worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
