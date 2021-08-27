@@ -1,7 +1,7 @@
 .. _workflows:
 
-Workflows: Fast, Durable Application Workflows
-==============================================
+Workflows: Fast, Durable Application Flows
+==========================================
 
 .. warning::
 
