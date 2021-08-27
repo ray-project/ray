@@ -12,7 +12,7 @@ log_err() {
     printError "Running clang-tidy encountered an error"
 }
 
-set -x
+set -ex
 trap '[ $? -eq 0 ] || log_err' EXIT
 
 printInfo "Fetching workspace info ..."

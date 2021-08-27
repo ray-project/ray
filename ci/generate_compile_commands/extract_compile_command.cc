@@ -17,11 +17,11 @@
  * https://github.com/xulongwu4/bazel-compilation-database/blob/master/kythe/generate_compile_commands/extract_compile_command.cc
  */
 #include <fcntl.h>
-#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstdio>
 #include <string>
 #include <vector>
 
