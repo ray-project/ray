@@ -34,7 +34,7 @@ def build_r2d2_model_and_distribution(
     action_space: gym.spaces.Space,
     config: TrainerConfigDict) -> \
         Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -45,7 +45,7 @@ def build_r2d2_model_and_distribution(
     Returns:
         (q_model, TorchCategorical)
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
 
     # Create the policy's models and action dist class.
@@ -73,6 +73,7 @@ def r2d2_loss(policy: Policy, model, _,
     Returns:
         TensorType: A single loss tensor.
     """
+    target_model = policy.target_models[model]
     config = policy.config
 
     # Construct internal state inputs.
@@ -89,17 +90,17 @@ def r2d2_loss(policy: Policy, model, _,
         model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
         policy,
-        policy.target_q_model,
+        target_model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
@@ -147,7 +148,7 @@ def r2d2_loss(policy: Policy, model, _,
                 config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
-        seq_mask = sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         if burn_in > 0 and burn_in < T:
@@ -247,10 +248,7 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Move target net to device (this is done automatically for the
-    # policy.model, but not for any other models the policy has).
-    policy.target_q_model = policy.target_q_model.to(policy.device)
+    TargetNetworkMixin.__init__(policy)
 
 
 def grad_process_and_td_error_fn(policy: Policy,

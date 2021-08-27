@@ -13,6 +13,8 @@ python:
     - gym[atari]
     - atari_py
     - pybullet
+    # Pin this to 2.4.3 so it'll work with CUDA=11.0.
+    - tensorflow==2.4.3
   conda_packages: []
 
 post_build_cmds:

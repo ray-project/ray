@@ -28,11 +28,11 @@ namespace plasma {
 
 class MockEvictionPolicy : public IEvictionPolicy {
  public:
-  MOCK_METHOD2(ObjectCreated, void(const ObjectID &, bool));
-  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD1(ObjectCreated, void(const ObjectID &));
+  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
   MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
-  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
 };
@@ -121,7 +121,7 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
   EXPECT_CALL(*eviction_policy_, RequireSpace(_, _))
       .Times(1)
       .WillOnce(Invoke([&](auto size, auto &to_evict) {
-        to_evict->push_back(id1_);
+        to_evict.push_back(id1_);
         return 0;
       }));
 
@@ -203,8 +203,10 @@ TEST_F(ObjectLifecycleManagerTest, GetObject) {
 }
 
 TEST_F(ObjectLifecycleManagerTest, SealObject) {
-  EXPECT_CALL(*object_store_, SealObject(id1_)).Times(1).WillOnce(Return(&object2_));
-  EXPECT_EQ(&object2_, manager_->SealObject(id1_));
+  EXPECT_CALL(*object_store_, SealObject(id1_))
+      .Times(1)
+      .WillOnce(Return(&sealed_object_));
+  EXPECT_EQ(&sealed_object_, manager_->SealObject(id1_));
 }
 
 TEST_F(ObjectLifecycleManagerTest, AbortFailure) {

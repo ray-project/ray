@@ -6,7 +6,8 @@ import aiohttp.web
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
-import ray.gcs_utils
+import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 from ray.new_dashboard.modules.node import node_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.consts as dashboard_consts
@@ -239,7 +240,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
-        channel = receiver.channel(ray.gcs_utils.LOG_FILE_CHANNEL)
+        channel = receiver.channel(gcs_utils.LOG_FILE_CHANNEL)
         await aioredis_client.subscribe(channel)
         logger.info("Subscribed to %s", channel)
 
@@ -261,7 +262,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
-        key = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+        key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
         pattern = receiver.pattern(key)
         await aioredis_client.psubscribe(pattern)
         logger.info("Subscribed to %s", key)
@@ -269,8 +270,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 _, data = msg
-                pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(data)
-                error_data = ray.gcs_utils.ErrorTableData.FromString(
+                pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
+                error_data = gcs_utils.ErrorTableData.FromString(
                     pubsub_msg.data)
                 message = error_data.error_message
                 message = re.sub(r"\x1b\[\d+m", "", message)
