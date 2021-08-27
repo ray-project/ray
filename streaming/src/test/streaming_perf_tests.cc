@@ -99,7 +99,7 @@ TEST_F(StreamingPerfCounterTest, UpdateCounterTest) {
 
 TEST_F(StreamingPerfCounterTest, UpdateGaugeWithOneKeyTest) {
   RegisterAndRun([this](size_t loop_index) {
-    std::map<std::string, std::string> tags;
+    std::unordered_map<std::string, std::string> tags;
     tags["tag1"] = "tag1";
     tags["tag2"] = std::to_string(loop_index);
     perf_counter_->UpdateGauge("streaming.test.gauge", tags, loop_index);

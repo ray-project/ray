@@ -40,7 +40,7 @@ class RuntimeContext {
   ///  \param value, metric value
   ///  \param tags, metric tag map
   void ReportMetrics(const std::string &metric_name, double value,
-                     const std::map<std::string, std::string> &tags = {});
+                     const std::unordered_map<std::string, std::string> &tags = {});
   void EnableTimer(std::function<void()> report_timer_handler);
   void ShutdownTimer();
 

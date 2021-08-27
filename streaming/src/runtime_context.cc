@@ -49,8 +49,9 @@ void RuntimeContext::InitMetricsReporter() {
   perf_metrics_reporter_->Start(metrics_config_);
 }
 
-void RuntimeContext::ReportMetrics(const std::string &metric_name, double value,
-                                   const std::map<std::string, std::string> &tags) {
+void RuntimeContext::ReportMetrics(
+    const std::string &metric_name, double value,
+    const std::unordered_map<std::string, std::string> &tags) {
   if (config_.GetMetricsEnable()) {
     perf_metrics_reporter_->UpdateGauge(metric_name, tags, value);
   }

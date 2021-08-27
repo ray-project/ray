@@ -56,7 +56,7 @@ void StreamingPerf::UpdateHistogram(const std::string &domain,
   }
 }
 void StreamingPerf::UpdateQPS(const std::string &metric_name,
-                              const std::map<std::string, std::string> &tags,
+                              const std::unordered_map<std::string, std::string> &tags,
                               double value) {
   if (impl_) {
     impl_->UpdateQPS(metric_name, tags, value);
@@ -72,23 +72,24 @@ StreamingPerf::~StreamingPerf() {
   }
 }
 
-void StreamingPerf::UpdateCounter(const std::string &metric_name,
-                                  const std::map<std::string, std::string> &tags,
-                                  double value) {
+void StreamingPerf::UpdateCounter(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value) {
   if (impl_) {
     impl_->UpdateCounter(metric_name, tags, value);
   }
 }
 void StreamingPerf::UpdateGauge(const std::string &metric_name,
-                                const std::map<std::string, std::string> &tags,
+                                const std::unordered_map<std::string, std::string> &tags,
                                 double value, bool is_rest) {
   if (impl_) {
     impl_->UpdateGauge(metric_name, tags, value, is_rest);
   }
 }
-void StreamingPerf::UpdateHistogram(const std::string &metric_name,
-                                    const std::map<std::string, std::string> &tags,
-                                    double value, double min_value, double max_value) {}
+void StreamingPerf::UpdateHistogram(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value,
+    double min_value, double max_value) {}
 
 }  // namespace streaming
 }  // namespace ray

@@ -30,19 +30,20 @@ class StatsReporter : public StreamingPerfBase {
                        double max_value) override;
 
   void UpdateCounter(const std::string &metric_name,
-                     const std::map<std::string, std::string> &tags,
+                     const std::unordered_map<std::string, std::string> &tags,
                      double value) override;
 
   void UpdateGauge(const std::string &metric_name,
-                   const std::map<std::string, std::string> &tags, double value,
+                   const std::unordered_map<std::string, std::string> &tags, double value,
                    bool is_rest = true) override;
 
   void UpdateHistogram(const std::string &metric_name,
-                       const std::map<std::string, std::string> &tags, double value,
-                       double min_value, double max_value) override;
+                       const std::unordered_map<std::string, std::string> &tags,
+                       double value, double min_value, double max_value) override;
 
   void UpdateQPS(const std::string &metric_name,
-                 const std::map<std::string, std::string> &tags, double value) override;
+                 const std::unordered_map<std::string, std::string> &tags,
+                 double value) override;
 
  protected:
   std::shared_ptr<ray::stats::Metric> GetMetricByName(const std::string &metric_name);
@@ -52,7 +53,7 @@ class StatsReporter : public StreamingPerfBase {
 
  private:
   inline std::unordered_map<std::string, std::string> MergeGlobalTags(
-      const std::map<std::string, std::string> &tags) {
+      const std::unordered_map<std::string, std::string> &tags) {
     std::unordered_map<std::string, std::string> merged_tags;
     merged_tags.insert(global_tags_.begin(), global_tags_.end());
     for (auto &item : tags) {

@@ -54,9 +54,9 @@ void StatsReporter::UpdateCounter(const std::string &domain,
       METRIC_GROUP_JOIN(domain, group_name, short_name);
 }
 
-void StatsReporter::UpdateCounter(const std::string &metric_name,
-                                  const std::map<std::string, std::string> &tags,
-                                  double value) {
+void StatsReporter::UpdateCounter(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value) {
   STREAMING_LOG(DEBUG) << "Report counter metric " << metric_name << " , value " << value;
 }
 
@@ -77,7 +77,7 @@ void StatsReporter::UpdateGauge(const std::string &domain, const std::string &gr
 }
 
 void StatsReporter::UpdateGauge(const std::string &metric_name,
-                                const std::map<std::string, std::string> &tags,
+                                const std::unordered_map<std::string, std::string> &tags,
                                 double value, bool is_reset) {
   const std::string merged_metric_name = service_name_ + "." + metric_name;
   STREAMING_LOG(DEBUG) << "Report gauge metric " << merged_metric_name << " , value "
@@ -105,12 +105,13 @@ void StatsReporter::UpdateHistogram(const std::string &domain,
                                     const std::string &short_name, double value,
                                     double min_value, double max_value) {}
 
-void StatsReporter::UpdateHistogram(const std::string &metric_name,
-                                    const std::map<std::string, std::string> &tags,
-                                    double value, double min_value, double max_value) {}
+void StatsReporter::UpdateHistogram(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value,
+    double min_value, double max_value) {}
 
 void StatsReporter::UpdateQPS(const std::string &metric_name,
-                              const std::map<std::string, std::string> &tags,
+                              const std::unordered_map<std::string, std::string> &tags,
                               double value) {}
 }  // namespace streaming
 }  // namespace ray
