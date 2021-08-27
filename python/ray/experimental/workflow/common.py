@@ -224,7 +224,7 @@ class Workflow:
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
 
-    def run(self, workflow_id: Optional[str] = None) -> Any:
+    def run(self, workflow_id: Optional[str] = None, from_begin: bool = False) -> Any:
         """Run a workflow.
 
         Examples:
@@ -249,10 +249,12 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            from_begin: By default it's False. Set it to be True to re-run the
+                workflow from beginning
         """
-        return ray.get(self.run_async(workflow_id))
+        return ray.get(self.run_async(workflow_id, from_begin))
 
-    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
+    def run_async(self, workflow_id: Optional[str] = None, from_begin: bool = False) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:
@@ -277,8 +279,15 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            from_begin: By default it's False. Set it to be True to re-run the
+                workflow from beginning
         """
         # TODO(suquark): avoid cyclic importing
-        from ray.experimental.workflow.execution import run
+        from ray.experimental.workflow.execution import run, resume
         self._step_id = None
+        if workflow_id is not None and not from_begin:
+            try:
+                return resume(workflow_id)
+            except ValueError:
+                return run(self, workflow_id)
         return run(self, workflow_id)

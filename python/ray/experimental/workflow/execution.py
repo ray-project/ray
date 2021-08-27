@@ -23,12 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None,
-        overwrite: bool = True) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously.
-
-    # TODO(suquark): The current "run" always overwrite existing workflow.
-    # We need to fix this later.
     """
     store = get_global_storage()
     assert ray.is_initialized()
