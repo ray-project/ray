@@ -398,6 +398,23 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_to_numpy(ray_start_regular_shared):
+    # Tensor Dataset
+    ds = ray.data.range_tensor(10, parallelism=2)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Table Dataset
+    ds = ray.data.range_arrow(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
+
+
 def test_to_arrow(ray_start_regular_shared):
     n = 5
 

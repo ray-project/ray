@@ -1322,6 +1322,22 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
 
+    def to_numpy(self) -> List[ObjectRef[np.ndarray]]:
+        """Convert this dataset into a distributed set of NumPy ndarrays.
+
+        This is only supported for datasets convertible to NumPy ndarrays.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A list of remote NumPy ndarrays created from this dataset.
+        """
+
+        block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        return [block_to_ndarray.remote(block) for block in self._blocks]
+
     def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
@@ -1584,6 +1600,11 @@ def _remote_write(task: WriteTask) -> Any:
 def _block_to_df(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
+
+
+def _block_to_ndarray(block: Block):
+    block = BlockAccessor.for_block(block)
+    return block.to_numpy()
 
 
 def _block_to_arrow(block: Block):
