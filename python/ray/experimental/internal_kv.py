@@ -7,33 +7,40 @@ from ray._private.client_mode_hook import client_mode_hook
 
 redis = os.environ.get("RAY_KV_USE_GCS", "0") == "0"
 initialized = False
-global_gcs_client = None
 
 
 def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
+    """Initialize the internal KV for use in other function calls.
+
+    We try to use a GCS client, either passed in here or from the Ray worker
+    global scope. If that is not possible or it's feature-flagged off with the
+    RAY_KV_USE_GCS env variable, we fall back to using the Ray worker redis
+    client directly.
+    """
     global global_gcs_client, initialized
 
-    if initialized:
-        return
-
-    if gcs_client is not None:
-        global_gcs_client = gcs_client
-    elif not redis:
-        try:
-            _internal_kv_exists("dummy")
-            global_gcs_client = ray.worker.global_worker.gcs_client
-        except grpc.RpcError:
-            pass
+    if not initialized:
+        if gcs_client is not None:
+            global_gcs_client = gcs_client
+        elif redis:
+            global_gcs_client = None
+        else:
+            try:
+                ray.worker.global_worker.gcs_client.kv_exists("dummy")
+                global_gcs_client = ray.worker.global_worker.gcs_client
+            except grpc.RpcError:
+                global_gcs_client = None
 
     initialized = True
+    return global_gcs_client
 
 
 @client_mode_hook
 def _internal_kv_initialized():
-    _initialize_internal_kv()
+    gcs_client = _initialize_internal_kv()
 
     worker = ray.worker.global_worker
-    if global_gcs_client is not None:
+    if gcs_client is not None:
         return True
     elif not (hasattr(worker, "mode") and worker.mode is not None):
         return False
@@ -44,10 +51,10 @@ def _internal_kv_initialized():
 @client_mode_hook
 def _internal_kv_get(key: Union[str, bytes]) -> bytes:
     """Fetch the value of a binary key."""
-    _initialize_internal_kv()
+    gcs_client = _initialize_internal_kv()
 
-    if global_gcs_client is not None:
-        return global_gcs_client.kv_get(key)
+    if gcs_client is not None:
+        return gcs_client.kv_get(key)
     else:
         return ray.worker.global_worker.redis_client.hget(key, "value")
 
@@ -55,9 +62,9 @@ def _internal_kv_get(key: Union[str, bytes]) -> bytes:
 @client_mode_hook
 def _internal_kv_exists(key: Union[str, bytes]) -> bool:
     """Check key exists or not."""
-    _initialize_internal_kv()
-    if global_gcs_client is not None:
-        return global_gcs_client.kv_exists(key)
+    gcs_client = _initialize_internal_kv()
+    if gcs_client is not None:
+        return gcs_client.kv_exists(key)
     else:
         return ray.worker.global_worker.redis_client.hexists(key, "value")
 
@@ -73,9 +80,9 @@ def _internal_kv_put(key: Union[str, bytes],
     Returns:
         already_exists (bool): whether the value already exists.
     """
-    _initialize_internal_kv()
-    if global_gcs_client is not None:
-        return not global_gcs_client.kv_put(key, value, overwrite)
+    gcs_client = _initialize_internal_kv()
+    if gcs_client is not None:
+        return not gcs_client.kv_put(key, value, overwrite)
     else:
         if overwrite:
             updated = ray.worker.global_worker.redis_client.hset(
@@ -88,9 +95,9 @@ def _internal_kv_put(key: Union[str, bytes],
 
 @client_mode_hook
 def _internal_kv_del(key: Union[str, bytes]):
-    _initialize_internal_kv()
-    if global_gcs_client is not None:
-        return global_gcs_client.kv_del(key)
+    gcs_client = _initialize_internal_kv()
+    if gcs_client is not None:
+        return gcs_client.kv_del(key)
     else:
         return ray.worker.global_worker.redis_client.delete(key)
 
@@ -99,9 +106,9 @@ def _internal_kv_del(key: Union[str, bytes]):
 def _internal_kv_list(prefix: Union[str, bytes]) -> List[bytes]:
     """List all keys in the internal KV store that start with the prefix.
     """
-    _initialize_internal_kv()
-    if global_gcs_client is not None:
-        return global_gcs_client.kv_keys(prefix)
+    gcs_client = _initialize_internal_kv()
+    if gcs_client is not None:
+        return gcs_client.kv_keys(prefix)
     else:
         if isinstance(prefix, bytes):
             pattern = prefix + b"*"
