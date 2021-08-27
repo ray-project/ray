@@ -1,7 +1,7 @@
 .. _workflows:
 
-Ray Workflows: Fast, Durable Workflows
-======================================
+Workflows: Fast, Durable Workflows
+==================================
 
 .. warning::
 

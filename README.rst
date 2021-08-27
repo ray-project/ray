@@ -22,7 +22,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
-- `Ray Serve`_: Scalable and Programmable Serving
+- `Serve`_: Scalable and Programmable Serving
 - `Datasets`_: Distributed Arrow on Ray (beta)
 - `Workflows`_: Fast, Durable Workflows (alpha)
 
