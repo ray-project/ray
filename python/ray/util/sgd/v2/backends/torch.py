@@ -140,7 +140,8 @@ class TorchBackend(Backend):
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
 
-        worker_group.execute(shutdown_torch, destroy_pg=len(worker_group) > 1)
+        worker_group.execute(
+            shutdown_torch, destroy_process_group=len(worker_group) > 1)
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
