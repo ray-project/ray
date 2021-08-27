@@ -19,7 +19,8 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
-from ray.util.client.server.dataservicer import WAIT_FOR_CLIENT_RECONNECT_SECONDS, _get_reconnecting_from_context
+from ray.util.client.server.dataservicer import (
+    WAIT_FOR_CLIENT_RECONNECT_SECONDS, _get_reconnecting_from_context)
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
@@ -51,6 +52,7 @@ def _get_client_id_from_context(context: Any) -> str:
         logger.error("Client connecting with no client_id")
         context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
     return client_id
+
 
 @dataclass
 class SpecificServer:
@@ -455,7 +457,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(
                         init_req)
-                    request_iterator = chain([modified_init_req], request_iterator)
+                    request_iterator = chain([modified_init_req],
+                                             request_iterator)
                     if not self.proxy_manager.start_specific_server(
                             client_id, job_config):
                         logger.error(
@@ -464,8 +467,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         raise RuntimeError(
                             "Starting Ray client server failed. This is most "
                             "likely because the runtime_env failed to be "
-                            "installed. See ray_client_server_[port].err on the "
-                            "head node of the cluster for the relevant logs.")
+                            "installed. See ray_client_server_[port].err on "
+                            "the head node of the cluster for the relevant "
+                            "logs.")
                     channel = self.proxy_manager.get_channel(client_id)
                     if channel is None:
                         logger.error(f"Channel not found for {client_id}")
@@ -489,14 +493,16 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         except grpc.RpcError as e:
             # Ignore exceptions due to cancel -- intentional shutdown
             if e.code() != grpc.StatusCode.CANCELLED:
-                logger.exception(f"Unexpected GRPC exception! Delaying cleanup.")
+                logger.exception(
+                    f"Unexpected GRPC exception while proxying {client_id}."
+                    " Delaying cleanup.")
                 # Delay cleanup, since client may attempt a reconnect
                 time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
         except Exception:
             logger.exception("Proxying Datapath failed!")
         finally:
             with self.clients_lock:
-                if client_id in self.clients_last_seen:
+                if client_id not in self.clients_last_seen:
                     # Connection has already been cleaned up
                     return
                 last_seen = self.clients_last_seen[client_id]

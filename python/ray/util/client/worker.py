@@ -79,6 +79,7 @@ def backoff(timeout: int) -> int:
         timeout = MAX_TIMEOUT_SEC
     return timeout
 
+
 def reconnect_on_grpc_error(func):
     @functools.wraps(func)
     def f(self, *args, **kwargs):
@@ -92,7 +93,9 @@ def reconnect_on_grpc_error(func):
                 self._connect_grpc_channel()
                 if not self.is_connected():
                     raise
+
     return f
+
 
 class Worker:
     def __init__(self,
@@ -127,8 +130,7 @@ class Worker:
         self._connect_grpc_channel()
 
         # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self, self._client_id,
-                                      self.metadata)
+        self.data_client = DataClient(self, self._client_id, self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
         self.log_client = LogstreamClient(self, self.metadata)
@@ -152,7 +154,8 @@ class Worker:
         acquired = self.channel_lock.acquire(False)
         if not acquired:
             # Some other thread is already reconnecting the channel
-            while not self._session_ended and self._conn_state != grpc.ChannelConnectivity.READY:
+            while (not self._session_ended
+                   and self._conn_state != grpc.ChannelConnectivity.READY):
                 # Spin until either the connection is ready, or the session
                 # has ended
                 time.sleep(1)
@@ -184,7 +187,8 @@ class Worker:
                 try:
                     # Let gRPC wait for us to see if the channel becomes ready.
                     # If it throws, we couldn't connect.
-                    grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                    grpc.channel_ready_future(
+                        self.channel).result(timeout=timeout)
                     # The HTTP2 channel is ready. Wrap the channel with the
                     # RayletDriverStub, allowing for unary requests.
                     self.server = ray_client_pb2_grpc.RayletDriverStub(
@@ -196,9 +200,10 @@ class Worker:
                     time.sleep(timeout)
                 except grpc.FutureTimeoutError:
                     logger.info(
-                        f"Couldn't connect channel in {timeout} seconds, retrying")
-                    # Note that channel_ready_future constitutes its own timeout,
-                    # which is why we do not sleep here.
+                        f"Couldn't connect channel in {timeout} seconds, "
+                        "retrying")
+                    # Note that channel_ready_future constitutes its own
+                    # timeout, which is why we do not sleep here.
                 except grpc.RpcError as e:
                     logger.info("Ray client server unavailable, "
                                 f"retrying in {timeout}s...")

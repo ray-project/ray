@@ -58,7 +58,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.basic_service = basic_service
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
-        self.client_last_seen: Dict[str, float] = {} # guarded by self.clients_lock
+        self.client_last_seen: Dict[str, float] = {
+        }  # guarded by self.clients_lock
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
@@ -138,7 +139,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         except grpc.RpcError as e:
             # Ignore exceptions due to cancel -- intentional shutdown
             if e.code() != grpc.StatusCode.CANCELLED:
-                logger.exception(f"Unexpected GRPC exception! Delaying cleanup.")
+                logger.exception(
+                    f"Unexpected GRPC exception while servicing {client_id}."
+                    "Delaying cleanup.")
                 # Delay cleanup, since client may attempt a reconnect
                 time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
         finally:
@@ -203,7 +206,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 self.num_clients += 1
                 self.client_last_seen[client_id] = time.time()
                 logger.debug(f"Accepted data connection from {client_id}. "
-                            f"Total clients: {self.num_clients}")
+                             f"Total clients: {self.num_clients}")
             return True
 
     def _build_connection_response(self):

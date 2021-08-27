@@ -22,12 +22,11 @@ ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 
 
 class DataClient:
-    def __init__(self, client_worker: "ray.util.client.worker.Worker", client_id: str,
-                 metadata: list):
+    def __init__(self, client_worker, client_id: str, metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
-            channel: connected gRPC channel
+            client_worker: The Ray Client worker that manages this client
             client_id: the generated ID representing this client
             metadata: metadata to pass to gRPC requests
         """
@@ -63,7 +62,8 @@ class DataClient:
     def _data_main(self) -> None:
         reconnecting = "False"
         while True:
-            stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.client_worker.channel)
+            stub = ray_client_pb2_grpc.RayletDataStreamerStub(
+                self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
             resp_stream = stub.Datapath(
                 iter(self.request_queue.get, None),
@@ -76,7 +76,8 @@ class DataClient:
                         logger.debug(f"Got unawaited response {response}")
                         continue
                     if response.req_id in self.asyncio_waiting_data:
-                        callback = self.asyncio_waiting_data.pop(response.req_id)
+                        callback = self.asyncio_waiting_data.pop(
+                            response.req_id)
                         try:
                             callback(response)
                         except Exception:
@@ -87,28 +88,25 @@ class DataClient:
                             self.cv.notify_all()
                 return
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.CANCELLED:
-                    # Gracefully shutting down
+                if e.code() in (grpc.StatusCode.CANCELLED,
+                                grpc.StatusCode.RESOURCE_EXHAUSTED):
+                    # Graceful shutdown. CANCELLED means we intentionally
+                    # ended our connection. RESOURCE_EXHAUSTED likely means
+                    # we reached client limit
                     self._shutdown()
                     return
-                elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                                grpc.StatusCode.RESOURCE_EXHAUSTED):
-                    # TODO(barakmich): The server may have
-                    # dropped. In theory, we can retry, as per
-                    # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-                    # in practice we may need to think about the correct semantics
-                    # here.
+                elif e.code() in grpc.StatusCode.UNAVAILABLE:
                     logger.exception("Server disconnected from data channel")
                 else:
-                    logger.exception(
-                        "Got Error from data channel:")
+                    logger.exception("Got Error from data channel:")
                 try:
                     time.sleep(3)
                     self.client_worker._connect_grpc_channel()
                     reconnecting = "True"
                     continue
                 except ConnectionError:
-                    logger.info("Reconnection failed, cancelling data channel.")
+                    logger.info(
+                        "Reconnection failed, cancelling data channel.")
                     self._shutdown()
                     return
 

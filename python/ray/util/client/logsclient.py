@@ -19,10 +19,11 @@ logger.propagate = False
 
 
 class LogstreamClient:
-    def __init__(self, client_worker: "ray.util.client.worker.Worker", metadata: list):
+    def __init__(self, client_worker, metadata: list):
         """Initializes a thread-safe log stream over a Ray Client gRPC channel.
 
         Args:
+            client_worker: The Ray Client worker that manages this client
             channel: connected gRPC channel
             metadata: metadata to pass to gRPC requests
         """
@@ -38,7 +39,8 @@ class LogstreamClient:
     def _log_main(self) -> None:
         reconnecting = "False"
         while True:
-            stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.client_worker.channel)
+            stub = ray_client_pb2_grpc.RayletLogStreamerStub(
+                self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
             log_stream = stub.Logstream(
                 iter(self.request_queue.get, None), metadata=metadata)
@@ -49,29 +51,26 @@ class LogstreamClient:
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.CANCELLED:
-                    # Graceful shutdown. We've cancelled our own connection.
+                if e.code() in (grpc.StatusCode.CANCELLED,
+                                grpc.StatusCode.RESOURCE_EXHAUSTED):
+                    # Graceful shutdown. CANCELLED means we intentionally
+                    # ended our connection. RESOURCE_EXHAUSTED likely means
+                    # we reached client limit
                     logger.info("Logs channel cancelled")
                     return
-                elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                                grpc.StatusCode.RESOURCE_EXHAUSTED):
-                    # TODO(barakmich): The server may have
-                    # dropped. In theory, we can retry, as per
-                    # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-                    # in practice we may need to think about the correct semantics
-                    # here.
+                elif e.code() in grpc.StatusCode.UNAVAILABLE:
                     logger.info("Server disconnected from logs channel")
                 else:
                     # Some other, unhandled, gRPC error
-                    logger.exception(
-                        f"Got Error from logger channel: {e}")
+                    logger.exception(f"Got Error from logger channel: {e}")
                 try:
                     time.sleep(3)
                     self.client_worker._connect_grpc_channel()
                     reconnecting = "True"
                     continue
                 except ConnectionError:
-                    logger.info("Reconnection failed, cancelling logs channel.")
+                    logger.info(
+                        "Reconnection failed, cancelling logs channel.")
                     return
 
     def log(self, level: int, msg: str):

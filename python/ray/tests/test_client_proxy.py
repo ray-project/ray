@@ -135,6 +135,7 @@ def test_correct_num_clients(call_ray_start):
     assert info._num_clients == 1
     run_string_as_driver(check_we_are_second.format(num_clients=2))
     ray.util.disconnect()
+    time.sleep(5)
     run_string_as_driver(check_we_are_second.format(num_clients=1))
 
 
