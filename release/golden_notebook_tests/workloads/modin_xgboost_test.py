@@ -5,6 +5,7 @@ import time
 
 import modin.pandas as pd
 import ray
+from ray import tune
 from xgboost_ray import RayDMatrix, RayParams, train, predict
 
 from utils.utils import is_anyscale_connect
@@ -40,6 +41,42 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
     return bst
 
 
+def tune_xgboost(train_df, test_df, target_column):
+    # Set XGBoost config.
+    config = {
+        "tree_method": "approx",
+        "objective": "binary:logistic",
+        "eval_metric": ["logloss", "error"],
+        "eta": tune.loguniform(1e-4, 1e-1),
+        "subsample": tune.uniform(0.5, 1.0),
+        "max_depth": tune.randint(1, 9)
+    }
+
+    ray_params = RayParams(
+        max_actor_restarts=1, gpus_per_actor=0, cpus_per_actor=1, num_actors=2)
+
+    analysis = tune.run(
+        tune.with_parameters(
+            train_xgboost,
+            train_df=train_df,
+            test_df=test_df,
+            target_column=target_column,
+            ray_params=ray_params),
+        # Use the `get_tune_resources` helper function to set the resources.
+        resources_per_trial=ray_params.get_tune_resources(),
+        config=config,
+        num_samples=1,
+        metric="eval-error",
+        mode="min",
+        verbose=1)
+
+    accuracy = 1. - analysis.best_result["eval-error"]
+    print(f"Best model parameters: {analysis.best_config}")
+    print(f"Best model total accuracy: {accuracy:.4f}")
+
+    return analysis.best_config
+
+
 def main():
     print("Loading HIGGS data.")
 
@@ -63,6 +100,7 @@ def main():
     bst = train_xgboost(
         config, df_train, df_validation, "label",
         RayParams(max_actor_restarts=1, cpus_per_actor=4, num_actors=4))
+    # tune_xgboost(df_train, df_validation, "label")  # broken atm
     inference_df = RayDMatrix(
         df_train[sorted(df_train.columns)], ignore=["label", "partition"])
     predict(
