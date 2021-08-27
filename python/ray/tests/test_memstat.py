@@ -63,6 +63,10 @@ def count(memory_str, substr):
     return n
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_driver_put_ref(ray_start_regular):
     address = ray_start_regular["redis_address"]
     info = memory_summary(address)
@@ -173,6 +177,10 @@ def test_actor_task_refs(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_nested_object_refs(ray_start_regular):
     address = ray_start_regular["redis_address"]
     x_id = ray.put(np.zeros(100000))
@@ -187,6 +195,10 @@ def test_nested_object_refs(ray_start_regular):
     del z_id
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_pinned_object_call_site(ray_start_regular):
     address = ray_start_regular["redis_address"]
     # Local ref only.
@@ -221,7 +233,7 @@ def test_pinned_object_call_site(ray_start_regular):
 
 
 def test_multi_node_stats(shutdown_only):
-    cluster = Cluster()
+    cluster = Cluster(head_node_args={"_system_config": ray_config})
     for _ in range(2):
         cluster.add_node(num_cpus=1)
 
@@ -247,6 +259,10 @@ def test_multi_node_stats(shutdown_only):
     assert count(info, PUT_OBJ) == 2, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_group_by_sort_by(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
@@ -273,6 +289,10 @@ def test_group_by_sort_by(ray_start_regular):
     assert count(info_c, PID) == 1, info_c
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_memory_used_output(ray_start_regular):
     address = ray_start_regular["redis_address"]
     import numpy as np
