@@ -103,7 +103,7 @@ Workflows can generate new steps at runtime. When a step returns a step future a
 
 Virtual Actors
 ~~~~~~~~~~~~~~
-Virtual actors have their state durably logged to workflow storage. This enables the management of long-running business workflows. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [This feature is under development.]
+Virtual actors have their state durably logged to workflow storage. This enables the management of long-running business workflows. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [Events support is under development.]
 
 .. code-block:: python
     :caption: A persistent virtual actor counter:

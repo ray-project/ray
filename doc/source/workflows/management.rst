@@ -3,7 +3,7 @@ Workflow Management
 
 Workflow IDs
 ------------
-Each workflow has a unique ``workflow_id``. By default, when you call ``.run()``, a random id is generated. It is recommended you explicitly assign each workflow an id via ``.run(workflow_id="id")``.
+Each workflow has a unique ``workflow_id``. By default, when you call ``.run()`` or ``.run_async()``, a random id is generated. It is recommended you explicitly assign each workflow an id via ``.run(workflow_id="id")``.
 
 If ``.run()`` is called with a previously used workflow id,  the workflow will be resumed, unless ``resume_existing=False``, in which case an error will be raised.
 
@@ -78,8 +78,9 @@ Ray workflows currently has no built-in job scheduler. You can however easily us
 Storage Configuration
 ---------------------
 Workflows supports two types of storage backends out of the box:
-* Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``workflow.init(storage="/path/to/storage_dir")``.
-* S3: Production users should use S3 as the storage backend. Enable S3 storage with ``workflow.init(storage="s3://bucket/path")``.
+
+*  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``workflow.init(storage="/path/to/storage_dir")``.
+*  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``workflow.init(storage="s3://bucket/path")``.
 
 Additional storage backends can be written by subclassing the ``Storage`` class and passing a storage instance to ``workflow.init()`` [TODO: note that the Storage API is not currently stable].
 
@@ -97,7 +98,7 @@ Besides ``workflow.init()``, the storage URI can also be set via environment var
     os.environ["RAY_WORKFLOW_STORAGE"] = "s3://bucket/path"
     workflow.init()
 
-If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting will only work for single-node Ray clusters.
+If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
 
 
 Dependency Management
