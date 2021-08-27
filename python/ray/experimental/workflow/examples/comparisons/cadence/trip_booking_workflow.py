@@ -16,14 +16,14 @@ def generate_request_id():
 
 
 @workflow.step
-def book_car(request_id: str) -> str:
-    car_reservation_id = make_request("book_car", request_id)
-    return car_reservation_id
+def cancel(request_id: str) -> None:
+    make_request("cancel", request_id)
 
 
 @workflow.step
-def cancel_car(request_id: str) -> None:
-    make_request("cancel_car", request_id)
+def book_car(request_id: str) -> str:
+    car_reservation_id = make_request("book_car", request_id)
+    return car_reservation_id
 
 
 @workflow.step
@@ -33,19 +33,9 @@ def book_hotel(request_id: str, *deps) -> str:
 
 
 @workflow.step
-def cancel_hotel(request_id: str) -> None:
-    make_request("cancel_hotel", request_id)
-
-
-@workflow.step
 def book_flight(request_id: str, *deps) -> str:
     flight_reservation_id = make_request("book_flight", request_id)
     return flight_reservation_id
-
-
-@workflow.step
-def cancel_flight(request_id: str) -> None:
-    make_request("cancel_flight", request_id)
 
 
 @workflow.step
@@ -73,8 +63,8 @@ def handle_errors(
 
     if error:
         return wait_all.step(
-            cancel_car.step(car_req_id), cancel_hotel.step(hotel_req_id),
-            cancel_flight.step(flight_req_id))
+            cancel.step(car_req_id), cancel.step(hotel_req_id),
+            cancel.step(flight_req_id))
     else:
         return result
 
