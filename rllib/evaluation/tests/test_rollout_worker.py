@@ -113,18 +113,26 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_batch_ids(self):
-        fragment_len = 20
+        fragment_len = 100
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             rollout_fragment_length=fragment_len)
         batch1 = ev.sample()
         batch2 = ev.sample()
-        check(batch1[SampleBatch.UNROLL_ID], [0] * fragment_len)
-        check(batch2[SampleBatch.UNROLL_ID], [1] * fragment_len)
+        unroll_ids_1 = set(batch1["unroll_id"])
+        unroll_ids_2 = set(batch2["unroll_id"])
+        # Assert no overlap of unroll IDs between sample() calls.
+        self.assertTrue(not any(uid in unroll_ids_2 for uid in unroll_ids_1))
+        # CartPole episodes should be short initially: Expect more than one
+        # unroll ID in each batch.
+        self.assertTrue(len(unroll_ids_1) > 1)
+        self.assertTrue(len(unroll_ids_2) > 1)
         ev.stop()
 
     def test_global_vars_update(self):
+        # Allow for Unittest run.
+        ray.init(num_cpus=5, ignore_reinit_error=True)
         for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",

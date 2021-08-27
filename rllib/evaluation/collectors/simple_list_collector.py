@@ -105,8 +105,8 @@ class _AgentCollector:
         # AgentCollector's lifecycle.
         self.episode_id = episode_id
         if self.unroll_id is None:
-            self.unroll_id = self._next_unroll_id
-            self._next_unroll_id += 1
+            self.unroll_id = _AgentCollector._next_unroll_id
+            _AgentCollector._next_unroll_id += 1
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -139,8 +139,8 @@ class _AgentCollector:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
         if self.unroll_id is None:
-            self.unroll_id = self._next_unroll_id
-            self._next_unroll_id += 1
+            self.unroll_id = _AgentCollector._next_unroll_id
+            _AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
         assert SampleBatch.OBS not in values
