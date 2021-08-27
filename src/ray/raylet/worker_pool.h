@@ -329,7 +329,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size,
-      int64_t num_available_cpus);
+                       int64_t num_available_cpus);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
