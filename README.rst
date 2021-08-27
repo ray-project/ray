@@ -230,36 +230,38 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 .. code-block:: python
 
-    from ray import serve
     import pickle
     import requests
+
     from sklearn.datasets import load_iris
     from sklearn.ensemble import GradientBoostingClassifier
 
-    # Train model
+    from ray import serve
+
+    serve.start()
+
+    # Train model.
     iris_dataset = load_iris()
     model = GradientBoostingClassifier()
     model.fit(iris_dataset["data"], iris_dataset["target"])
 
-    # Define Ray Serve model,
+    @serve.deployment(route_prefix="/iris")
     class BoostingModel:
-        def __init__(self):
+        def __init__(self, model):
             self.model = model
             self.label_list = iris_dataset["target_names"].tolist()
 
-        def __call__(self, flask_request):
-            payload = flask_request.json["vector"]
-            print("Worker: received flask request with data", payload)
+        async def __call__(self, request):
+            payload = await request.json()["vector"]
+            print(f"Received flask request with data {payload}")
 
             prediction = self.model.predict([payload])[0]
             human_name = self.label_list[prediction]
             return {"result": human_name}
 
 
-    # Deploy model
-    client = serve.start()
-    client.create_backend("iris:v1", BoostingModel)
-    client.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    # Deploy model.
+    BoostingModel.deploy(model)
 
     # Query it!
     sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
