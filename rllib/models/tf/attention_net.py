@@ -790,7 +790,7 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):
-        assert input_dict["seq_lens"] is not None
+        assert input_dict[SampleBatch.SEQ_LENS] is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _, _ = self.wrapped_keras_model(input_dict)
 

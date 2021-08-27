@@ -204,6 +204,10 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
+        # Don't assume that node providers can retrieve tags from
+        # terminated nodes.
+        if self.is_terminated(node_id):
+            raise Exception(f"The node with id {node_id} has been terminated!")
         with self.lock:
             return self.mock_nodes[node_id].tags
 
@@ -313,8 +317,6 @@ MOCK_DEFAULT_CONFIG = {
     },
     "available_node_types": {
         "ray.head.default": {
-            "min_workers": 0,
-            "max_workers": 0,
             "resources": {},
             "node_config": {
                 "head_default_prop": 4
@@ -2880,6 +2882,14 @@ MemAvailable:   33000000 kB
 
         self.waitFor(
             metrics_incremented, fail_msg="Expected metrics to update")
+
+    def testDefaultMinMaxWorkers(self):
+        config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        config = prepare_config(config)
+        node_types = config["available_node_types"]
+        head_node_config = node_types["ray.head.default"]
+        assert head_node_config["min_workers"] == 0
+        assert head_node_config["max_workers"] == 0
 
 
 if __name__ == "__main__":

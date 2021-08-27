@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Iterator
+from typing import Any, Dict, List, Optional, Iterator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -1352,6 +1352,8 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
 
     if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
         # The namespace field of job config may have already been set in code
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
@@ -1796,7 +1798,7 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name: str, namespace: str = None):
+def get_actor(name: str, namespace: Optional[str] = None):
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
@@ -1816,6 +1818,10 @@ def get_actor(name: str, namespace: str = None):
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
+
+    if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
     worker = global_worker
     worker.check_connected()
     return worker.core_worker.get_named_actor_handle(name, namespace or "")

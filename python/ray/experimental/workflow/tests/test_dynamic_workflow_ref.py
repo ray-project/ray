@@ -14,7 +14,7 @@ def test_dynamic_workflow_ref(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     first_step = incr.step(0)
     assert first_step.run("test_dynamic_workflow_ref") == 1
-    second_step = incr.step(WorkflowRef(first_step.id))
+    second_step = incr.step(WorkflowRef(first_step.step_id))
     assert second_step.run("test_dynamic_workflow_ref") == 2
 
 

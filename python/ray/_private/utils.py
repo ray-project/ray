@@ -1096,3 +1096,11 @@ def get_release_wheel_url(
     # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
     # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
     # 4_x86_64.whl
+
+
+def validate_namespace(namespace: str):
+    if not isinstance(namespace, str):
+        raise TypeError("namespace must be None or a string.")
+    elif namespace == "":
+        raise ValueError("\"\" is not a valid namespace. "
+                         "Pass None to not specify a namespace.")

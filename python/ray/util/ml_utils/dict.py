@@ -70,21 +70,29 @@ def deep_update(
     return original
 
 
-def flatten_dict(dt: Dict[str, T],
+def flatten_dict(dt: Dict,
                  delimiter: str = "/",
-                 prevent_delimiter: bool = False) -> Dict[str, T]:
+                 prevent_delimiter: bool = False,
+                 flatten_list: bool = False):
     """Flatten dict.
 
     Output and input are of the same dict type.
     Input dict remains the same after the operation.
     """
+
+    def _raise_delimiter_exception():
+        raise ValueError(
+            f"Found delimiter `{delimiter}` in key when trying to flatten "
+            f"array. Please avoid using the delimiter in your specification.")
+
     dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
-        raise ValueError(
-            "Found delimiter `{}` in key when trying to flatten array."
-            "Please avoid using the delimiter in your specification.")
-    while any(isinstance(v, dict) for v in dt.values()):
+        _raise_delimiter_exception()
+
+    while_check = (dict, list) if flatten_list else dict
+
+    while any(isinstance(v, while_check) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
@@ -92,12 +100,19 @@ def flatten_dict(dt: Dict[str, T],
                 for subkey, v in value.items():
                     if prevent_delimiter and delimiter in subkey:
                         # Raise if delimiter is in any of the subkeys
-                        raise ValueError(
-                            "Found delimiter `{}` in key when trying to "
-                            "flatten array. Please avoid using the delimiter "
-                            "in your specification.")
+                        _raise_delimiter_exception()
+
                     add[delimiter.join([key, str(subkey)])] = v
                 remove.append(key)
+            elif flatten_list and isinstance(value, list):
+                for i, v in enumerate(value):
+                    if prevent_delimiter and delimiter in subkey:
+                        # Raise if delimiter is in any of the subkeys
+                        _raise_delimiter_exception()
+
+                    add[delimiter.join([key, str(i)])] = v
+                remove.append(key)
+
         dt.update(add)
         for k in remove:
             del dt[k]
