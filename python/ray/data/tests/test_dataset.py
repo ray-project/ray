@@ -186,12 +186,14 @@ def test_tensors(ray_start_regular_shared):
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
 
 
-def test_numpy_roundtrip(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_np_dir")
-    os.mkdir(path)
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, parallelism=2)
-    ds.write_numpy(path)
-    ds = ray.data.read_numpy(path)
+    ds.write_numpy(data_path, filesystem=fs)
+    ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
                        "schema=<Tensor: shape=(None, 1), dtype=int64>)")
 
@@ -214,6 +216,28 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         ds.take()) == ("[array([0]), array([1]), array([2]), "
                        "array([3]), array([4]), array([5]), array([6]), "
                        "array([7]), array([8]), array([9])]"), ds.take()
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds._set_uuid("data")
+    ds.write_numpy(data_path, filesystem=fs)
+    file_path1 = os.path.join(data_path, "data_000000.npy")
+    file_path2 = os.path.join(data_path, "data_000001.npy")
+    if endpoint_url is None:
+        arr1 = np.load(file_path1)
+        arr2 = np.load(file_path2)
+    else:
+        from s3fs.core import S3FileSystem
+        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
+        arr1 = np.load(s3.open(file_path1))
+        arr2 = np.load(s3.open(file_path2))
+    np.testing.assert_equal(np.concatenate((arr1, arr2)), ds.take())
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -601,19 +625,65 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
-def test_parquet_write(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path = os.path.join(tmp_path, "test_parquet_dir")
-    os.mkdir(path)
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
     ds._set_uuid("data")
-    ds.write_parquet(path)
+    ds.write_parquet(path, filesystem=fs)
     path1 = os.path.join(path, "data_000000.parquet")
     path2 = os.path.join(path, "data_000001.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
     assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds._set_uuid("data")
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds.write_parquet(path, filesystem=fs)
+    ds2 = ray.data.read_parquet(path, parallelism=2, filesystem=fs)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df1, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
@@ -1389,66 +1459,80 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
-def test_json_write(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_json_dir")
-
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
-    os.mkdir(path)
-    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([ray.put(df)])
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df1)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path = os.path.join(path, "data_000000.json")
-    assert df.equals(pd.read_json(file_path, orient="records", lines=True))
-    shutil.rmtree(path)
+    ds.write_json(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.json")
+    assert df1.equals(
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options))
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path2 = os.path.join(path, "data_000001.json")
-    assert pd.concat([df, df2]).equals(
-        pd.concat([
-            pd.read_json(file_path, orient="records", lines=True),
-            pd.read_json(file_path2, orient="records", lines=True)
-        ]))
-    shutil.rmtree(path)
+    ds.write_json(data_path, filesystem=fs)
+    file_path2 = os.path.join(data_path, "data_000001.json")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options),
+        pd.read_json(
+            file_path2,
+            orient="records",
+            lines=True,
+            storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
 
 
-def test_json_roundtrip(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_json_dir")
-
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     # Single block.
-    os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path = os.path.join(path, "data_000000.json")
-    ds2 = ray.data.read_json([file_path])
+    ds.write_json(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.json")
+    ds2 = ray.data.read_json([file_path], filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert ds2df.equals(df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path2 = os.path.join(path, "data_000001.json")
-    ds2 = ray.data.read_json([file_path, file_path2], parallelism=2)
+    ds.write_json(data_path, filesystem=fs)
+    ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert pd.concat([df, df2]).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -1566,64 +1650,67 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(dir_path))
 
 
-def test_csv_write(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_csv_dir")
-
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
-    os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df1)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path = os.path.join(path, "data_000000.csv")
-    assert df1.equals(pd.read_csv(file_path))
-    shutil.rmtree(path)
+    ds.write_csv(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.csv")
+    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path2 = os.path.join(path, "data_000001.csv")
+    ds.write_csv(data_path, filesystem=fs)
+    file_path2 = os.path.join(data_path, "data_000001.csv")
     df = pd.concat([df1, df2])
-    ds_df = pd.concat([pd.read_csv(file_path), pd.read_csv(file_path2)])
+    ds_df = pd.concat([
+        pd.read_csv(file_path, storage_options=storage_options),
+        pd.read_csv(file_path2, storage_options=storage_options)
+    ])
     assert df.equals(ds_df)
-    shutil.rmtree(path)
 
 
-def test_csv_roundtrip(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_csv_dir")
-
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     # Single block.
-    os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path = os.path.join(path, "data_000000.csv")
-    ds2 = ray.data.read_csv([file_path])
+    ds.write_csv(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.csv")
+    ds2 = ray.data.read_csv([file_path], filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert ds2df.equals(df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path2 = os.path.join(path, "data_000001.csv")
-    ds2 = ray.data.read_csv([file_path, file_path2], parallelism=2)
+    ds.write_csv(data_path, filesystem=fs)
+    ds2 = ray.data.read_csv(data_path, parallelism=2, filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert pd.concat([df, df2]).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
 
 def test_sort_simple(ray_start_regular_shared):
