@@ -370,6 +370,14 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_numpy(ray_start_regular_shared):
+    arr1 = np.expand_dims(np.arange(0, 4), 1)
+    arr2 = np.expand_dims(np.arange(4, 8), 1)
+    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
+    values = np.array(ds.take(8))
+    np.testing.assert_equal(np.concatenate((arr1, arr2)), values)
+
+
 def test_from_arrow(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -388,6 +396,23 @@ def test_to_pandas(ray_start_regular_shared):
     ds = ray.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_numpy(ray_start_regular_shared):
+    # Tensor Dataset
+    ds = ray.data.range_tensor(10, parallelism=2)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Table Dataset
+    ds = ray.data.range_arrow(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
 
 def test_to_arrow(ray_start_regular_shared):
