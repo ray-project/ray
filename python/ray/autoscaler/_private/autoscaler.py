@@ -357,15 +357,7 @@ class StandardAutoscaler:
                 nodes_to_terminate: List[NodeID] = []
                 for node_id in failed_nodes:
                     if node_id in non_terminated_nodes:
-                        nodes_to_terminate.append(node_id)
-                        logger.error(f"StandardAutoscaler: {node_id}:"
-                                     " Terminating. Failed to setup/initialize"
-                                     " node.")
-                        self.event_summarizer.add(
-                            "Removing {} nodes of type " +
-                            self._get_node_type(node_id) + " (launch failed).",
-                            quantity=1,
-                            aggregate=operator.add)
+                        schedule_node_termination(node_id, "failed-launch")
                     else:
                         logger.warning(f"StandardAutoscaler: {node_id}:"
                                        " Failed to update node."

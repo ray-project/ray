@@ -1748,7 +1748,7 @@ class AutoscalingTest(unittest.TestCase):
         events = autoscaler.event_summarizer.summary()
         assert (
             "Removing 2 nodes of type "
-            "ray-legacy-worker-node-type (launch failed)." in events), events
+            "ray-legacy-worker-node-type (failed-launch)." in events), events
 
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
@@ -2840,10 +2840,10 @@ MemAvailable:   33000000 kB
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert ("Removing 1 nodes of type "
-                "ray.worker.default (launch failed)." in events), events
+                "ray.worker.default (failed-launch)." in events), events
         # To be more explicit,
         assert ("Removing 2 nodes of type "
-                "ray.worker.default (launch failed)." not in events), events
+                "ray.worker.default (failed-launch)." not in events), events
 
         # Should get two new nodes after the next update.
         autoscaler.update()
