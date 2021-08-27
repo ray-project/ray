@@ -14,8 +14,7 @@ from xgboost_ray import RayDMatrix, RayParams, train, predict
 
 from utils.utils import is_anyscale_connect
 
-FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/HIGGS.csv"
-FILE_URL_SMOKE_TEST = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/" \
+FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/" \
                       "simpleHIGGS.csv"
 
 
@@ -87,9 +86,7 @@ def main():
 
     dask.config.set(scheduler=ray_dask_get)
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    data = dd.read_csv(
-        FILE_URL if not args.smoke_test else FILE_URL_SMOKE_TEST,
-        names=colnames)
+    data = dd.read_csv(FILE_URL, colnames=colnames)
 
     print("Loaded HIGGS data.")
 
