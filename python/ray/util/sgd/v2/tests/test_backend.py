@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
+from ray.cluster_utils import Cluster
 from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
@@ -20,6 +21,20 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_2_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def gen_execute_special(special_f):
@@ -247,6 +262,21 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 
     e.start_training(check_process_group)
     assert not any(e.finish_training())
+
+
+def test_cuda_visible_devices(ray_2_node_2_gpu):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=3, num_gpus_per_worker=1)
+    e.start()
+
+    def get_resources():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    e.start_training(get_resources)
+    results = e.finish_training()
+    results.sort()
+
+    assert results == ["0", "0,1", "0,1"]
 
 
 if __name__ == "__main__":

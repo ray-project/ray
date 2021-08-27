@@ -97,10 +97,12 @@ def train_func(config):
         named_parameters=model.named_parameters(),
         op=hvd.Adasum if use_adasum else hvd.Average)
 
+    results = []
     for epoch in range(1, num_epochs + 1):
         model.train()
         # Horovod: set epoch to sampler for shuffling.
         train_sampler.set_epoch(epoch)
+        num_batches = len(train_loader)
         for batch_idx, (data, target) in enumerate(train_loader):
             if use_cuda:
                 data, target = data.cuda(), target.cuda()
@@ -115,13 +117,17 @@ def train_func(config):
                 print("Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch, batch_idx * len(data), len(train_sampler),
                     100. * batch_idx / len(train_loader), loss.item()))
+            if batch_idx == num_batches - 1:
+                results.append(loss.item())
+    return results
 
 
 def main(num_workers, use_gpu, kwargs):
     trainer = Trainer("horovod", use_gpu=use_gpu, num_workers=num_workers)
     trainer.start()
-    trainer.run(train_func, config=kwargs)
+    loss_per_epoch = trainer.run(train_func, config=kwargs)
     trainer.shutdown()
+    print(loss_per_epoch)
 
 
 if __name__ == "__main__":
@@ -198,7 +204,6 @@ if __name__ == "__main__":
     else:
         ray.init()
 
-    # use_cuda = args.use_cuda and torch.cuda.is_available()
     use_cuda = args.use_gpu if args.use_gpu is not None else False
 
     kwargs = {

@@ -1,5 +1,7 @@
 import logging
-from typing import Callable, List, TypeVar
+import os
+import socket
+from typing import Callable, List, TypeVar, Dict
 
 import ray
 from ray.types import ObjectRef
@@ -14,8 +16,9 @@ class BaseWorker:
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
+
         Args:
-            func(Callable): The function to execute.
+            func (Callable): The function to execute.
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)
@@ -183,3 +186,28 @@ class WorkerGroup:
 
     def __len__(self):
         return len(self.workers)
+
+
+def get_node_id() -> str:
+    """Returns the ID of the node that this worker is on."""
+    return ray.get_runtime_context().node_id.hex()
+
+
+def get_hostname() -> str:
+    """Returns the hostname that this worker is on."""
+    return socket.gethostname()
+
+
+def get_gpu_ids() -> List[int]:
+    """Return list of CUDA device IDs available to this worker."""
+    return ray.get_gpu_ids()
+
+
+def update_env_vars(env_vars: Dict[str, str]):
+    """Updates the environment variables on this worker process.
+
+    Args:
+        env_vars (Dict):
+    """
+    sanitized = {k: str(v) for k, v in env_vars.items()}
+    os.environ.update(sanitized)

@@ -1,14 +1,13 @@
 import logging
 import os
-import socket
 from dataclasses import dataclass
-from typing import Dict
 
 import ray
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.worker_group import WorkerGroup, get_node_id,\
+    get_hostname, update_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -23,29 +22,12 @@ class HorovodConfig(BackendConfig):
         nics (int): Network interfaces that can be used for communication.
         verbose (int): Horovod logging verbosity.
     """
-    # timeout_s: int = 300
     nics: set = None
     verbose: int = 1
 
     @property
     def backend_cls(self):
         return HorovodBackend
-
-
-def get_node_id() -> str:
-    return ray.get_runtime_context().node_id.hex()
-
-
-def get_hostname() -> str:
-    # TODO: This is probably not the right way to retrieve
-    # the intended hostname.
-    return socket.gethostname()
-
-
-def update_env_vars(env_vars: Dict[str, str]):
-    """Update the env vars in the actor process."""
-    sanitized = {k: str(v) for k, v in env_vars.items()}
-    os.environ.update(sanitized)
 
 
 def init_env_vars(world_rank: int, world_size: int):

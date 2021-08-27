@@ -558,12 +558,43 @@ def test_horovod_simple(ray_start_2_cpus):
 
 def test_horovod_torch_mnist(ray_start_2_cpus):
     num_workers = 2
+    num_epochs = 2
     trainer = Trainer("horovod", num_workers)
     trainer.start()
-    result = trainer.run(horovod_torch_train_func)
+    results = trainer.run(
+        horovod_torch_train_func,
+        config={
+            "num_epochs": num_epochs,
+            "lr": 1e-3
+        })
     trainer.shutdown()
 
-    assert result == list(range(num_workers))
+    assert len(results) == num_workers
+    for worker_result in results:
+        assert len(worker_result) == num_epochs
+        assert worker_result[num_epochs - 1] < worker_result[0]
+
+
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2,
+    reason="Only run if multiple GPUs are available.")
+def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
+    num_workers = 2
+    num_epochs = 2
+    trainer = Trainer("horovod", num_workers)
+    trainer.start()
+    results = trainer.run(
+        horovod_torch_train_func,
+        config={
+            "num_epochs": num_epochs,
+            "lr": 1e-3
+        })
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+    for worker_result in results:
+        assert len(worker_result) == num_epochs
+        assert worker_result[num_epochs - 1] < worker_result[0]
 
 
 def test_init_failure(ray_start_2_cpus):
