@@ -3,6 +3,7 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
+    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
@@ -97,14 +98,6 @@ py_test(
 
 py_test(
     name = "test_backend_state",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

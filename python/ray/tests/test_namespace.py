@@ -205,9 +205,9 @@ print("Done!!!")
 
     print(
         run_string_as_driver(
-            template.format(address="localhost:8080", namespace="")))
+            template.format(address="localhost:8080", namespace="test")))
 
-    ray.util.connect("localhost:8080", namespace="")
+    ray.util.connect("localhost:8080", namespace="test")
 
     pinger = ray.get_actor("Pinger")
     assert ray.get(pinger.ping.remote()) == "pong from other job"
@@ -223,6 +223,40 @@ def test_runtime_context(shutdown_only):
     namespace = ray.get_runtime_context().namespace
     assert namespace == "abc"
     assert namespace == ray.get_runtime_context().get()["namespace"]
+
+
+def test_namespace_validation(shutdown_only):
+    with pytest.raises(TypeError):
+        ray.init(namespace=123)
+
+    ray.shutdown()
+
+    with pytest.raises(ValueError):
+        ray.init(namespace="")
+
+    ray.shutdown()
+
+    ray.init(namespace="abc")
+
+    @ray.remote
+    class A:
+        pass
+
+    with pytest.raises(TypeError):
+        A.options(namespace=123).remote()
+
+    with pytest.raises(ValueError):
+        A.options(namespace="").remote()
+
+    A.options(name="a", namespace="test", lifetime="detached").remote()
+
+    with pytest.raises(TypeError):
+        ray.get_actor("a", namespace=123)
+
+    with pytest.raises(ValueError):
+        ray.get_actor("a", namespace="")
+
+    ray.get_actor("a", namespace="test")
 
 
 if __name__ == "__main__":

@@ -314,7 +314,8 @@ COMMON_CONFIG: TrainerConfigDict = {
         "device_count": {
             "CPU": 1
         },
-        "allow_soft_placement": True,  # required by PPO multi-gpu
+        # Required by multi-GPU (num_gpus > 1).
+        "allow_soft_placement": True,
     },
     # Override the following tf session args on the local worker
     "local_tf_session_args": {

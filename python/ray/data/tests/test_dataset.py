@@ -451,15 +451,21 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds.count() == 6
 
 
-def test_parquet_read(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(str(tmp_path), "test1.parquet"))
+    path1 = os.path.join(_unwrap_protocol(data_path), "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(str(tmp_path), "test2.parquet"))
+    path2 = os.path.join(_unwrap_protocol(data_path), "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -485,12 +491,16 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
                               [6, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
-def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     df = pd.DataFrame({
         "one": [1, 1, 1, 3, 3, 3],
         "two": ["a", "b", "c", "e", "f", "g"]
@@ -498,13 +508,12 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
         table,
-        root_path=str(tmp_path),
+        root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
+        filesystem=fs,
         use_legacy_dataset=False)
-    pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
-    print(pq_ds.read().to_pandas())
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -530,9 +539,41 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
                               [3, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
+
+
+def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
+                                              tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "a", "b", "b", "c", "c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    # 2 partitions, 1 empty partition, 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 1
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+    # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
