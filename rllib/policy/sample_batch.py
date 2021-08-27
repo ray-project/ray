@@ -141,6 +141,11 @@ class SampleBatch(dict):
         """Returns the amount of samples in the sample batch."""
         return self.count
 
+    @PublicAPI
+    def agent_steps(self):
+        """Returns the amount of samples in the sample batch."""
+        return len(self)
+
     @staticmethod
     @PublicAPI
     def concat_samples(
@@ -1016,8 +1021,14 @@ class MultiAgentBatch:
         return self.count
 
     @PublicAPI
+    def __len__(self):
+        return self.agent_steps()
+
+    @PublicAPI
     def agent_steps(self) -> int:
         """The number of agent steps (there are >= 1 agent steps per env step).
+
+        This is the sum of all individual policy batches' lengths.
 
         Returns:
             int: The number of agent steps total in this batch.
