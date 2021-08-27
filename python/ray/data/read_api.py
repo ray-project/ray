@@ -408,8 +408,7 @@ def read_binary_files(
 
 
 @PublicAPI(stability="beta")
-def from_dask(df: "dask.DataFrame", *,
-              parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
     Args:
@@ -457,14 +456,11 @@ def from_modin(df: "modin.DataFrame", *,
 
 
 @PublicAPI(stability="beta")
-def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
-                *,
-                parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
 
     Args:
         dfs: A list of Ray object references to pandas dataframes.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
@@ -477,14 +473,11 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
 
 
 @PublicAPI(stability="beta")
-def from_numpy(ndarrays: List[ObjectRef[np.ndarray]],
-               *,
-               parallelism: int = 200) -> Dataset["np.ndarray"]:
+def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
     """Create a dataset from a set of NumPy ndarrays.
 
     Args:
         ndarrays: A list of Ray object references to NumPy ndarrays.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding the given ndarrays.
@@ -497,14 +490,11 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]],
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
-               *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_arrow(tables: List[ObjectRef["pyarrow.Table"]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
         dfs: A list of Ray object references to Arrow tables.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records from the tables.
