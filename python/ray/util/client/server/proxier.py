@@ -503,10 +503,15 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             with self.clients_lock:
                 if client_id not in self.clients_last_seen:
+                    logger.info(f"{client_id} not found. Skipping clean up.")
                     # Connection has already been cleaned up
                     return
                 last_seen = self.clients_last_seen[client_id]
+                logger.info(
+                    f"{client_id} last started stream at {last_seen}. Current "
+                    f"stream started at {start_time}.")
                 if last_seen > start_time:
+                    logger.info("Client reconnected. Skipping cleanup.")
                     # Client has reconnected, don't clean up
                     return
                 logger.debug(f"Client detached: {client_id}")

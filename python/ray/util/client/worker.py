@@ -393,7 +393,7 @@ class Worker:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
-
+        print(task.payload_id)
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)

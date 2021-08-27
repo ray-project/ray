@@ -62,16 +62,16 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         }  # guarded by self.clients_lock
 
     def Datapath(self, request_iterator, context):
+        start_time = time.time()
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata.get("client_id") or ""
         if client_id == "":
             logger.error("Client connecting with no client_id")
             return
         logger.debug(f"New data connection from client {client_id}: ")
-        accepted_connection = self._init(client_id, context)
+        accepted_connection = self._init(client_id, context, start_time)
         if not accepted_connection:
             return
-        start_time = self.client_last_seen[client_id]
         try:
             request_queue = Queue()
             queue_filler_thread = Thread(
@@ -136,14 +136,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
                 yield resp
+            logger.info("Data Servicer shutting down gracefully.")
         except grpc.RpcError as e:
             # Ignore exceptions due to cancel -- intentional shutdown
             if e.code() != grpc.StatusCode.CANCELLED:
                 logger.exception(
                     f"Unexpected GRPC exception while servicing {client_id}."
                     "Delaying cleanup.")
-                # Delay cleanup, since client may attempt a reconnect
-                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
@@ -151,14 +150,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.error(
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
+            # Delay cleanup, since client may attempt a reconnect
+            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
             with self.clients_lock:
-                # Could fail before client accounting happens
                 if client_id not in self.client_last_seen:
                     # Some other connection has already cleaned up this
-                    # this client's session
+                    # this client's session. This can happen if the client
+                    # reconnects and then gracefully shut's down.
                     return
                 last_seen = self.client_last_seen[client_id]
                 if last_seen > start_time:
+                    # Client reconnected
                     return
                 # Client didn't reconnect in time, clean up
                 self.basic_service.release_all(client_id)
@@ -173,7 +175,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
-    def _init(self, client_id: str, context: Any):
+    def _init(self, client_id: str, context: Any, start_time: float):
         """
         Checks if resources allow for another client.
         Returns a boolean indicating if initialization was successful.
@@ -196,15 +198,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 return False
             if reconnecting and client_id not in self.client_last_seen:
                 # Client took too long to reconnect, session has been
-                # cleaned up. TODO: how to handle?
+                # cleaned up.
                 context.set_code(grpc.StatusCode.CANCELLED)
                 return False
+            self.client_last_seen[client_id] = start_time
             if client_id in self.client_last_seen:
-                self.client_last_seen[client_id] = time.time()
                 logger.debug(f"Client {client_id} has reconnected.")
             else:
                 self.num_clients += 1
-                self.client_last_seen[client_id] = time.time()
                 logger.debug(f"Accepted data connection from {client_id}. "
                              f"Total clients: {self.num_clients}")
             return True
