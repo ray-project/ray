@@ -100,7 +100,8 @@ def main():
     bst = train_xgboost(config, df_train, df_validation, "label",
                         RayParams(max_actor_restarts=1, num_actors=4))
     tune_xgboost(df_train, df_validation, "label")
-    inference_df = RayDMatrix(df_train, ignore=["labels", "partition"])
+    inference_df = RayDMatrix(
+        df_train[sorted(df_train.columns)], ignore=["label", "partition"])
     predict(bst, inference_df, ray_params=RayParams(num_actors=16))
 
 
