@@ -293,7 +293,9 @@ class RemoteFunction:
         if "uris" not in runtime_env_dict:
             job_config = worker.core_worker.get_job_config()
             if job_config.runtime_env.uris is not None:
-                runtime_env_dict["uris"] = job_config.runtime_env.uris
+                runtime_env_dict["uris"] = [str(uri) for uri in job_config.runtime_env.uris]
+                uris = runtime_env_dict["uris"]
+                logger.error(f"URIS: {uris}")
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "

@@ -513,6 +513,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             working_dir = runtime_env.ensure_runtime_env_setup(uris)
             if working_dir:
                 os.chdir(working_dir)
+                logger.error(f"CHDIR TO {working_dir}, MY PID IS {os.getpid()}")
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,

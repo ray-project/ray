@@ -189,6 +189,23 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
+                import os
+                try:
+                    pickle.loads(serialized_function)
+                except:
+                    logger.error(f"REALLY FAILED")
+                logger.error(f"FAILED TO DESERIALIZE IN DIR: {os.getcwd()}")
+                logger.error(f"PID: {os.getpid()}, LOCAL DIR: {os.getcwd()}, CONTENTS: {os.listdir()}")
+                with open("submod.py", "r") as f:
+                    logger.error(f"FILE CONTENTS: {f.read()}")
+                try:
+                    import submod
+                    logger.error("SUCCESSFULLY IMPORTED IT!")
+                    pickle.loads(serialized_function)
+                    logger.error("SUCCESSFULLY DESERIALIZED")
+                except:
+                    logger.error("DID NOT DESERIALIZE")
+
 
                 def f(*args, **kwargs):
                     raise RuntimeError(

@@ -164,7 +164,10 @@ def setup_worker(input_args):
                                                     args.session_dir)
 
     if runtime_env_context and runtime_env_context.working_dir is not None:
+        logger.error(f"DOING CD: {runtime_env_context.working_dir}")
         commands += [f"cd {runtime_env_context.working_dir}"]
+    else:
+        logger.error("NOT DOING CD :*(")
 
     # activate conda
     if runtime_env_context and runtime_env_context.conda_env_name is not None:
