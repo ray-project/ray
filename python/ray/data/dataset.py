@@ -1285,7 +1285,7 @@ class Dataset(Generic[T]):
             A Spark dataframe created from this dataset.
         """
         import raydp
-        raydp.spark.ray_dataset_to_spark_dataframe(spark, self)
+        return raydp.spark.ray_dataset_to_spark_dataframe(spark, self)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
