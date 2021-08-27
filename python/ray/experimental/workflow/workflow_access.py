@@ -224,6 +224,7 @@ class WorkflowManagementActor:
             self._step_status.pop(workflow_id)
         else:
             # remaining = 0
+            print("SUCCESSFULLY")
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
@@ -297,9 +298,16 @@ class WorkflowManagementActor:
         meta = wf_store.load_workflow_meta()
         if meta is None:
             raise ValueError(f"No such workflow {workflow_id}")
-        if meta == common.WorkflowStatus.FAILED:
+        if meta == common.WorkflowStatus.CANCELED:
             raise ValueError(
-                f"Workflow {workflow_id} failed, please resume it")
+                f"Workflow {workflow_id} is canceled")
+        if name is None:
+            # For resumable workflow, the workflow result is not ready.
+            # It has to be resumed first.
+            if meta == common.WorkflowStatus.RESUMABLE:
+                raise ValueError(
+                    f"Workflow {workflow_id} is in resumable status, please resume it")
+
         if name is None:
             step_id = wf_store.get_entrypoint_step_id()
         else:
@@ -312,22 +320,11 @@ class WorkflowManagementActor:
             if output is not None:
                 return ray.put(_SelfDereferenceObject(None, output.output))
 
-        result = recovery.resume_workflow_step(workflow_id, step_id,
-                                               self._store.storage_url)
-        # We don't record workflow running status for getting result
-        # for a named step.
-        if name is not None:
-            return result.persisted_output
+        @ray.remote
+        def load(wf_store, step_id):
+            return wf_store.load_step_output(step_id)
+        return ray.put(_SelfDereferenceObject(None, load.remote(wf_store, step_id)))
 
-        latest_output = LatestWorkflowOutput(result.persisted_output,
-                                             workflow_id, step_id)
-        self._workflow_outputs[workflow_id] = latest_output
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
-        self._step_status.setdefault(workflow_id, {})
-        # "persisted_output" is the return value of a step or the state of
-        # a virtual actor.
-        return result.persisted_output
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

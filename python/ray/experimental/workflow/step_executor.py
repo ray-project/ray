@@ -187,6 +187,7 @@ def execute_workflow(
 def commit_step(store: workflow_storage.WorkflowStorage,
                 step_id: "StepID",
                 ret: Union["Workflow", Any],
+                exception: Optional[Exception],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
     Args:
@@ -200,7 +201,7 @@ def commit_step(store: workflow_storage.WorkflowStorage,
     from ray.experimental.workflow.common import Workflow
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
-    store.save_step_output(step_id, ret, outer_most_step_id)
+    store.save_step_output(step_id, ret, exception, outer_most_step_id)
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
@@ -319,14 +320,18 @@ def _workflow_step_executor(
     """
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
-    persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
-                                                  catch_exceptions,
-                                                  max_retries, *args, **kwargs)
+    try:
+        persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
+                                                      catch_exceptions,
+                                                      max_retries, *args, **kwargs)
+    except Exception as e:
+        commit_step(store, step_id, None, e, outer_most_step_id)
+        raise e
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
         store = workflow_storage.get_workflow_storage()
         # Save workflow output
-        commit_step(store, step_id, persisted_output, outer_most_step_id)
+        commit_step(store, step_id, persisted_output, None, outer_most_step_id)
         # We MUST execute the workflow after saving the output.
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:

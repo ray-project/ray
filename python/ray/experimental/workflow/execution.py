@@ -38,7 +38,7 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
-        commit_step(ws, "", entry_workflow)
+        commit_step(ws, "", entry_workflow, None)
         workflow_manager = get_or_create_management_actor()
         ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
         # NOTE: It is important to 'ray.get' the returned output. This
