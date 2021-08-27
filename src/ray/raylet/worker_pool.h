@@ -96,7 +96,6 @@ class WorkerPoolInterface {
   /// \return Void.
   virtual void PopWorker(
       const TaskSpecification &task_spec, const PopWorkerCallback &callback,
-      int64_t backlog_size,
       const std::string &allocated_instances_serialized_json = "{}") = 0;
   /// Add an idle worker to the pool.
   ///
@@ -319,7 +318,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// See interface.
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
-                 int64_t backlog_size,
                  const std::string &allocated_instances_serialized_json = "{}");
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting

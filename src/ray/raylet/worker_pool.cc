@@ -965,7 +965,6 @@ void WorkerPool::TriggerAsyncCallbacksForFailedWorkerStart(State &state, const R
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
-                           int64_t backlog_size,
                            const std::string &allocated_instances_serialized_json) {
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
@@ -1096,15 +1095,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
     start_worker_process_fn(task_spec, state, dynamic_options, "", "",
                             dedicated_callback);
-    if (!requires_dedicated_worker) {
-      // If this task was blocked on a worker starting, it's likely we need
-      // more workers to schedule the task backlog.
-      int64_t num_workers_to_prestart = std::min(static_cast<int64_t>(maximum_startup_concurrency_), backlog_size);
-      for (int64_t i = 0; i < num_workers_to_prestart; i++) {
-        start_worker_process_fn(task_spec, state, dynamic_options, "", "",
-                                dedicated_callback);
-      }
-    }
   }
 }
 

@@ -374,7 +374,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               return PoppedWorkerHandler(worker, status, task_id, scheduling_class, work,
                                          is_detached_actor, owner_address);
             },
-            task.BacklogSize(),
             allocated_instances_serialized_json);
         work_it++;
       }
