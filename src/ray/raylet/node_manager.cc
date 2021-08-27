@@ -253,8 +253,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       local_object_manager_(
-          self_node_id_, config.node_manager_address, config.node_manager_port,
-          RayConfig::instance().free_objects_batch_size(),
+          io_service_, self_node_id_, config.node_manager_address,
+          config.node_manager_port, RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,

@@ -37,14 +37,16 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id, std::string self_node_address, int self_node_port,
-      size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
-      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
+      instrumented_io_context &context, const NodeID &node_id,
+      std::string self_node_address, int self_node_port, size_t free_objects_batch_size,
+      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
+      int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
-      : self_node_id_(node_id),
+      : io_context_(context),
+        self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
         free_objects_period_ms_(free_objects_period_ms),
@@ -169,6 +171,8 @@ class LocalObjectManager {
   /// \param max_batch_size Maximum number of objects that can be deleted by one
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
+
+  instrumented_io_context &io_context_;
 
   const NodeID self_node_id_;
   const std::string self_node_address_;

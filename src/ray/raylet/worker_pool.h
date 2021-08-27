@@ -658,6 +658,56 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<AgentManager> agent_manager_;
 };
 
+/// \class A Thread-safe IOWorkerPool Wrapper.
+class ThreadsafeIOWorkerPool : public IOWorkerPoolInterface {
+ public:
+  ThreadsafeIOWorkerPool(instrumented_io_context &io_context, IOWorkerPoolInterface &impl)
+      : io_context_(io_context), impl_(impl) {}
+
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    io_context_.post([this, worker]() { impl_.PushSpillWorker(worker); });
+  }
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    io_context_.post(
+        [this, callback = std::move(callback)]() { impl_.PopSpillWorker(callback); });
+  }
+
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    io_context_.post([this, worker]() { impl_.PushRestoreWorker(worker); });
+  }
+
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    io_context_.post(
+        [this, callback = std::move(callback)]() { impl_.PopRestoreWorker(callback); });
+  }
+
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    io_context_.post([this, worker]() { impl_.PushDeleteWorker(worker); });
+  }
+
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    io_context_.post(
+        [this, callback = std::move(callback)]() { impl_.PopDeleteWorker(callback); });
+  }
+
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) override {
+    io_context_.post([this, worker]() { impl_.PushUtilWorker(worker); });
+  }
+  void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    io_context_.post(
+        [this, callback = std::move(callback)]() { impl_.PopUtilWorker(callback); });
+  }
+
+ private:
+  instrumented_io_context &io_context_;
+  IOWorkerPoolInterface &impl_;
+};
+
 }  // namespace raylet
 
 }  // namespace ray
