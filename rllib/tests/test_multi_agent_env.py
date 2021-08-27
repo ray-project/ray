@@ -255,10 +255,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(ag0_ts[-1] == ag1_ts[-1])
 
     def test_multi_agent_with_flex_agents(self):
-        register_env("flex_agents_multi_agent_cartpole",
-                     lambda _: FlexAgentsMultiAgent())
         pg = PGTrainer(
-            env="flex_agents_multi_agent_cartpole",
+            env=FlexAgentsMultiAgent,
             config={
                 "num_workers": 0,
                 "framework": "tf",
