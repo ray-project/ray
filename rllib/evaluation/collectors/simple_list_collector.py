@@ -164,16 +164,14 @@ class _AgentCollector:
             # Infos/state-outs may be structs that change from timestep to
             # timestep. Actions - on the other hand - are already flattened
             # in the sampler.
-            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith("state_out_"):
+            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS
+                     ] or k.startswith("state_out_"):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
                 flattened = tree.flatten(v)
                 for i, sub_list in enumerate(self.buffers[k]):
-                    try:#TODO
-                        sub_list.append(flattened[i])
-                    except Exception as e:
-                        raise e
+                    sub_list.append(flattened[i])
         self.agent_steps += 1
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
@@ -370,7 +368,8 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS] or col.startswith("state_out_"):
+            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS
+                       ] or col.startswith("state_out_"):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

@@ -2358,7 +2358,7 @@ py_test(
     name = "examples/preprocessing_disabled_tf",
     main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/preprocessing_disabled.py"],
     args = ["--stop-iters=2"]
 )
@@ -2367,7 +2367,7 @@ py_test(
     name = "examples/preprocessing_disabled_torch",
     main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/preprocessing_disabled.py"],
     args = ["--framework=torch", "--stop-iters=2"]
 )

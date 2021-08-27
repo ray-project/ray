@@ -149,7 +149,11 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
-                outs.append(one_hot(component, self.flattened_input_space[i]))
+                if component.dtype in [torch.int32, torch.int64, torch.uint8]:
+                    outs.append(
+                        one_hot(component, self.flattened_input_space[i]))
+                else:
+                    outs.append(component)
             else:
                 outs.append(torch.reshape(component, [-1, self.flatten[i]]))
         # Concat all outputs and the non-image inputs.
