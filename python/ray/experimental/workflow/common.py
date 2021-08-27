@@ -23,11 +23,8 @@ def get_qualname(f):
                                      "__qualname__") else "__anonymous_func__"
 
 
-def assert_ray_initialized():
-    from ray import is_initialized
-    if not is_initialized():
-        raise RuntimeError(
-            "Please connect to ray cluster by calling `ray.init`")
+def ensure_ray_initialized():
+    ray.worker.global_worker.check_connected()
 
 
 @dataclass
@@ -224,8 +221,7 @@ class Workflow:
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
 
-    def run(self, workflow_id: Optional[str] = None,
-            from_begin: bool = False) -> Any:
+    def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
 
         Examples:
@@ -253,11 +249,10 @@ class Workflow:
             from_begin: By default it's False. Set it to be True to re-run the
                 workflow from beginning
         """
-        return ray.get(self.run_async(workflow_id, from_begin))
+        return ray.get(self.run_async(workflow_id))
 
     def run_async(self,
-                  workflow_id: Optional[str] = None,
-                  from_begin: bool = False) -> ObjectRef:
+                  workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:
@@ -288,6 +283,8 @@ class Workflow:
         # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run, resume
         self._step_id = None
+        # TODO (yic): Follow up about start from beginning feature
+        from_begin = False
         if workflow_id is not None and not from_begin:
             try:
                 return resume(workflow_id)

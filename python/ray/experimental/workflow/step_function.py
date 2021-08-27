@@ -4,7 +4,7 @@ from typing import Callable
 from ray._private import signature
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (Workflow, WorkflowData, StepType,
-                                              assert_ray_initialized)
+                                              ensure_ray_initialized)
 
 
 class WorkflowStepFunction:
@@ -31,7 +31,7 @@ class WorkflowStepFunction:
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            assert_ray_initialized()
+            ensure_ray_initialized()
             flattened_args = signature.flatten_args(self._func_signature, args,
                                                     kwargs)
             workflow_inputs = serialization_context.make_workflow_inputs(

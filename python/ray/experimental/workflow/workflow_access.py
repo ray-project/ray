@@ -150,8 +150,9 @@ class WorkflowManagementActor:
             step result. If it does not exist, return None
         """
         try:
-            return self._step_output_cache[workflow_id, step_id].output
+            return self._step_output_cache[(workflow_id, step_id)].output
         except Exception:
+            print("Fail to find:", workflow_id, step_id)
             return None
 
     def run_or_resume(self, workflow_id: str, ignore_existing: bool = False
@@ -178,7 +179,7 @@ class WorkflowManagementActor:
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        self._step_output_cache[workflow_id, step_id] = latest_output
+        self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
@@ -311,13 +312,9 @@ class WorkflowManagementActor:
             step_id = wf_store.get_entrypoint_step_id()
         else:
             step_id = name
-            if step_id is None:
-                raise ValueError(f"Fail to find step `{step_id}` in workflow "
-                                 "`{workflow_id}`")
-            output = self._step_output_cache.get(workflow_id, {}).get(
-                step_id, None)
+            output = self.get_cached_step_output(workflow_id, step_id)
             if output is not None:
-                return ray.put(_SelfDereferenceObject(None, output.output))
+                return ray.put(_SelfDereferenceObject(None, output))
 
         @ray.remote
         def load(wf_store, step_id):
