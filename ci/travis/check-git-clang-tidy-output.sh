@@ -22,7 +22,7 @@ BAZEL_ROOT=$(bazel info execution_root)
 
 printInfo "Generating compilation database ..."
 
-bazel build --experimental_action_listener=//:compile_command_listener \
+CC=clang bazel build --experimental_action_listener=//:compile_command_listener \
     //:extract_compile_command //:ray_pkg
 
 printInfo "Assembling compilation database ..."
