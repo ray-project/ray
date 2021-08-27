@@ -58,7 +58,7 @@ class LogstreamClient:
                     # we reached client limit
                     logger.info("Logs channel cancelled")
                     return
-                elif e.code() in grpc.StatusCode.UNAVAILABLE:
+                elif e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.info("Server disconnected from logs channel")
                 else:
                     # Some other, unhandled, gRPC error

@@ -95,7 +95,7 @@ class DataClient:
                     # we reached client limit
                     self._shutdown()
                     return
-                elif e.code() in grpc.StatusCode.UNAVAILABLE:
+                elif e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.exception("Server disconnected from data channel")
                 else:
                     logger.exception("Got Error from data channel:")
