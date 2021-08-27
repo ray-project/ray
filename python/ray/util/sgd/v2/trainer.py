@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
     Type, Iterator
@@ -14,7 +15,7 @@ from ray.util.sgd.v2.constants import TUNE_INSTALLED
 
 # Ray SGD should be usable even if Tune is not installed.
 if TUNE_INSTALLED:
-    from ray import tune
+    from ray import tune, cloudpickle
     from ray.tune import Trainable
     from ray.tune import PlacementGroupFactory
     from ray.tune.function_runner import wrap_function
@@ -179,7 +180,7 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            checkpoint: Optional[Dict] = None,
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
     ) -> Iterator[List[Dict]]:
         """Same as ``run`` except returns an iterator over the results.
@@ -212,9 +213,12 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
+            checkpoint (Optional[Dict|Path|str]): The checkpoint data that
+                should be loaded onto each worker and accessed by the
+                training function via ``sgd.load_checkpoint()``. If this is a
+                ``str`` or ``Path`` then the value is expected to be a path
+                to a file that contains a serialized checkpoint dict. If this
+                is ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
 
@@ -366,7 +370,7 @@ class SGDIterator:
     def __init__(
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            checkpoint: Optional[Dict],
+            checkpoint: Optional[Union[Dict, str, Path]],
             checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._run_with_error_handling(
@@ -463,7 +467,12 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
         trainer.start()
 
-        iterator = trainer.run_iterator(train_func, config)
+        if checkpoint_dir is not None:
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+        else:
+            checkpoint_path = None
+
+        iterator = trainer.run_iterator(train_func, config, checkpoint=checkpoint_path)
 
         for results in iterator:
             first_worker_results = results[0]

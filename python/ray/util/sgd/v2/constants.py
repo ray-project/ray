@@ -37,3 +37,6 @@ RESULT_FILE_JSON = "results.json"
 
 # Default directory where all SGD logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
+
+# File name to use for checkpoints saved with Tune
+TUNE_CHECKPOINT_FILE_NAME = "checkpoint"

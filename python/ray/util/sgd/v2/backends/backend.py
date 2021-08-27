@@ -9,7 +9,7 @@ from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    DEFAULT_RESULTS_DIR, TUNE_INSTALLED
+    DEFAULT_RESULTS_DIR, TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path
@@ -260,7 +260,10 @@ class BackendExecutor:
         if tune is not None and tune.is_session_enabled():
             with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
                 checkpoint_dir:
-                ...
+                path = Path(checkpoint_dir)
+                file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
+                with file_path.open("wb") as f:
+                    cloudpickle.dump(checkpoint, f)
             return
 
 

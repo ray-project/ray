@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 import torch
@@ -7,7 +9,9 @@ import ray
 from ray import tune
 from ray.tune import TuneError
 
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
+from ray.util.sgd.v2.constants import TUNE_CHECKPOINT_FILE_NAME
 from ray.util.sgd.v2.backends.backend import BackendInterface, BackendConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
@@ -125,6 +129,35 @@ def test_tune_error(ray_start_2_cpus):
 
     with pytest.raises(TuneError):
         tune.run(TestTrainable)
+
+def test_tune_checkpoint(ray_start_2_cpus):
+    def train_func():
+        for i in range(10):
+            sgd.report(test=i)
+        sgd.save_checkpoint(hello="world")
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    [trial] = tune.run(TestTrainable).trials
+    assert os.path.exists(os.path.join(trial.checkpoint.value,
+                                       TUNE_CHECKPOINT_FILE_NAME))
+
+def test_tune_checkpoint_frequent(ray_start_2_cpus):
+    def train_func():
+        pass
+
+def test_tune_checkpoint_infrequent(ray_start_2_cpus):
+    def train_func():
+        pass
+
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
