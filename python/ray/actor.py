@@ -740,7 +740,7 @@ class ActorClass:
         # XXX: handle packaging URIs.
         if "uris" not in runtime_env_dict:
             job_config = worker.core_worker.get_job_config()
-            if job_config.runtime_env.uris:
+            if job_config.runtime_env.uris is not None:
                 runtime_env_dict["uris"] = job_config.runtime_env.uris
 
         if override_environment_variables:

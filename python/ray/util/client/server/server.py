@@ -510,10 +510,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
-            logger.error("PREPARE RUNTIME ENV")
             working_dir = runtime_env.ensure_runtime_env_setup(uris)
-            logger.error(f"DIR: {working_dir}")
-            logger.error(f"FILES: {os.listdir(working_dir)}")
             if working_dir:
                 os.chdir(working_dir)
 

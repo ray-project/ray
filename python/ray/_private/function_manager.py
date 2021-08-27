@@ -187,8 +187,6 @@ class FunctionActorManager:
             self._num_task_executions[function_id] = 0
 
             try:
-                import os
-                logger.error(f"UNPICKLING IN DIR {os.getcwd()}")
                 function = pickle.loads(serialized_function)
             except Exception:
 
@@ -207,7 +205,7 @@ class FunctionActorManager:
                 # of the failure.
                 traceback_str = format_error_message(traceback.format_exc())
                 # Log the error message.
-                logger.error("Failed to unpickle the remote function "
+                logger.debug("Failed to unpickle the remote function "
                              f"'{function_name}' with "
                              f"function ID {function_id.hex()}. "
                              f"Job ID:{job_id}."
