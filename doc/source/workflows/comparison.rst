@@ -1,5 +1,5 @@
-Workflows Comparisons
-=====================
+API Comparisons
+===============
 
 Comparison between Ray Core APIs and Workflows
 ----------------------------------------------

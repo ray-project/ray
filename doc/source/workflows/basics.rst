@@ -37,6 +37,7 @@ Get started with a single three-step workflow:
 Here we created the workflow:
 
 .. image:: basic.png
+   :width: 500px
 
 Workflow steps behave similarly to Ray tasks. They are declared via the ``@workflow.step`` annotation, and can take in either concrete values or the output of another workflow step as an argument.
 
@@ -203,6 +204,7 @@ The key behavior to note is that when a step returns a ``Workflow`` output inste
 Here the workflow initially just consists of the ``book_trip`` step. Once executed, ``book_trip`` generates steps to book flights and hotels in parallel, which feeds into a step to decide whether to cancel the trip or finalize it. The DAG can be visualized as follows (note the dynamically generated nested workflows within ``book_trip``):
 
 .. image:: trip.png
+   :width: 500px
 
 The execution order here will be:
 1. Run the ``book_trip`` step.

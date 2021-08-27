@@ -1,8 +1,8 @@
 Workflows API Reference
 =======================
 
-Workflow Basics
---------------------
+Core API
+---------
 .. autofunction:: ray.experimental.workflow.init
 .. autofunction:: ray.experimental.workflow.step
 .. autoclass:: ray.experimental.workflow.common.Workflow
@@ -14,8 +14,8 @@ Virtual Actors
 .. autoclass:: ray.experimental.workflow.virtual_actor_class.VirtualActorClass
     :members:
 
-Managing Workflows
-------------------
+Management API
+--------------
 .. autofunction:: ray.experimental.workflow.resume_all
 .. autofunction:: ray.experimental.workflow.resume
 .. autofunction:: ray.experimental.workflow.list_all
