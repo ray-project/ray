@@ -213,7 +213,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
-            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
+            return GetLocalObjectManager().GetLocalSpilledObjectURL(object_id);
           },
           /*spill_objects_callback=*/
           [this]() {
@@ -1304,8 +1304,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   boost::system::error_code ec;
   boost::filesystem::rename(from_path, to_path, ec);
   if (ec.value() != 0) {
-    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
-                   << " because of error " << ec.message();
+    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
+                  << " because of error " << ec.message();
     cb(false);
   }
 

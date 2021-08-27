@@ -370,6 +370,14 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_numpy(ray_start_regular_shared):
+    arr1 = np.expand_dims(np.arange(0, 4), 1)
+    arr2 = np.expand_dims(np.arange(4, 8), 1)
+    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
+    values = np.array(ds.take(8))
+    np.testing.assert_equal(np.concatenate((arr1, arr2)), values)
+
+
 def test_from_arrow(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -388,6 +396,23 @@ def test_to_pandas(ray_start_regular_shared):
     ds = ray.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_numpy(ray_start_regular_shared):
+    # Tensor Dataset
+    ds = ray.data.range_tensor(10, parallelism=2)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Table Dataset
+    ds = ray.data.range_arrow(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
 
 def test_to_arrow(ray_start_regular_shared):
@@ -451,15 +476,21 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds.count() == 6
 
 
-def test_parquet_read(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(str(tmp_path), "test1.parquet"))
+    path1 = os.path.join(_unwrap_protocol(data_path), "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(str(tmp_path), "test2.parquet"))
+    path2 = os.path.join(_unwrap_protocol(data_path), "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -485,12 +516,16 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
                               [6, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
-def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     df = pd.DataFrame({
         "one": [1, 1, 1, 3, 3, 3],
         "two": ["a", "b", "c", "e", "f", "g"]
@@ -498,13 +533,12 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
         table,
-        root_path=str(tmp_path),
+        root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
+        filesystem=fs,
         use_legacy_dataset=False)
-    pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
-    print(pq_ds.read().to_pandas())
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -530,9 +564,41 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
                               [3, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
+
+
+def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
+                                              tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "a", "b", "b", "c", "c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    # 2 partitions, 1 empty partition, 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 1
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+    # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
@@ -854,6 +920,39 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 10
     ds2 = ds2.union(ds)
     assert ds2.count() == 210
+
+
+def test_split_at_indices(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=3)
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([])
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([-1])
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([3, 1])
+
+    splits = ds.split_at_indices([5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5, 5, 100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [], [5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([0])
+    r = [s.take() for s in splits]
+    assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
 def test_split(ray_start_regular_shared):

@@ -452,6 +452,11 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 
 /// grpc keepalive sent interval
+/// This is only configured in GCS server now.
+/// NOTE: It is not ideal for other components because
+/// they have a failure model that considers network failures as component failures
+/// and this configuration break that assumption. We should apply to every other component
+/// after we change this failure assumption from code.
 RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 
 /// grpc keepalive timeout

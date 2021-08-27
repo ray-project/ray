@@ -4,11 +4,12 @@ from typing import Optional, List, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.file_based_datasource import (
     _resolve_paths_and_filesystem)
+from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.block_list import BlockMetadata
+from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         from ray import cloudpickle
         import pyarrow.parquet as pq
         import numpy as np
@@ -60,6 +62,9 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 cloudpickle.loads(p) for p in serialized_pieces
             ]
 
+            # Ensure that we're reading at least one dataset fragment.
+            assert len(pieces) > 0
+
             import pyarrow as pa
             from pyarrow.dataset import _get_partition_keys
 
@@ -78,11 +83,15 @@ class ParquetDatasource(Datasource[ArrowRow]):
                         table = table.set_column(
                             table.schema.get_field_index(col), col,
                             pa.array([value] * len(table)))
-                tables.append(table)
+                # If the table is empty, drop it.
+                if table.num_rows > 0:
+                    tables.append(table)
             if len(tables) > 1:
-                table = pa.concat_tables(tables)
-            else:
+                table = pa.concat_tables(tables, promote=True)
+            elif len(tables) == 1:
                 table = tables[0]
+            # If len(tables) == 0, all fragments were empty, and we return the
+            # empty table from the last fragment.
             return table
 
         read_tasks = []

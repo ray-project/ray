@@ -93,5 +93,4 @@ if __name__ == "__main__":
 
     final_result = handle_errors.step(car_req_id, hotel_req_id, flight_req_id,
                                       saga_result)
-    # TODO(ekl) this is failing due to a bug
-    # print(final_result.run())
+    print(final_result.run())
