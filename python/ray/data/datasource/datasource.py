@@ -9,6 +9,7 @@ from ray.data.block import Block, BlockAccessor, \
     BlockMetadata, T
 from ray.data.impl.arrow_block import ArrowRow
 from ray.util.annotations import PublicAPI
+from ray.data.impl.util import _check_pyarrow_version
 
 WriteResult = Any
 
@@ -161,6 +162,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         while i < n:
             count = min(block_size, n - i)
             if block_format == "arrow":
+                _check_pyarrow_version()
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":

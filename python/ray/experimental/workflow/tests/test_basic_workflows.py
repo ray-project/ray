@@ -128,7 +128,8 @@ def test_partial(workflow_start_regular_shared):
     from functools import partial
 
     f1 = workflow.step(partial(add, 10)).step(10)
-    assert "__anonymous_func__" in f1._step_id
+
+    assert "__anonymous_func__" in f1._name
     assert f1.run() == 20
 
     fs = [partial(add, y=y) for y in ys]

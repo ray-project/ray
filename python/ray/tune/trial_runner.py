@@ -23,6 +23,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -514,6 +515,19 @@ class TrialRunner:
                 self.add_trial(new_trial)
             else:
                 self.add_trial(trial)
+
+    def update_pending_trial_resources(
+            self, resources: Union[dict, PlacementGroupFactory]):
+        """Update trial resources when resuming from checkpoint.
+
+        Only updating the pending ones.
+        """
+        assert resources
+        if isinstance(resources, dict) and "gpu" not in resources:
+            resources["gpu"] = 0
+        for trial in self._trials:
+            if trial.status == Trial.PENDING:
+                trial.update_resources(resources=resources)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
