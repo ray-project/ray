@@ -25,6 +25,7 @@ parser.add_argument(
 parser.add_argument(
     "--allocated-instances-serialized-json",
     type=str,
+    default="{}",
     help="the worker allocated resource")
 
 
@@ -119,5 +120,14 @@ if __name__ == "__main__":
     else:
         remaining_args.append("--serialized-runtime-env")
         remaining_args.append(args.serialized_runtime_env or "{}")
-        setup = import_attr(args.worker_setup_hook)
-        setup(remaining_args)
+        remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
+
+        def start_worker():
+            setup = import_attr(args.worker_setup_hook)
+            setup(remaining_args)
+
+        if args.allocated_instances_serialized_json != "{}":
+            import setup_cgroup
+            setup_cgroup.start_worker_in_cgroup(start_worker, args.allocated_instances_serialized_json)
+        else:
+            start_worker()

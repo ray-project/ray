@@ -23,6 +23,7 @@ pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
+cgroupspy
 
 ## setup.py extras
 dm_tree
