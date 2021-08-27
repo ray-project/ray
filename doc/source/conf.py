@@ -42,6 +42,7 @@ MOCK_MODULES = [
     "gym.spaces",
     "horovod",
     "horovod.ray",
+    "horovod.ray.runner",
     "kubernetes",
     "mlflow",
     "modin",
