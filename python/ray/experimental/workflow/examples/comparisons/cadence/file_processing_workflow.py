@@ -62,6 +62,5 @@ def download_all(urls: List[str]) -> None:
 
 if __name__ == "__main__":
     workflow.init()
-
     res = download_all.step(FILES_TO_PROCESS)
     res.run()

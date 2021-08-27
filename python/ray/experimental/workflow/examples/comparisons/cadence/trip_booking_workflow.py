@@ -81,16 +81,13 @@ def handle_errors(
 
 if __name__ == "__main__":
     workflow.init()
-
     car_req_id = generate_request_id.step()
     hotel_req_id = generate_request_id.step()
     flight_req_id = generate_request_id.step()
-
     # TODO(ekl) we could create a Saga helper function that automates this
     # pattern of compensation workflows.
     saga_result = book_all.options(catch_exceptions=True) \
         .step(car_req_id, hotel_req_id, flight_req_id)
-
     final_result = handle_errors.step(car_req_id, hotel_req_id, flight_req_id,
                                       saga_result)
     # TODO(ekl) this is failing due to a bug
