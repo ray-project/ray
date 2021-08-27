@@ -147,15 +147,15 @@ TEST_F(TestGrpcServerFixture, TestClientDiedBeforeReply) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   // Reinit client
-  // client_call_manager_.reset(new ClientCallManager(client_io_service_));
-  // grpc_client_.reset(
-  //     new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+  client_call_manager_.reset(new ClientCallManager(client_io_service_));
+  grpc_client_.reset(
+      new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
   // Send again, this request should be replied.
   bool done = false;
-  // Sleep(request, [&done](const Status status, const SleepReply &reply) {
-  //   RAY_LOG(INFO) << "replied, status=" << status;
-  //   done = true;
-  // });
+  Sleep(request, [&done](const Status status, const SleepReply &reply) {
+    RAY_LOG(INFO) << "replied, status=" << status;
+    done = true;
+  });
   while (!done) {
     RAY_LOG(INFO) << "waiting";
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
