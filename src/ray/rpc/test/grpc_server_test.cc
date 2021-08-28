@@ -115,7 +115,7 @@ class TestGrpcServerFixture : public ::testing::Test {
 TEST_F(TestGrpcServerFixture, TestBasic) {
   // Send request
   SleepRequest request;
-  request.set_sleep_time_ms(1000);
+  request.set_sleep_time_ms(1);
   bool done = false;
   Sleep(request, [&done](const Status status, const SleepReply &reply) {
     RAY_LOG(INFO) << "replied, status=" << status;
@@ -129,28 +129,44 @@ TEST_F(TestGrpcServerFixture, TestBasic) {
 
 // This test aims to test ServerCall leaking when client died before server's reply.
 TEST_F(TestGrpcServerFixture, TestClientDiedBeforeReply) {
-  // Freeze server first, it won't reply any request
-  test_service_handler_.frozen = true;
-  // Send request
-  SleepRequest request;
-  request.set_sleep_time_ms(1000);
-  Sleep(request, [](const Status status, const SleepReply &reply) {
-    RAY_CHECK(false) << "Shouldn't reach here";
-  });
-  // Shutdown client before reply
+  // Reinit ClientCallManager with short timeout, so that call won't block.
   grpc_client_.reset();
   client_call_manager_.reset();
-  // Unfreeze server, server will fail to reply
+  client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
+                                                   /*call_timeout_ms=*/100));
+  grpc_client_.reset(
+      new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+  // Freeze server first, it won't reply any request.
+  test_service_handler_.frozen = true;
+  // Send request.
+  SleepRequest request;
+  request.set_sleep_time_ms(1);
+  bool call_timed_out = false;
+  Sleep(request, [&call_timed_out](const Status status, const SleepReply &reply) {
+    RAY_LOG(INFO) << "Replied, status=" << status;
+    RAY_CHECK(status.IsIOError());
+    call_timed_out = true;
+  });
+  // Wait for clinet call timed out. Client socket won't be closed until all calls are
+  // timed out.
+  while (!call_timed_out) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+  // Shutdown client before server replies.
+  grpc_client_.reset();
+  client_call_manager_.reset();
+  // Unfreeze server, server will fail to reply.
   test_service_handler_.frozen = false;
   while (test_service_handler_.reply_failure_count <= 0) {
     RAY_LOG(INFO) << "Waiting for reply failure";
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
-  // Reinit client
+  // Reinit client with infinite timeout.
   client_call_manager_.reset(new ClientCallManager(client_io_service_));
   grpc_client_.reset(
       new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
-  // Send again, this request should be replied.
+  // Send again, this request should be replied. If any leaking happened, this call won't
+  // be replied to since the max_active_rpcs is 1.
   bool done = false;
   Sleep(request, [&done](const Status status, const SleepReply &reply) {
     RAY_LOG(INFO) << "replied, status=" << status;
