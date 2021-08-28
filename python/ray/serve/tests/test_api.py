@@ -8,7 +8,7 @@ import starlette.responses
 
 import ray
 from ray import serve
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def test_e2e(serve_instance):
@@ -241,38 +241,6 @@ def test_start_idempotent(serve_instance):
     serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_deployments()
-
-
-def test_checkpoint_isolation_namespace(serve_instance):
-    deployment_ns1 = """
-import ray
-from ray import serve
-
-ray.init(address="{}", namespace="ns1")
-
-serve.start(detached=True)
-
-@serve.deployment
-class A:
-    pass
-
-A.deploy()""".format(ray.worker._global_node._redis_address)
-    run_string_as_driver(deployment_ns1)
-
-    deployment_ns2 = """
-import ray
-from ray import serve
-
-ray.init(address="{}", namespace="ns2")
-
-serve.start(detached=True)
-
-@serve.deployment
-class A:
-    pass
-
-A.deploy()""".format(ray.worker._global_node._redis_address)
-    run_string_as_driver(deployment_ns2)
 
 
 if __name__ == "__main__":
