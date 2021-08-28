@@ -7,27 +7,22 @@ pendulum-sac-fake-gpus:
     config:
         # Works for both torch and tf.
         framework: tf
-        horizon: 200
-        soft_horizon: true
         Q_model:
           fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
+          fcnet_hiddens: [64, 64]
         policy_model:
           fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
+          fcnet_hiddens: [64, 64]
         tau: 0.005
         target_entropy: auto
         initial_alpha: 0.001
-        no_done_at_end: true
         n_step: 3
         rollout_fragment_length: 1
         prioritized_replay: true
-        target_network_update_freq: 1
+        target_network_update_freq: 0
         timesteps_per_iteration: 1000
         learning_starts: 256
         num_workers: 0
-        clip_actions: false
-        normalize_actions: true
         metrics_smoothing_episodes: 5
 
         # Double batch size (2 GPUs).

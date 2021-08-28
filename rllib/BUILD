@@ -162,7 +162,7 @@ py_test(
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-appo-fake-gpus.yaml"],
+    data = ["tuned_examples/ppo/cartpole-appo-vtrace-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
@@ -172,7 +172,7 @@ py_test(
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-appo-fake-gpus.yaml"],
+    data = ["tuned_examples/ppo/cartpole-appo-vtrace-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
