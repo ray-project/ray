@@ -74,7 +74,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except KeyNotFoundError:
+            except Exception:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
