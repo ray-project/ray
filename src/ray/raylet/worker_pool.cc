@@ -1081,9 +1081,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t bac
   }
   // Some existing workers may be holding less than 1 CPU each, so we should
   // start as many workers as needed to fill up the remaining CPUs.
-  // We add 1 to the backlog size because we need a worker to fulfill the
-  // current request, as well as workers to serve the requests in the backlog.
-  auto desired_usable_workers = std::min<int64_t>(num_available_cpus, backlog_size + 1);
+  auto desired_usable_workers = std::min<int64_t>(num_available_cpus, backlog_size);
   if (num_usable_workers < desired_usable_workers) {
     // Account for workers that are idle or already starting.
     int64_t num_needed = desired_usable_workers - num_usable_workers;

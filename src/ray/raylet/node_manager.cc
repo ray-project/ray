@@ -1549,7 +1549,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   auto backlog_size = -1;
   if (RayConfig::instance().report_worker_backlog()) {
-    backlog_size = request.backlog_size();
+    // We add 1 to the backlog size because we need a worker to fulfill the
+    // current request, as well as workers to serve the requests in the
+    // backlog.
+    backlog_size = request.backlog_size() + 1;
   }
   RayTask task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();

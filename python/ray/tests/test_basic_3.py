@@ -237,9 +237,7 @@ def test_worker_startup_count(ray_start_cluster):
     cluster.add_node(
         num_cpus=4,
         _system_config={
-            "event_stats_print_interval_ms": 100,
             "debug_dump_period_milliseconds": 100,
-            "event_stats": True
         })
     ray.init(address=cluster.address)
 
@@ -276,6 +274,11 @@ def test_worker_startup_count(ray_start_cluster):
     wait_for_condition(lambda: get_num_workers() == 16)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
+
+    # Debug.
+    with open(debug_state_path) as f:
+        for line in f.readlines():
+            print(line)
 
     # Check that no more workers started for a while.
     for i in range(100):
