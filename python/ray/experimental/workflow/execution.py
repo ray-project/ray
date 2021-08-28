@@ -38,7 +38,18 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
-        commit_step(ws, "", entry_workflow, None)
+        try:
+            ws.get_entrypoint_step_id()
+            wf_exists = True
+        except:
+            wf_exists = False
+        # We only commit for
+        #  - virtual actor tasks: it's dynamic tasks, so we always add
+        #  - it's a new workflow
+        # TODO (yic): follow up with force rerun
+        if entry_workflow.data.step_type == StepType.FUNCTION and not wf_exists or \
+           entry_workflow.data.step_type != StepType.FUNCTION:
+            commit_step(ws, "", entry_workflow, None)
         workflow_manager = get_or_create_management_actor()
         ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
         # NOTE: It is important to 'ray.get' the returned output. This

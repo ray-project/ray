@@ -278,13 +278,6 @@ class Workflow:
                 workflow. If not specified, a random id will be generated.
         """
         # TODO(suquark): avoid cyclic importing
-        from ray.experimental.workflow.execution import run, resume
+        from ray.experimental.workflow.execution import run
         self._step_id = None
-        # TODO (yic): Follow up about start from beginning feature
-        from_begin = False
-        if workflow_id is not None and not from_begin:
-            try:
-                return resume(workflow_id)
-            except ValueError:
-                return run(self, workflow_id)
         return run(self, workflow_id)
