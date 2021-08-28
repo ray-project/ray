@@ -440,8 +440,7 @@ class WorkflowStorage:
     def _put_object_ref(self, obj_ref: ObjectRef,
                         upload_tasks: List[ObjectRef]) -> str:
         @ray.remote
-        def put_helper(loc: str, obj: Any,
-                       wf_storage: WorkflowStorage) -> str:
+        def put_helper(loc: str, obj: Any, wf_storage: WorkflowStorage) -> str:
             asyncio.get_event_loop().run_until_complete(
                 wf_storage._put(loc, obj))
 
@@ -462,15 +461,22 @@ class WorkflowStorage:
             if not is_json:
                 # Setup our custom serializer.
                 output_buffer = io.BytesIO()
+
                 # Cloudpickle doesn't support private dispatch tables, so we
                 # extend the cloudpickler instead to avoid changing
                 # cloudpickle's global dispatch table which is shared with
                 # `ray.put`
                 class ObjectRefPickler(cloudpickle.CloudPickler):
-                    _object_ref_reducer = {ray.ObjectRef: lambda ref: self._put_object_ref(ref, upload_tasks)}
+                    _object_ref_reducer = {
+                        ray.ObjectRef: lambda ref: self._put_object_ref(
+                            ref, upload_tasks)
+                    }
                     # _object_ref_reducer = {}
-                    dispatch_table = ChainMap(_object_ref_reducer, cloudpickle.CloudPickler.dispatch_table)
+                    dispatch_table = ChainMap(
+                        _object_ref_reducer,
+                        cloudpickle.CloudPickler.dispatch_table)
                     dispatch = dispatch_table
+
                 pickler = ObjectRefPickler(output_buffer)
                 pickler.dump(data)
                 output_buffer.seek(0)
