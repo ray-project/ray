@@ -466,7 +466,7 @@ class BackendExecutor:
 
     def _restart(self):
         self.worker_group.shutdown()
-        if hasattr(self, "_initiaization_hook"):
+        if hasattr(self, "_initialization_hook"):
             initialization_hook = self._initialization_hook
         else:
             initialization_hook = None

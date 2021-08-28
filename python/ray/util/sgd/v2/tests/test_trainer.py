@@ -696,13 +696,14 @@ def test_max_failures(ray_start_2_cpus):
     assert iterator._executor._num_failures == 3
 
 
-def test_start_max_failure(ray_start_2_cpus):
+def test_start_max_failures(ray_start_2_cpus):
     test_config = TestConfig()
 
     trainer = Trainer(test_config, num_workers=2)
 
     def init_hook_fail():
-        ray.actor.exit_actor()
+        import sys
+        sys.exit(0)
 
     with pytest.raises(RuntimeError):
         trainer.start(initialization_hook=init_hook_fail)
