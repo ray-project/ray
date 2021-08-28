@@ -366,6 +366,9 @@ class StandardAutoscaler:
             self.update_worker_list()
 
     def update_nodes(self):
+        """Run NodeUpdaterThreads to run setup commands, sync files,
+        and/or start Ray.
+        """
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
         # problems. They should at a minimum be spawned as daemon threads.
@@ -387,7 +390,8 @@ class StandardAutoscaler:
             t.join()
 
     def process_completed_updates(self):
-        # Process any completed updates
+        """Clean up completed NodeUpdaterThreads.
+        """
         completed_nodes = []
         for node_id, updater in self.updaters.items():
             if not updater.is_alive():
@@ -435,6 +439,9 @@ class StandardAutoscaler:
                 self.terminate_scheduled_nodes()
 
     def set_prometheus_updater_data(self):
+        """Record total number of active NodeUpdaterThreads and how many of
+        these are being run to recover nodes.
+        """
         self.prom_metrics.updating_nodes.set(len(self.updaters))
         num_recovering = 0
         for updater in self.updaters.values():
@@ -741,10 +748,8 @@ class StandardAutoscaler:
         return False
 
     def terminate_unhealthy_nodes(self, now: float):
-        """Determine nodes for which we haven't received a heartbeat on time.
+        """Terminated nodes for which we haven't received a heartbeat on time.
         These nodes are subsequently terminated.
-
-        Used when node updaters are not available for recovery.
         """
         for node_id in self.workers:
             node_status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
