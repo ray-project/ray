@@ -479,8 +479,8 @@ class BackendExecutor:
                                f"{self._num_failures} "
                                "attempts. You can change the number of max "
                                "failure attempts by setting the "
-                               "SGD_MAX_FAILURE_RETRIES environment "
-                               "variable. ") from None
+                               "`max_retries` arg in your `Trainer`.") \
+                from None
 
 
 class Backend(metaclass=abc.ABCMeta):
