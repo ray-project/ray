@@ -218,7 +218,7 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
-        self.terminate_nodes_to_enforce_constraints(now)
+        self.terminate_nodes_to_enforce_config_constraints(now)
 
         self.launch_required_nodes()
 
@@ -233,15 +233,15 @@ class StandardAutoscaler:
         logger.info(self.info_string())
         legacy_log_info_string(self, self.workers)
 
-    def terminate_nodes_to_enforce_constraints(self, now: float):
+    def terminate_nodes_to_enforce_config_constraints(self, now: float):
         """Terminates nodes to enforce constraints defined by the autoscaling
         config.
 
-        (1) Terminates nodes in excess of max_workers.
-        (2) Terminates nodes idle for longer than idle_timeout_minutes.
+        (1) Terminates nodes in excess of `max_workers`.
+        (2) Terminates nodes idle for longer than `idle_timeout_minutes`.
         (3) Terminates outdated nodes,
-                namely nodes whose configs don't match the NodeConfig in the
-                autoscaling config.
+                namely nodes whose configs don't match `node_config` for the
+                relevant node type.
 
         Avoids terminating non-outdated nodes required by
         autoscaler.sdk.request_resources().
