@@ -376,7 +376,8 @@ service CoreWorkerService {
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
-  // Update the batched object location information to the ownership-based object directory.
+  // Update the batched object location information to the ownership-based object
+  // directory.
   rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
       returns (UpdateObjectLocationBatchReply);
   // Get object locations from the ownership-based object directory.

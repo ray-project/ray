@@ -2678,7 +2678,8 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     }
   }
 
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(Status::OK(), /*success_callback_on_reply*/ nullptr,
+                      /*failure_callback_on_reply*/ nullptr);
 }
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,

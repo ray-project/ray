@@ -164,13 +164,11 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   request.set_node_id(node_id.Binary());
   auto object_state_buffers_it = object_state_buffers.begin();
   auto batch_size = 0;
-  std::vector<ObjectID> batched_object_ids;
   while (object_state_buffers_it != object_state_buffers.end() &&
          batch_size < max_object_report_batch_size_) {
     const auto &object_id = object_state_buffers_it->first;
     const auto &object_state = object_state_buffers_it->second;
 
-    batched_object_ids.emplace_back(object_id);
     auto state = request.add_object_location_states();
     state->set_object_id(object_id.Binary());
     state->set_state(object_state);
@@ -186,8 +184,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   in_flight_requests_.emplace(worker_id);
   auto owner_client = GetClient(owner_address);
   owner_client->UpdateObjectLocationBatch(
-      request, [this, worker_id, node_id, owner_address,
-                batched_object_ids = std::move(batched_object_ids)](
+      request, [this, worker_id, node_id, owner_address](
                    Status status, const rpc::UpdateObjectLocationBatchReply &reply) {
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
@@ -196,16 +193,15 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
         // TODO(sang): Handle network failures.
         if (!status.ok()) {
           // Currently we consider the owner is dead if the network is failed.
-          // Clean up the medata.
+          // Clean up the metadata. No need to mark objects as failed because
+          // that's only needed for the object pulling path (and this RPC is not on
+          // pulling path).
           RAY_LOG(DEBUG) << "Owner " << worker_id << " failed to update locations for "
                          << node_id << ". The owner is most likely dead. Status: "
                          << status.ToString();
           auto it = location_buffers_.find(worker_id);
           if (it != location_buffers_.end()) {
             location_buffers_.erase(it);
-          }
-          for (const auto &object_id : batched_object_ids) {
-            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
           }
           owner_client_pool_->Disconnect(worker_id);
           return;
