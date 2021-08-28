@@ -137,7 +137,7 @@ def test_large_object():
     assert big_obj[-1] == 0
 
 
-def run(num_tasks):
+def run():
     ray.init(address="auto")
 
     args_start = perf_counter()

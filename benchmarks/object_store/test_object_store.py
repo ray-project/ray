@@ -12,7 +12,7 @@ NUM_NODES = 50
 OBJECT_SIZE = 2**30
 
 
-def run(num_tasks):
+def run():
     def num_alive_nodes():
         n = 0
         for node in ray.nodes():

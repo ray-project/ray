@@ -62,7 +62,7 @@ def no_resource_leaks():
     return ray.available_resources() == ray.cluster_resources()
 
 
-def run(num_tasks):
+def run():
     ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
