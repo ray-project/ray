@@ -90,6 +90,9 @@ def hash(obj: Any) -> bytes:
     # Cloudpickle doesn't isn't always stable, so for some objects (i.e.
     # functions) this could produce inconsistent results.
     m = hashlib.sha256()
+    # TODO (Alex): We should handle the nested ObjectRef case. This naive
+    # cloudpickle.dumps will return different a different hash when run on the
+    # recovered version of an object.
     m.update(cloudpickle.dumps(obj))
     return m.digest()
 

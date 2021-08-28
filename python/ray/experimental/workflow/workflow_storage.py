@@ -436,7 +436,7 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    def _put_object_ref(self, obj_ref: ObjectRef) -> str:
+    def _put_object_ref(self, obj_ref: ObjectRef, upload_tasks: List[ObjectRef]) -> str:
         @ray.remote
         def put_helper(identifier: str, obj: Any,
                        wf_storage: WorkflowStorage) -> str:
@@ -444,16 +444,18 @@ class WorkflowStorage:
             loc = asyncio.get_event_loop().run_until_complete(
                 wf_storage._put(key, obj))
 
-            return _load_object_ref, (loc, self._storage)
-
+        # TODO (Alex): Ideally we could parallelize these hash calculations,
+        # but we need the result before we can return from this reducer.
         identifier = calculate_identifiers([obj_ref]).pop()
         # TODO (Alex): We should dedupe these puts with the global coordinator.
-        result = ray.get(put_helper.remote(identifier, obj_ref, self))
-        return result
+        task = put_helper.remote(identifier, obj_ref, self)
+        upload_tasks.append(task)
+        return _load_object_ref, (loc, self._storage)
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
         try:
+            upload_tasks: List[ObjectRef] = []
             if not is_json:
                 # Setup our custom serializer.
                 output_buffer = io.BytesIO()
@@ -464,7 +466,7 @@ class WorkflowStorage:
                 # to explicitely make dispatch_table an instance variable.
                 pickler.dispatch_table = pickler.dispatch_table.copy()
                 pickler.dispatch_table[
-                    ray.ObjectRef] = lambda ref: self._put_object_ref(ref)
+                    ray.ObjectRef] = lambda ref: self._put_object_ref(ref, upload_tasks)
                 pickler.dump(data)
                 output_buffer.seek(0)
                 value = output_buffer.read()
@@ -474,6 +476,12 @@ class WorkflowStorage:
             key = self._storage.make_key(*paths)
 
             await self._storage.put(key, value, is_json=is_json)
+            # The serializer only kicks off the upload tasks, and returns
+            # the location they will be uploaded to in order to allow those
+            # uploads to be parallelized. We should wait for those uploads
+            # to be finished before we consider the object fully
+            # serialized.
+            ray.get(upload_tasks)
         except Exception as e:
             raise DataSaveError from e
 
