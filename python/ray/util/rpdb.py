@@ -281,17 +281,16 @@ def _driver_breakpointhook():
     This disables Ray driver logs temporarily so that the PDB console is not
     spammed: https://github.com/ray-project/ray/issues/18172
     """
-    if "PYTHONBREAKPOINT" not in os.environ:
-        print("*** Temporarily disabling Ray worker logs ***")
-        ray.worker._worker_logs_enabled = False
+    print("*** Temporarily disabling Ray worker logs ***")
+    ray.worker._worker_logs_enabled = False
 
-        def enable_logging():
-            print("*** Re-enabling Ray worker logs ***")
-            ray.worker._worker_logs_enabled = True
+    def enable_logging():
+        print("*** Re-enabling Ray worker logs ***")
+        ray.worker._worker_logs_enabled = True
 
-        pdb = PdbWrap(enable_logging)
-        frame = sys._getframe().f_back
-        pdb.set_trace(frame)
+    pdb = PdbWrap(enable_logging)
+    frame = sys._getframe().f_back
+    pdb.set_trace(frame)
 
 
 def post_mortem():
