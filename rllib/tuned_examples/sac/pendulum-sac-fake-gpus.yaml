@@ -25,16 +25,17 @@ pendulum-sac-fake-gpus:
         target_network_update_freq: 1
         timesteps_per_iteration: 1000
         learning_starts: 256
-        optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
         num_workers: 0
         clip_actions: false
         normalize_actions: true
         metrics_smoothing_episodes: 5
 
+        # Double batch size (2 GPUs).
         train_batch_size: 512
+        optimization:
+          actor_learning_rate: 0.0005
+          critic_learning_rate: 0.0005
+          entropy_learning_rate: 0.0005
 
         # Fake 2 GPUs.
         num_gpus: 2
