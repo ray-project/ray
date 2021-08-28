@@ -246,8 +246,6 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
-            from_begin: By default it's False. Set it to be True to re-run the
-                workflow from beginning
         """
         return ray.get(self.run_async(workflow_id))
 
