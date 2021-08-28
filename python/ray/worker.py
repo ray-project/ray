@@ -1375,9 +1375,9 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
-    elif "PYTHONBREAKPOINT" not in os.environ:
-        # Add hook to suppress driver logs, if possible.
-        sys.breakpointhook = ray.util.rpdb._driver_breakpointhook
+    else:
+        # Add hook to suppress worker logs during breakpoint.
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb._driver_set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 
