@@ -176,7 +176,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     print(f"adding new opponents to the mix ({new_pol_id}).")
 
                 # Update our mapping function accordingly.
-                def policy_mapping_fn(agent_id, episode, **kwargs):
+                def policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
                     # Pick, whether this is ...
                     type_ = np.random.choice([1, 2])
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     register_env("open_spiel_env",
                  lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # At first, only have main play against the random main exploiter.
         return "main" if episode.episode_id % 2 == agent_id \
             else "main_exploiter_0"

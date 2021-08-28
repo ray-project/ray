@@ -68,7 +68,7 @@ if __name__ == "__main__":
                        DQNTFPolicy, obs_space, act_space, {}),
     }
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

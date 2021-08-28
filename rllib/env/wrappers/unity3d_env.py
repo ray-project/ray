@@ -313,7 +313,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces["Striker"], {}),
             }
 
-            def policy_mapping_fn(agent_id, episode, **kwargs):
+            def policy_mapping_fn(agent_id, episode, worker, **kwargs):
                 return "Striker" if "Striker" in agent_id else "Goalie"
 
         else:
@@ -322,7 +322,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces[game_name], {}),
             }
 
-            def policy_mapping_fn(agent_id, episode, **kwargs):
+            def policy_mapping_fn(agent_id, episode, worker, **kwargs):
                 return game_name
 
         return policies, policy_mapping_fn

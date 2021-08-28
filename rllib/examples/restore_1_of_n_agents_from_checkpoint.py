@@ -72,7 +72,7 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         pol_id = random.choice(policy_ids)
         return pol_id
 
