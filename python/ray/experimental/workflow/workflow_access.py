@@ -324,11 +324,15 @@ class WorkflowManagementActor:
                 return wf_store.load_step_output(step_id)
             if isinstance(result.output_step_id, str):
                 actor = get_management_actor()
-                return actor.get_output.remote(workflow_id, result.output_step_id)
-            raise ValueError(f"No such step id {step_id} in workflow {workflow_id}")
+                return actor.get_output.remote(workflow_id,
+                                               result.output_step_id)
+            raise ValueError(
+                f"No such step id {step_id} in workflow {workflow_id}")
 
         return ray.put(
-            _SelfDereferenceObject(None, load.remote(wf_store, workflow_id, step_id)))
+            _SelfDereferenceObject(None,
+                                   load.remote(wf_store, workflow_id,
+                                               step_id)))
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

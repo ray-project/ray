@@ -166,7 +166,7 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     # run_async. So there is a race condition here.
     try:
         v = ray.get(inner)
-    except:
+    except Exception:
         v = None
     if v is not None:
         assert 2 == 20
