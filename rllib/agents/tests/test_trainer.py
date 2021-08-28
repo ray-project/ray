@@ -57,7 +57,7 @@ class TestTrainer(unittest.TestCase):
             "multiagent": {
                 # Start with a single policy.
                 "policies": {"p0"},
-                "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
                 # And only two policies that can be stored in memory at a
                 # time.
                 "policy_map_capacity": 2,
@@ -71,7 +71,7 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("p0" in r["info"]["learner"])
             for i in range(1, 3):
 
-                def new_mapping_fn(agent_id, episode, **kwargs):
+                def new_mapping_fn(agent_id, episode, worker, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
                 # Add a new policy.
@@ -109,6 +109,8 @@ class TestTrainer(unittest.TestCase):
             for i in range(2, 0, -1):
                 trainer.remove_policy(
                     f"p{i}",
+                    # Note that the complete signature of a policy_mapping_fn
+                    # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
                     policies_to_train=[f"p{i - 1}"])
 

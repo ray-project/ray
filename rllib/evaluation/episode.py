@@ -13,6 +13,7 @@ from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
 from ray.util import log_once
 
 if TYPE_CHECKING:
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
     from ray.rllib.evaluation.sample_batch_builder import \
         MultiAgentSampleBatchBuilder
 
@@ -79,8 +80,9 @@ class MultiAgentEpisode:
         self.media: Dict[str, Any] = {}
         self.policy_map: PolicyMap = policies
         self._policies = self.policy_map  # backward compatibility
-        self.policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
-                                         PolicyID] = policy_mapping_fn
+        self.policy_mapping_fn: Callable[[
+            AgentID, "MultiAgentEpisode", "RolloutWorker"
+        ], PolicyID] = policy_mapping_fn
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
