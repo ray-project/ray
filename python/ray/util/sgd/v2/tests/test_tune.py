@@ -145,7 +145,16 @@ def test_tune_checkpoint(ray_start_2_cpus):
 
 def test_tune_checkpoint_frequent(ray_start_2_cpus):
     def train_func():
-        pass
+        for i in range(2):
+            for _ in range(2):
+                sgd.save_checkpoint(hello="world")
+            sgd.report(test=i)
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    [trial] = tune.run(TestTrainable).trials
+
 
 def test_tune_checkpoint_infrequent(ray_start_2_cpus):
     def train_func():
