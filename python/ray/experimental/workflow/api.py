@@ -97,6 +97,7 @@ def step(*args, **kwargs):
 
 class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
+
     The class that is based on must have the "__getstate__" and
      "__setstate__" method.
 
@@ -178,23 +179,28 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     return execution.resume(workflow_id)
 
 
-def get_output(workflow_id: str) -> ray.ObjectRef:
+def get_output(workflow_id: str, *,
+               name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
-        workflow_id: The ID of the running workflow job.
+        workflow_id(str): The ID of the running workflow job.
+        name(Optional[str]): If set, fetch the specific step instead of
+            the output of the workflow.
 
     Examples:
-        >>> trip = start_trip.step()
+        >>> trip = start_trip.options(name="trip").step()
         >>> res1 = trip.async_run(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
+        >>> step_output = workflow.get_output("trip1", "trip")
+        >>> assert ray.get(step_output) == ray.get(res1)
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    return execution.get_output(workflow_id)
+    return execution.get_output(workflow_id, name)
 
 
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[

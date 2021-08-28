@@ -71,6 +71,7 @@ class DefaultCallbacks:
                         *,
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
@@ -80,6 +81,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
+            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
+                to policy objects. In single agent mode there will only be a
+                single "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -109,8 +113,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
-            policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
+                objects. In single agent mode there will only be a single
+                "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -144,7 +149,7 @@ class DefaultCallbacks:
             agent_id (str): Id of the current agent.
             policy_id (str): Id of the current policy for the agent.
             policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+                agent mode there will only be a single "default_policy".
             postprocessed_batch (SampleBatch): The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
@@ -319,6 +324,7 @@ class MultiCallbacks(DefaultCallbacks):
                         *,
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
@@ -326,6 +332,7 @@ class MultiCallbacks(DefaultCallbacks):
             callback.on_episode_step(
                 worker=worker,
                 base_env=base_env,
+                policies=policies,
                 episode=episode,
                 env_index=env_index,
                 **kwargs)

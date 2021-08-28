@@ -1,6 +1,6 @@
-# Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 from pathlib import Path
 
+# Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"

@@ -287,6 +287,18 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -300,7 +312,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
@@ -341,7 +353,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst

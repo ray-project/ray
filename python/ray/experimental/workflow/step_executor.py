@@ -162,21 +162,21 @@ def execute_workflow(
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-
-    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.id, WorkflowStatus.RUNNING)
-
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.id,
+            workflow_context.get_workflow_step_context(), workflow.step_id,
             baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
             workflow_data.max_retries, last_step_of_workflow)
 
     if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
+
+    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -250,13 +250,20 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             else:
                 retry_msg = "The step will be retried."
             logger.error(
-                f"{workflow_context.get_step_name()} failed with error message"
+                f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")
             exception = e
 
     if catch_exceptions:
         if step_type == StepType.FUNCTION:
-            persisted_output, volatile_output = (result, exception), None
+            if isinstance(result, Workflow):
+                # When it returns a nested workflow, catch_exception
+                # should be passed recursively.
+                assert exception is None
+                result.data.catch_exceptions = True
+                persisted_output, volatile_output = result, None
+            else:
+                persisted_output, volatile_output = (result, exception), None
         elif step_type == StepType.ACTOR_METHOD:
             # virtual actors do not persist exception
             persisted_output, volatile_output = result[0], (result[1],
@@ -378,9 +385,11 @@ class _BakedWorkflowInputs:
                                       self.object_refs, self.workflow_refs)
 
 
-def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
+def _record_step_status(step_id: "StepID",
+                        status: "WorkflowStatus",
+                        outputs: List["ObjectRef"] = []) -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = get_management_actor()
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
-                                                   status))
+                                                   status, outputs))
