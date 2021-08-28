@@ -143,6 +143,54 @@ def test_tune_checkpoint(ray_start_2_cpus):
     assert os.path.exists(os.path.join(trial.checkpoint.value,
                                        TUNE_CHECKPOINT_FILE_NAME))
 
+def test_reuse_checkpoint(ray_start_2_cpus):
+    def train_func(config):
+        itr = 0
+        ckpt = sgd.load_checkpoint()
+        if ckpt is not None:
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, config["max_iter"]):
+            sgd.report(test=i, training_iteration=i)
+            sgd.save_checkpoint(iter=i)
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
+    last_ckpt = trial.checkpoint.value
+    assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
+    analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 5
+
+def test_retry(ray_start_2_cpus):
+    def train_func():
+        ckpt = sgd.load_checkpoint()
+        restored = bool(ckpt)  # Does a previous checkpoint exist?
+        itr = 0
+        if ckpt:
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, 10):
+            if i == 5 and not restored:
+                raise Exception("try to fail me")
+            sgd.save_checkpoint(iter=i)
+            sgd.report(test=i, training_iteration=i)
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    analysis = tune.run(TestTrainable, max_failures=3)
+    last_ckpt = analysis.trials[0].checkpoint.value
+    assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 10
+
+
+
+
+
 def test_tune_checkpoint_frequent(ray_start_2_cpus):
     def train_func():
         for i in range(2):
@@ -154,6 +202,7 @@ def test_tune_checkpoint_frequent(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
+
 
 
 def test_tune_checkpoint_infrequent(ray_start_2_cpus):

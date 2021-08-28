@@ -457,7 +457,6 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
     This function populates class attributes and methods.
     """
 
-    # TODO(amog): Implement checkpointing for Tune.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
             backend=backend,
@@ -471,6 +470,8 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
         else:
             checkpoint_path = None
+
+        print("Checkpoint path---------------- ", checkpoint_path)
 
         iterator = trainer.run_iterator(train_func, config, checkpoint=checkpoint_path)
 
