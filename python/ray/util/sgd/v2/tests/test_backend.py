@@ -10,7 +10,7 @@ from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
-from ray.util.sgd.v2.backends.backend import BackendInterface, \
+from ray.util.sgd.v2.backends.backend import Backend, \
     InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 
 
@@ -39,7 +39,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 

@@ -9,7 +9,7 @@ import tensorflow as tf
 import torch
 
 from ray.util.sgd.v2 import Trainer, TorchConfig
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
@@ -52,7 +52,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 

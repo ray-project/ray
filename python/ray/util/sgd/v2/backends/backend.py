@@ -111,6 +111,7 @@ class BackendExecutor:
                                         self._num_gpus_per_worker)
         try:
             if initialization_hook:
+                self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError:
@@ -459,12 +460,11 @@ class BackendExecutor:
                                f"{self._num_failures} "
                                "attempts.")
         self.worker_group.shutdown()
-        self.worker_group.start()
-        try:
-            self._backend.on_start(self.worker_group, self._backend_config)
-        except RayActorError:
-            self._num_failures += 1
-            self._restart()
+        if hasattr(self, "_initiaization_hook"):
+            initialization_hook = self._initialization_hook
+        else:
+            initialization_hook = None
+        self.start(initialization_hook=initialization_hook)
 
 
 class Backend(metaclass=abc.ABCMeta):
