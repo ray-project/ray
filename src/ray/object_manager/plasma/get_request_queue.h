@@ -22,10 +22,10 @@
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(instrumented_io_context &io_context,
-             const std::shared_ptr<ClientInterface> &client,
-             const std::vector<ObjectID> &object_ids, bool is_from_worker,
-             std::function<void(const std::shared_ptr<GetRequest> &get_req)> &callback);
+  GetRequest(
+      instrumented_io_context &io_context, const std::shared_ptr<ClientInterface> &client,
+      const std::vector<ObjectID> &object_ids, bool is_from_worker,
+      std::function<void(const std::shared_ptr<GetRequest> &get_request)> &callback);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -43,7 +43,7 @@ struct GetRequest {
   /// of total objects that are consumed by core worker.
   bool is_from_worker;
 
-  std::function<void(const std::shared_ptr<GetRequest> &get_req)> callback;
+  std::function<void(const std::shared_ptr<GetRequest> &get_request)> callback;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout) {
@@ -79,7 +79,7 @@ struct GetRequest {
 class GetRequestQueue {
  public:
   using ObjectReadyCallback =
-      std::function<void(const std::shared_ptr<GetRequest> &get_req)>;
+      std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
 
   GetRequestQueue(instrumented_io_context &io_context,
                   IObjectLifecycleManager &object_lifecycle_mgr)
@@ -103,6 +103,8 @@ class GetRequestQueue {
 
   /// Only for tests.
   bool IsGetRequestExist(const ObjectID &object_id);
+
+  void CallGetRequestCallback(const std::shared_ptr<GetRequest> &get_request);
 
   instrumented_io_context &io_context_;
 
