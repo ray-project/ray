@@ -333,6 +333,34 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
     assert {str(i) for i in range(5)} == set(record.read_text().split())
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
+    @workflow.virtual_actor
+    class Counter:
+        def incr(self, n):
+            self.n += 1
+            if n > 0:
+                return self.incr.step(n - 1)
+        @workflow.virtual_actor.readonly
+        def get(self):
+            return self.n
+        def __getstate__(self):
+            return self.n
+        def __setstate__(self, n):
+            self.n = n
+
+    c = Counter.get_or_create("c1")
+    c.incr.run_async(10)
+    c.incr.run_async(10)
+    assert c.get.run() == 20
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
