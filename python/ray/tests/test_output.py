@@ -33,6 +33,39 @@ ray.get(foo.remote("abc", "def"))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_disable_driver_logs_breakpoint():
+    script = """
+import time
+import os
+import ray
+import threading
+
+@ray.remote
+def f():
+    while True:
+        time.sleep(1)
+        print("hello there")
+
+def kill():
+    time.sleep(5)
+    os._exit(0)
+
+t = threading.Thread(target=kill)
+t.start()
+x = f.remote()
+time.sleep(2)  # Enough time to print one hello.
+breakpoint()  # This should disable worker logs.
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    num_hello = out_str.count("hello")
+    assert num_hello >= 1, num_hello
+    assert num_hello < 3, num_hello
+    # TODO(ekl) nice to test resuming logs too, but it's quite complicated
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multi_stdout():
     script = """
 import ray

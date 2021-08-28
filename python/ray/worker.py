@@ -1117,7 +1117,14 @@ def time_string() -> str:
     return output
 
 
+# When we enter a breakpoint, worker logs are automatically disabled via this.
+_worker_logs_enabled = True
+
+
 def print_worker_logs(data: Dict[str, str], print_file: Any):
+    if not _worker_logs_enabled:
+        return
+
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
@@ -1368,6 +1375,8 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    else:
+        sys.breakpointhook = ray.util.rpdb._driver_breakpointhook
 
     worker.ray_debugger_external = ray_debugger_external
 
