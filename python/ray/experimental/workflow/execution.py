@@ -49,7 +49,7 @@ def run(entry_workflow: Workflow,
         #  - virtual actor tasks: it's dynamic tasks, so we always add
         #  - it's a new workflow
         # TODO (yic): follow up with force rerun
-        if (entry_workflow.data.step_type == StepType.FUNCTION and \
+        if (entry_workflow.data.step_type == StepType.FUNCTION and
             not wf_exists) or \
            entry_workflow.data.step_type != StepType.FUNCTION:
             commit_step(ws, "", entry_workflow, None)
