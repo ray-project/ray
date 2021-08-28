@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple
+from typing import Callable, Any, Optional, Dict, List, Set, FrozenSet, Tuple
 import copy
 import logging
 import math
@@ -207,7 +207,7 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        nodes = self.workers()
+        self.update_worker_list()
 
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
@@ -223,7 +223,8 @@ class StandardAutoscaler:
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
-        sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
+        sorted_node_ids = self._sort_based_on_last_used(self.workers,
+                                                        last_used)
 
         # Don't terminate nodes needed by request_resources()
         nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
@@ -238,20 +239,6 @@ class StandardAutoscaler:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
 
-        def schedule_node_termination(node_id: NodeID,
-                                      reason_opt: Optional[str]) -> None:
-            if reason_opt is None:
-                raise Exception("reason should be not None.")
-            reason: str = reason_opt
-            # Log, record an event, and add node_id to nodes_to_terminate.
-            logger.info("StandardAutoscaler: "
-                        "{}: Terminating {} node.".format(node_id, reason))
-            self.event_summarizer.add(
-                "Removing {} nodes of type " + self._get_node_type(node_id) +
-                " ({}).".format(reason),
-                quantity=1,
-                aggregate=operator.add)
-            nodes_to_terminate.append(node_id)
 
         # Nodes that we could terminate, if needed.
         nodes_we_could_terminate: List[NodeID] = []
@@ -263,7 +250,7 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
-                schedule_node_termination(node_id, reason)
+                self.schedule_node_termination(node_id, reason)
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
@@ -273,16 +260,18 @@ class StandardAutoscaler:
 
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
-                schedule_node_termination(node_id, "idle")
+                self.schedule_node_termination(node_id, "idle", logger.info)
             elif not self.launch_config_ok(node_id):
-                schedule_node_termination(node_id, "outdated")
+                self.schedule_node_termination(node_id, "outdated",
+                                               logger.info)
             else:
                 keep_node(node_id)
                 nodes_we_could_terminate.append(node_id)
 
         # Terminate nodes if there are too many
         num_extra_nodes_to_terminate = (
-            len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
+            len(self.workers) - len(self.nodes_to_terminate)
+            - self.config["max_workers"])
 
         if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
             logger.warning(
@@ -299,25 +288,12 @@ class StandardAutoscaler:
             extra_nodes_to_terminate = nodes_we_could_terminate[
                 -num_extra_nodes_to_terminate:]
             for node_id in extra_nodes_to_terminate:
-                schedule_node_termination(node_id, "max workers")
+                self.schedule_node_termination(node_id, "max workers",
+                                               logger.info)
 
-        if nodes_to_terminate:
-            self._terminate_nodes_and_cleanup(nodes_to_terminate)
-            nodes = self.workers()
+        self.terminate_scheduled_nodes()
 
-        to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
-            self.provider.non_terminated_nodes(tag_filters={}),
-            self.pending_launches.breakdown(),
-            self.load_metrics.get_resource_demand_vector(),
-            self.load_metrics.get_resource_utilization(),
-            self.load_metrics.get_pending_placement_groups(),
-            self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
-        for node_type, count in to_launch.items():
-            self.launch_new_node(count, node_type=node_type)
-
-        if to_launch:
-            nodes = self.workers()
+        self.launch_required_nodes()
 
         # Process any completed updates
         completed_nodes = []
@@ -350,21 +326,21 @@ class StandardAutoscaler:
                 del self.updaters[node_id]
 
             if failed_nodes:
-                # Some nodes in failed_nodes may have been terminated
+                # Some nodes in failed_nodes may already have been terminated
                 # during an update (for being idle after missing a heartbeat).
-                # Only terminate currently non terminated nodes.
-                non_terminated_nodes = self.workers()
-                nodes_to_terminate: List[NodeID] = []
+
+                # Update the list of non-terminated workers.
+                self.update_worker_list()
                 for node_id in failed_nodes:
-                    if node_id in non_terminated_nodes:
-                        schedule_node_termination(node_id, "failed-launch")
+                    # Check if the node has already been terminated.
+                    if node_id in self.workers:
+                        self.schedule_node_termination(
+                            node_id, "failed-launch", logger.error)
                     else:
                         logger.warning(f"StandardAutoscaler: {node_id}:"
                                        " Failed to update node."
                                        " Node has already been terminated.")
-                if nodes_to_terminate:
-                    self._terminate_nodes_and_cleanup(nodes_to_terminate)
-                    nodes = self.workers()
+                self.terminate_scheduled_nodes()
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -372,7 +348,7 @@ class StandardAutoscaler:
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id, setup_commands, ray_start_commands, docker_config in (
-                self.should_update(node_id) for node_id in nodes):
+                self.should_update(node_id) for node_id in self.workers):
             if node_id is not None:
                 resources = self._node_resources(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
@@ -388,14 +364,9 @@ class StandardAutoscaler:
 
         if self.disable_node_updaters:
             # If updaters are unavailable, terminate unhealthy nodes.
-            nodes_to_terminate = self.get_unhealthy_nodes(nodes, now)
-            if nodes_to_terminate:
-                self._terminate_nodes_and_cleanup(nodes_to_terminate)
-                nodes = self.workers()
+            self.terminate_unhealthy_nodes(now)
         else:
-            # Attempt to recover unhealthy nodes
-            for node_id in nodes:
-                self.recover_if_needed(node_id, now)
+            self.attempt_to_recover_unhealthy_nodes(now)
 
         self.prom_metrics.updating_nodes.set(len(self.updaters))
         num_recovering = 0
@@ -404,14 +375,49 @@ class StandardAutoscaler:
                 num_recovering += 1
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
-        legacy_log_info_string(self, nodes)
+        legacy_log_info_string(self, self.workers)
 
-    def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
-        """Terminate specified nodes and clean associated autoscaler state."""
-        self.provider.terminate_nodes(nodes_to_terminate)
-        for node in nodes_to_terminate:
+    def schedule_node_termination(self, node_id: NodeID,
+                                  reason_opt: Optional[str],
+                                  logger_method: Callable) -> None:
+        if reason_opt is None:
+            raise Exception("reason should be not None.")
+        reason: str = reason_opt
+        # Log, record an event, and add node_id to nodes_to_terminate.
+        logger_method("StandardAutoscaler: "
+                      "{}: Terminating {} node.".format(node_id, reason))
+        self.event_summarizer.add(
+            "Removing {} nodes of type " + self._get_node_type(node_id) +
+            " ({}).".format(reason),
+            quantity=1,
+            aggregate=operator.add)
+        self.nodes_to_terminate.append(node_id)
+
+    def terminate_scheduled_nodes(self):
+        """Terminate scheduled nodes and clean associated autoscaler state."""
+        if not self.nodes_to_terminate:
+            return
+        self.provider.terminate_nodes(self.nodes_to_terminate)
+        for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
             self.prom_metrics.stopped_nodes.inc()
+
+        self.nodes_to_terminate = []
+        self.update_worker_list()
+
+    def launch_required_nodes(self):
+        to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
+            self.provider.non_terminated_nodes(tag_filters={}),
+            self.pending_launches.breakdown(),
+            self.load_metrics.get_resource_demand_vector(),
+            self.load_metrics.get_resource_utilization(),
+            self.load_metrics.get_pending_placement_groups(),
+            self.load_metrics.get_static_node_resources_by_ip(),
+            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
+        if to_launch:
+            for node_type, count in to_launch.items():
+                self.launch_new_node(count, node_type=node_type)
+            self.update_worker_list()
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -711,15 +717,13 @@ class StandardAutoscaler:
                 return True
         return False
 
-    def get_unhealthy_nodes(self, nodes: List[NodeID],
-                            now: float) -> List[NodeID]:
+    def terminate_unhealthy_nodes(self, now: float):
         """Determine nodes for which we haven't received a heartbeat on time.
         These nodes are subsequently terminated.
 
         Used when node updaters are not available for recovery.
         """
-        nodes_to_terminate = []
-        for node_id in nodes:
+        for node_id in self.workers:
             node_status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
             # We're not responsible for taking down
             # nodes with pending or failed status:
@@ -734,18 +738,13 @@ class StandardAutoscaler:
             # Heartbeat indicates node is healthy:
             if self.heartbeat_on_time(node_id, now):
                 continue
-            # Node is unhealthy, terminate:
-            logger.warning("StandardAutoscaler: "
-                           "{}: No recent heartbeat, "
-                           "terminating node.".format(node_id))
-            self.event_summarizer.add(
-                "Terminating {} nodes of type " + self._get_node_type(node_id)
-                + " (lost contact with raylet).",
-                quantity=1,
-                aggregate=operator.add)
-            nodes_to_terminate.append(node_id)
+            self.schedule_node_termination(node_id, "missed-heartbeat",
+                                           logger.warning)
+        self.terminate_scheduled_nodes()
 
-        return nodes_to_terminate
+    def attempt_to_recover_unhealthy_nodes(self, now):
+        for node_id in self.workers:
+            self.recover_if_needed(node_id, now)
 
     def recover_if_needed(self, node_id, now):
         if not self.can_update(node_id):
@@ -908,12 +907,11 @@ class StandardAutoscaler:
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
 
-    def workers(self):
-        nodes = self.provider.non_terminated_nodes(
+    def update_worker_list(self):
+        self.workers = self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         # Update running nodes gauge whenever we check workers
-        self.prom_metrics.running_workers.set(len(nodes))
-        return nodes
+        self.prom_metrics.running_workers.set(len(self.workers))
 
     def unmanaged_workers(self):
         return self.provider.non_terminated_nodes(
