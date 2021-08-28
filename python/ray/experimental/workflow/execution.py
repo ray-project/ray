@@ -38,11 +38,13 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
+
+        wf_exists = True
         try:
             ws.get_entrypoint_step_id()
-            wf_exists = True
-        except:
+        except Exception:
             wf_exists = False
+
         # We only commit for
         #  - virtual actor tasks: it's dynamic tasks, so we always add
         #  - it's a new workflow
