@@ -254,10 +254,6 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
 
     assert c.val.run() == 5
 
-    c.write.run(10)
-    assert "\n".join(
-        [str(i) for i in range(10)]) == (tmp_path / "record").read_text()
-
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
@@ -334,7 +330,7 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
 
     q = Q.get_or_create("queue")
     q.write_queue.run(5)
-    assert set(str(i) for i in range(5)) == set(record.read_text().split())
+    assert {str(i) for i in range(5)} == set(record.read_text().split())
 
 
 if __name__ == "__main__":
