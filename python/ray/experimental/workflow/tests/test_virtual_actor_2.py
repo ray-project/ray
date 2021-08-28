@@ -185,6 +185,7 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
         # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
+@pytest.mark.repeat(5)
 def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     file_lock = [str(tmp_path / str(i)) for i in range(5)]
     fail_flag = tmp_path / "fail"
@@ -252,6 +253,48 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
         assert val == i + 1
 
     assert c.val.run() == 5
+
+    c.write.run(10)
+    assert "\n".join(
+        [str(i) for i in range(10)]) == (tmp_path / "record").read_text()
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+@pytest.mark.skip(
+    reason="Return a list of virtual actor sub method is not supported.")
+def test_wf_in_actor_seq(workflow_start_regular, tmp_path):
+    record = tmp_path / "record"
+    record.touch()
+
+    @workflow.step
+    def join(*args):
+        return args
+
+    @workflow.virtual_actor
+    class Q:
+        def write(self, n):
+            r = record.read_text()
+            r += f"{n}\n"
+            record.write_text(r)
+
+        def write_queue(self, n):
+            return join.step(*[self.write.step(i) for i in range(n)])
+
+        def __getstate__(self):
+            return None
+
+        def __setstate__(self, v):
+            pass
+
+    q = Q.get_or_create("queue")
+    q.write_queue.run(5)
+    assert "\n".join([str(i) for i in range(5)]) == record.read_text()
 
 
 if __name__ == "__main__":

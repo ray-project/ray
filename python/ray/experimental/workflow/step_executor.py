@@ -318,8 +318,9 @@ def _workflow_step_executor(
 
     if step_type == StepType.READONLY_ACTOR_METHOD:
         if isinstance(volatile_output, Workflow):
-            raise TypeError("Returing a Workflow from readonly virtual actor "
-                            "is not allowed.")
+            raise TypeError(
+                "Returning a Workflow from a readonly virtual actor "
+                "is not allowed.")
         assert not isinstance(persisted_output, Workflow)
     else:
         store = workflow_storage.get_workflow_storage()
