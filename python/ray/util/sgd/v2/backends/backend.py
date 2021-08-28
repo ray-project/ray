@@ -10,7 +10,7 @@ from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    DEFAULT_RESULTS_DIR, MAX_FAILURE_RETRIES
+    DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, check_for_failure
@@ -53,6 +53,8 @@ class BackendExecutor:
         log_dir (Optional[str|Path]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
+        max_retries (Optional[int]): Number of retries when Ray actors fail.
+            Defaults to 3. Set to -1 for unlimited retries.
 
     Attributes:
         logdir (Path): Path to the file directory where logs will be
@@ -68,18 +70,23 @@ class BackendExecutor:
             checkpoint may not be saved to disk.
     """
 
-    def __init__(self,
-                 backend_config: BackendConfig,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0,
-                 log_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+            self,
+            backend_config: BackendConfig,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            log_dir: Optional[Union[str, Path]] = None,
+            max_retries: Optional[int] = 3,
+    ):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
-        self._max_failures = env_integer(MAX_FAILURE_RETRIES, 3)
+        self._max_failures = max_retries
+        if self._max_failures < 0:
+            self._max_failures = float("inf")
         self._num_failures = 0
 
         self.worker_group = InactiveWorkerGroup()
