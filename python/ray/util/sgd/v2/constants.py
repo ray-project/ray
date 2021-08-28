@@ -1,13 +1,12 @@
+from pathlib import Path
+
 try:
     TUNE_INSTALLED = True
     from ray import tune
 except ImportError:
     TUNE_INSTALLED = False
 
-
 # Autofilled sgd.report() metrics. Keys should be consistent with Tune.
-from pathlib import Path
-
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
