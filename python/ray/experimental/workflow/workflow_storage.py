@@ -4,6 +4,7 @@ workflows.
 """
 
 import asyncio
+from collections import ChainMap
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 import io
@@ -436,19 +437,21 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    def _put_object_ref(self, obj_ref: ObjectRef, upload_tasks: List[ObjectRef]) -> str:
+    def _put_object_ref(self, obj_ref: ObjectRef,
+                        upload_tasks: List[ObjectRef]) -> str:
         @ray.remote
-        def put_helper(identifier: str, obj: Any,
+        def put_helper(loc: str, obj: Any,
                        wf_storage: WorkflowStorage) -> str:
-            key = wf_storage._key_obj_id(identifier)
-            loc = asyncio.get_event_loop().run_until_complete(
-                wf_storage._put(key, obj))
+            asyncio.get_event_loop().run_until_complete(
+                wf_storage._put(loc, obj))
 
         # TODO (Alex): Ideally we could parallelize these hash calculations,
         # but we need the result before we can return from this reducer.
         identifier = calculate_identifiers([obj_ref]).pop()
+        paths = self._key_obj_id(identifier)
+        loc = self._storage.make_key(*paths)
         # TODO (Alex): We should dedupe these puts with the global coordinator.
-        task = put_helper.remote(identifier, obj_ref, self)
+        task = put_helper.remote(loc, obj_ref, self)
         upload_tasks.append(task)
         return _load_object_ref, (loc, self._storage)
 
@@ -459,14 +462,16 @@ class WorkflowStorage:
             if not is_json:
                 # Setup our custom serializer.
                 output_buffer = io.BytesIO()
-                pickler = cloudpickle.CloudPickler(output_buffer)
-                # NOTE: dispatch table is (unintuitively) a class variable.
-                # That means modifying the class variable will change the
-                # serialization context for `ray.put` too. Therefore, we have
-                # to explicitely make dispatch_table an instance variable.
-                pickler.dispatch_table = pickler.dispatch_table.copy()
-                pickler.dispatch_table[
-                    ray.ObjectRef] = lambda ref: self._put_object_ref(ref, upload_tasks)
+                # Cloudpickle doesn't support private dispatch tables, so we
+                # extend the cloudpickler instead to avoid changing
+                # cloudpickle's global dispatch table which is shared with
+                # `ray.put`
+                class ObjectRefPickler(cloudpickle.CloudPickler):
+                    _object_ref_reducer = {ray.ObjectRef: lambda ref: self._put_object_ref(ref, upload_tasks)}
+                    # _object_ref_reducer = {}
+                    dispatch_table = ChainMap(_object_ref_reducer, cloudpickle.CloudPickler.dispatch_table)
+                    dispatch = dispatch_table
+                pickler = ObjectRefPickler(output_buffer)
                 pickler.dump(data)
                 output_buffer.seek(0)
                 value = output_buffer.read()
