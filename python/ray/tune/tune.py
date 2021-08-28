@@ -542,6 +542,10 @@ def run(
             "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
 
+    # Calls setup on callbacks
+    runner.setup_experiments(
+        experiments=experiments, total_num_samples=search_alg.total_samples)
+
     # User Warning for GPUs
     if trial_executor.has_gpus():
         if isinstance(resources_per_trial,
@@ -592,7 +596,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
-    runner.cleanup_trials()
+    runner.cleanup()
 
     incomplete_trials = []
     for trial in runner.get_trials():
