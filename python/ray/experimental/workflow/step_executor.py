@@ -8,7 +8,6 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import KeyNotFoundError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
