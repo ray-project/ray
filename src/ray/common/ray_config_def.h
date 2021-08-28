@@ -441,8 +441,8 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 
-// If enabled and worker stated in container, the container will add
-// resource limit.
+/// If enabled and worker stated in container, the container will add
+/// resource limit. The raylet process need permission to create cgroup.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler

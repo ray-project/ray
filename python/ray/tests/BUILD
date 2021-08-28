@@ -328,10 +328,11 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_in_container.py",
+    "test_runtime_env_resource_limit.py"
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "worker-container", "team:serve"],
+  tags = ["exclusive", "privilege_test", "team:serve"],
   # Now we run this test in a container which has installed ray
   deps = [],
 )
