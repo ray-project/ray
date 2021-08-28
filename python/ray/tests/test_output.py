@@ -60,8 +60,9 @@ breakpoint()  # This should disable worker logs.
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
     num_hello = out_str.count("hello")
-    assert num_hello >= 1, num_hello
-    assert num_hello < 3, num_hello
+    assert "Temporarily disabling driver logs" in out_str, out_str
+    assert num_hello >= 1, out_str
+    assert num_hello < 3, out_str
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 
 
