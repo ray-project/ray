@@ -216,7 +216,6 @@ class StandardAutoscaler:
 
         self.terminate_nodes_to_enforce_constraints(now)
 
-
         self.launch_required_nodes()
 
         if self.disable_node_updaters:
@@ -230,9 +229,19 @@ class StandardAutoscaler:
         logger.info(self.info_string())
         legacy_log_info_string(self, self.workers)
 
-    def terminate_nodes_to_enforce_constraints(self, now):
-        self.terminate_nodes_to_enforce_constraints()
-        # Terminate any idle or out of date nodes
+    def terminate_nodes_to_enforce_constraints(self, now: float):
+        """Terminates nodes to enforce constraints defined by the autoscaling
+        config.
+
+        (1) Terminates nodes in excess of max_workers.
+        (2) Terminates nodes idle for longer than idle_timeout_minutes.
+        (3) Terminates outdated nodes,
+                namely nodes whose configs don't match the NodeConfig in the
+                autoscaling config.
+
+        Avoids terminating non-outdated nodes required by
+        autoscaler.sdk.request_resources().
+        """
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
