@@ -101,12 +101,18 @@ class WorkflowStorage:
             self._get(self._key_step_output(step_id), no_exception=True),
             self._get(self._key_step_exception(step_id), no_exception=True)
         ]
-        (output, exception) = asyncio_run(asyncio.gather(*tasks))
-        if output[0] is not None:
-            return output[0]
-        if exception[0] is not None:
-            raise exception[0]
-        raise output[1]
+        ((output_ret, output_err), (exception_ret, exception_err)) = \
+            asyncio_run(asyncio.gather(*tasks))
+        # When we have output, always return output first
+        if output_err is None:
+            return output_ret
+
+        # When we don't have output, check exception
+        if exception_err is None:
+            raise exception_ret
+
+        # In this case, there is no such step
+        raise output_err
 
     def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
                          exception: Optional[Exception],

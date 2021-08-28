@@ -236,24 +236,10 @@ def test_no_init(shutdown_only):
     def f():
         pass
 
-    fail_ray_init_error_msg = re.escape(
-        "Please connect to ray cluster by calling `ray.init`")
     fail_wf_init_error_msg = re.escape(
         "`workflow.init()` must be called prior to using "
         "the workflows API.")
 
-    with pytest.raises(RuntimeError, match=fail_ray_init_error_msg):
-        f.step().run()
-    with pytest.raises(RuntimeError, match=fail_ray_init_error_msg):
-        workflow.list_all()
-    with pytest.raises(RuntimeError, match=fail_ray_init_error_msg):
-        workflow.resume_all()
-    with pytest.raises(RuntimeError, match=fail_ray_init_error_msg):
-        workflow.cancel("wf")
-    with pytest.raises(RuntimeError, match=fail_ray_init_error_msg):
-        workflow.get_actor("wf")
-
-    ray.init()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
         f.step().run()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):

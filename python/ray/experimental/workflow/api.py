@@ -167,7 +167,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
     Examples:
         >>> trip = start_trip.step()
-        >>> res1 = trip.async_run(workflow_id="trip1")
+        >>> res1 = trip.run_async(workflow_id="trip1")
         >>> res2 = workflow.resume("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
 
@@ -192,7 +192,7 @@ def get_output(workflow_id: str, *,
 
     Examples:
         >>> trip = start_trip.options(name="trip").step()
-        >>> res1 = trip.async_run(workflow_id="trip1")
+        >>> res1 = trip.run_async(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
@@ -218,7 +218,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
 
     Examples:
         >>> workflow_step = long_running_job.step()
-        >>> wf = workflow_step.async_run(workflow_id="long_running_job")
+        >>> wf = workflow_step.run_async(workflow_id="long_running_job")
         >>> jobs = workflow.list_all()
         >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ]
         >>> ray.get(wf)
@@ -261,7 +261,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
 
     Examples:
         >>> workflow_step = failed_job.step()
-        >>> output = workflow_step.async_run(workflow_id="failed_job")
+        >>> output = workflow_step.run_async(workflow_id="failed_job")
         >>> try:
         >>>     ray.get(output)
         >>> except Exception:
@@ -306,7 +306,7 @@ def cancel(workflow_id: str) -> None:
 
     Examples:
         >>> workflow_step = some_job.step()
-        >>> output = workflow_step.async_run(workflow_id="some_job")
+        >>> output = workflow_step.run_async(workflow_id="some_job")
         >>> workflow.cancel(workflow_id="some_job")
         >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
 
