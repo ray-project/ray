@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import List
 
+import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.utils import get_address_and_port
 from ray.util.sgd.v2.worker_group import WorkerGroup
@@ -59,8 +60,7 @@ class TensorflowBackend(Backend):
                         setup_tensorflow_environment,
                         worker_addresses=urls,
                         index=i))
-            self.get_with_failure_handling(setup_futures, worker_group,
-                                           backend_config)
+            ray.get(setup_futures)
 
         else:
             logger.info("Distributed Tensorflow is not being used.")

@@ -396,7 +396,6 @@ class SGDIterator:
             self._start_training(self._train_func,
                                  self._executor.latest_checkpoint,
                                  self._checkpoint_strategy)
-            self._num_failures += 1
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
@@ -409,9 +408,6 @@ class SGDIterator:
                                "this error and this is a bug. Please create "
                                "a new issue at "
                                "https://github.com/ray-project/ray.") from None
-        else:
-            # func has succeeded. Reset the number of failures.
-            self._num_failures = 0
 
     def __next__(self):
         if self.is_finished():

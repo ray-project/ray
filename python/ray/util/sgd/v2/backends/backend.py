@@ -114,8 +114,9 @@ class BackendExecutor:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
             self._backend.on_start(self.worker_group, self._backend_config)
-        except RayActorError:
-            self._num_failures += 1
+        except RayActorError as exc:
+            logger.exception(str(exc))
+            self._increment_failures()
             self._restart()
 
     def start_training(
@@ -407,12 +408,13 @@ class BackendExecutor:
         if success:
             return ray.get(remote_values)
         else:
-            self._num_failures += 1
+            self._increment_failures()
             try:
                 self._backend.handle_failure(self.worker_group,
                                              failed_worker_indexes,
                                              self._backend_config)
-            except RayActorError:
+            except RayActorError as exc:
+                logger.exception(str(exc))
                 self._restart()
             raise TrainingWorkerError
 
@@ -455,16 +457,22 @@ class BackendExecutor:
             return None
 
     def _restart(self):
-        if self._num_failures >= self._max_failures:
-            raise RuntimeError("Training has failed even after "
-                               f"{self._num_failures} "
-                               "attempts.")
         self.worker_group.shutdown()
         if hasattr(self, "_initiaization_hook"):
             initialization_hook = self._initialization_hook
         else:
             initialization_hook = None
         self.start(initialization_hook=initialization_hook)
+
+    def _increment_failures(self):
+        self._num_failures += 1
+        if self._num_failures >= self._max_failures:
+            raise RuntimeError("Training has failed even after "
+                               f"{self._num_failures} "
+                               "attempts. You can change the number of max "
+                               "failure attempts by setting the "
+                               "SGD_MAX_FAILURE_RETRIES environment "
+                               "variable. ") from None
 
 
 class Backend(metaclass=abc.ABCMeta):

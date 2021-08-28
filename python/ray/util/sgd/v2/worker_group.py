@@ -68,13 +68,13 @@ class WorkerGroup:
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
         self.workers = []
+        self._remote_cls = ray.remote(
+            num_cpus=self.num_cpus_per_worker,
+            num_gpus=self.num_gpus_per_worker)(BaseWorker)
         self.start()
 
     def _create_worker(self):
-        remote_cls = ray.remote(
-            num_cpus=self.num_cpus_per_worker,
-            num_gpus=self.num_gpus_per_worker)(BaseWorker)
-        return remote_cls.remote()
+        return self._remote_cls.remote()
 
     def start(self):
         """Starts all the workers in this worker group."""

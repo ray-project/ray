@@ -12,7 +12,8 @@ from ray.types import ObjectRef
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(remote_values: List[ObjectRef]):
+def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool,
+                                                               List[int]]:
     """Check for actor failure when retrieving the remote values.
 
     Args:

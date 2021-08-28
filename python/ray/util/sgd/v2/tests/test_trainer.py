@@ -664,6 +664,23 @@ def test_worker_failure_2(ray_start_2_cpus):
         assert results == [1, 1]
 
 
+def test_worker_start_failure(ray_start_2_cpus):
+    test_config = TestConfig()
+
+    trainer = Trainer(test_config, num_workers=2)
+
+    def init_hook():
+        pass
+
+    def init_hook_fail():
+        # Only fail on first invocation.
+        trainer._executor._initialization_hook = init_hook
+        ray.actor.exit_actor()
+
+    trainer.start(initialization_hook=init_hook_fail)
+    assert len(trainer._executor.worker_group) == 2
+
+
 def test_max_failures(ray_start_2_cpus):
     test_config = TestConfig()
 
@@ -676,7 +693,19 @@ def test_max_failures(ray_start_2_cpus):
     iterator = trainer.run_iterator(train)
     with pytest.raises(RuntimeError):
         iterator.get_final_results(force=True)
-    assert iterator._num_failures == 3
+    assert iterator._executor._num_failures == 3
+
+
+def test_start_max_failure(ray_start_2_cpus):
+    test_config = TestConfig()
+
+    trainer = Trainer(test_config, num_workers=2)
+
+    def init_hook_fail():
+        ray.actor.exit_actor()
+
+    with pytest.raises(RuntimeError):
+        trainer.start(initialization_hook=init_hook_fail)
 
 
 @pytest.mark.parametrize("backend", ["test", "torch", "tf"])
