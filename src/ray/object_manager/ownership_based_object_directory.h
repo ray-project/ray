@@ -120,7 +120,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Client pool to owners.
   rpc::CoreWorkerClientPool *owner_client_pool_;
   /// The max batch size for ReportObjectAdded and ReportObjectRemoved.
-  int64_t max_object_report_batch_size_;
+  const int64_t kMaxObjectReportBatchSize;
   /// The callback used to mark an object as failed.
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
 

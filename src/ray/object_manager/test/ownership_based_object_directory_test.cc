@@ -358,8 +358,10 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
   const auto owner_1 = WorkerID::FromRandom();
   SendDummyBatch(owner_1);
 
+  std::vector<ObjectInfo> object_infos;
   for (int i = 0; i < max_batch_size + 1; i++) {
     auto object_info = CreateNewObjectInfo(owner_1);
+    object_infos.emplace_back(object_info);
     obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
     obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
     obod_.ReportObjectRemoved(object_info.object_id, current_node_id, object_info);
@@ -377,6 +379,12 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
   // Once the next batch is replied, there's no more requests.
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchRequestSent(), 3);
+
+  // Check if object id states are updated properly.
+  for (const auto &object_info : object_infos) {
+    AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+                        rpc::ObjectLocationState::REMOVED);
+  }
   AssertNoLeak();
 }
 

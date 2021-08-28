@@ -28,7 +28,7 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
       client_call_manager_(io_service),
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
-      max_object_report_batch_size_(max_object_report_batch_size),
+      kMaxObjectReportBatchSize(max_object_report_batch_size),
       mark_as_failed_(mark_as_failed) {}
 
 namespace {
@@ -143,8 +143,7 @@ void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_i
 
 void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
     const WorkerID &worker_id, const NodeID &node_id, const rpc::Address &owner_address) {
-  auto it = in_flight_requests_.find(worker_id);
-  if (it != in_flight_requests_.end()) {
+  if (in_flight_requests_.contains(worker_id)) {
     // If there's an in-flight request, the buffer will be sent once the request is
     // replied from the owner.
     return;
@@ -165,7 +164,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   auto object_state_buffers_it = object_state_buffers.begin();
   auto batch_size = 0;
   while (object_state_buffers_it != object_state_buffers.end() &&
-         batch_size < max_object_report_batch_size_) {
+         batch_size < kMaxObjectReportBatchSize) {
     const auto &object_id = object_state_buffers_it->first;
     const auto &object_state = object_state_buffers_it->second;
 
