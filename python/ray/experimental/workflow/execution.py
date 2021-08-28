@@ -52,8 +52,6 @@ def run(entry_workflow: Workflow,
         # TODO (yic): follow up with force rerun
         if entry_workflow.data.step_type != StepType.FUNCTION or not wf_exists:
             commit_step(ws, "", entry_workflow, None)
-
-        commit_step(ws, "", entry_workflow, None)
         workflow_manager = get_or_create_management_actor()
         ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
         # NOTE: It is important to 'ray.get' the returned output. This
