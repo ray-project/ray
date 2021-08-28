@@ -347,11 +347,14 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
             self.n += 1
             if n > 0:
                 return self.incr.step(n - 1)
+
         @workflow.virtual_actor.readonly
         def get(self):
             return self.n
+
         def __getstate__(self):
             return self.n
+
         def __setstate__(self, n):
             self.n = n
 
