@@ -182,6 +182,7 @@ class TuneCheckpointUtil(CheckpointUtil):
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
         if loaded_checkpoint is not None:
             self._latest_checkpoint_id = loaded_checkpoint["_current_iter"]
+        return loaded_checkpoint
 
     def write_checkpoint(self, checkpoint):
         checkpoint["_current_iter"] = self._latest_checkpoint_id
@@ -189,7 +190,7 @@ class TuneCheckpointUtil(CheckpointUtil):
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
                 checkpoint_dir:
             path = Path(checkpoint_dir)
-            file_path = path.joinpath(self.latest_checkpoint_file_name)
+            file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
 

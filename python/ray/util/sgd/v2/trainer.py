@@ -471,9 +471,8 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
         else:
             checkpoint_path = None
 
-        print("Checkpoint path---------------- ", checkpoint_path)
-
-        iterator = trainer.run_iterator(train_func, config, checkpoint=checkpoint_path)
+        iterator = trainer.run_iterator(train_func, config,
+                                        checkpoint=checkpoint_path)
 
         for results in iterator:
             first_worker_results = results[0]
