@@ -1748,7 +1748,7 @@ class AutoscalingTest(unittest.TestCase):
         events = autoscaler.event_summarizer.summary()
         assert (
             "Removing 2 nodes of type "
-            "ray-legacy-worker-node-type (failed-launch)." in events), events
+            "ray-legacy-worker-node-type (launch failed)." in events), events
 
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
@@ -1857,6 +1857,7 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
+        autoscaler.update_worker_list()
         for node_id in autoscaler.workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
@@ -2115,7 +2116,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Terminating 1 nodes of type "
+        assert ("Removing 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
 
@@ -2820,6 +2821,7 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
+        autoscaler.update_worker_list()
         assert 0 not in autoscaler.workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
@@ -2840,14 +2842,15 @@ MemAvailable:   33000000 kB
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert ("Removing 1 nodes of type "
-                "ray.worker.default (failed-launch)." in events), events
+                "ray.worker.default (launch failed)." in events), events
         # To be more explicit,
         assert ("Removing 2 nodes of type "
-                "ray.worker.default (failed-launch)." not in events), events
+                "ray.worker.default (launch failed)." not in events), events
 
         # Should get two new nodes after the next update.
         autoscaler.update()
         self.waitForNodes(2)
+        autoscaler.update_worker_list()
         assert set(autoscaler.workers) == {2, 3},\
             "Unexpected node_ids"
 

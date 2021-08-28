@@ -141,6 +141,11 @@ class StandardAutoscaler:
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
+        # Tracks active worker nodes
+        self.workers = []
+        # Tracks nodes scheduled for termination
+        self.nodes_to_terminate = []
+
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
@@ -210,8 +215,7 @@ class StandardAutoscaler:
         self.update_worker_list()
 
         self.load_metrics.prune_active_ips([
-            self.provider.internal_ip(node_id)
-            for node_id in self.all_workers
+            self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
         self.terminate_nodes_to_enforce_constraints(now)
@@ -248,8 +252,8 @@ class StandardAutoscaler:
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
-        sorted_node_ids = self._sort_based_on_last_used(self.workers,
-                                                        last_used)
+        sorted_node_ids = self._sort_based_on_last_used(
+            self.workers, last_used)
 
         # Don't terminate nodes needed by request_resources()
         nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
@@ -277,7 +281,7 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
-                self.schedule_node_termination(node_id, reason)
+                self.schedule_node_termination(node_id, reason, logger.info)
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
@@ -296,9 +300,8 @@ class StandardAutoscaler:
                 nodes_we_could_terminate.append(node_id)
 
         # Terminate nodes if there are too many
-        num_extra_nodes_to_terminate = (
-            len(self.workers) - len(self.nodes_to_terminate)
-            - self.config["max_workers"])
+        num_extra_nodes_to_terminate = (len(self.workers) - len(
+            self.nodes_to_terminate) - self.config["max_workers"])
 
         if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
             logger.warning(
