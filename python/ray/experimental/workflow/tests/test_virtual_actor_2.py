@@ -321,7 +321,6 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
             r += f"{n}\n"
             record.write_text(r)
 
-
     @workflow.virtual_actor
     class Q:
         def write_queue(self, n):
