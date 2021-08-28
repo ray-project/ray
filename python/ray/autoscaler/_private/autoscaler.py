@@ -211,7 +211,7 @@ class StandardAutoscaler:
 
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
-            for node_id in self.all_workers()
+            for node_id in self.all_workers
         ])
 
         self.terminate_nodes_to_enforce_constraints(now)
@@ -927,8 +927,9 @@ class StandardAutoscaler:
                                    node_type))
             count -= self.max_launch_batch
 
+    @property
     def all_workers(self):
-        return self.workers() + self.unmanaged_workers()
+        return self.workers + self.unmanaged_workers
 
     def update_worker_list(self):
         self.workers = self.provider.non_terminated_nodes(
@@ -936,6 +937,7 @@ class StandardAutoscaler:
         # Update running nodes gauge whenever we check workers
         self.prom_metrics.running_workers.set(len(self.workers))
 
+    @property
     def unmanaged_workers(self):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
