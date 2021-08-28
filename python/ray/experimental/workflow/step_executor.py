@@ -8,7 +8,6 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import KeyNotFoundError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
@@ -74,7 +73,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except KeyNotFoundError:
+            except Exception:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
@@ -136,7 +135,7 @@ def execute_workflow(
 
     To fully explain what we are doing, we need to introduce some syntax first.
     The syntax for dependencies between workflow steps
-    "A.step(B.step())" is "A - B"; the syntax for nested workflow steps
+    "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
     "def A(): return B.step()" is "A / B".
 
     In a chain/DAG of step dependencies, the "output step" is the step of last
@@ -187,6 +186,7 @@ def execute_workflow(
 def commit_step(store: workflow_storage.WorkflowStorage,
                 step_id: "StepID",
                 ret: Union["Workflow", Any],
+                exception: Optional[Exception],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
     Args:
@@ -200,7 +200,7 @@ def commit_step(store: workflow_storage.WorkflowStorage,
     from ray.experimental.workflow.common import Workflow
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
-    store.save_step_output(step_id, ret, outer_most_step_id)
+    store.save_step_output(step_id, ret, exception, outer_most_step_id)
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
@@ -326,14 +326,18 @@ def _workflow_step_executor(
     """
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
-    persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
-                                                  catch_exceptions,
-                                                  max_retries, *args, **kwargs)
+    store = workflow_storage.get_workflow_storage()
+    try:
+        persisted_output, volatile_output = _wrap_run(
+            func, step_type, step_id, catch_exceptions, max_retries, *args,
+            **kwargs)
+    except Exception as e:
+        commit_step(store, step_id, None, e, outer_most_step_id)
+        raise e
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
-        store = workflow_storage.get_workflow_storage()
         # Save workflow output
-        commit_step(store, step_id, persisted_output, outer_most_step_id)
+        commit_step(store, step_id, persisted_output, None, outer_most_step_id)
         # We MUST execute the workflow after saving the output.
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
