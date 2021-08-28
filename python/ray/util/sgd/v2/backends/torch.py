@@ -146,6 +146,10 @@ class TorchBackend(Backend):
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
                        backend_config: BackendConfig):
+        # Once a worker fails, we have to create a new process group.
+        # However, Torch does not allow a process group to be created
+        # multiple times on the same process.
+        # So we have to shutdown all the workers and start them again.
         worker_group.shutdown()
         worker_group.start()
         self.on_start(worker_group, backend_config)
