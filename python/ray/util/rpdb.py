@@ -275,7 +275,7 @@ def set_trace(breakpoint_uuid=None):
         rdb.set_trace(frame=frame)
 
 
-def _driver_breakpointhook():
+def _driver_set_trace():
     """The breakpoint hook to use for the driver.
 
     This disables Ray driver logs temporarily so that the PDB console is not
