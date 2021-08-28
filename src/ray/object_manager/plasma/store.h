@@ -164,18 +164,18 @@ class PlasmaStore {
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    RAY_CHECK((object_lifecycle_mgr_->GetNumBytesUnsealed() > 0 &&
-               object_lifecycle_mgr_->GetNumObjectsUnsealed() > 0) ||
-              (object_lifecycle_mgr_->GetNumBytesUnsealed() == 0 &&
-               object_lifecycle_mgr_->GetNumObjectsUnsealed() == 0))
+    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
+              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(object_lifecycle_mgr_->GetNumBytesInUse() >=
-              object_lifecycle_mgr_->GetNumBytesUnsealed());
+    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
+              object_lifecycle_mgr_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
-    int64_t num_bytes_in_use = object_lifecycle_mgr_->GetNumBytesInUse() -
-                               object_lifecycle_mgr_->GetNumBytesUnsealed();
+    int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
+                               object_lifecycle_mgr_.GetNumBytesUnsealed();
     size_t available = 0;
     if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
       available = allocator_.GetFootprintLimit() - num_bytes_in_use;
@@ -232,7 +232,7 @@ class PlasmaStore {
   /// shared with the main raylet thread.
   const ray::DeleteObjectCallback delete_object_callback_;
 
-  std::shared_ptr<ObjectLifecycleManager> object_lifecycle_mgr_;
+  ObjectLifecycleManager object_lifecycle_mgr_;
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.

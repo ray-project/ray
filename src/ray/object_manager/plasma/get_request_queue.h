@@ -82,7 +82,7 @@ class GetRequestQueue {
       std::function<void(const std::shared_ptr<GetRequest> &get_req)>;
 
   GetRequestQueue(instrumented_io_context &io_context,
-                  std::shared_ptr<IObjectLifecycleManager> object_lifecycle_mgr)
+                  IObjectLifecycleManager &object_lifecycle_mgr)
       : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
@@ -112,7 +112,7 @@ class GetRequestQueue {
   std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
-  std::shared_ptr<IObjectLifecycleManager> object_lifecycle_mgr_;
+  IObjectLifecycleManager &object_lifecycle_mgr_;
 
   FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 };
