@@ -218,8 +218,6 @@ class StandardAutoscaler:
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
-        nodes_to_terminate: List[NodeID] = []
-        node_type_counts = defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
@@ -232,13 +230,15 @@ class StandardAutoscaler:
             nodes_not_allowed_to_terminate = \
                 self._get_nodes_needed_for_request_resources(sorted_node_ids)
 
+        # Tracks counts of nodes we intend to keep for each node type.
+        node_type_counts = defaultdict(int)
+
         def keep_node(node_id: NodeID) -> None:
-            # Update per-type counts and add node_id to nodes_to_keep.
+            # Update per-type counts.
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
-
 
         # Nodes that we could terminate, if needed.
         nodes_we_could_terminate: List[NodeID] = []
