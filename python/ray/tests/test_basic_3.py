@@ -275,14 +275,16 @@ def test_worker_startup_count(ray_start_cluster):
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
-    # Debug.
-    with open(debug_state_path) as f:
-        for line in f.readlines():
-            print(line)
-
     # Check that no more workers started for a while.
     for i in range(100):
-        num = get_num_workers()
+        # Sometimes the debug state file can be empty. Retry if needed.
+        for _ in range(3):
+            num = get_num_workers()
+            if num is None:
+                print("Retrying parse debug_state.txt")
+                time.sleep(0.05)
+            else:
+                break
         assert num == 16
         time.sleep(0.1)
 
