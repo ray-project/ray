@@ -195,11 +195,6 @@ class ClientCallManager {
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }
-    // gRPC's completion queue won't clear our call tags, we need to clear call tags that
-    // are waiting for server's response.
-    for (auto &ptr : allocated_tags_) {
-      delete ptr;
-    }
   }
 
   /// Create a new `ClientCall` and send request.
@@ -236,15 +231,15 @@ class ClientCallManager {
     // Because this function must return a `shared_ptr` to make sure the returned
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
-    auto tag = new ClientCallTag(call);
+    auto tag = std::make_unique<ClientCallTag>(call);
     allocated_tags_.emplace(tag);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)(tag.get()));
     return call;
   }
 
  private:
   /// This function runs in a background thread. It keeps polling events from the
-  /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
+  /// `CompletionQueue`, and dispatches the event to the callbacks via the `Cli`entCall`
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
     SetThreadName("client.poll" + std::to_string(index));
@@ -272,16 +267,14 @@ class ClientCallManager {
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
-          allocated_tags_.erase(tag);
           main_service_.post(
               [tag]() {
                 tag->GetCall()->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
-                delete tag;
+                allocated_tags_.erase(tag);
               },
               std::move(stats_handle));
         } else {
-          delete tag;
           allocated_tags_.erase(tag);
         }
       }
@@ -307,7 +300,9 @@ class ClientCallManager {
   std::vector<std::thread> polling_threads_;
 
   // A set of all tags that are not deleted.
-  absl::flat_hash_set<ClientCallTag *> allocated_tags_;
+  // gRPC's completion queue won't clear our call tags, we need to clear call tags that
+  // are waiting for server's response.
+  absl::flat_hash_set<std::unique_ptr<ClientCallTag>> allocated_tags_;
 };
 
 }  // namespace rpc
