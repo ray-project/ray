@@ -95,7 +95,7 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
       if (s.ok() || s.IsObjectExists()) {
         // If the failiure is due to that object already exists,
         // that means there is a concurrent create operations that's not replied from the
-        // client. In this case, just proceeds. Read object into store.
+        // client. In this case, just proceeds.
         uint8_t *mutable_data = data->Data();
         uint64_t num_chunks = GetNumChunks(data_size);
         create_buffer_state_.emplace(

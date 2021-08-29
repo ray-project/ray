@@ -246,7 +246,7 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   auto pair = object_lifecycle_mgr_.CreateObject(object_info, source, fallback_allocator);
   auto entry = pair.first;
   auto error = pair.second;
-  if (entry == nullptr) {
+  if (error != PlasmaError::OK) {
     return error;
   }
   ToPlasmaObject(*entry, result, /* check sealed */ false);
@@ -555,8 +555,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
       const auto &result = result_error.first;
       const auto &error = result_error.second;
       if (SendCreateReply(client, object_id, result, error).ok() &&
-          (error == PlasmaError::OK || error == PlasmaError::ObjectExists) &&
-          result.device_num == 0) {
+          (error == PlasmaError::OK || error == PlasmaError::ObjectExists) && result.device_num == 0) {
         static_cast<void>(client->SendFd(result.store_fd));
       }
     } else {
@@ -689,7 +688,7 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   if (finished) {
     RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
     if (SendCreateReply(client, object_id, result, error).ok() &&
-        error == PlasmaError::OK && result.device_num == 0) {
+        (error == PlasmaError::OK || error == PlasmaError::ObjectExists) && result.device_num == 0) {
       static_cast<void>(client->SendFd(result.store_fd));
     }
   } else {

@@ -244,24 +244,26 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
+    print("2")
     for i in range(100):
         value_before = i * 10**6 * 1.0
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
+    print("3")
     for i in range(100):
         value_before = "h" * i
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
+    print("4")
     for i in range(100):
         value_before = [1] * i
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
+    print("5")
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
