@@ -288,9 +288,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   int64_t mmap_size;
 
   if (retry_with_request_id) {
-    auto s = ReadCreateReply(buffer.data(), buffer.size(), &id,
-                                      retry_with_request_id, &object, &store_fd,
-                                      &mmap_size);
+    auto s = ReadCreateReply(buffer.data(), buffer.size(), &id, retry_with_request_id,
+                             &object, &store_fd, &mmap_size);
     if (!s.ok() && !s.IsObjectExists()) {
       return s;
     }
@@ -301,7 +300,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   } else {
     uint64_t unused = 0;
     auto s = ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
-                                      &store_fd, &mmap_size);
+                             &store_fd, &mmap_size);
     if (!s.ok() && !s.IsObjectExists()) {
       return s;
     }
