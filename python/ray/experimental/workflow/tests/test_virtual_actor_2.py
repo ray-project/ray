@@ -348,7 +348,7 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
 
         def incr(self, n):
             self.n += 1
-            if n > 0:
+            if n - 1 > 0:
                 return self.incr.step(n - 1)
 
         @workflow.virtual_actor.readonly
@@ -362,8 +362,9 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
             self.n = n
 
     c = Counter.get_or_create("c1")
+    ray.get(c.ready())
     c.incr.run_async(10)
-    c.incr.run_async(10)
+    c.incr.run(10)
     assert c.get.run() == 20
 
 

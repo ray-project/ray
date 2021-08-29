@@ -327,10 +327,15 @@ def _workflow_step_executor(
     except Exception as e:
         commit_step(store, step_id, None, e, outer_most_step_id)
         raise e
-    if step_type != StepType.READONLY_ACTOR_METHOD:
-        # Save workflow output
+    if step_type == StepType.READONLY_ACTOR_METHOD:
+        if isinstance(volatile_output, Workflow):
+            raise TypeError(
+                "Returning a Workflow from a readonly virtual actor "
+                "is not allowed.")
+        assert not isinstance(persisted_output, Workflow)
+    else:
+        store = workflow_storage.get_workflow_storage()
         commit_step(store, step_id, persisted_output, None, outer_most_step_id)
-        # We MUST execute the workflow after saving the output.
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
