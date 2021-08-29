@@ -575,8 +575,14 @@ def test_inlined_nested_refs(ray_start_cluster, inline_args):
 
 
 # https://github.com/ray-project/ray/issues/17553
-def test_return_nested_ids(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024)
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_return_nested_ids(shutdown_only, inline_args):
+    config = dict()
+    if inline_args:
+        config["max_direct_call_object_size"] = 100 * 1024 * 1024
+    else:
+        config["max_direct_call_object_size"] = 0
+    ray.init(object_store_memory=100 * 1024 * 1024, _system_config=config)
 
     class Nested:
         def __init__(self, blocks):
