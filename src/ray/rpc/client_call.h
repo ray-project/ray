@@ -17,7 +17,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
-
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
@@ -231,9 +231,9 @@ class ClientCallManager {
     // Because this function must return a `shared_ptr` to make sure the returned
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
-    auto tag = std::make_unique<ClientCallTag>(call);
-    allocated_tags_.emplace(tag);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)(tag.get()));
+    auto tag = new ClientCallTag(call);
+    allocated_tags_.emplace(std::unique_ptr<ClientCallTag>(tag));
+    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
 
@@ -268,7 +268,7 @@ class ClientCallManager {
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post(
-              [tag]() {
+              [this, tag]() {
                 tag->GetCall()->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
                 allocated_tags_.erase(tag);
