@@ -242,7 +242,7 @@ class ClientCallManager {
 
  private:
   /// This function runs in a background thread. It keeps polling events from the
-  /// `CompletionQueue`, and dispatches the event to the callbacks via the `Cli`entCall`
+  /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
     SetThreadName("client.poll" + std::to_string(index));
