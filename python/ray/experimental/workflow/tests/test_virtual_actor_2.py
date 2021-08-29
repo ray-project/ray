@@ -343,6 +343,9 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
 def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
     @workflow.virtual_actor
     class Counter:
+        def __init__(self):
+            self.n = 0
+
         def incr(self, n):
             self.n += 1
             if n > 0:
