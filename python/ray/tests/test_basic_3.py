@@ -235,8 +235,7 @@ def test_worker_startup_count(ray_start_cluster):
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
     cluster.add_node(
-        num_cpus=4,
-        _system_config={
+        num_cpus=4, _system_config={
             "debug_dump_period_milliseconds": 100,
         })
     ray.init(address=cluster.address)
