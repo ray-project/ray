@@ -379,6 +379,16 @@ flatbuffer_cc_library(
 # === End of plasma definitions ===
 
 cc_library(
+    name = "ray_mock",
+    hdrs = glob(
+        ["src/mock/**/*.h"],
+    ),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+)
+ 
+cc_library(
     name = "ray_common",
     srcs = glob(
         [
@@ -810,6 +820,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -822,6 +833,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],

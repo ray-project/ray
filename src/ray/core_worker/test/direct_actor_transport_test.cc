@@ -21,7 +21,8 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-
+#include "mock/ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/task_manager.h"
 namespace ray {
 namespace core {
 
@@ -83,45 +84,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   std::vector<uint64_t> received_seq_nos;
   int64_t acked_seqno = 0;
-};
-
-class MockTaskFinisher : public TaskFinisherInterface {
- public:
-  MockTaskFinisher() {}
-
-  MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
-                                         const rpc::Address &addr));
-  MOCK_METHOD5(PendingTaskFailed,
-               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception,
-                    bool immediately_mark_object_fail));
-
-  MOCK_METHOD2(OnTaskDependenciesInlined,
-               void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
-
-  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
-
-  MOCK_CONST_METHOD1(GetTaskSpec,
-                     absl::optional<TaskSpecification>(const TaskID &task_id));
-
-  MOCK_METHOD4(MarkPendingTaskFailed,
-               void(const TaskID &task_id, const TaskSpecification &spec,
-                    rpc::ErrorType error_type,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
-};
-
-class MockActorCreatorInterface : public ActorCreatorInterface {
- public:
-  MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec), (override));
-  MOCK_METHOD(Status, AsyncRegisterActor,
-              (const TaskSpecification &task_spec, gcs::StatusCallback callback),
-              (override));
-  MOCK_METHOD(Status, AsyncCreateActor,
-              (const TaskSpecification &task_spec, const gcs::StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void, AsyncWaitForActorRegisterFinish,
-              (const ActorID &actor_id, gcs::StatusCallback callback), (override));
-  MOCK_METHOD(bool, IsActorInRegistering, (const ActorID &actor_id), (const, override));
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
