@@ -288,17 +288,23 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   int64_t mmap_size;
 
   if (retry_with_request_id) {
-    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id,
+    auto s = ReadCreateReply(buffer.data(), buffer.size(), &id,
                                       retry_with_request_id, &object, &store_fd,
-                                      &mmap_size));
+                                      &mmap_size);
+    if (!s.ok() && !s.IsObjectExists()) {
+      return s;
+    }
     if (*retry_with_request_id > 0) {
       // The client should retry the request.
       return Status::OK();
     }
   } else {
     uint64_t unused = 0;
-    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
-                                      &store_fd, &mmap_size));
+    auto s = ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
+                                      &store_fd, &mmap_size);
+    if (!s.ok() && !s.IsObjectExists()) {
+      return s;
+    }
     RAY_CHECK(unused == 0);
   }
 
