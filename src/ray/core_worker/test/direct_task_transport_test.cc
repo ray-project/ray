@@ -237,12 +237,9 @@ class MockActorCreator : public ActorCreatorInterface {
   }
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       gcs::StatusCallback callback) override {
-  }
+                                       gcs::StatusCallback callback) override {}
 
-  bool IsActorInRegistering(const ActorID &actor_id) const override {
-    return false;
-  }
+  bool IsActorInRegistering(const ActorID &actor_id) const override { return false; }
 
   ~MockActorCreator() {}
 };

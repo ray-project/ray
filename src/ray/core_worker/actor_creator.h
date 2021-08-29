@@ -14,9 +14,8 @@
 
 #pragma once
 #include <memory>
-#include "ray/gcs/gcs_client.h"
-#include "ray/gcs/gcs_client.h"
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 namespace core {
@@ -89,13 +88,13 @@ class DefaultActorCreator : public ActorCreatorInterface {
       registering_actors_[actor_id].emplace_back(std::move(callback));
       return gcs_client_->Actors().AsyncRegisterActor(
           task_spec, [actor_id, this](Status status) {
-                       std::vector<ray::gcs::StatusCallback> cbs;
-                       cbs = std::move(registering_actors_[actor_id]);
-                       registering_actors_.erase(actor_id);
-                       for (auto &cb : cbs) {
-                         cb(status);
-                       }
-                     });
+            std::vector<ray::gcs::StatusCallback> cbs;
+            cbs = std::move(registering_actors_[actor_id]);
+            registering_actors_.erase(actor_id);
+            for (auto &cb : cbs) {
+              cb(status);
+            }
+          });
     } else {
       callback(RegisterActor(task_spec));
       return Status::OK();

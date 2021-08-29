@@ -110,35 +110,35 @@ class MockTaskFinisher : public TaskFinisherInterface {
                     const std::shared_ptr<rpc::RayException> &creation_task_exception));
 };
 
-
 class MockActorCreatorInterface : public ActorCreatorInterface {
  public:
   MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec), (override));
-  MOCK_METHOD(Status, AsyncRegisterActor, (const TaskSpecification &task_spec, gcs::StatusCallback callback), (override));
-  MOCK_METHOD(Status, AsyncCreateActor, (const TaskSpecification &task_spec, const gcs::StatusCallback &callback), (override));
-  MOCK_METHOD(void, AsyncWaitForActorRegisterFinish, (const ActorID &actor_id, gcs::StatusCallback callback), (override));
+  MOCK_METHOD(Status, AsyncRegisterActor,
+              (const TaskSpecification &task_spec, gcs::StatusCallback callback),
+              (override));
+  MOCK_METHOD(Status, AsyncCreateActor,
+              (const TaskSpecification &task_spec, const gcs::StatusCallback &callback),
+              (override));
+  MOCK_METHOD(void, AsyncWaitForActorRegisterFinish,
+              (const ActorID &actor_id, gcs::StatusCallback callback), (override));
   MOCK_METHOD(bool, IsActorInRegistering, (const ActorID &actor_id), (const, override));
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
  public:
   DirectActorSubmitterTest()
-      : client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
-        [&](const rpc::Address &addr) {
-          num_clients_connected_++;
-          return worker_client_;
-        })),
+      : client_pool_(
+            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
+              num_clients_connected_++;
+              return worker_client_;
+            })),
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>()),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_(
-            *client_pool_,
-            *store_,
-            *task_finisher_,
-            actor_creator_,
-            [this](const ActorID &actor_id, int64_t num_queued) {
-              last_queue_warning_ = num_queued;
-            }) {}
+        submitter_(*client_pool_, *store_, *task_finisher_, actor_creator_,
+                   [this](const ActorID &actor_id, int64_t num_queued) {
+                     last_queue_warning_ = num_queued;
+                   }) {}
 
   int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
