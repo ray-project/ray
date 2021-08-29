@@ -15,7 +15,7 @@ from ray.util.sgd.v2.constants import TUNE_INSTALLED
 
 # Ray SGD should be usable even if Tune is not installed.
 if TUNE_INSTALLED:
-    from ray import tune, cloudpickle
+    from ray import tune
     from ray.tune import Trainable
     from ray.tune import PlacementGroupFactory
     from ray.tune.function_runner import wrap_function
@@ -24,8 +24,8 @@ else:
 
     def noop():
         return
-    wrap_function = noop
 
+    wrap_function = noop
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -471,8 +471,8 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
         else:
             checkpoint_path = None
 
-        iterator = trainer.run_iterator(train_func, config,
-                                        checkpoint=checkpoint_path)
+        iterator = trainer.run_iterator(
+            train_func, config, checkpoint=checkpoint_path)
 
         for results in iterator:
             first_worker_results = results[0]

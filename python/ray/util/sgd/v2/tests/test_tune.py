@@ -130,6 +130,7 @@ def test_tune_error(ray_start_2_cpus):
     with pytest.raises(TuneError):
         tune.run(TestTrainable)
 
+
 def test_tune_checkpoint(ray_start_2_cpus):
     def train_func():
         for i in range(10):
@@ -140,8 +141,9 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    assert os.path.exists(os.path.join(trial.checkpoint.value,
-                                       TUNE_CHECKPOINT_FILE_NAME))
+    assert os.path.exists(
+        os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME))
+
 
 def test_reuse_checkpoint(ray_start_2_cpus):
     def train_func(config):
@@ -160,9 +162,11 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
     last_ckpt = trial.checkpoint.value
     assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
-    analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
+    analysis = tune.run(
+        TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
+
 
 def test_retry(ray_start_2_cpus):
     def train_func():
@@ -182,40 +186,10 @@ def test_retry(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
-    # last_ckpt = analysis.trials[0].checkpoint.value
-    # assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
-    # trial_dfs = list(analysis.trial_dataframes.values())
-    # assert len(trial_dfs[0]["training_iteration"]) == 10
-
-
-
-
-
-def test_tune_checkpoint_frequent(ray_start_2_cpus):
-    def train_func():
-        for i in range(2):
-            for _ in range(2):
-                sgd.save_checkpoint(hello="world")
-            sgd.report(test=i)
-
-    trainer = Trainer(TestConfig())
-    TestTrainable = trainer.to_tune_trainable(train_func)
-
-    [trial] = tune.run(TestTrainable).trials
-
-
-
-def test_tune_checkpoint_infrequent(ray_start_2_cpus):
-    def train_func():
-        pass
-
-
-
-
-
-
-
-
+    last_ckpt = analysis.trials[0].checkpoint.value
+    assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
 if __name__ == "__main__":

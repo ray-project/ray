@@ -36,8 +36,11 @@ class BackendConfig:
 class SGDBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
-class CheckpointUtil:
+
+class CheckpointManager:
     """
+    Manages checkpoint processing, writing, and loading.
+
     Attributes:
         logdir (Path): Path to the file directory where logs will be
             persisted.
@@ -53,16 +56,20 @@ class CheckpointUtil:
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
     """
-    def on_init(self, log_dir):
+
+    def on_init(self, log_dir: Optional[Union[str, Path]] = None):
+        """Checkpoint code executed during BackendExecutor init."""
         self.latest_checkpoint = None
-        # Incremental unique run ID of this Trainer.
+        # Incremental unique run ID.
         self._run_id = 0
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = 0
 
         self.create_logdir(log_dir)
 
-    def on_start_training(self, checkpoint_strategy):
+    def on_start_training(self,
+                          checkpoint_strategy: Optional[CheckpointStrategy]):
+        """Checkpoint code executed during BackendExecutor start_training."""
         # Create new log directory for this run.
         self._run_id += 1
         self.create_run_dir()
@@ -74,7 +81,7 @@ class CheckpointUtil:
 
     def _process_checkpoint(self,
                             checkpoint_results: List[TrainingResult]) -> None:
-        """ Perform all processing for a checkpoint. """
+        """Perform all processing for a checkpoint. """
 
         # Get checkpoint from first worker.
         checkpoint = checkpoint_results[0].data
@@ -102,7 +109,8 @@ class CheckpointUtil:
             with checkpoint_path.open("rb") as f:
                 return cloudpickle.load(f)
 
-    def create_logdir(self, log_dir):
+    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
+        """Create logdir for the Trainer."""
         # Create directory for logs.
         log_dir = Path(log_dir) if log_dir else None
         self.logdir = self._construct_logdir(log_dir)
@@ -119,11 +127,12 @@ class CheckpointUtil:
         return construct_path(logdir, DEFAULT_RESULTS_DIR)
 
     def create_run_dir(self):
+        """Create rundir for the particular training run."""
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(
-            f"Run results will be logged in: {self.latest_run_dir}")
+        logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
-    def write_checkpoint(self, checkpoint):
+    def write_checkpoint(self, checkpoint: Optional[Dict] = None):
+        """Writes checkpoint to disk."""
         if self._checkpoint_strategy.num_to_keep == 0:
             # Checkpoints should not be persisted to disk.
             return
@@ -169,11 +178,14 @@ class CheckpointUtil:
         else:
             return None
 
-class TuneCheckpointUtil(CheckpointUtil):
-    def create_logdir(self, log_dir):
+
+class TuneCheckpointManager(CheckpointManager):
+    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
+        # Don't create logdir when using with Tune.
         pass
 
     def create_run_dir(self):
+        # Don't create run_dir when using with Tune.
         pass
 
     def _load_checkpoint(self,
@@ -181,19 +193,25 @@ class TuneCheckpointUtil(CheckpointUtil):
                          ) -> Optional[Dict]:
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
         if loaded_checkpoint is not None:
+            # If the Tune trial is restarted, a new Trainer is instantiated.
+            # However, we want the checkpoint_id to continue incrementing
+            # from the previous run.
             self._latest_checkpoint_id = loaded_checkpoint["_current_iter"]
         return loaded_checkpoint
 
-    def write_checkpoint(self, checkpoint):
+    def write_checkpoint(self, checkpoint: Optional[Dict] = None):
+        # Store the checkpoint_id in the file so that the Tune trial can be
+        # resumed after failure or cancellation.
         checkpoint["_current_iter"] = self._latest_checkpoint_id
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
                 checkpoint_dir:
             path = Path(checkpoint_dir)
+            # Use a standard file name so that we know which file to load
+            # the checkpoint from.
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
-
 
 
 class BackendExecutor:
@@ -219,8 +237,7 @@ class BackendExecutor:
                  num_workers: int = 1,
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0,
-                 log_dir: Optional[Union[str, Path]] = None
-                 ):
+                 log_dir: Optional[Union[str, Path]] = None):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
@@ -228,9 +245,9 @@ class BackendExecutor:
         self._num_gpus_per_worker = num_gpus_per_worker
 
         if tune is not None and tune.is_session_enabled():
-            self._checkpoint_manager = TuneCheckpointUtil()
+            self._checkpoint_manager = TuneCheckpointManager()
         else:
-            self._checkpoint_manager = CheckpointUtil()
+            self._checkpoint_manager = CheckpointManager()
 
         self.worker_group = InactiveWorkerGroup()
 
@@ -268,7 +285,8 @@ class BackendExecutor:
                 configurations for saving checkpoints.
         """
 
-        self._checkpoint_manager.on_start_training(checkpoint_strategy=checkpoint_strategy)
+        self._checkpoint_manager.on_start_training(
+            checkpoint_strategy=checkpoint_strategy)
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)

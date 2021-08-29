@@ -2,7 +2,7 @@ from pathlib import Path
 
 try:
     TUNE_INSTALLED = True
-    from ray import tune
+    from ray import tune  # noqa: F401
 except ImportError:
     TUNE_INSTALLED = False
 
