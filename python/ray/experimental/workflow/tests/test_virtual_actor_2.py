@@ -362,9 +362,12 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
             self.n = n
 
     c = Counter.get_or_create("c1")
-    ray.get(c.ready())
-    c.incr.run_async(10)
-    c.incr.run(10)
+    # Incr will return a nested workflow. For the step function inside the
+    # nested workflow, they'll be executed one-by-one. But obj2's finish cant
+    # guarentee obj1's finish.
+    obj1 = c.incr.run_async(10)
+    obj2 = c.incr.run_async(10)
+    ray.get([obj1, obj2])
     assert c.get.run() == 20
 
 
