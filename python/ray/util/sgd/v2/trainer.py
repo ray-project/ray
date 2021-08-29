@@ -56,7 +56,7 @@ class Trainer:
             should be persisted. If this is not specified, one will be
             generated.
          max_retries (Optional[int]): Number of retries when Ray actors fail.
-            Defaults to 3. Set to -1 for unlimited retries.
+            Defaults to 3. Set to -1 for unlimited retries or 0 to disable.
     """
 
     def __init__(
