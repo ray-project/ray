@@ -1,4 +1,5 @@
 from collections import defaultdict
+from unittest.mock import patch
 
 import numpy as np
 import unittest
@@ -1474,6 +1475,31 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
+    def testPointsToEvaluateHyperOptNested(self):
+        space = {
+            "nested": [
+                tune.sample.Integer(0, 10),
+                tune.sample.Integer(0, 10),
+            ],
+            "nosample": [4, 8]
+        }
+
+        points_to_evaluate = [{"nested": [2, 4], "nosample": [4, 8]}]
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        searcher = HyperOptSearch(
+            space=space,
+            metric="_",
+            mode="max",
+            points_to_evaluate=points_to_evaluate)
+        config = searcher.suggest(trial_id="0")
+
+        self.assertSequenceEqual(config["nested"],
+                                 points_to_evaluate[0]["nested"])
+
+        self.assertSequenceEqual(config["nosample"],
+                                 points_to_evaluate[0]["nosample"])
+
     def testPointsToEvaluateNevergrad(self):
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1624,6 +1650,60 @@ class SearchSpaceTest(unittest.TestCase):
                         and configs[7]["grid_2"] == "y")
         self.assertTrue(configs[8]["nested"]["random"] == 8.0)
         self.assertTrue(configs[8]["nested"]["dependent"] == -8.0)
+
+    def testPointsToEvaluateBasicVariantFixedParam(self):
+        config = {
+            "a": 1,
+            "b": tune.randint(0, 3),
+        }
+
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.suggest.variant_generator import logger
+
+        # Test whether the initial points of fixed parameters are correctly
+        # verified.
+        searcher = BasicVariantGenerator(points_to_evaluate=[
+            {
+                "a": 1,
+                "b": 2
+            },
+        ])
+        analysis = tune.run(
+            _mock_objective,
+            name="test",
+            config=config,
+            search_alg=searcher,
+            num_samples=2,
+        )
+        configs = [trial.config for trial in analysis.trials]
+
+        self.assertEqual(searcher.total_samples, 2)
+        self.assertEqual(len(configs), searcher.total_samples)
+        self.assertEqual([cfg["a"] for cfg in configs], [1] * 2)
+        self.assertEqual(configs[0]["b"], 2)
+
+        # Test whether correctly throwing warning if the pre-set value of fixed
+        # parameters isn't the same as its initial points
+        searcher = BasicVariantGenerator(points_to_evaluate=[
+            {
+                "a": 2,
+                "b": 2
+            },
+        ])
+
+        with patch.object(logger, "warning") as log_warning_mock:
+            tune.run(
+                _mock_objective,
+                name="test",
+                config=config,
+                search_alg=searcher,
+                num_samples=2,
+            )
+            log_warning_mock.assert_called_once()
+            self.assertEqual(
+                log_warning_mock.call_args[0],
+                ("Pre-set value `2` is not equal to the value of parameter "
+                 "`a`: 1", ))
 
     def testConstantGridSearchBasicVariant(self):
         config = {
