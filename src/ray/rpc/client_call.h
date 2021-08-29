@@ -232,7 +232,10 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    allocated_tags_.emplace(std::unique_ptr<ClientCallTag>(tag));
+    {
+      absl::MutexLock lock(tag_set_mutex_.get());
+      allocated_tags_->emplace(std::unique_ptr<ClientCallTag>(tag));
+    }
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -266,16 +269,27 @@ class ClientCallManager {
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
+          // Copy allocated_tags_ and tag_set_mutex_ so they won't be deconstructed when
+          // this class is deconstructed. Or there will be a crash in main IO service.
+          auto copied_allocated_tags = allocated_tags_;
+          auto copied_tag_set_mutex = tag_set_mutex_;
           // Post the callback to the main event loop.
           main_service_.post(
-              [this, tag]() {
+              [copied_allocated_tags = std::move(copied_allocated_tags),
+               copied_tag_set_mutex = std::move(copied_tag_set_mutex), tag]() {
                 tag->GetCall()->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
-                allocated_tags_.erase(tag);
+                {
+                  absl::MutexLock lock(copied_tag_set_mutex.get());
+                  copied_allocated_tags->erase(tag);
+                }
               },
               std::move(stats_handle));
         } else {
-          allocated_tags_.erase(tag);
+          {
+            absl::MutexLock lock(tag_set_mutex_.get());
+            allocated_tags_->erase(tag);
+          }
         }
       }
     }
@@ -299,10 +313,14 @@ class ClientCallManager {
   /// Polling threads to check the completion queue.
   std::vector<std::thread> polling_threads_;
 
-  // A set of all tags that are not deleted.
+  // A set of all tags that are not deleted. We use shared_ptr because it wil be used in
+  // main IO service.
   // gRPC's completion queue won't clear our call tags, we need to clear call tags that
   // are waiting for server's response.
-  absl::flat_hash_set<std::unique_ptr<ClientCallTag>> allocated_tags_;
+  std::shared_ptr<absl::flat_hash_set<std::unique_ptr<ClientCallTag>>> allocated_tags_ =
+      std::make_shared<absl::flat_hash_set<std::unique_ptr<ClientCallTag>>>();
+  // Mutex for allocated_tags_
+  std::shared_ptr<absl::Mutex> tag_set_mutex_ = std::make_shared<absl::Mutex>();
 };
 
 }  // namespace rpc
