@@ -197,7 +197,7 @@ class ClientCallManager {
     }
     // gRPC's completion queue won't clear our call tags, we need to clear call tags that
     // are waiting for server's response.
-    for (auto &ptr : allocated_tags) {
+    for (auto &ptr : allocated_tags_) {
       delete ptr;
     }
   }
@@ -237,7 +237,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    allocated_tags.emplace(tag);
+    allocated_tags_.emplace(tag);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -272,7 +272,7 @@ class ClientCallManager {
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
-          allocated_tags.erase(tag);
+          allocated_tags_.erase(tag);
           main_service_.post(
               [tag]() {
                 tag->GetCall()->OnReplyReceived();
@@ -282,7 +282,7 @@ class ClientCallManager {
               std::move(stats_handle));
         } else {
           delete tag;
-          allocated_tags.erase(tag);
+          allocated_tags_.erase(tag);
         }
       }
     }
@@ -307,7 +307,7 @@ class ClientCallManager {
   std::vector<std::thread> polling_threads_;
 
   // A set of all tags that are not deleted.
-  std::set<ClientCallTag *> allocated_tags;
+  absl::flat_hash_set<ClientCallTag *> allocated_tags_;
 };
 
 }  // namespace rpc
