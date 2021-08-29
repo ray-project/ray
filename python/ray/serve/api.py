@@ -294,14 +294,22 @@ class Client:
         if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        if asyncio.get_event_loop().is_running() and sync:
+        try:
+            asyncio_loop_running = asyncio.get_event_loop().is_running()
+        except RuntimeError as ex:
+            if "There is no current event loop in thread" in str(ex):
+                asyncio_loop_running = False
+            else:
+                raise ex
+
+        if asyncio_loop_running and sync:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
                 "serve/http-servehandle.html#sync-and-async-handles")
 
-        if not asyncio.get_event_loop().is_running() and not sync:
+        if not asyncio_loop_running and not sync:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "
