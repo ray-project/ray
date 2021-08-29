@@ -120,7 +120,7 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
   // gc returns object to evict
   EXPECT_CALL(*eviction_policy_, RequireSpace(_, _))
       .Times(1)
-      .WillOnce(Invoke([&](auto size, auto &to_evict) {
+      .WillOnce(Invoke([&](auto size, auto to_evict) {
         to_evict->push_back(id1_);
         return 0;
       }));

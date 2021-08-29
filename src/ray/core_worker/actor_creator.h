@@ -15,6 +15,8 @@
 #pragma once
 #include <memory>
 #include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace core {
@@ -44,9 +46,18 @@ class ActorCreatorInterface {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const gcs::StatusCallback &callback) = 0;
 
-  virtual void AsyncWaitForActorRegisterFinish(const ActorID &,
+  /// Asynchronously wait until actor is registered successfully
+  ///
+  /// \param actor_id The actor id to wait
+  /// \param callback The callback that will be called after actor registered
+  /// \return void
+  virtual void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                                gcs::StatusCallback callback) = 0;
 
+  /// Check whether actor is activately under registering
+  ///
+  /// \param actor_id The actor id to check
+  /// \return bool Boolean to indicate whether the actor is under registering
   virtual bool IsActorInRegistering(const ActorID &actor_id) const = 0;
 };
 
@@ -73,17 +84,22 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             gcs::StatusCallback callback) override {
-    auto actor_id = task_spec.ActorCreationId();
-    registering_actors_[actor_id].emplace_back(std::move(callback));
-    return gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [actor_id, this](Status status) {
-          std::vector<ray::gcs::StatusCallback> cbs;
-          cbs = std::move(registering_actors_[actor_id]);
-          registering_actors_.erase(actor_id);
-          for (auto &cb : cbs) {
-            cb(status);
-          }
-        });
+    if (::RayConfig::instance().actor_register_async()) {
+      auto actor_id = task_spec.ActorCreationId();
+      registering_actors_[actor_id].emplace_back(std::move(callback));
+      return gcs_client_->Actors().AsyncRegisterActor(
+          task_spec, [actor_id, this](Status status) {
+                       std::vector<ray::gcs::StatusCallback> cbs;
+                       cbs = std::move(registering_actors_[actor_id]);
+                       registering_actors_.erase(actor_id);
+                       for (auto &cb : cbs) {
+                         cb(status);
+                       }
+                     });
+    } else {
+      callback(RegisterActor(task_spec));
+      return Status::OK();
+    }
   }
 
   bool IsActorInRegistering(const ActorID &actor_id) const override {
