@@ -173,7 +173,7 @@ my_func_deleted.delete()
         "my_func_nondetached".encode()).hexdigest()]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
-    assert entry_nondetached["namespace"] == ""
+    assert entry_nondetached["namespace"] == "default_test_namespace"
     assert entry_nondetached["httpRoute"] == "/my_func_nondetached"
     assert entry_nondetached["className"] == "my_func_nondetached"
     assert entry_nondetached["status"] == "RUNNING"

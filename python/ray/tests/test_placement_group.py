@@ -551,7 +551,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
     cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address, namespace="")
+    ray.init(address=cluster.address, namespace="default_test_namespace")
 
     # Make sure both head and worker node are alive.
     nodes = ray.nodes()
@@ -1196,14 +1196,15 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
         cluster.add_node(num_cpus=num_cpu_per_node)
     cluster.wait_for_nodes()
 
-    info = ray.init(address=cluster.address, namespace="")
+    info = ray.init(
+        address=cluster.address, namespace="default_test_namespace")
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
 
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="")
+ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -1541,14 +1542,15 @@ def test_named_placement_group(ray_start_cluster):
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
-    info = ray.init(address=cluster.address, namespace="")
+    info = ray.init(
+        address=cluster.address, namespace="default_test_namespace")
     global_placement_group_name = "named_placement_group"
 
     # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="")
+ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],

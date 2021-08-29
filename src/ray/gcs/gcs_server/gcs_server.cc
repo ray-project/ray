@@ -34,11 +34,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                      instrumented_io_context &main_service)
     : config_(config),
       main_service_(main_service),
-      rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.grpc_server_thread_num),
-      client_call_manager_(
-          main_service,
-          /*num_threads=*/RayConfig::instance().gcs_server_rpc_client_thread_num()),
+      rpc_server_(
+          config.grpc_server_name, config.grpc_server_port, config.grpc_server_thread_num,
+          /*num_threads=*/RayConfig::instance().gcs_server_rpc_client_thread_num(),
+          /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
+      client_call_manager_(main_service),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_) {}
