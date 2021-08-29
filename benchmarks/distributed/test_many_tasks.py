@@ -48,10 +48,8 @@ def no_resource_leaks():
 
 
 @click.command()
-@click.option("--num-tasks",
-              required=True,
-              type=int,
-              help="Number of tasks to launch.")
+@click.option(
+    "--num-tasks", required=True, type=int, help="Number of tasks to launch.")
 def run(num_tasks):
     ray.init(address="auto")
 
