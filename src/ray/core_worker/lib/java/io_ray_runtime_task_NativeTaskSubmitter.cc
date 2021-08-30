@@ -74,7 +74,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
           RAY_CHECK(java_owner_address);
           auto owner_address = JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
               env, java_owner_address);
-          return std::unique_ptr<TaskArg>(new TaskArgByReference(id, owner_address));
+          return std::unique_ptr<TaskArg>(
+              new TaskArgByReference(id, owner_address, /*call_site=*/""));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
@@ -303,14 +304,17 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
-  std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, task_args, task_options, &return_ids,
+  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options,
       /*max_retries=*/0,
       /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint*/ "");
+  std::vector<ObjectID> return_ids;
+  for (const auto &ref : return_refs) {
+    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+  }
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
@@ -349,9 +353,12 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
+  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, ray_function, task_args, task_options);
   std::vector<ObjectID> return_ids;
-  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, ray_function, task_args,
-                                                     task_options, &return_ids);
+  for (const auto &ref : return_refs) {
+    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+  }
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
