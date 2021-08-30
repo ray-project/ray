@@ -86,6 +86,7 @@ TEST_F(GetRequestQueueTest, TestAddRequest) {
     bool satisfied = false;
     get_request_queue.AddRequest(
         client, object_ids, 1000, false,
+        [&](const ObjectID &object_id, const auto &request) {},
         [&](const std::shared_ptr<GetRequest> &get_req) { satisfied = true; });
     EXPECT_TRUE(satisfied);
   }
@@ -99,6 +100,7 @@ TEST_F(GetRequestQueueTest, TestAddRequest) {
     std::promise<bool> promise;
     get_request_queue.AddRequest(
         client, object_ids, 1000, false,
+        [&](const ObjectID &object_id, const auto &request) {},
         [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
     promise.get_future().get();
   }
@@ -115,6 +117,7 @@ TEST_F(GetRequestQueueTest, TestAddRequest) {
     std::promise<bool> promise;
     get_request_queue.AddRequest(
         client, object_ids, /*timeout_ms*/ -1, false,
+        [&](const ObjectID &object_id, const auto &request) {},
         [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
     object1.state = ObjectState::PLASMA_SEALED;
     get_request_queue.ObjectSealed(object_id);

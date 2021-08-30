@@ -191,12 +191,6 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   for (const auto &object_id : get_request->object_ids) {
-    /// NOTE:(MissionToMars) Record that the client is using the object.
-    /// This operation is defered when all objects are ready, to make our
-    /// code cleaner.
-    if (get_request->object_satisfied[object_id]) {
-      AddToClientObjectIds(object_id, get_request->client);
-    }
     const PlasmaObject &object = get_request->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
     if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
@@ -233,6 +227,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     int64_t timeout_ms, bool is_from_worker) {
   get_request_queue_.AddRequest(
       client, object_ids, timeout_ms, is_from_worker,
+      [this](const ObjectID &object_id, const auto &request) {
+        this->AddToClientObjectIds(object_id, request->client);
+      },
       [this](const auto &request) { this->ReturnFromGet(request); });
 }
 

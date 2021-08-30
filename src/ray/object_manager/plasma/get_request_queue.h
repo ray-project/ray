@@ -20,17 +20,22 @@
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
+struct GetRequest;
+using ObjectReadyCallback = std::function<void(
+    const ObjectID &object_id, const std::shared_ptr<GetRequest> &get_request)>;
+using AllObjectReadyCallback =
+    std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
 
 struct GetRequest {
-  GetRequest(
-      instrumented_io_context &io_context, const std::shared_ptr<ClientInterface> &client,
-      const std::vector<ObjectID> &object_ids, bool is_from_worker,
-      std::function<void(const std::shared_ptr<GetRequest> &get_request)> &callback);
+  GetRequest(instrumented_io_context &io_context,
+             const std::shared_ptr<ClientInterface> &client,
+             const std::vector<ObjectID> &object_ids, bool is_from_worker,
+             ObjectReadyCallback &object_satisfied_callback,
+             AllObjectReadyCallback &all_objects_satisfied_callback);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
   std::vector<ObjectID> object_ids;
-  std::unordered_map<ObjectID, bool> object_satisfied;
   /// The object information for the objects in this request. This is used in
   /// the reply.
   std::unordered_map<ObjectID, PlasmaObject> objects;
@@ -43,7 +48,8 @@ struct GetRequest {
   /// of total objects that are consumed by core worker.
   bool is_from_worker;
 
-  std::function<void(const std::shared_ptr<GetRequest> &get_request)> callback;
+  ObjectReadyCallback object_satisfied_callback;
+  AllObjectReadyCallback all_objects_satisfied_callback;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout) {
@@ -78,15 +84,13 @@ struct GetRequest {
 
 class GetRequestQueue {
  public:
-  using ObjectReadyCallback =
-      std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
-
   GetRequestQueue(instrumented_io_context &io_context,
                   IObjectLifecycleManager &object_lifecycle_mgr)
       : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                  bool is_from_worker, ObjectReadyCallback callback);
+                  bool is_from_worker, ObjectReadyCallback object_callback,
+                  AllObjectReadyCallback all_objects_callback);
 
   /// Remove all of the GetRequests for a given client.
   ///
