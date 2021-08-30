@@ -284,7 +284,7 @@ Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
-Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
+Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -588,6 +588,8 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+Make sure that worker nodes have the access to write to the cloud storage. Failing to do so would cause error message like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 
 .. _tune-docker:
 
