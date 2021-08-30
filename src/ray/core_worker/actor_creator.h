@@ -106,7 +106,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
   }
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                       gcs::StatusCallback callback) {
+                                       gcs::StatusCallback callback) override {
     auto iter = registering_actors_.find(actor_id);
     RAY_CHECK(iter != registering_actors_.end());
     iter->second.emplace_back(std::move(callback));
