@@ -38,8 +38,22 @@ class SGDBackendError(Exception):
 
 
 class CheckpointManager:
-    """
-    Manages checkpoint processing, writing, and loading.
+    """Manages checkpoint processing, writing, and loading.
+
+    Directory structure:
+    - A logdir is created during instantiation. This will hold all the
+    results/checkpoints for the lifetime of the Trainer. By default, it will be
+    of the form ``~/ray_results/sgd_<datestring>``.
+    - A run_dir is created every time ``start_training`` is called. This will
+    hold the checkpoints and results for a single ``trainer.run()`` or
+    ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
+    - A ``checkpoints`` directory is created in the ``run_dir`` and contains
+    all the checkpoint files.
+
+    The full default path will be:
+
+    ~/ray_results/sgd_<datestring>/run_<run_id>/checkpoints/
+    checkpoint_<checkpoint_id>
 
     Attributes:
         logdir (Path): Path to the file directory where logs will be
