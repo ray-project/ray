@@ -504,7 +504,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return self._conn_state == grpc.ChannelConnectivity.READY
+        return self._conn_state in [grpc.ChannelConnectivity.READY, grpc.ChannelConnectivity.IDLE]
 
     def _call_init(self, init_request: ray_client_pb2.InitRequest) -> None:
         init_resp = self.data_client.Init(init_request)
