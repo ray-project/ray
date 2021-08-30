@@ -23,6 +23,10 @@ def get_qualname(f):
                                      "__qualname__") else "__anonymous_func__"
 
 
+def ensure_ray_initialized():
+    ray.worker.global_worker.check_connected()
+
+
 @dataclass
 class WorkflowRef:
     """This class represents a dynamic reference of a workflow output.
