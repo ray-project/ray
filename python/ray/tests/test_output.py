@@ -53,6 +53,7 @@ def f():
 
 def kill():
     time.sleep(5)
+    sys.stdout.flush()
     os._exit(0)
 
 t = threading.Thread(target=kill)
