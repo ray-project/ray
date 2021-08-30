@@ -335,6 +335,12 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
+message ConnectionCleanupRequest {
+}
+
+message ConnectionCleanupResponse {
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -346,6 +352,7 @@ message DataRequest {
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
+    ConnectionCleanupRequest connection_cleanup = 8;
   }
 }
 
@@ -359,6 +366,7 @@ message DataResponse {
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
+    ConnectionCleanupResponse connection_cleanup = 8;
   }
 }
 

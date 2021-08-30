@@ -425,6 +425,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         return modified_resp
 
     def Datapath(self, request_iterator, context):
+        cleanup_requested = False
         start_time = time.time()
         client_id = _get_client_id_from_context(context)
         if client_id == "":
@@ -489,19 +490,17 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             resp_stream = stub.Datapath(
                 request_iterator, metadata=[("client_id", client_id)])
             for resp in resp_stream:
+                resp_type = resp.WhichOne("type")
+                if resp_type == "cleanup_connection":
+                    # Dataclient is delaying cleanup, proxier should as well
+                    cleanup_requested = True
                 yield self.modify_connection_info_resp(resp)
-        except grpc.RpcError as e:
-            # Ignore exceptions due to cancel -- intentional shutdown
-            if e.code() != grpc.StatusCode.CANCELLED:
-                logger.exception(
-                    f"Unexpected GRPC exception while proxying {client_id}."
-                    " Delaying cleanup.")
-                # Delay cleanup, since client may attempt a reconnect
         except Exception:
             logger.exception("Proxying Datapath failed!")
         finally:
-            # TODO: don't always do this
-            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
+            if not cleanup_requested:
+                # Delay cleanup, since client may attempt a reconnect
+                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
             with self.clients_lock:
                 if client_id not in self.clients_last_seen:
                     logger.info(f"{client_id} not found. Skipping clean up.")

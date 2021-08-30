@@ -62,6 +62,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         }  # guarded by self.clients_lock
 
     def Datapath(self, request_iterator, context):
+        cleanup_requested = False
         start_time = time.time()
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata.get("client_id") or ""
@@ -131,18 +132,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.prep_runtime_env)
                         resp = ray_client_pb2.DataResponse(
                             prep_runtime_env=resp_prep)
+                elif req_type == "connection_cleanup":
+                    cleanup_requested = True
+                    cleanup_resp = ray_client_pb2.ConnectionCleanupResponse()
+                    resp = ray_client_pb2.DataResponse(
+                        connection_cleanup=cleanup_resp)
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
                 yield resp
             logger.info("Data Servicer shutting down gracefully.")
-        except grpc.RpcError as e:
-            # Ignore exceptions due to cancel -- intentional shutdown
-            if e.code() != grpc.StatusCode.CANCELLED:
-                logger.exception(
-                    f"Unexpected GRPC exception while servicing {client_id}."
-                    "Delaying cleanup.")
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
@@ -150,8 +150,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.error(
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
-            # Delay cleanup, since client may attempt a reconnect
-            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
+            if not cleanup_requested:
+                # Delay cleanup, since client may attempt a reconnect
+                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
             with self.clients_lock:
                 if client_id not in self.client_last_seen:
                     # Some other connection has already cleaned up this
