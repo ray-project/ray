@@ -365,8 +365,8 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
     # Incr will return a nested workflow. For the step function inside the
     # nested workflow, they'll be executed one-by-one. But obj2's finish cant
     # guarentee obj1's finish.
-    obj1 = c.incr.run_async(10) # noqa
-    obj2 = c.incr.run(10) # noqa
+    obj1 = c.incr.run_async(10)  # noqa
+    obj2 = c.incr.run(10)  # noqa
     assert c.get.run() == 20
 
 
