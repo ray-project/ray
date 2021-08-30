@@ -148,11 +148,14 @@ def slugify(value: str, allow_unicode=False) -> str:
 
 
 class Workflow:
-    def __init__(self, workflow_data: WorkflowData, prepare_inputs):
+    def __init__(self, workflow_data: WorkflowData,
+                 prepare_inputs: Optional[Callable] = None):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
             raise ValueError("Workflow should have one return value.")
-        self._data = workflow_data
-        self._prepare_inputs = prepare_inputs
+        self._data: WorkflowData = workflow_data
+        self._prepare_inputs: Callable = prepare_inputs
+        if self._data.inputs is None:
+            assert prepare_inputs is not None
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
         # step id will be generated during runtime
