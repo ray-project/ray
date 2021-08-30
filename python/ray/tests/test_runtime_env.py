@@ -260,7 +260,6 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Setup runtime env here
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    print(runtime_env)
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())

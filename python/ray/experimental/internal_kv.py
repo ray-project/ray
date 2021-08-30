@@ -6,7 +6,7 @@ from typing import List, Union
 from ray._private.client_mode_hook import client_mode_hook
 
 redis = os.environ.get("RAY_KV_USE_GCS", "0") == "0"
-initialized = False
+_initialized = False
 
 
 def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
@@ -17,9 +17,9 @@ def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
     RAY_KV_USE_GCS env variable, we fall back to using the Ray worker redis
     client directly.
     """
-    global global_gcs_client, initialized
+    global _initialized
 
-    if not initialized:
+    if not _initialized:
         if gcs_client is not None:
             global_gcs_client = gcs_client
         elif redis:
@@ -31,7 +31,7 @@ def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
             except grpc.RpcError:
                 global_gcs_client = None
 
-    initialized = True
+    _initialized = True
     return global_gcs_client
 
 
@@ -42,10 +42,8 @@ def _internal_kv_initialized():
     worker = ray.worker.global_worker
     if gcs_client is not None:
         return True
-    elif not (hasattr(worker, "mode") and worker.mode is not None):
-        return False
     else:
-        return True
+        return hasattr(worker, "mode") and worker.mode is not None
 
 
 @client_mode_hook

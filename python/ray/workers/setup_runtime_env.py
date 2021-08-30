@@ -175,7 +175,7 @@ def setup_worker(input_args):
         env_vars["PYTHONPATH"] = python_path
         runtime_env["env_vars"] = env_vars
 
-    # Add a conda active command prefix if using a conda env.
+    # Add a conda activate command prefix if using a conda env.
     if runtime_env_context and runtime_env_context.conda_env_name is not None:
         worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
