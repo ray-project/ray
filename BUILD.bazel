@@ -595,7 +595,6 @@ cc_library(
     srcs = [
         "src/ray/stats/metric_exporter.cc",
         "src/ray/stats/metric_exporter_client.cc",
-        "src/ray/stats/stats.cc",
     ],
     hdrs = [
         "src/ray/stats/metric_defs.h",
@@ -613,7 +612,6 @@ cc_library(
     }),
     strip_include_prefix = "src",
     deps = [
-        ":agent_manager_rpc",
         ":reporter_rpc",
         ":stats_metric",
     ],
