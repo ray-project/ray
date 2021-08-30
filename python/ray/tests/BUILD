@@ -195,6 +195,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
@@ -340,6 +341,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],
@@ -354,6 +356,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],

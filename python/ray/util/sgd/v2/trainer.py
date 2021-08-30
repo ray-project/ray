@@ -160,7 +160,7 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training()
+            callback.start_training(logdir=self.logdir)
 
         try:
             iterator = self.run_iterator(

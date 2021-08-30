@@ -26,7 +26,8 @@ PKG_DIR = None
 
 logger = logging.getLogger(__name__)
 
-FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
+FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
+GCS_STORAGE_MAX_SIZE = 512 * 1024 * 1024  # 512MiB
 
 
 class RuntimeEnvDict:
@@ -473,6 +474,12 @@ def fetch_package(pkg_uri: str) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
+    if len(data) >= GCS_STORAGE_MAX_SIZE:
+        raise RuntimeError(
+            "working_dir package exceeds the maximum size of 512MiB. You "
+            "can exclude large files using the 'excludes' option to the "
+            "runtime_env.")
+
     _internal_kv_put(gcs_key, data)
     return len(data)
 

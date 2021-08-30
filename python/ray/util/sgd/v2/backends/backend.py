@@ -52,7 +52,8 @@ class BackendExecutor:
             generated.
 
     Attributes:
-        logdir (Path): Path to the file directory where logs will be persisted.
+        logdir (Path): Path to the file directory where logs will be
+            persisted.
         latest_run_dir (Optional[Path]): Path to the file directory for the
             latest run. Configured through ``start_training``.
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for

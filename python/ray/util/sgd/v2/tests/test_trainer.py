@@ -8,7 +8,6 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
-
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
