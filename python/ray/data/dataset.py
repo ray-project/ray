@@ -1291,7 +1291,7 @@ class Dataset(Generic[T]):
 
         This works by first converting this dataset into a distributed set of
         Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
-        Then the individual datarames are used to create the modin DataFrame
+        Then the individual dataframes are used to create the modin DataFrame
         using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
