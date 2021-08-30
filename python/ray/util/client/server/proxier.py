@@ -490,7 +490,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             resp_stream = stub.Datapath(
                 request_iterator, metadata=[("client_id", client_id)])
             for resp in resp_stream:
-                resp_type = resp.WhichOne("type")
+                resp_type = resp.WhichOneof("type")
                 if resp_type == "connection_cleanup":
                     # Dataclient is delaying cleanup, proxier should as well
                     cleanup_requested = True

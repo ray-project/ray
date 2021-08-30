@@ -41,7 +41,6 @@ class LogstreamClient:
         while True:
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(
                 self.client_worker.channel)
-            print(self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
             log_stream = stub.Logstream(
                 iter(self.request_queue.get, None), metadata=metadata)

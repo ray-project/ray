@@ -2,7 +2,6 @@
 back to the ray clientserver.
 """
 import logging
-from python.ray.core.generated.ray_client_pb2 import DataRequest
 import queue
 import threading
 import time
@@ -73,7 +72,6 @@ class DataClient:
                 wait_for_ready=True)
             try:
                 for response in resp_stream:
-                    print(response)
                     if response.req_id == 0:
                         # This is not being waited for.
                         logger.debug(f"Got unawaited response {response}")
@@ -126,7 +124,7 @@ class DataClient:
 
     def close(self) -> None:
         if self.request_queue is not None:
-            cleanup_request = DataRequest(
+            cleanup_request = ray_client_pb2.DataRequest(
                 connection_cleanup=ray_client_pb2.ConnectionCleanupRequest())
             self.request_queue.put(cleanup_request)
             self.request_queue.put(None)
