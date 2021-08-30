@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 import os
 import sys
@@ -595,3 +595,28 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     # Right now, multiple pkg_uris are not supported correctly.
     # We return the last one as working directory
     return str(pkg_dir) if pkg_dir else None
+
+
+def override_task_or_actor_runtime_env(
+        runtime_env: Optional[Dict[str, Any]],
+        job_config: ray.job_config.JobConfig) -> Dict[str, Any]:
+    if runtime_env:
+        if runtime_env.get("working_dir"):
+            raise NotImplementedError(
+                "Overriding working_dir for actors is not supported. "
+                "Please use ray.init(runtime_env={'working_dir': ...}) "
+                "to configure per-job environment instead.")
+        runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
+    else:
+        runtime_env_dict = {}
+
+    # If per-actor URIs aren't specified, override them with those in the
+    # job config.
+    # XXX: handle packaging URIs.
+    if "uris" not in runtime_env_dict:
+        if job_config.runtime_env.uris is not None:
+            runtime_env_dict["uris"] = [
+                str(uri) for uri in job_config.runtime_env.uris
+            ]
+
+    return runtime_env_dict

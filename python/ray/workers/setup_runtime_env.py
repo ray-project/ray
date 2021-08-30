@@ -164,12 +164,18 @@ def setup_worker(input_args):
                                                     args.session_dir)
 
     if runtime_env_context and runtime_env_context.working_dir is not None:
-        logger.error(f"DOING CD: {runtime_env_context.working_dir}")
         commands += [f"cd {runtime_env_context.working_dir}"]
-    else:
-        logger.error("NOT DOING CD :*(")
 
-    # activate conda
+        # Insert the working_dir as the first entry in PYTHONPATH. This is
+        # compatible with users providing their own PYTHONPATH in env_vars.
+        env_vars = runtime_env.get("env_vars", None) or {}
+        python_path = runtime_env_context.working_dir
+        if "PYTHONPATH" in env_vars:
+            python_path += os.pathsep + runtime_env["PYTHONPATH"]
+        env_vars["PYTHONPATH"] = python_path
+        runtime_env["env_vars"] = env_vars
+
+    # Add a conda active command prefix if using a conda env.
     if runtime_env_context and runtime_env_context.conda_env_name is not None:
         worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
