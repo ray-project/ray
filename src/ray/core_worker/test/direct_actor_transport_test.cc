@@ -14,8 +14,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/task_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
@@ -23,6 +21,8 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "mock/ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/task_manager.h"
 namespace ray {
 namespace core {
 
@@ -96,7 +96,7 @@ class DirectActorSubmitterTest : public ::testing::Test {
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>()),
-        task_finisher_(std::make_shared<MockTaskFinisher>()),
+        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         submitter_(*client_pool_, *store_, *task_finisher_, actor_creator_,
                    [this](const ActorID &actor_id, int64_t num_queued) {
                      last_queue_warning_ = num_queued;
@@ -108,7 +108,7 @@ class DirectActorSubmitterTest : public ::testing::Test {
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  std::shared_ptr<MockTaskFinisher> task_finisher_;
+  std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
