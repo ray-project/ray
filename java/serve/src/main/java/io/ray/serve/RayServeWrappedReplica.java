@@ -74,11 +74,11 @@ public class RayServeWrappedReplica {
   /**
    * The entry method to process the request.
    *
-   * @param requestMetadata request metadata
-   * @param requestArgs the input parameters of the specified method of the object defined by
-   *     backendDef.
+   * @param requestMetadataBytes the serialized request metadata.
+   * @param requestArgs the serialized requestArgs. The input parameters of the specified method of
+   *     the object defined by backendDef.
    * @return the result of request being processed
-   * @throws InvalidProtocolBufferException
+   * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
    */
   public Object handleRequest(byte[] requestMetadataBytes, byte[] requestArgs)
       throws InvalidProtocolBufferException {
@@ -86,7 +86,7 @@ public class RayServeWrappedReplica {
     return backend.handleRequest(
         new Query(
             ServeProtoUtil.parseRequestMetadata(requestMetadataBytes),
-            ServeProtoUtil.parseHTTPRequestWrapper(requestArgs)));
+            ServeProtoUtil.parseHttpRequestWrapper(requestArgs)));
   }
 
   /** Check whether this replica is ready or not. */

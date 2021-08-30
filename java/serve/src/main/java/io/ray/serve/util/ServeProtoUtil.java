@@ -79,7 +79,7 @@ public class ServeProtoUtil {
     return builder.build();
   }
 
-  public static HTTPRequestWrapper parseHTTPRequestWrapper(byte[] httpRequestWrapperBytes)
+  public static HTTPRequestWrapper parseHttpRequestWrapper(byte[] httpRequestWrapperBytes)
       throws InvalidProtocolBufferException {
 
     // Parse RequestMetadata from byte[].
