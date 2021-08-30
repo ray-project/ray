@@ -150,8 +150,9 @@ class WorkflowManagementActor:
             step result. If it does not exist, return None
         """
         try:
-            return self._step_output_cache[workflow_id, step_id].output
+            return self._step_output_cache[(workflow_id, step_id)].output
         except Exception:
+            print("Fail to find:", workflow_id, step_id)
             return None
 
     def run_or_resume(self, workflow_id: str, ignore_existing: bool = False
@@ -178,7 +179,7 @@ class WorkflowManagementActor:
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        self._step_output_cache[workflow_id, step_id] = latest_output
+        self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
@@ -297,37 +298,41 @@ class WorkflowManagementActor:
         meta = wf_store.load_workflow_meta()
         if meta is None:
             raise ValueError(f"No such workflow {workflow_id}")
-        if meta == common.WorkflowStatus.FAILED:
-            raise ValueError(
-                f"Workflow {workflow_id} failed, please resume it")
+        if meta == common.WorkflowStatus.CANCELED:
+            raise ValueError(f"Workflow {workflow_id} is canceled")
+        if name is None:
+            # For resumable workflow, the workflow result is not ready.
+            # It has to be resumed first.
+            if meta == common.WorkflowStatus.RESUMABLE:
+                raise ValueError(
+                    f"Workflow {workflow_id} is in resumable status, "
+                    "please resume it")
+
         if name is None:
             step_id = wf_store.get_entrypoint_step_id()
         else:
             step_id = name
-            if step_id is None:
-                raise ValueError(f"Fail to find step `{step_id}` in workflow "
-                                 "`{workflow_id}`")
-            output = self._step_output_cache.get(workflow_id, {}).get(
-                step_id, None)
+            output = self.get_cached_step_output(workflow_id, step_id)
             if output is not None:
-                return ray.put(_SelfDereferenceObject(None, output.output))
+                return ray.put(_SelfDereferenceObject(None, output))
 
-        result = recovery.resume_workflow_step(workflow_id, step_id,
-                                               self._store.storage_url)
-        # We don't record workflow running status for getting result
-        # for a named step.
-        if name is not None:
-            return result.persisted_output
+        @ray.remote
+        def load(wf_store, workflow_id, step_id):
+            result = wf_store.inspect_step(step_id)
+            if result.output_object_valid:
+                # we already have the output
+                return wf_store.load_step_output(step_id)
+            if isinstance(result.output_step_id, str):
+                actor = get_management_actor()
+                return actor.get_output.remote(workflow_id,
+                                               result.output_step_id)
+            raise ValueError(
+                f"No such step id {step_id} in workflow {workflow_id}")
 
-        latest_output = LatestWorkflowOutput(result.persisted_output,
-                                             workflow_id, step_id)
-        self._workflow_outputs[workflow_id] = latest_output
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
-        self._step_status.setdefault(workflow_id, {})
-        # "persisted_output" is the return value of a step or the state of
-        # a virtual actor.
-        return result.persisted_output
+        return ray.put(
+            _SelfDereferenceObject(None,
+                                   load.remote(wf_store, workflow_id,
+                                               step_id)))
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

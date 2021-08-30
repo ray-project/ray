@@ -118,7 +118,7 @@ class InvalidValuesTest(unittest.TestCase):
             config=self.config,
             metric="_metric",
             mode="max",
-            num_samples=8,
+            num_samples=16,
             reuse_actors=False)
 
         best_trial = out.best_trial
