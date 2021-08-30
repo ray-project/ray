@@ -122,8 +122,7 @@ YAPF_EXCLUDES=(
 )
 
 GIT_LS_EXCLUDES=(
-    ':(exclude)python/ray/cloudpickle/'
-    ':(exclude)src/mock/'
+  ':(exclude)python/ray/cloudpickle/'
 )
 
 JAVA_EXCLUDES=(
