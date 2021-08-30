@@ -726,20 +726,18 @@ def test_k8s_cpu():
 
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
-    worker_env = {
-        "key": "value",
-    }
+    runtime_env = {"env_vars": {"key": "value"}}
 
     ray.init(
         job_config=ray.job_config.JobConfig(
             num_java_workers_per_process=num_java_workers_per_process,
-            worker_env=worker_env))
+            runtime_env=runtime_env))
 
     # Check that the job config is synchronized at the driver side.
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert (job_config.worker_env == worker_env)
+    assert (job_config.runtime_env == runtime_env)
 
     @ray.remote
     def get_job_config():
@@ -751,7 +749,7 @@ def test_sync_job_config(shutdown_only):
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert (job_config.worker_env == worker_env)
+    assert (job_config.runtime_env == runtime_env)
 
 
 def test_duplicated_arg(ray_start_cluster):

@@ -442,8 +442,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                override_environment_variables=None):
+                runtime_env=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -485,9 +484,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables))
+                    runtime_env=runtime_env)
 
         return ActorOptionWrapper()
 
@@ -510,8 +507,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                override_environment_variables=None):
+                runtime_env=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -557,9 +553,6 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-            override_environment_variables: Environment variables to override
-                and/or introduce for this actor.  This is a dictionary mapping
-                variable names to their values.
 
         Returns:
             A handle to the newly created actor.
@@ -605,9 +598,7 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env,
-                override_environment_variables=(
-                    override_environment_variables))
+                runtime_env=runtime_env)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -735,12 +726,6 @@ class ActorClass:
         else:
             runtime_env_dict = {}
 
-        if override_environment_variables:
-            logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.6.  Please use "
-                           ".options(runtime_env={'env_vars': {...}}).remote()"
-                           "instead.")
-
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -759,9 +744,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env_dict=runtime_env_dict,
-            override_environment_variables=override_environment_variables
-            or dict())
+            runtime_env_dict=runtime_env_dict)
 
         actor_handle = ActorHandle(
             meta.language,

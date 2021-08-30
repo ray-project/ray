@@ -135,7 +135,6 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -173,8 +172,6 @@ class RemoteFunction:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables),
                     name=name)
 
         return FuncWrapper()
@@ -195,7 +192,6 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
         if client_mode_should_convert():
@@ -216,7 +212,6 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
-                override_environment_variables=override_environment_variables,
                 name=name)
 
         worker = ray.worker.global_worker
@@ -287,12 +282,6 @@ class RemoteFunction:
         else:
             runtime_env_dict = {}
 
-        if override_environment_variables:
-            logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.6.  Please use "
-                           ".options(runtime_env={'env_vars': {...}}).remote()"
-                           "instead.")
-
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language.format_args(worker, args, kwargs)
@@ -307,20 +296,12 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language,
-                self._function_descriptor,
-                list_args,
-                name,
-                num_returns,
-                resources,
-                max_retries,
-                placement_group.id,
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, placement_group.id,
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint,
-                runtime_env_dict,
-                override_environment_variables=override_environment_variables
-                or dict())
+                worker.debugger_breakpoint, runtime_env_dict)
+
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

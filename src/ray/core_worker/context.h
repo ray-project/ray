@@ -42,9 +42,6 @@ class WorkerContext {
 
   const std::string &GetCurrentSerializedRuntimeEnv() const;
 
-  const std::unordered_map<std::string, std::string>
-      &GetCurrentOverrideEnvironmentVariables() const;
-
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -100,8 +97,6 @@ class WorkerContext {
   bool placement_group_capture_child_tasks_;
   // The JSON-serialized runtime env for the current actor or task.
   std::string serialized_runtime_env_ = "{}";
-  // The environment variable overrides for the current actor or task.
-  std::unordered_map<std::string, std::string> override_environment_variables_;
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;
 

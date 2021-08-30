@@ -200,19 +200,17 @@ message TaskSpec {
   int64 placement_group_bundle_index = 19;
   // Whether or not this task should capture parent's placement group automatically.
   bool placement_group_capture_child_tasks = 20;
-  // Environment variables to override for this task
-  map<string, string> override_environment_variables = 21;
   // Whether or not to skip the execution of this task. When it's true,
   // the receiver will not execute the task. This field is used by async actors
   // to guarantee task submission order after restart.
-  bool skip_execution = 22;
+  bool skip_execution = 21;
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
-  bytes debugger_breakpoint = 23;
+  bytes debugger_breakpoint = 22;
   // Serialized JSON string of the parsed runtime environment dict for this task.
-  string serialized_runtime_env = 24;
+  string serialized_runtime_env = 23;
   // The concurrency group name in which this task will be performed.
-  string concurrency_group_name = 25;
+  string concurrency_group_name = 24;
 }
 
 message Bundle {

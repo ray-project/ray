@@ -171,11 +171,6 @@ const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
   return serialized_runtime_env_;
 }
 
-const std::unordered_map<std::string, std::string>
-    &WorkerContext::GetCurrentOverrideEnvironmentVariables() const {
-  return override_environment_variables_;
-}
-
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
@@ -189,7 +184,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // only set serialized_runtime_env_ once and then RAY_CHECK that we
     // never see a new one.
     serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
@@ -200,7 +194,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {

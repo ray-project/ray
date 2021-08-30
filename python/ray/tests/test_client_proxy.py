@@ -225,7 +225,10 @@ def test_prepare_runtime_init_req_no_modification():
     """
     Check that `prepare_runtime_init_req` properly extracts the JobConfig.
     """
-    job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
+    job_config = JobConfig(
+        runtime_env={"env_vars": {
+            "KEY": "VALUE"
+        }}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(
             job_config=pickle.dumps(job_config),
@@ -245,7 +248,10 @@ def test_prepare_runtime_init_req_modified_job():
     Check that `prepare_runtime_init_req` properly extracts the JobConfig and
     modifies it according to `ray_client_server_env_prep`.
     """
-    job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
+    job_config = JobConfig(
+        runtime_env={"env_vars": {
+            "KEY": "VALUE"
+        }}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
         init=ray_client_pb2.InitRequest(
             job_config=pickle.dumps(job_config),

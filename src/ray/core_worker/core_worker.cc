@@ -43,15 +43,13 @@ void BuildCommonTaskSpec(
     std::vector<ObjectID> *return_ids, const BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::string &serialized_runtime_env,
-    const std::unordered_map<std::string, std::string> &override_environment_variables,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, override_environment_variables,
-      concurrency_group_name);
+      debugger_breakpoint, serialized_runtime_env, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1720,22 +1718,13 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
-  // Propagate existing environment variable overrides, but override them with any new
-  // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      task_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
                       placement_options, placement_group_capture_child_tasks,
-                      debugger_breakpoint, task_options.serialized_runtime_env,
-                      override_environment_variables);
+                      debugger_breakpoint, task_options.serialized_runtime_env);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   if (options_.is_local_mode) {
@@ -1768,12 +1757,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      actor_creation_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
@@ -1788,14 +1771,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, task_name,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, 1, new_resource, new_placement_resources, &return_ids,
-      actor_creation_options.placement_options,
-      actor_creation_options.placement_group_capture_child_tasks,
-      "", /* debugger_breakpoint */
-      actor_creation_options.serialized_runtime_env, override_environment_variables);
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, 1, new_resource,
+                      new_placement_resources, &return_ids,
+                      actor_creation_options.placement_options,
+                      actor_creation_options.placement_group_capture_child_tasks,
+                      "", /* debugger_breakpoint */
+                      actor_creation_options.serialized_runtime_env);
 
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
@@ -1947,16 +1930,15 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
-  const std::unordered_map<std::string, std::string> override_environment_variables = {};
-  BuildCommonTaskSpec(
-      builder, actor_handle->CreationJobID(), actor_task_id, task_name,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, num_returns, task_options.resources, required_resources, return_ids,
-      std::make_pair(PlacementGroupID::Nil(), -1),
-      true, /* placement_group_capture_child_tasks */
-      "",   /* debugger_breakpoint */
-      "{}", /* serialized_runtime_env */
-      override_environment_variables, task_options.concurrency_group_name);
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, num_returns, task_options.resources,
+                      required_resources, return_ids,
+                      std::make_pair(PlacementGroupID::Nil(), -1),
+                      true, /* placement_group_capture_child_tasks */
+                      "",   /* debugger_breakpoint */
+                      "{}", /* serialized_runtime_env */
+                      task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
