@@ -555,16 +555,19 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return stat
 
     def get_state(self) -> Dict[str, Any]:
-        state = {"num_added": self.num_added}
+        state = {
+            "num_added": self.num_added,
+            "replay_buffers": {}
+        }
         for policy_id, replay_buffer in self.replay_buffers.items():
-            state[f"_policy_{policy_id}"] = replay_buffer.get_state()
+            state["replay_buffers"][policy_id] = replay_buffer.get_state()
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         self.num_added = state["num_added"]
-        for key in state.keys():
-            if key.startswith("_policy_"):
-                self.replay_buffers[key[8:]].set_state(state[key])
+        buffer_states = state["replay_buffers"]
+        for policy_id in buffer_states.keys():
+            self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
 
 
 ReplayActor = ray.remote(num_cpus=0)(LocalReplayBuffer)
