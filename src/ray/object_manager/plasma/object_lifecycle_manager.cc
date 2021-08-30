@@ -21,12 +21,15 @@
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
+namespace {}
 using namespace flatbuf;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
     IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
-    : object_store_(std::make_unique<ObjectStore>(allocator)),
+    : kMinSpillingSize(1024 * 1024 * 100),
+      object_store_(std::make_unique<ObjectStore>(allocator)),
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
+      spill_manager_(std::make_unique<NoOpSpillManager>()),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
       num_bytes_in_use_(0),
@@ -116,6 +119,93 @@ int64_t ObjectLifecycleManager::RequireSpace(int64_t size) {
       eviction_policy_->ChooseObjectsToEvict(size, objects_to_evict);
   EvictObjects(objects_to_evict);
   return num_bytes_evicted;
+}
+
+bool ObjectLifecycleManager::SetObjectAsPrimaryCopy(const ObjectID &object_id) {
+  if (GetObject(object_id) == nullptr) {
+    return false;
+  }
+  primary_objects_.emplace(object_id);
+  return true;
+}
+
+bool ObjectLifecycleManager::SpillObjectUptoMaxThroughput() {
+  while (spill_manager_->CanSubmitSpillTask()) {
+    auto objects_to_spill = FindObjectsForSpilling(kMinSpillingSize);
+    if (objects_to_spill.empty()) {
+      break;
+    }
+    RAY_CHECK(spill_manager_->SubmitSpillTask(
+        objects_to_spill,
+        [this](ray::Status status, absl::flat_hash_map<ObjectID, std::string> result) {
+          this->OnSpillTaskFinished(std::move(status), std::move(result));
+        }));
+  }
+  return IsSpillingInProgress();
+}
+
+bool ObjectLifecycleManager::IsSpillingInProgress() const {
+  return !spilling_objects_.empty();
+}
+
+absl::optional<std::string> ObjectLifecycleManager::GetLocalSpilledObjectURL(
+    const ObjectID &object_id) const {
+  auto it = spilled_objects_.find(object_id);
+  if (it == spilled_objects_.end()) {
+    return absl::nullopt;
+  }
+  return it->second;
+}
+
+std::vector<const LocalObject &> ObjectLifecycleManager::FindObjectsForSpilling(
+    int64_t num_bytes_to_spill) {
+  RAY_LOG(DEBUG) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+
+  int64_t bytes_to_spill = 0;
+  std::vector<const LocalObject &> objects_to_spill;
+
+  for (const auto &object_id : primary_objects_) {
+    if (bytes_to_spill > num_bytes_to_spill || objects_to_spill.size() > kMaxFuseSize) {
+      break;
+    }
+    if (spilling_objects_.contains(object_id) || spilled_objects_.contains(object_id)) {
+      continue;
+    }
+    if (!IsObjectSpillable(object_id)) {
+      continue;
+    }
+    objects_to_spill.push_back(*GetObject(object_id));
+  }
+
+  if (bytes_to_spill < num_bytes_to_spill || objects_to_spill.empty()) {
+    return {};
+  }
+
+  spilling_objects_.insert(object_to_spill.begin(), object_to_spill.end());
+  return object_to_spill;
+}
+
+void ObjectLifecycleManager::OnSpillTaskFinished(
+    ray::Status status, absl::flat_hash_map<ObjectID, std::string> result) {
+  if (!status.OK()) {
+    RAY_LOG(ERROR) << "Failed to send object spilling request: " << status.ToString();
+    // mark object spillable again.
+    for (auto pair : result) {
+      spilling_objects_.erase(pair.first);
+    }
+    return;
+  }
+
+  for (auto pair : result) {
+    auto &object_id = pair.first;
+    auto &spilled_url = pair.second;
+    if (primary_objects_.contains(object_id)) {
+      spilling_objects_.erase(object_id);
+      spilled_objects_.emplace(object_id, std::move(spilled_url));
+    } else {
+      spill_manager_->DeleteSpilledObject(object_id);
+    }
+  }
 }
 
 bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
@@ -277,9 +367,12 @@ void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
 // For test only.
 ObjectLifecycleManager::ObjectLifecycleManager(
     std::unique_ptr<IObjectStore> store, std::unique_ptr<IEvictionPolicy> eviction_policy,
+    std::unique_ptr<ISpillManager> spill_manager,
     ray::DeleteObjectCallback delete_object_callback)
-    : object_store_(std::move(store)),
+    : kMinSpillingSize(1024 * 1024 * 100),
+      object_store_(std::move(store)),
       eviction_policy_(std::move(eviction_policy)),
+      spill_manager_(std::move(spill_manager)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
       num_bytes_in_use_(0),

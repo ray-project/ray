@@ -17,12 +17,15 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/spill_manager.h"
 #include "ray/object_manager/plasma/stats_collector.h"
 
 namespace plasma {
@@ -104,6 +107,28 @@ class ObjectLifecycleManager {
   /// \return The number of bytes evicted.
   int64_t RequireSpace(int64_t size);
 
+  /// Mark this object as the primary copy.
+  ///
+  /// Only primary object can be spilled. It's spillable once
+  /// its reference count becomes 1.
+  /// TODO:(scv119) this should be 0 once we deprecate
+  /// pinning logic from local object manager.
+  ///
+  /// Primary object can't be evicted unless it's spilled.
+  bool SetObjectAsPrimaryCopy(const ObjectID &object_id);
+
+  /// Spill objects as much as possible as fast as possible up to
+  /// the max throughput.
+  ///
+  /// TODO:(scv119) the current implementation matches the spilling behavior of
+  /// local object manager. In the future we can have precise control on how
+  /// much object to spill.
+  bool SpillObjectUptoMaxThroughput();
+
+  bool IsSpillingInProgress() const;
+
+  absl::optional<std::string> GetLocalSpilledObjectURL(const ObjectID &object_id) const;
+
   std::string EvictionPolicyDebugString() const;
 
   bool IsObjectSealed(const ObjectID &object_id) const;
@@ -122,6 +147,7 @@ class ObjectLifecycleManager {
   // Test only
   ObjectLifecycleManager(std::unique_ptr<IObjectStore> store,
                          std::unique_ptr<IEvictionPolicy> eviction_policy,
+                         std::unique_ptr<ISpillManager> spill_manager,
                          ray::DeleteObjectCallback delete_object_callback);
 
   const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
@@ -135,19 +161,32 @@ class ObjectLifecycleManager {
 
   void DeleteObjectInternal(const ObjectID &object_id);
 
- private:
-  friend struct ObjectLifecycleManagerTest;
+  std::vector<const LocalObject &> FindObjectsForSpilling(int64_t num_bytes_to_spill);
+
+  void OnSpillTaskFinished(ray::Status status,
+                           absl::flat_hash_map<ObjectID, std::string> result);
+
+  bool IsObjectSpillable(const ObjectID &object_id) const :
+
+      private : friend struct ObjectLifecycleManagerTest;
   friend struct ObjectStatsCollectorTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
 
+  const int64_t kMinSpillingSize;
   std::unique_ptr<IObjectStore> object_store_;
   std::unique_ptr<IEvictionPolicy> eviction_policy_;
+  std::unique_ptr<ISpillManager> spill_manager_;
   const ray::DeleteObjectCallback delete_object_callback_;
 
   // list of objects which will be removed immediately
   // once reference count becomes 0.
   absl::flat_hash_set<ObjectID> earger_deletion_objects_;
+
+  // primary/spilled object states.
+  absl::flat_hash_set<ObjectID> primary_objects_;
+  absl::flat_hash_set<ObjectID> spilling_objects_;
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
 
   // Total bytes of the objects whose references are greater than 0.
   int64_t num_bytes_in_use_;

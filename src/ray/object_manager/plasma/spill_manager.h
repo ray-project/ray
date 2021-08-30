@@ -31,35 +31,39 @@ class ISpillManager {
   /// Spill a list of objects in an asynchronous task.
   ///
   /// \param objects_to_spill List of objects to spill.
-  /// \param spill_task_callback The callback once the async spill task finishes.
+  /// \param task_finished_callback The callback once the async spill task finishes.
   ///   - If the spill task succeed it returns Status::OK() and a map from object_id
   ///     to the spilled location.
-  ///   - If the spill task failed, it returns failure Status and an empty map.
+  ///   - If the spill task failed, it returns failure Status and a map from object_id
+  ///     to empty strings.
   /// \return wether the spill task is successfully scheduled.
   ///   - It returns true if the spill task is successfuly scheduled,
   ///     where the callback is guarantee to be called.
   ///   - Otherwise it returns false and the callback will not be called.
-  ///
-  /// NOTE: the callback might not be exected on the thread submits the task!
   virtual bool SubmitSpillTask(
-      const std::vector<const LocalObject &> objects_to_spill,
+      std::vector<const LocalObject &> objects_to_spill,
       std::function<void(ray::Status status, absl::flat_hash_map<ObjectID, std::string>)>
-          spill_task_callback) = 0;
+          task_finished_callback) = 0;
 
   /// Wether we can submit another spill task.
   virtual bool CanSubmitSpillTask() const = 0;
+
+  /// Delete a spilled object from external storage.
+  virtual void DeleteSpilledObject(const ObjectID &object_id) = 0;
 };
 
 // NoOpSpillManager can't spill anything!
 class NoOpSpillManager : public ISpillManager {
  public:
   bool SubmitSpillTask(
-      const std::vector<const LocalObject &> /* unused */,
+      std::vector<const LocalObject &> /* unused */,
       std::function<void(ray::Status status, absl::flat_hash_map<ObjectID, std::string>)>
       /* unused */) override {
     return false;
   }
 
   bool CanSubmitSpillTask() const override { return false; }
+
+  void DeleteSpilledObject(const ObjectID &object_id) override {}
 };
 };  // namespace plasma
