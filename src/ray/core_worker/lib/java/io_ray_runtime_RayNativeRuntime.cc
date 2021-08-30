@@ -249,7 +249,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   options.gc_collect = gc_collect;
   options.num_workers = static_cast<int>(numWorkersPerProcess);
   options.serialized_job_config = serialized_job_config;
-  options.metrics_agent_port = -1;
 
   CoreWorkerProcess::Initialize(options);
 }

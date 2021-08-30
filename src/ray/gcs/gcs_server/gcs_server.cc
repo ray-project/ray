@@ -26,6 +26,8 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/stats/stats.h"
+#include "ray/util/agent_finder.h"
 
 namespace ray {
 namespace gcs {
@@ -52,6 +54,33 @@ void GcsServer::Start() {
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+
+  // Init stats.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::NodeAddressKey, config_.node_ip_address}};
+  ray::stats::Init(
+      global_tags, [this](const ray::stats::GetAgentAddressCallback &callback) {
+        // This is the opencensus report thread, we should do the GCS operation
+        // in main_service_.
+        main_service_.post(
+            [this, callback] {
+              if (!gcs_node_manager_) {
+                callback(ray::Status::Invalid("The GcsNodeManager is not initialized."),
+                         std::string());
+                return;
+              }
+              auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+              if (all_alive_nodes.empty()) {
+                callback(ray::Status::Invalid("No alive nodes."), std::string());
+                return;
+              }
+              auto selected_node_id = all_alive_nodes.begin()->first;
+              GetAgentAddress(redis_client_, selected_node_id, callback);
+            },
+            "GetAgentAddressCallback");
+      });
 
   // Init redis failure detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
@@ -169,6 +198,9 @@ void GcsServer::Stop() {
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
+
+    // Shutdown stats.
+    ray::stats::Shutdown();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";

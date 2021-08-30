@@ -121,7 +121,7 @@ def test_ports_assignment(ray_start_cluster):
         "gcs_server_port": 30003,
         "ray_client_server_port": 30004,
         "dashboard_port": 30005,
-        "metrics_agent_port": 30006,
+        "dashboard_agent_port": 30006,
         "metrics_export_port": 30007,
     }
 

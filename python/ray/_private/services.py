@@ -1281,7 +1281,6 @@ def start_gcs_server(redis_address,
                      config=None,
                      fate_share=None,
                      gcs_server_port=None,
-                     metrics_agent_port=None,
                      node_ip_address=None):
     """Start a gcs server.
     Args:
@@ -1295,7 +1294,6 @@ def start_gcs_server(redis_address,
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port (int): Port number of the gcs server.
-        metrics_agent_port(int): The port where metrics agent is bound to.
         node_ip_address(str): IP Address of a node where gcs server starts.
     Returns:
         ProcessInfo for the process that was started.
@@ -1313,7 +1311,6 @@ def start_gcs_server(redis_address,
         f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
-        f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_password:
@@ -1348,7 +1345,7 @@ def start_raylet(redis_address,
                  worker_port_list=None,
                  object_manager_port=None,
                  redis_password=None,
-                 metrics_agent_port=None,
+                 dashboard_agent_port=None,
                  metrics_export_port=None,
                  dashboard_agent_listen_port=None,
                  use_valgrind=False,
@@ -1393,7 +1390,8 @@ def start_raylet(redis_address,
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
-        metrics_agent_port(int): The port where metrics agent is bound to.
+        dashboard_agent_port(int): The port where the dashboard agent is bound
+            to.
         metrics_export_port(int): The port at which metrics are exposed to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1483,7 +1481,6 @@ def start_raylet(redis_address,
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
@@ -1530,7 +1527,7 @@ def start_raylet(redis_address,
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
-            f"--dashboard-agent-port={metrics_agent_port}",
+            f"--dashboard-agent-port={dashboard_agent_port}",
             f"--listen-port={dashboard_agent_listen_port}",
             "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
             f"--object-store-name={plasma_store_name}",
@@ -1568,7 +1565,6 @@ def start_raylet(redis_address,
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
