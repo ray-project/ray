@@ -40,11 +40,14 @@ import os
 import ray
 import threading
 
+ray.init(num_cpus=2)
+
 @ray.remote
 def f():
     while True:
         time.sleep(1)
         print("hello there")
+        print("x" * 10000)
 
 def kill():
     time.sleep(5)
