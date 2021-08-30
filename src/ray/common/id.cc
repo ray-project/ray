@@ -15,15 +15,16 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
-
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
+
 #include "absl/time/clock.h"
 
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
 extern "C" {
@@ -38,9 +39,9 @@ namespace ray {
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 /// A helper function to generate the unique bytes by hash.
-std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
-                                size_t parent_task_counter, size_t extra_bytes,
-                                size_t length) {
+__suppress_ubsan__("undefined") std::string
+    GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
+                        size_t parent_task_counter, size_t extra_bytes, size_t length) {
   RAY_CHECK(length <= DIGEST_SIZE);
   SHA256_CTX ctx;
   sha256_init(&ctx);
@@ -75,7 +76,8 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
+__suppress_ubsan__("undefined") uint64_t
+    MurmurHash64A(const void *key, int len, unsigned int seed) {
   const uint64_t m = 0xc6a4a7935bd1e995;
   const int r = 47;
 
@@ -248,6 +250,12 @@ JobID JobID::FromInt(uint32_t value) {
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+}
+
+uint32_t JobID::ToInt() {
+  uint32_t value;
+  std::memcpy(&value, &id_, JobID::Size());
+  return value;
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

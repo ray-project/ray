@@ -206,6 +206,11 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
   return Status::OK();
 }
 
+int InMemoryStoreClient::GetNextJobID() {
+  job_id_ += 1;
+  return job_id_;
+}
+
 std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCreateTable(
     const std::string &table_name) {
   absl::MutexLock lock(&mutex_);

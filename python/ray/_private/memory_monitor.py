@@ -47,6 +47,17 @@ class RayOutOfMemoryError(Exception):
                 # issue for more detail:
                 # https://github.com/ray-project/ray/issues/14929
                 continue
+            except psutil.AccessDenied:
+                # On MacOS, the proc_pidinfo call (used to get per-process
+                # memory info) fails with a permission denied error when used
+                # on a process that isn’t owned by the same user. For now, we
+                # drop the memory info of any such process, assuming that
+                # processes owned by other users (e.g. root) aren't Ray
+                # processes and will be of less interest when an OOM happens
+                # on a Ray node.
+                # See issue for more detail:
+                # https://github.com/ray-project/ray/issues/11845#issuecomment-849904019  # noqa: E501
+                continue
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GiB\t{}".format(

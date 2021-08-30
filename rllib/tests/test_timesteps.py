@@ -31,7 +31,7 @@ class TestTimeSteps(unittest.TestCase):
             policy = trainer.get_policy()
 
             for i in range(1, 21):
-                trainer.compute_action(obs)
+                trainer.compute_single_action(obs)
                 self.assertEqual(policy.global_timestep, i)
             for i in range(1, 21):
                 policy.compute_actions(obs_one_hot)

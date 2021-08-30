@@ -20,6 +20,9 @@ BUILD_DIR="${TRAVIS_BUILD_DIR-}"
 if [ -z "${BUILD_DIR}" ]; then
   BUILD_DIR="${GITHUB_WORKSPACE}"
 fi
+if [ -n "${BUILDKITE-}" ]; then
+  BUILD_DIR="${ROOT_DIR}/../.."
+fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
@@ -45,10 +48,11 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38")
-  PY_MMS=("3.6.9"
-          "3.7.6"
-          "3.8.2")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
+  PY_MMS=("3.6.13"
+          "3.7.10"
+          "3.8.10"
+          "3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   "${ROOT_DIR}"/../suppress_output bash miniconda3.sh -b -p "$HOME/miniconda3"
   export PATH="$HOME/miniconda3/bin:$PATH"
@@ -83,7 +87,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS="$(find "$ROOT_DIR"/../../.whl/ -mindepth 1 -maxdepth 1 -name "*.whl" | wc -l)"
-  if [[ "$NUMBER_OF_WHEELS" != "3" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l "$ROOT_DIR/../.whl/"
     exit 2
@@ -91,10 +95,11 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
   PY_MMS=("3.6"
           "3.7"
-          "3.8")
+          "3.8"
+          "3.9")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
@@ -108,6 +113,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
+    "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.

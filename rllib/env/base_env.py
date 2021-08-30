@@ -125,7 +125,9 @@ class BaseEnv:
                         make_env,
                         num_envs,
                         multiagent=False,
-                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                        existing_envs=[env],
+                    )
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
@@ -203,14 +205,6 @@ class BaseEnv:
         return []
 
     @PublicAPI
-    def stop(self) -> None:
-        """Releases all resources used."""
-
-        for env in self.get_unwrapped():
-            if hasattr(env, "close"):
-                env.close()
-
-    # Experimental method.
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         """Tries to render the environment.
 
@@ -221,6 +215,14 @@ class BaseEnv:
 
         # By default, do nothing.
         pass
+
+    @PublicAPI
+    def stop(self) -> None:
+        """Releases all resources used."""
+
+        for env in self.get_unwrapped():
+            if hasattr(env, "close"):
+                env.close()
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -423,10 +425,6 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(obs.keys()) != set(rewards.keys()):
-                raise ValueError(
-                    "Key set for obs and rewards must be the same: "
-                    "{} vs {}".format(obs.keys(), rewards.keys()))
             if set(infos).difference(set(obs)):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
@@ -451,6 +449,13 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     def get_unwrapped(self) -> List[EnvType]:
         return [state.env for state in self.env_states]
 
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        if env_id is None:
+            env_id = 0
+        assert isinstance(env_id, int)
+        return self.envs[env_id].render()
+
 
 class _MultiAgentEnvState:
     def __init__(self, env: MultiAgentEnv):
@@ -463,31 +468,57 @@ class _MultiAgentEnvState:
         if not self.initialized:
             self.reset()
             self.initialized = True
-        obs, rew, dones, info = (self.last_obs, self.last_rewards,
-                                 self.last_dones, self.last_infos)
-        self.last_obs = {}
-        self.last_rewards = {}
-        self.last_dones = {"__all__": False}
+
+        observations = self.last_obs
+        rewards = {}
+        dones = {"__all__": self.last_dones["__all__"]}
+        infos = {}
+
+        # If episode is done, release everything we have.
+        if dones["__all__"]:
+            rewards = self.last_rewards
+            self.last_rewards = {}
+            dones = self.last_dones
+            self.last_dones = {}
+            self.last_obs = {}
+            infos = self.last_infos
+            self.last_infos = {}
+        # Only release those agents' rewards/dones/infos, whose
+        # observations we have.
+        else:
+            for ag in observations.keys():
+                if ag in self.last_rewards:
+                    rewards[ag] = self.last_rewards[ag]
+                    del self.last_rewards[ag]
+                if ag in self.last_dones:
+                    dones[ag] = self.last_dones[ag]
+                    del self.last_dones[ag]
+                if ag in self.last_infos:
+                    infos[ag] = self.last_infos[ag]
+                    del self.last_infos[ag]
+
+        self.last_dones["__all__"] = False
         self.last_infos = {}
-        return obs, rew, dones, info
+        return observations, rewards, dones, infos
 
     def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,
                 dones: MultiAgentDict, infos: MultiAgentDict):
         self.last_obs = obs
-        self.last_rewards = rewards
-        self.last_dones = dones
+        for ag, r in rewards.items():
+            if ag in self.last_rewards:
+                self.last_rewards[ag] += r
+            else:
+                self.last_rewards[ag] = r
+        for ag, d in dones.items():
+            if ag in self.last_dones:
+                self.last_dones[ag] = self.last_dones[ag] or d
+            else:
+                self.last_dones[ag] = d
         self.last_infos = infos
 
     def reset(self) -> MultiAgentDict:
         self.last_obs = self.env.reset()
-        self.last_rewards = {
-            agent_id: None
-            for agent_id in self.last_obs.keys()
-        }
-        self.last_dones = {
-            agent_id: False
-            for agent_id in self.last_obs.keys()
-        }
-        self.last_infos = {agent_id: {} for agent_id in self.last_obs.keys()}
-        self.last_dones["__all__"] = False
+        self.last_rewards = {}
+        self.last_dones = {"__all__": False}
+        self.last_infos = {}
         return self.last_obs

@@ -1,7 +1,7 @@
 import functools
 from math import log
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 import gym
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -240,6 +240,8 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
+        self.mean = mean
+        self.std = std
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -250,6 +252,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     def sample(self) -> TensorType:
         # Use the reparameterization version of `dist.sample` to allow for
         # the results to be backprop'able e.g. in a loss term.
+
         normal_sample = self.dist.rsample()
         self.last_sample = self._squash(normal_sample)
         return self.last_sample
@@ -268,6 +271,14 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         log_prob = log_prob_gaussian - torch.sum(
             torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
         return log_prob
+
+    def sample_logp(self):
+        z = self.dist.rsample()
+        actions = self._squash(z)
+        return actions, torch.sum(
+            self.dist.log_prob(z) -
+            torch.log(1 - actions * actions + SMALL_NUMBER),
+            dim=-1)
 
     @override(TorchDistributionWrapper)
     def entropy(self) -> TensorType:

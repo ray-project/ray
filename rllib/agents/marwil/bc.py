@@ -23,7 +23,7 @@ BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
 # yapf: enable
 
 
-def validate_config(config: TrainerConfigDict):
+def validate_config(config: TrainerConfigDict) -> None:
     if config["beta"] != 0.0:
         raise ValueError(
             "For behavioral cloning, `beta` parameter must be 0.0!")

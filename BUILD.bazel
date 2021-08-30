@@ -39,6 +39,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":ray_common",
+        ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_protobuf//:protobuf",
@@ -93,6 +94,7 @@ cc_library(
     deps = [
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
+        ":pubsub_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -145,6 +147,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
+        ":pubsub_lib",
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
@@ -203,6 +206,56 @@ cc_library(
     ],
 )
 
+# runtime env.
+cc_grpc_library(
+    name = "runtime_env_cc_grpc",
+    srcs = ["//src/ray/protobuf:runtime_env_agent_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:runtime_env_agent_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "runtime_env_rpc",
+    hdrs = glob([
+        "src/ray/rpc/runtime_env/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":runtime_env_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# pubsub.
+cc_grpc_library(
+    name = "pubsub_cc_grpc",
+    srcs = ["//src/ray/protobuf:pubsub_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "pubsub_rpc",
+    copts = COPTS,
+    deps = [
+        "pubsub_cc_grpc",
+        ":grpc_common_lib",
+        ":ray_common",
+    ],
+)
+
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -243,6 +296,7 @@ cc_library(
         ],
     }),
     hdrs = [
+        "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",
@@ -271,7 +325,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_github_google_glog//:glog",
         "@msgpack",
     ],
 )
@@ -282,17 +335,22 @@ cc_library(
         "src/ray/object_manager/plasma/create_request_queue.cc",
         "src/ray/object_manager/plasma/dlmalloc.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
+        "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
+        "src/ray/object_manager/plasma/object_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
-        "src/ray/object_manager/plasma/quota_aware_policy.cc",
+        "src/ray/object_manager/plasma/stats_collector.cc",
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
         "src/ray/object_manager/common.h",
+        "src/ray/object_manager/plasma/allocator.h",
         "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
+        "src/ray/object_manager/plasma/object_lifecycle_manager.h",
+        "src/ray/object_manager/plasma/object_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
-        "src/ray/object_manager/plasma/quota_aware_policy.h",
+        "src/ray/object_manager/plasma/stats_collector.h",
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
@@ -302,7 +360,6 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
-        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -330,18 +387,28 @@ cc_library(
         exclude = [
             "src/ray/common/**/*_test.cc",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.cc",
+        "src/ray/raylet/scheduling/fixed_point.cc",
+        "src/ray/raylet/scheduling/scheduling_ids.cc",
+    ],
     hdrs = glob(
         [
+            "src/ray/common/*.h",
             "src/ray/common/**/*.h",
         ],
-    ),
+    ) + [
+        "src/ray/raylet/scheduling/cluster_resource_data.h",
+        "src/ray/raylet/scheduling/fixed_point.h",
+        "src/ray/raylet/scheduling/scheduling_ids.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":node_manager_fbs",
         ":ray_util",
+        ":stats_metric",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
@@ -353,6 +420,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -414,18 +482,18 @@ cc_library(
 
 cc_test(
     name = "gcs_pub_sub_test",
+    size = "small",
     srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs_pub_sub_lib",
         "@com_google_googletest//:gtest_main",
@@ -457,6 +525,7 @@ cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
         ":node_manager_rpc",
+        ":pubsub_lib",
         ":raylet_client_lib",
         ":worker_rpc",
     ],
@@ -489,9 +558,8 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":ray_common",
-        ":worker_rpc",
-        "//src/ray/protobuf:common_cc_proto",
+        ":pubsub_rpc",
+        "@boost//:any",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -499,20 +567,41 @@ cc_library(
 )
 
 cc_library(
+    name = "stats_metric",
+    srcs = [
+        "src/ray/stats/metric.cc",
+    ],
+    hdrs = [
+        "src/ray/stats/metric.h",
+        "src/ray/stats/tag_defs.h",
+    ],
+    strip_include_prefix = "src",
+    deps = [
+        ":ray_util",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+cc_library(
     name = "stats_lib",
-    srcs = glob(
-        [
-            "src/ray/stats/*.cc",
-        ],
-        exclude = [
-            "src/ray/stats/*_test.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/stats/*.h",
-        ],
-    ),
+    srcs = [
+        "src/ray/stats/metric_exporter.cc",
+        "src/ray/stats/metric_exporter_client.cc",
+    ],
+    hdrs = [
+        "src/ray/stats/metric_defs.h",
+        "src/ray/stats/metric_exporter.h",
+        "src/ray/stats/metric_exporter_client.h",
+        "src/ray/stats/stats.h",
+    ],
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
@@ -523,17 +612,8 @@ cc_library(
     }),
     strip_include_prefix = "src",
     deps = [
-        ":ray_util",
         ":reporter_rpc",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
+        ":stats_metric",
     ],
 )
 
@@ -574,6 +654,7 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":ray_util",
+        ":runtime_env_rpc",
         ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
@@ -629,9 +710,7 @@ cc_library(
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
-            "src/ray/core_worker/pubsub/*.cc",
             "src/ray/core_worker/transport/*.cc",
-            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/**/*_test.cc",
@@ -642,7 +721,6 @@ cc_library(
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
         "src/ray/core_worker/store_provider/memory_store/*.h",
-        "src/ray/core_worker/pubsub/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -651,7 +729,6 @@ cc_library(
     deps = [
         ":gcs",
         ":plasma_client",
-        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
@@ -688,6 +765,7 @@ cc_binary(
 
 cc_test(
     name = "core_worker_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
     args = [
         "$(location raylet)",
@@ -695,17 +773,16 @@ cc_test(
         "$(location gcs_server)",
         "$(location redis-cli)",
         "$(location redis-server)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
         "//:gcs_server",
-        "//:libray_redis_module.so",
         "//:mock_worker",
         "//:raylet",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -717,8 +794,10 @@ cc_test(
 
 cc_test(
     name = "memory_store_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -729,6 +808,7 @@ cc_test(
     name = "direct_actor_transport_test",
     srcs = ["src/ray/core_worker/test/direct_actor_transport_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -737,8 +817,10 @@ cc_test(
 
 cc_test(
     name = "direct_task_transport_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -747,8 +829,10 @@ cc_test(
 
 cc_test(
     name = "reference_count_test",
+    size = "small",
     srcs = ["src/ray/core_worker/reference_count_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -757,8 +841,10 @@ cc_test(
 
 cc_test(
     name = "object_recovery_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/object_recovery_manager_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -769,6 +855,7 @@ cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -777,8 +864,10 @@ cc_test(
 
 cc_test(
     name = "task_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -787,8 +876,10 @@ cc_test(
 
 cc_test(
     name = "actor_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -797,8 +888,10 @@ cc_test(
 
 cc_test(
     name = "lease_policy_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/lease_policy_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
@@ -807,10 +900,12 @@ cc_test(
 
 cc_test(
     name = "cluster_resource_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -819,10 +914,12 @@ cc_test(
 
 cc_test(
     name = "scheduling_policy_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/scheduling_policy_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -831,10 +928,12 @@ cc_test(
 
 cc_test(
     name = "cluster_task_manager_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -843,10 +942,12 @@ cc_test(
 
 cc_test(
     name = "local_object_manager_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -855,10 +956,12 @@ cc_test(
 
 cc_test(
     name = "pull_manager_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":object_manager",
         "@com_google_googletest//:gtest_main",
@@ -867,10 +970,12 @@ cc_test(
 
 cc_test(
     name = "push_manager_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/push_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -878,11 +983,88 @@ cc_test(
 )
 
 cc_test(
+    name = "spilled_object_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/spilled_object_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@boost//:endian",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fallback_allocator_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/fallback_allocator_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@boost//:filesystem",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_store_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/object_store_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_lifecycle_manager_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
+        "src/ray/object_manager/plasma/test/stats_collector_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "eviction_policy_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/eviction_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "create_request_queue_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/create_request_queue_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
         "@com_google_googletest//:gtest",
@@ -892,8 +1074,10 @@ cc_test(
 
 cc_test(
     name = "worker_pool_test",
+    size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -902,8 +1086,10 @@ cc_test(
 
 cc_test(
     name = "placement_group_resource_manager_test",
+    size = "small",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         "gcs_test_util_lib",
         "ray_common",
@@ -914,8 +1100,10 @@ cc_test(
 
 cc_test(
     name = "id_test",
+    size = "small",
     srcs = ["src/ray/common/id_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         "ray_common",
         "@com_google_googletest//:gtest_main",
@@ -924,31 +1112,39 @@ cc_test(
 
 cc_test(
     name = "logging_test",
+    size = "small",
     srcs = ["src/ray/util/logging_test.cc"],
     args = ["--gtest_filter=PrintLogTest*"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_util",
         "@boost//:asio",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
     name = "event_test",
+    size = "small",
     srcs = ["src/ray/util/event_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_util",
         "@boost//:filesystem",
+        "@boost//:range",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
     name = "filesystem_test",
+    size = "small",
     srcs = ["src/ray/util/filesystem_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_util",
         "@com_google_googletest//:gtest_main",
@@ -957,8 +1153,10 @@ cc_test(
 
 cc_test(
     name = "util_test",
+    size = "small",
     srcs = ["src/ray/util/util_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_util",
         "@boost//:asio",
@@ -967,9 +1165,24 @@ cc_test(
 )
 
 cc_test(
+    name = "throttler_test",
+    size = "small",
+    srcs = ["src/ray/util/throttler_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
+    size = "small",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest_main",
@@ -978,8 +1191,10 @@ cc_test(
 
 cc_test(
     name = "dependency_manager_test",
+    size = "small",
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -988,8 +1203,10 @@ cc_test(
 
 cc_test(
     name = "client_connection_test",
+    size = "small",
     srcs = ["src/ray/common/test/client_connection_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest_main",
@@ -998,8 +1215,10 @@ cc_test(
 
 cc_test(
     name = "publisher_test",
+    size = "small",
     srcs = ["src/ray/pubsub/test/publisher_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
@@ -1008,10 +1227,12 @@ cc_test(
 
 cc_test(
     name = "subscriber_test",
+    size = "small",
     srcs = [
         "src/ray/pubsub/test/subscriber_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
@@ -1020,8 +1241,10 @@ cc_test(
 
 cc_test(
     name = "signal_test",
+    size = "small",
     srcs = ["src/ray/util/signal_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -1030,8 +1253,10 @@ cc_test(
 
 cc_test(
     name = "sequencer_test",
+    size = "small",
     srcs = ["src/ray/util/sequencer_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_util",
         "@com_google_googletest//:gtest_main",
@@ -1040,9 +1265,13 @@ cc_test(
 
 cc_test(
     name = "stats_test",
+    size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
-    tags = ["stats"],
+    tags = [
+        "stats",
+        "team:core",
+    ],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -1051,9 +1280,13 @@ cc_test(
 
 cc_test(
     name = "metric_exporter_client_test",
+    size = "small",
     srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     copts = COPTS,
-    tags = ["stats"],
+    tags = [
+        "stats",
+        "team:core",
+    ],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -1075,20 +1308,20 @@ cc_library(
 
 cc_test(
     name = "gcs_server_rpc_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
     ],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1107,10 +1340,12 @@ cc_library(
 
 cc_test(
     name = "gcs_node_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1121,10 +1356,12 @@ cc_test(
 
 cc_test(
     name = "gcs_placement_group_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1135,10 +1372,12 @@ cc_test(
 
 cc_test(
     name = "gcs_placement_group_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1149,10 +1388,12 @@ cc_test(
 
 cc_test(
     name = "gcs_actor_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1163,10 +1404,12 @@ cc_test(
 
 cc_test(
     name = "gcs_actor_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1192,6 +1435,7 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
+        ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
     ],
@@ -1211,20 +1455,20 @@ cc_library(
 
 cc_test(
     name = "redis_gcs_table_storage_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
     ],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs_table_storage_lib",
         ":gcs_table_storage_test_lib",
@@ -1236,10 +1480,12 @@ cc_test(
 
 cc_test(
     name = "in_memory_gcs_table_storage_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_table_storage_lib",
         ":gcs_table_storage_test_lib",
@@ -1251,10 +1497,12 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1264,10 +1512,12 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_scheduler_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1277,10 +1527,27 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_report_poller_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_report_poller_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "grpc_based_resource_broadcaster_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1324,6 +1591,7 @@ cc_library(
     ),
     copts = COPTS,
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":service_based_gcs_client_lib",
     ],
@@ -1331,20 +1599,20 @@ cc_library(
 
 cc_test(
     name = "global_state_accessor_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_client/test/global_state_accessor_test.cc",
     ],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1362,14 +1630,13 @@ cc_test(
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1380,10 +1647,12 @@ cc_test(
 
 cc_test(
     name = "gcs_object_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1460,12 +1729,15 @@ cc_library(
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
-        "@boost//:property_tree",
-        "@com_github_google_glog//:glog",
+        "@boost//:filesystem",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/debugging:failure_signal_handler",
+        "@com_google_absl//absl/debugging:stacktrace",
+        "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@nlohmann_json",
     ],
 )
 
@@ -1606,18 +1878,18 @@ cc_library(
 
 cc_test(
     name = "redis_store_client_test",
+    size = "small",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
@@ -1627,8 +1899,10 @@ cc_test(
 
 cc_test(
     name = "in_memory_store_client_test",
+    size = "small",
     srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_in_memory_store_client",
         ":store_client_test_lib",
@@ -1666,18 +1940,18 @@ cc_library(
 
 cc_test(
     name = "asio_test",
+    size = "small",
     srcs = ["src/ray/gcs/test/asio_test.cc"],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
     ],
     copts = COPTS,
     data = [
-        "//:libray_redis_module.so",
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
     deps = [
         ":gcs",
         ":ray_util",
@@ -1792,7 +2066,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/_private/azure/*.json",
+        "python/ray/autoscaler/_private/_azure/*.json",
         "python/ray/autoscaler/aws/defaults.yaml",
         "python/ray/autoscaler/azure/defaults.yaml",
         "python/ray/autoscaler/gcp/defaults.yaml",
@@ -1828,43 +2102,20 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "ray_redis_module",
-    hdrs = [
-        "src/ray/gcs/redis_module/redis_string.h",
-        "src/ray/gcs/redis_module/redismodule.h",
-    ],
-    copts = COPTS,
-    strip_include_prefix = "src",
-)
-
-cc_binary(
-    name = "libray_redis_module.so",
-    srcs = [
-        "src/ray/gcs/redis_module/ray_redis_module.cc",
-    ],
-    copts = COPTS,
-    linkshared = 1,
-    linkstatic = 1,
-    visibility = ["//java:__subpackages__"],
-    deps = [
-        ":ray_common",
-        ":ray_redis_module",
-        "//src/ray/protobuf:gcs_cc_proto",
-    ],
-)
-
 filegroup(
     name = "all_py_proto",
     srcs = [
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
+        "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
+        "//src/ray/protobuf:runtime_env_agent_py_proto",
     ],
 )
 
@@ -1907,12 +2158,6 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_libray_redis_module",
-    srcs = [":libray_redis_module.so"],
-    dstdir = "python/ray/core/src/ray/gcs/redis_module",
-)
-
-copy_to_workspace(
     name = "cp_raylet",
     srcs = [":raylet"],
     dstdir = "python/ray/core/src/ray/raylet",
@@ -1952,7 +2197,6 @@ genrule(
         ":python_sources",
         ":install_py_proto",
         ":cp_redis",
-        ":cp_libray_redis_module",
         ":cp_raylet",
         ":cp_gcs_server",
     ],

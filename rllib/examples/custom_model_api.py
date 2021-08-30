@@ -12,7 +12,10 @@ torch, _ = try_import_torch()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 
 if __name__ == "__main__":
     args = parser.parse_args()

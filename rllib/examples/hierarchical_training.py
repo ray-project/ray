@@ -36,11 +36,31 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-reward", type=float, default=0.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=0.0,
+    help="Reward at which we stop training.")
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +81,13 @@ if __name__ == "__main__":
             config={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
-                "framework": "torch" if args.torch else "tf",
+                "framework": args.framework,
             },
         )
     else:
         maze = WindyMazeEnv(None)
 
-        def policy_mapping_fn(agent_id):
+        def policy_mapping_fn(agent_id, episode, **kwargs):
             if agent_id.startswith("low_level_"):
                 return "low_level_policy"
             else:
@@ -93,7 +113,7 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }

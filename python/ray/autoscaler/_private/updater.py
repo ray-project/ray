@@ -50,6 +50,8 @@ class NodeUpdater:
             or external ip.
         docker_config: Docker section of autoscaler yaml
         restart_only: Whether to skip setup commands & just restart ray
+        for_recovery: True if updater is for a recovering node. Only used for
+            metric tracking.
     """
 
     def __init__(self,
@@ -71,7 +73,8 @@ class NodeUpdater:
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None,
-                 restart_only=False):
+                 restart_only=False,
+                 for_recovery=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -82,6 +85,7 @@ class NodeUpdater:
 
         self.daemon = True
         self.node_id = node_id
+        self.provider_type = provider_config.get("type")
         self.provider = provider
         # Some node providers don't specify empty structures as
         # defaults. Better to be defensive.
@@ -110,8 +114,11 @@ class NodeUpdater:
         self.is_head_node = is_head_node
         self.docker_config = docker_config
         self.restart_only = restart_only
+        self.update_time = None
+        self.for_recovery = for_recovery
 
     def run(self):
+        update_start_time = time.time()
         if cmd_output_util.does_allow_interactive(
         ) and cmd_output_util.is_output_redirected():
             # this is most probably a bug since the user has no control
@@ -120,7 +127,6 @@ class NodeUpdater:
                    "Either do not pass `--redirect-command-output` "
                    "or also pass in `--use-normal-shells`.")
             cli_logger.abort(msg)
-            raise click.ClickException(msg)
 
         try:
             with LogTimer(self.log_prefix +
@@ -160,6 +166,7 @@ class NodeUpdater:
         self.provider.set_node_tags(self.node_id, tags_to_set)
         cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
+        self.update_time = time.time() - update_start_time
         self.exitcode = 0
 
     def sync_file_mounts(self, sync_cmd, step_numbers=(0, 2)):
@@ -236,8 +243,13 @@ class NodeUpdater:
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
-                while time.time() < deadline and \
-                        not self.provider.is_terminated(self.node_id):
+                while True:
+                    if time.time() > deadline:
+                        raise Exception("wait_ready timeout exceeded.")
+                    if self.provider.is_terminated(self.node_id):
+                        raise Exception("wait_ready aborting because node "
+                                        "detected as terminated.")
+
                     try:
                         # Run outside of the container
                         self.cmd_runner.run(
@@ -277,8 +289,6 @@ class NodeUpdater:
                             cf.bold(str(READY_CHECK_INTERVAL)))
 
                         time.sleep(READY_CHECK_INTERVAL)
-
-        assert False, "Unable to connect to node"
 
     def do_update(self):
         self.provider.set_node_tags(
@@ -436,12 +446,18 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    if self.node_resources:
+
+                    # Add a resource override env variable if needed:
+                    if self.provider_type == "local":
+                        # Local NodeProvider doesn't need resource override.
+                        env_vars = {}
+                    elif self.node_resources:
                         env_vars = {
                             RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
                         }
                     else:
                         env_vars = {}
+
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(False)

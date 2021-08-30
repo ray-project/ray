@@ -60,6 +60,11 @@ def pad_batch_to_sequences_of_same_size(
             Policy ViewRequirements dict to be able to infer whether
             e.g. dynamic max'ing should be applied over the seq_lens.
     """
+    if batch.zero_padded:
+        return
+
+    batch.zero_padded = True
+
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
@@ -75,8 +80,8 @@ def pad_batch_to_sequences_of_same_size(
     if "state_in_0" in batch or "state_out_0" in batch:
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
-        if batch.seq_lens is not None and \
-                len(batch["state_in_0"]) == len(batch.seq_lens):
+        if batch.get(SampleBatch.SEQ_LENS) is not None and \
+                len(batch["state_in_0"]) == len(batch[SampleBatch.SEQ_LENS]):
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
@@ -90,6 +95,7 @@ def pad_batch_to_sequences_of_same_size(
     elif not meets_divisibility_reqs:
         max_seq_len = batch_divisibility_req
         dynamic_max = False
+        batch.max_seq_len = max_seq_len
     # Simple case: No RNN/attention net, nor do we need to pad.
     else:
         if shuffle:
@@ -103,7 +109,8 @@ def pad_batch_to_sequences_of_same_size(
         if k.startswith("state_in_"):
             state_keys.append(k)
         elif not feature_keys and not k.startswith("state_out_") and \
-                k not in ["infos", "seq_lens"] and isinstance(v, np.ndarray):
+                k not in ["infos", SampleBatch.SEQ_LENS] and \
+                isinstance(v, np.ndarray):
             feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
@@ -113,7 +120,7 @@ def pad_batch_to_sequences_of_same_size(
             episode_ids=batch.get(SampleBatch.EPS_ID),
             unroll_ids=batch.get(SampleBatch.UNROLL_ID),
             agent_indices=batch.get(SampleBatch.AGENT_INDEX),
-            seq_lens=getattr(batch, "seq_lens", batch.get("seq_lens")),
+            seq_lens=batch.get(SampleBatch.SEQ_LENS),
             max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             states_already_reduced_to_init=states_already_reduced_to_init,
@@ -123,7 +130,7 @@ def pad_batch_to_sequences_of_same_size(
         batch[k] = feature_sequences[i]
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
-    batch["seq_lens"] = np.array(seq_lens)
+    batch[SampleBatch.SEQ_LENS] = np.array(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
         logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
@@ -164,8 +171,8 @@ def add_time_dimension(padded_inputs: TensorType,
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = ([new_batch_size, max_seq_len] +
-                     padded_inputs.get_shape().as_list()[1:])
+        new_shape = (
+            [new_batch_size, max_seq_len] + list(padded_inputs.shape[1:]))
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
@@ -252,6 +259,7 @@ def chop_into_sequences(*,
         if seq_len:
             seq_lens.append(seq_len)
         seq_lens = np.array(seq_lens, dtype=np.int32)
+
     assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
@@ -318,16 +326,15 @@ def timeslice_along_seq_lens_with_overlap(
         zero_init_states=True) -> List["SampleBatch"]:
     """Slices batch along `seq_lens` (each seq-len item produces one batch).
 
-    Asserts that seq_lens is given or sample_batch.seq_lens is not None.
+    Asserts that seq_lens is given or sample_batch["seq_lens"] is not None.
 
     Args:
         sample_batch (SampleBatch): The SampleBatch to timeslice.
         seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
-            at. If None, use `sample_batch.seq_lens`.
+            at. If None, use `sample_batch[SampleBatch.SEQ_LENS]`.
         zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
-            additional timesteps gained via setting pre_overlap or
-            post_overlap > 0 (see Example).
+            additional timesteps gained via setting pre_overlap (see Example).
         pre_overlap (int): If >0, will overlap each two consecutive slices by
             this many timesteps (toward the left side). This will cause
             zero-padding at the very beginning of the batch.
@@ -354,32 +361,33 @@ def timeslice_along_seq_lens_with_overlap(
         #  count (makes sure each slice has exactly length 10).
     """
     if seq_lens is None:
-        seq_lens = sample_batch.seq_lens
+        seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
     assert seq_lens is not None and len(seq_lens) > 0, \
         "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
-    # Generate n slices based on self.seq_lens.
+    # Generate n slices based on seq_lens.
     start = 0
     slices = []
     for seq_len in seq_lens:
-        begin = start - pre_overlap
-        end = start + seq_len  # + post_overlap
-        slices.append((begin, end))
+        pre_begin = start - pre_overlap
+        slice_begin = start
+        end = start + seq_len
+        slices.append((pre_begin, slice_begin, end))
         start += seq_len
 
     timeslices = []
-    for begin, end in slices:
+    for begin, slice_begin, end in slices:
         zero_length = None
         data_begin = 0
         zero_init_states_ = zero_init_states
         if begin < 0:
-            zero_length = -begin
-            data_begin = 0
+            zero_length = pre_overlap
+            data_begin = slice_begin
             zero_init_states_ = True
         else:
             eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else
                                                        0:end]
             is_last_episode_ids = eps_ids == eps_ids[-1]
-            if is_last_episode_ids[0] is not True:
+            if not is_last_episode_ids[0]:
                 zero_length = int(sum(1.0 - is_last_episode_ids))
                 data_begin = begin + zero_length
                 zero_init_states_ = True
@@ -391,10 +399,13 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.data.items()
+                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
             }
         else:
-            data = {k: v[begin:end] for k, v in sample_batch.data.items()}
+            data = {
+                k: v[begin:end]
+                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
+            }
 
         if zero_init_states_:
             i = 0
@@ -416,12 +427,12 @@ def timeslice_along_seq_lens_with_overlap(
                 i += 1
                 key = "state_in_{}".format(i)
 
-        timeslices.append(
-            SampleBatch(data, _seq_lens=[end - begin], _dont_check_lens=True))
+        timeslices.append(SampleBatch(data, seq_lens=[end - begin]))
 
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
         for ts in timeslices:
-            ts.zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+            ts.right_zero_pad(
+                max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices

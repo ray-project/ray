@@ -44,12 +44,6 @@ auth:
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # The minimum number of worker nodes of this type to launch.
-        # This number should be >= 0.
-        min_workers: 0
-        # The maximum number of worker nodes of this type to launch.
-        # This takes precedence over min_workers.
-        max_workers: 0
         # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
         # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
         # You can also set custom resources.
@@ -132,7 +126,7 @@ setup_commands:
     - >-
         (stat $HOME/anaconda3/envs/tensorflow2_latest_p37/ &> /dev/null &&
         echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_latest_p37/bin:$PATH"' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[cluster] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

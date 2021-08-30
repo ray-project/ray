@@ -39,6 +39,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
@@ -69,10 +70,15 @@ class CoreWorkerDirectActorTaskSubmitter
   CoreWorkerDirectActorTaskSubmitter(
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher)
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
-        task_finisher_(task_finisher) {}
+        task_finisher_(task_finisher),
+        warn_excess_queueing_(warn_excess_queueing) {
+    next_queueing_warn_threshold_ =
+        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
+  }
 
   /// Add an actor queue. This should be called whenever a reference to an
   /// actor is created in the language frontend.
@@ -269,31 +275,120 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
+  /// Used to warn of excessive queueing.
+  std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
+
+  /// Warn the next time the number of queued task submissions to an actor
+  /// exceeds this quantity. This threshold is doubled each time it is hit.
+  int64_t next_queueing_warn_threshold_;
+
   friend class CoreWorkerTest;
+};
+
+class BoundedExecutor;
+
+/// A manager that manages a set of thread pool. which will perform
+/// the methods defined in one concurrency group.
+class PoolManager final {
+ public:
+  explicit PoolManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                       const int32_t default_group_max_concurrency = 1) {
+    for (auto &group : concurrency_groups) {
+      const auto name = group.name;
+      const auto max_concurrency = group.max_concurrency;
+      auto pool = std::make_shared<BoundedExecutor>(max_concurrency);
+      auto &fds = group.function_descriptors;
+      for (auto fd : fds) {
+        functions_to_thread_pool_index_[fd->ToString()] = pool;
+      }
+      name_to_thread_pool_index_[name] = pool;
+    }
+    // If max concurrency of default group is 1, the tasks of default group
+    // will be performed in main thread instead of any executor pool.
+    if (default_group_max_concurrency > 1) {
+      default_thread_pool_ =
+          std::make_shared<BoundedExecutor>(default_group_max_concurrency);
+    }
+  }
+
+  std::shared_ptr<BoundedExecutor> GetPool(const std::string &concurrency_group_name,
+                                           ray::FunctionDescriptor fd) {
+    if (!concurrency_group_name.empty()) {
+      auto it = name_to_thread_pool_index_.find(concurrency_group_name);
+      /// TODO(qwang): Fail the user task.
+      RAY_CHECK(it != name_to_thread_pool_index_.end());
+      return it->second;
+    }
+
+    /// Code path of that this task wasn't specified in a concurrency group addtionally.
+    /// Use the predefined concurrency group.
+    if (functions_to_thread_pool_index_.find(fd->ToString()) !=
+        functions_to_thread_pool_index_.end()) {
+      return functions_to_thread_pool_index_[fd->ToString()];
+    }
+    return default_thread_pool_;
+  }
+
+ private:
+  // Map from the name to their corresponding thread pools.
+  std::unordered_map<std::string, std::shared_ptr<BoundedExecutor>>
+      name_to_thread_pool_index_;
+
+  // Map from the FunctionDescriptors to their corresponding thread pools.
+  std::unordered_map<std::string, std::shared_ptr<BoundedExecutor>>
+      functions_to_thread_pool_index_;
+
+  // The thread pool for default concurrency group. It's nullptr if its max concurrency
+  // is 1.
+  std::shared_ptr<BoundedExecutor> default_thread_pool_ = nullptr;
 };
 
 /// Object dependency and RPC state of an inbound request.
 class InboundRequest {
  public:
   InboundRequest(){};
-  InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, TaskID task_id,
-                 bool has_dependencies)
-      : accept_callback_(accept_callback),
-        reject_callback_(reject_callback),
-        task_id(task_id),
+
+  InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
+                 std::function<void(rpc::SendReplyCallback)> reject_callback,
+                 std::function<void(rpc::SendReplyCallback)> steal_callback,
+                 rpc::SendReplyCallback send_reply_callback, TaskID task_id,
+                 bool has_dependencies, const std::string &concurrency_group_name,
+                 const ray::FunctionDescriptor &function_descriptor)
+      : accept_callback_(std::move(accept_callback)),
+        reject_callback_(std::move(reject_callback)),
+        steal_callback_(std::move(steal_callback)),
+        send_reply_callback_(std::move(send_reply_callback)),
+        task_id_(task_id),
+        concurrency_group_name_(concurrency_group_name),
+        function_descriptor_(function_descriptor),
         has_pending_dependencies_(has_dependencies) {}
 
-  void Accept() { accept_callback_(); }
-  void Cancel() { reject_callback_(); }
+  void Accept() { accept_callback_(std::move(send_reply_callback_)); }
+  void Cancel() { reject_callback_(std::move(send_reply_callback_)); }
+  void Steal(rpc::StealTasksReply *reply) {
+    reply->add_stolen_tasks_ids(task_id_.Binary());
+    RAY_CHECK(TaskID::FromBinary(reply->stolen_tasks_ids(reply->stolen_tasks_ids_size() -
+                                                         1)) == task_id_);
+    steal_callback_(std::move(send_reply_callback_));
+  }
+
   bool CanExecute() const { return !has_pending_dependencies_; }
-  ray::TaskID TaskID() const { return task_id; }
+  ray::TaskID TaskID() const { return task_id_; }
+  const std::string &ConcurrencyGroupName() const { return concurrency_group_name_; }
+  const ray::FunctionDescriptor &FunctionDescriptor() const {
+    return function_descriptor_;
+  }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
-  std::function<void()> accept_callback_;
-  std::function<void()> reject_callback_;
-  ray::TaskID task_id;
+  std::function<void(rpc::SendReplyCallback)> accept_callback_;
+  std::function<void(rpc::SendReplyCallback)> reject_callback_;
+  std::function<void(rpc::SendReplyCallback)> steal_callback_;
+  rpc::SendReplyCallback send_reply_callback_;
+
+  ray::TaskID task_id_;
+  std::string concurrency_group_name_;
+  ray::FunctionDescriptor function_descriptor_;
   bool has_pending_dependencies_;
 };
 
@@ -372,11 +467,18 @@ class BoundedExecutor {
 class SchedulingQueue {
  public:
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
-                   std::function<void()> accept_request,
-                   std::function<void()> reject_request, TaskID task_id = TaskID::Nil(),
+                   std::function<void(rpc::SendReplyCallback)> accept_request,
+                   std::function<void(rpc::SendReplyCallback)> reject_request,
+                   rpc::SendReplyCallback send_reply_callback,
+                   const std::string &concurrency_group_name,
+                   const ray::FunctionDescriptor &function_descriptor,
+                   std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
+                   TaskID task_id = TaskID::Nil(),
                    const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
+  virtual size_t Size() const = 0;
+  virtual size_t Steal(rpc::StealTasksReply *reply) = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
@@ -385,24 +487,48 @@ class SchedulingQueue {
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
-  ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
-                       std::shared_ptr<BoundedExecutor> pool = nullptr,
-                       bool is_asyncio = false,
-                       std::shared_ptr<FiberState> fiber_state = nullptr,
-                       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
+  ActorSchedulingQueue(
+      instrumented_io_context &main_io_service, DependencyWaiter &waiter,
+      std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
+      bool is_asyncio = false, int fiber_max_concurrency = 1,
+      int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
         waiter_(waiter),
-        pool_(pool),
-        is_asyncio_(is_asyncio),
-        fiber_state_(fiber_state) {}
+        pool_manager_(pool_manager),
+        is_asyncio_(is_asyncio) {
+    if (is_asyncio_) {
+      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
+                    << fiber_max_concurrency << ", creating new fiber thread.";
+      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
+    }
+  }
 
-  bool TaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
+  virtual ~ActorSchedulingQueue() = default;
+
+  bool TaskQueueEmpty() const {
+    RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
+    // The return instruction will never be executed, but we need to include it
+    // nonetheless because this is a non-void function.
+    return false;
+  }
+
+  size_t Size() const {
+    RAY_CHECK(false) << "Size() not implemented for actor queues";
+    // The return instruction will never be executed, but we need to include it
+    // nonetheless because this is a non-void function.
+    return 0;
+  }
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback,
+           const std::string &concurrency_group_name,
+           const ray::FunctionDescriptor &function_descriptor,
+           std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
@@ -415,8 +541,12 @@ class ActorSchedulingQueue : public SchedulingQueue {
       next_seq_no_ = client_processed_up_to + 1;
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
-    pending_actor_tasks_[seq_no] =
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0);
+
+    pending_actor_tasks_[seq_no] = InboundRequest(
+        std::move(accept_request), std::move(reject_request), std::move(steal_request),
+        std::move(send_reply_callback), task_id, dependencies.size() > 0,
+        concurrency_group_name, function_descriptor);
+
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -430,8 +560,15 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound results
-  // in a fatal error.
+  size_t Steal(rpc::StealTasksReply *reply) {
+    RAY_CHECK(false) << "Cannot steal actor tasks";
+    // The return instruction will never be executed, but we need to include it
+    // nonetheless because this is a non-void function.
+    return 0;
+  }
+
+  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
+  // results in a fatal error.
   bool CancelTaskIfFound(TaskID task_id) {
     RAY_CHECK(false) << "Cannot cancel actor tasks";
     // The return instruction will never be executed, but we need to include it
@@ -461,12 +598,16 @@ class ActorSchedulingQueue : public SchedulingQueue {
       if (is_asyncio_) {
         // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
-      } else if (pool_ != nullptr) {
-        // Process concurrent actor task.
-        pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
-        // Process normal actor task.
-        request.Accept();
+        // Process actor tasks.
+        RAY_CHECK(pool_manager_ != nullptr);
+        auto pool = pool_manager_->GetPool(request.ConcurrencyGroupName(),
+                                           request.FunctionDescriptor());
+        if (pool == nullptr) {
+          request.Accept();
+        } else {
+          pool->PostBlocking([request]() mutable { request.Accept(); });
+        }
       }
       pending_actor_tasks_.erase(head);
       next_seq_no_++;
@@ -517,14 +658,14 @@ class ActorSchedulingQueue : public SchedulingQueue {
   boost::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
-  /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<BoundedExecutor> pool_;
+  /// If concurrent calls are allowed, holds the pools for executing these tasks.
+  std::shared_ptr<PoolManager> pool_manager_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
   /// If is_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
+  std::unique_ptr<FiberState> fiber_state_;
   friend class SchedulingQueueTest;
 };
 
@@ -539,22 +680,64 @@ class NormalSchedulingQueue : public SchedulingQueue {
     return pending_normal_tasks_.empty();
   }
 
+  // Returns the current size of the task queue.
+  size_t Size() const {
+    absl::MutexLock lock(&mu_);
+    return pending_normal_tasks_.size();
+  }
+
   /// Add a new task's callbacks to the worker queue.
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(),
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
+  void Add(
+      int64_t seq_no, int64_t client_processed_up_to,
+      std::function<void(rpc::SendReplyCallback)> accept_request,
+      std::function<void(rpc::SendReplyCallback)> reject_request,
+      rpc::SendReplyCallback send_reply_callback,
+      const std::string &concurrency_group_name = "",
+      const FunctionDescriptor &function_descriptor = FunctionDescriptorBuilder::Empty(),
+      std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
+      TaskID task_id = TaskID::Nil(),
+
+      const std::vector<rpc::ObjectReference> &dependencies = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
-    pending_normal_tasks_.push_back(
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
+
+    pending_normal_tasks_.push_back(InboundRequest(
+        std::move(accept_request), std::move(reject_request), std::move(steal_request),
+        std::move(send_reply_callback), task_id, dependencies.size() > 0,
+        /*concurrency_group_name=*/"", function_descriptor));
+  }
+
+  /// Steal up to max_tasks tasks by removing them from the queue and responding to the
+  /// owner.
+  size_t Steal(rpc::StealTasksReply *reply) {
+    size_t tasks_stolen = 0;
+
+    absl::MutexLock lock(&mu_);
+
+    if (pending_normal_tasks_.size() <= 1) {
+      RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
+      return tasks_stolen;
+    }
+
+    size_t half = pending_normal_tasks_.size() / 2;
+
+    for (tasks_stolen = 0; tasks_stolen < half; tasks_stolen++) {
+      RAY_CHECK(!pending_normal_tasks_.empty());
+      InboundRequest tail = pending_normal_tasks_.back();
+      pending_normal_tasks_.pop_back();
+      int stolen_task_ids = reply->stolen_tasks_ids_size();
+      tail.Steal(reply);
+      RAY_CHECK(reply->stolen_tasks_ids_size() == stolen_task_ids + 1);
+    }
+
+    return tasks_stolen;
   }
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
-  // If found, remove the InboundRequest from the queue and return true. Otherwise, return
-  // false.
+  // If found, remove the InboundRequest from the queue and return true. Otherwise,
+  // return false.
   bool CancelTaskIfFound(TaskID task_id) {
     absl::MutexLock lock(&mu_);
     for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
@@ -600,7 +783,7 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  using OnTaskDone = std::function<ray::Status()>;
+  using OnTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
@@ -609,7 +792,8 @@ class CoreWorkerDirectTaskReceiver {
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done) {}
+        task_done_(task_done),
+        pool_manager_(std::make_shared<PoolManager>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
@@ -627,6 +811,15 @@ class CoreWorkerDirectTaskReceiver {
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
+
+  /// Handle a `StealTask` request.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  void HandleStealTasks(const rpc::StealTasksRequest &request,
+                        rpc::StealTasksReply *reply,
+                        rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
@@ -651,20 +844,19 @@ class CoreWorkerDirectTaskReceiver {
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
       std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
-  /// The max number of concurrent calls to allow.
+  /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.
-  int max_concurrency_ = 0;
-  /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<BoundedExecutor> pool_;
+  int fiber_max_concurrency_ = 0;
+
+  /// If concurrent calls are allowed, holds the pools for executing these tasks.
+  std::shared_ptr<PoolManager> pool_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
-  /// If use_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
 
-  /// Set the max concurrency of an actor.
+  /// Set the max concurrency for fiber actor.
   /// This should be called once for the actor creation task.
-  void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
+  void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
 };
 
+}  // namespace core
 }  // namespace ray

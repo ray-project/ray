@@ -108,7 +108,8 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = bundles
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -117,6 +118,19 @@ class PlacementGroupFactory:
         self._bound = None
 
         self._bind()
+
+    @property
+    def head_cpus(self):
+        return self._bundles[0].get("CPU", None)
+
+    @property
+    def required_resources(self) -> Dict[str, float]:
+        """Returns a dict containing the sums of all resources"""
+        resources = {}
+        for bundle in self._bundles:
+            for k, v in bundle.items():
+                resources[k] = resources.get(k, 0) + v
+        return resources
 
     def _bind(self):
         sig = signature(placement_group)
@@ -400,11 +414,17 @@ class PlacementGroupManager:
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None
 
+        if num_cpus is None:
+            # If the placement group specifically set the number
+            # of CPUs to 0, use this.
+            num_cpus = pgf.head_cpus
+
         logger.debug(f"For trial {trial} use pg {pg.id}")
 
         return actor_cls.options(
             placement_group=pg,
             placement_group_bundle_index=0,
+            placement_group_capture_child_tasks=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources)
@@ -515,8 +535,14 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self, trial: "Trial"):
+    def return_pg(self,
+                  trial: "Trial",
+                  destroy_pg_if_cannot_replace: bool = True):
         """Return pg, making it available for other trials to use.
+
+        If destroy_pg_if_cannot_replace is True, this will only return
+        a placement group if a staged placement group can be replaced
+        by it. If not, it will destroy the placement group.
 
         Args:
             trial (Trial): Return placement group of this trial.
@@ -531,6 +557,16 @@ class PlacementGroupManager:
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
+
+        if destroy_pg_if_cannot_replace:
+            staged_pg = self._unstage_unused_pg(pgf)
+
+            # Could not replace
+            if not staged_pg:
+                self.remove_pg(pg)
+                return False
+
+            self.remove_pg(staged_pg)
         self._ready[pgf].add(pg)
 
         return True
@@ -641,6 +677,15 @@ class PlacementGroupManager:
 
             pgf_expected[trial.placement_group_factory] += \
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+
+        # Ensure that unexpected placement groups are accounted for
+        for pgf in self._staging:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
+        for pgf in self._ready:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
 
         # Count cached placement groups
         for pg, pgf in self._cached_pgs.items():

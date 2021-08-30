@@ -1,25 +1,5 @@
-# An unique identifier for the head node and workers of this cluster.
+# A unique identifier for the head node and workers of this cluster.
 cluster_name: default
-
-## NOTE: Typically for local clusters, min_workers == max_workers == len(worker_ips).
-
-# The minimum number of workers nodes to launch in addition to the head
-# node. This number should be >= 0.
-# Typically, min_workers == max_workers == len(worker_ips).
-min_workers: 0
-
-# The maximum number of workers nodes to launch in addition to the head node.
-# This takes precedence over min_workers.
-# Typically, min_workers == max_workers == len(worker_ips).
-max_workers: 0
-
-# The autoscaler will scale up the cluster faster with higher upscaling speed.
-# E.g., if the task requires adding more nodes then autoscaler will gradually
-# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
-# This number should be > 0.
-upscaling_speed: 1.0
-
-idle_timeout_minutes: 5
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
@@ -31,12 +11,17 @@ docker:
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
-    run_options: []  # Extra options to pass into "docker run"
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
 
-# Local specific configuration.
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
+    # You may need to supply a public ip for the head node if you need
+    # to run `ray up` from outside of the Ray cluster's network
+    # (e.g. the cluster is in an AWS VPC and you're starting ray from your laptop)
+    # This is useful when debugging the local node provider with cloud VMs.
+    # external_head_ip: YOUR_HEAD_PUBLIC_IP
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
     # Optional when running automatic cluster management on prem. If you use a coordinator server,
     # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
@@ -49,11 +34,27 @@ auth:
     # Optional if an ssh private key is necessary to ssh to the cluster.
     # ssh_private_key: ~/.ssh/id_rsa
 
-# Leave this empty.
-head_node: {}
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+# Typically, min_workers == max_workers == len(worker_ips).
+min_workers: 0
 
-# Leave this empty.
-worker_nodes: {}
+# The maximum number of workers nodes to launch in addition to the head node.
+# This takes precedence over min_workers.
+# Typically, min_workers == max_workers == len(worker_ips).
+max_workers: 0
+# The default behavior for manually managed clusters is
+# min_workers == max_workers == len(worker_ips),
+# meaning that Ray is started on all available nodes of the cluster.
+# For automatically managed clusters, max_workers is required and min_workers defaults to 0.
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+idle_timeout_minutes: 5
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -95,7 +96,7 @@ setup_commands: []
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
     # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
-    # - pip install -U "ray[cluster] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

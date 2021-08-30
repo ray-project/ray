@@ -27,7 +27,7 @@ def dispatch(request: str, args: List[str]):
     """
     if request == "DEL_FILE" and len(args) == 1:
         path = pathlib.Path(args[0])
-        if path.is_dir():
+        if path.is_dir() and not path.is_symlink():
             shutil.rmtree(str(path))
         else:
             path.unlink()

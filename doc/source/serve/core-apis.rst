@@ -1,128 +1,152 @@
-=========
-Core APIs
-=========
+=====================
+Core API: Deployments
+=====================
 
 .. contents::
 
-Deploying a Backend
-===================
+Creating a Deployment
+=====================
 
-Backends define the implementation of your business logic or models that will handle incoming requests.
-In order to support seamless scalability backends can have many replicas, which are individual processes running in the Ray cluster to handle requests.
-To define a backend, you must first define the "handler" or the business logic you'd like to respond with.
-The handler should take as input a `Starlette Request object <https://www.starlette.io/requests/>`_ and return any JSON-serializable object as output.  For a more customizable response type, the handler may return a
-`Starlette Response object <https://www.starlette.io/responses/>`_.
+Deployments are the central concept in Ray Serve.
+They allow you to define and update your business logic or models that will handle incoming requests as well as how this is exposed over HTTP or in Python.
 
-A backend is defined using :mod:`create_backend <ray.serve.api.create_backend>`, and the implementation can be defined as either a function or a class.
-Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
-When using a class, you can specify arguments to be passed to the constructor in :mod:`create_backend <ray.serve.api.create_backend>`, shown below.
+A deployment is defined using :mod:`@serve.deployment <ray.serve.api.deployment>` on a Python class (or function for simple use cases).
+You can specify arguments to be passed to the constructor when you call ``Deployment.deploy()``, shown below.
 
-A backend consists of a number of *replicas*, which are individual copies of the function or class that are started in separate Ray Workers (processes).
+A deployment consists of a number of *replicas*, which are individual copies of the function or class that are started in separate Ray Actors (processes).
 
 .. code-block:: python
 
-  def handle_request(starlette_request):
-    return "hello world"
-
-  class RequestHandler:
+  @serve.deployment
+  class MyFirstDeployment:
     # Take the message to return as an argument to the constructor.
     def __init__(self, msg):
         self.msg = msg
 
-    def __call__(self, starlette_request):
+    def __call__(self, request):
         return self.msg
 
-  serve.create_backend("simple_backend", handle_request)
-  # Pass in the message that the backend will return as an argument.
-  # If we call this backend, it will respond with "hello, world!".
-  serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
+    def other_method(self, arg):
+        return self.msg
 
-We can also list all available backends and delete them to reclaim resources.
-Note that a backend cannot be deleted while it is in use by an endpoint because then traffic to an endpoint may not be able to be handled.
+  MyFirstDeployment.deploy("Hello world!")
 
-.. code-block:: python
+Deployments can be exposed in two ways: over HTTP or in Python via the :ref:`servehandle-api`.
+By default, HTTP requests will be forwarded to the ``__call__`` method of the class (or the function) and a ``Starlette Request`` object will be the sole argument.
+You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See :ref:`serve-fastapi-http` for details.
 
-  >> serve.list_backends()
-  {
-      'simple_backend': {'num_replicas': 1},
-      'simple_backend_class': {'num_replicas': 1},
-  }
-  >> serve.delete_backend("simple_backend")
-  >> serve.list_backends()
-  {
-      'simple_backend_class': {'num_replicas': 1},
-  }
-
-Exposing a Backend
-==================
-
-While backends define the implementation of your request handling logic, endpoints allow you to expose them via HTTP.
-Endpoints are "logical" and can have one or multiple backends that serve requests to them.
-To create an endpoint, we simply need to specify a name for the endpoint, the name of a backend to handle requests to the endpoint, and the route and methods where it will be accesible.
-By default endpoints are serviced only by the backend provided to :mod:`create_endpoint <ray.serve.api.create_endpoint>`, but in some cases you may want to specify multiple backends for an endpoint, e.g., for A/B testing or incremental rollout.
-For information on how to do this, please see :ref:`serve-split-traffic`.
+We can also list all available deployments and dynamically get a reference to them:
 
 .. code-block:: python
 
-  serve.create_endpoint("simple_endpoint", backend="simple_backend", route="/simple", methods=["GET"])
+  >> serve.list_deployments()
+  {'A': Deployment(name=A,version=None,route_prefix=/A)}
+  {'MyFirstDeployment': Deployment(name=MyFirstDeployment,version=None,route_prefix=/MyFirstDeployment}
 
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified backend.
+  # Returns the same object as the original MyFirstDeployment object.
+  # This can be used to redeploy, get a handle, etc.
+  deployment = serve.get_deployment("MyFirstDeployment")
+
+Exposing a Deployment
+=====================
+
+By default, deployments are exposed over HTTP at ``http://localhost:8000/<deployment_name>``.
+The HTTP path that the deployment is available at can be changed using the ``route_prefix`` option.
+All requests to ``/{route_prefix}`` and any subpaths will be routed to the deployment (using a longest-prefix match for overlapping route prefixes).
+
+Here's an example:
+
+.. code-block:: python
+
+  @serve.deployment(name="http_deployment", route_prefix="/api")
+  class HTTPDeployment:
+    def __call__(self, request):
+        return "Hello world!"
+
+After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 .. code-block:: python
 
   import requests
-  print(requests.get("http://127.0.0.1:8000/simple").text)
+  print(requests.get("http://127.0.0.1:8000/api").text)
 
 We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 .. code-block:: python
 
-  handle = serve.get_handle("simple_endpoint")
+  # To get a handle from the same script, use the Deployment object directly:
+  handle = HTTPDeployment.get_handle()
+
+  # To get a handle from a different script, reference it by name:
+  handle = serve.get_deployment("http_deployment").get_handle()
+
   print(ray.get(handle.remote()))
 
-To view all of the existing endpoints that have created, use :mod:`serve.list_endpoints <ray.serve.api.list_endpoints>`.
-
-.. code-block:: python
-
-  >>> serve.list_endpoints()
-  {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
-
-You can also delete an endpoint using :mod:`serve.delete_endpoint <ray.serve.api.delete_endpoint>`.
-Endpoints and backends are independent, so deleting an endpoint will not delete its backends.
-However, an endpoint must be deleted in order to delete the backends that serve its traffic.
-
-.. code-block:: python
-
-  serve.delete_endpoint("simple_endpoint")
-
-.. _configuring-a-backend:
-
-Configuring a Backend
+Updating a Deployment
 =====================
 
-There are a number of things you'll likely want to do with your serving application including
-scaling out, splitting traffic, or configuring the maximum number of in-flight requests for a backend.
-All of these options are encapsulated in a ``BackendConfig`` object for each backend.
+Often you want to be able to update your code or configuration options for a deployment over time.
+Deployments can be updated simply by updating the code or configuration options and calling ``deploy()`` again.
 
-The ``BackendConfig`` for a running backend can be updated using
-:mod:`serve.update_backend_config <ray.serve.api.update_backend_config>`.
+.. code-block:: python
+
+  @serve.deployment(name="my_deployment", num_replicas=1)
+  class SimpleDeployment:
+      pass
+
+  # Creates one initial replica.
+  SimpleDeployment.deploy()
+
+  # Re-deploys, creating an additional replica.
+  # This could be the SAME Python script, modified and re-run.
+  @serve.deployment(name="my_deployment", num_replicas=2)
+  class SimpleDeployment:
+      pass
+
+  SimpleDeployment.deploy()
+
+  # You can also use Deployment.options() to change options without redefining
+  # the class. This is useful for programmatically updating deployments.
+  SimpleDeployment.options(num_replicas=2).deploy()
+
+
+By default, each call to ``.deploy()`` will cause a redeployment, even if the underlying code and options didn't change.
+This could be detrimental if you have many deployments in a script and and only want to update one: if you re-run the script, all of the deployments will be redeployed, not just the one you updated.
+To prevent this, you may provide a ``version`` string for the deployment as a keyword argument in the decorator or ``Deployment.options()``.
+If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op.
+When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
+
+.. _configuring-a-deployment:
+
+Configuring a Deployment
+========================
+
+There are a number of things you'll likely want to do with your serving application including
+scaling out or configuring the maximum number of in-flight requests for a deployment.
+All of these options can be specified either in :mod:`@serve.deployment <ray.serve.api.deployment>` or in ``Deployment.options()``.
+
+To update the config options for a running deployment, simply redeploy it with the new options set.
 
 Scaling Out
 -----------
 
-To scale out a backend to many processes, simply configure the number of replicas.
+To scale out a deployment to many processes, simply configure the number of replicas.
 
 .. code-block:: python
 
-  config = {"num_replicas": 10}
-  serve.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
+  # Create with a single replica.
+  @serve.deployment(num_replicas=1)
+  def func(*args):
+      pass
 
-  # scale it back down...
-  config = {"num_replicas": 2}
-  serve.update_backend_config("my_scaled_endpoint_backend", config)
+  func.deploy()
 
-This will scale up or down the number of replicas that can accept requests.
+  # Scale up to 10 replicas.
+  func.options(num_replicas=10).deploy()
+
+  # Scale back down to 1 replica.
+  func.options(num_replicas=1).deploy()
 
 .. _`serve-cpus-gpus`:
 
@@ -134,13 +158,14 @@ To assign hardware resources per replica, you can pass resource requirements to
 By default, each replica requires one CPU.
 To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
-For example, to create a backend where each replica uses a single GPU, you can do the
+For example, to create a deployment where each replica uses a single GPU, you can do the
 following:
 
 .. code-block:: python
 
-  config = {"num_gpus": 1}
-  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
+  @serve.deployment(ray_actor_options={"num_gpus": 1})
+  def func(*args):
+      return do_something_with_my_gpu()
 
 Fractional Resources
 --------------------
@@ -152,9 +177,13 @@ The same could be done to multiplex over CPUs.
 
 .. code-block:: python
 
-  half_gpu_config = {"num_gpus": 0.5}
-  serve.create_backend("my_gpu_backend_1", handle_request, ray_actor_options=half_gpu_config)
-  serve.create_backend("my_gpu_backend_2", handle_request, ray_actor_options=half_gpu_config)
+  @serve.deployment(name="deployment1", ray_actor_options={"num_gpus": 0.5})
+  def func(*args):
+      return do_something_with_my_gpu()
+
+  @serve.deployment(name="deployment2", ray_actor_options={"num_gpus": 0.5})
+  def func(*args):
+      return do_something_with_my_gpu()
 
 Configuring Parallelism with OMP_NUM_THREADS
 --------------------------------------------
@@ -162,7 +191,7 @@ Configuring Parallelism with OMP_NUM_THREADS
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
 To :ref:`avoid contention<omp-num-thread-note>`, Ray sets ``OMP_NUM_THREADS=1`` by default because Ray workers and actors use a single CPU by default.
-If you *do* want to enable this parallelism in your Serve backend, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
+If you *do* want to enable this parallelism in your Serve deployment, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
 
 .. code-block:: bash
 
@@ -171,12 +200,13 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
 .. code-block:: python
 
-  class MyBackend:
+  @serve.deployment
+  class MyDeployment:
       def __init__(self, parallelism):
           os.environ["OMP_NUM_THREADS"] = parallelism
           # Download model weights, initialize model, etc.
 
-  serve.create_backend("parallel_backend", MyBackend, 12)
+  MyDeployment.deploy()
 
 
 .. note::
@@ -187,10 +217,10 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 User Configuration (Experimental)
 ---------------------------------
 
-Suppose you want to update a parameter in your model without creating a whole
-new backend.  You can do this by writing a `reconfigure` method for the class
-underlying your backend.  At runtime, you can then pass in your new parameters
-by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
+Suppose you want to update a parameter in your model without needing to restart
+the replicas in your deployment.  You can do this by writing a `reconfigure` method
+for the class underlying your deployment.  At runtime, you can then pass in your
+new parameters by setting the `user_config` option.
 
 The following simple example will make the usage clear:
 
@@ -198,26 +228,25 @@ The following simple example will make the usage clear:
 
 The `reconfigure` method is called when the class is created if `user_config`
 is set.  In particular, it's also called when new replicas are created in the
-future if scale up your backend later.  The `reconfigure` method is also  called
-each time `user_config` is updated via
-:mod:`serve.update_backend_config <ray.serve.api.update_backend_config>`.
+future if scale up your deployment later.  The `reconfigure` method is also  called
+each time `user_config` is updated.
 
 Dependency Management
 =====================
 
-Ray Serve supports serving backends with different (possibly conflicting)
-python dependencies.  For example, you can simultaneously serve one backend
-that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
+Ray Serve supports serving deployments with different (possibly conflicting)
+Python dependencies.  For example, you can simultaneously serve one deployment
+that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
-Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_
+Currently this is supported on Mac OS and Linux using `conda <https://docs.conda.io/en/latest/>`_
 via Ray's built-in ``runtime_env`` option for actors.
 As with all other actor options, pass these in via ``ray_actor_options`` in
-your call to
-:mod:`serve.create_backend <ray.serve.api.create_backend>`.
+your deployment.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes.  
-See :ref:`conda-environments-for-tasks-and-actors` for details.
+desired conda environment must be present on all nodes. Also, the Python patch version
+(e.g. 3.8.10) must be identical on all nodes (this is a requirement for any Ray cluster).
+See :ref:`runtime-environments` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
@@ -226,18 +255,10 @@ Python versions must be the same in both environments.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-.. note::
-  If a conda environment is not specified, your backend will be started in the
-  same conda environment as the client (the process calling
-  :mod:`serve.create_backend <ray.serve.api.create_backend>`) by
-  default.  (When using :ref:`ray-client`, your backend will be started in the
-  conda environment that the Serve controller is running in, which by default is the
-  conda environment the remote Ray cluster was started in.)
-
-The dependencies required in the backend may be different than
+The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
-calls). In this case, you can pass the backend in as an import path that will
-be imported in the Python environment in the workers, but not the driver.
+calls). In this case, you should use a delayed import within the class to avoid
+importing unavailable packages in the driver.
 Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py

@@ -23,7 +23,7 @@ To use the dashboard, first install Ray with the proper dependencies:
 
 .. code-block:: bash
 
-  pip install 'ray[cluster]'
+  pip install 'ray[default]'
 
 You can access the dashboard through its default URL, **localhost:8265**.
 (Note that the port number increases if the default port is not available).

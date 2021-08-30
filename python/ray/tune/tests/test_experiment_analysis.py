@@ -69,6 +69,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
 
+    def testLoadJson(self):
+        all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
+
+        self.ea.set_filetype("json")
+        all_dataframes_via_json = self.ea.fetch_trial_dataframes()
+
+        assert set(all_dataframes_via_csv) == set(all_dataframes_via_json)
+
+        with self.assertRaises(ValueError):
+            self.ea.set_filetype("bad")
+
+        self.ea.set_filetype("csv")
+        all_dataframes_via_csv2 = self.ea.fetch_trial_dataframes()
+        assert set(all_dataframes_via_csv) == set(all_dataframes_via_csv2)
+
     def testStats(self):
         assert self.ea.stats()
         assert self.ea.runner_data()
@@ -202,6 +217,23 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             })
         df = analysis.dataframe(self.metric, mode="max")
         self.assertEquals(df.shape[0], 1)
+
+    def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
+        analysis = tune.run(
+            MyTrainableClass,
+            name="test_example",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 1},
+            num_samples=1,
+            config={"test": tune.grid_search([[1, 2], [3, 4]])},
+            checkpoint_at_end=True,
+        )
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
+        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
+        expected_path = os.path.join(logdir, "checkpoint_000001/",
+                                     "checkpoint")
+        assert checkpoints_metrics[0][0] == expected_path
+        assert checkpoints_metrics[0][1] == 1
 
 
 class ExperimentAnalysisPropertySuite(unittest.TestCase):

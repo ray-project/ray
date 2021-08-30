@@ -1,7 +1,7 @@
 """Result throughput on a single node
 
 In this run, we will start 96 trials concurrently that report very often
-(500 results per second). We thus measure the amount of overhead incurred when
+(50 results per second). We thus measure the amount of overhead incurred when
 dealing with a large number of results.
 
 Cluster: cluster_1x96.yaml
@@ -16,7 +16,7 @@ import os
 
 import ray
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     ray.init(address="auto")
 
     num_samples = 96
-    results_per_second = 500
+    results_per_second = 50
     trial_length_s = 100
 
     max_runtime = 120

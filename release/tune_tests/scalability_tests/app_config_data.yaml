@@ -1,0 +1,25 @@
+base_image: "anyscale/ray:1.5.0-py37"
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - awscli
+    - xgboost_ray
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y numpy ray || true
+  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
+  - pip3 install numpy || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U xgboost_ray awscli # Install latest releases
+  - sudo mkdir -p /data || true
+  - sudo chown ray:1000 /data || true
+  - rm -rf /data/train.parquet || true
+  - rm -rf /data/test.parquet || true
+  - curl -o ./create_test_data.py https://raw.githubusercontent.com/ray-project/ray/2a02b97f1ae552debd2071985e23e2da418ed906/release/tune_tests/scalability_tests/create_test_data.py
+  - python ./create_test_data.py /data/train.parquet --seed 1234 --num-rows 40000000 --num-cols 40 --num-partitions 128 --num-classes 2
+  - python ./create_test_data.py /data/test.parquet --seed 1234 --num-rows 10000000 --num-cols 40 --num-partitions 128 --num-classes 2

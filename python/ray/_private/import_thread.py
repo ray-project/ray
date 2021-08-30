@@ -7,7 +7,7 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray import profiling
+import ray._private.profiling as profiling
 
 import logging
 
@@ -159,10 +159,10 @@ class ImportThread:
          run_on_other_drivers) = self.redis_client.hmget(
              key, ["job_id", "function", "run_on_other_drivers"])
 
-        if (ray._private.utils.decode(run_on_other_drivers) == "False"
-                and self.worker.mode == ray.SCRIPT_MODE
-                and job_id != self.worker.current_job_id.binary()):
-            return
+        if self.worker.mode == ray.SCRIPT_MODE:
+            if (run_on_other_drivers == b"False"
+                    or job_id == self.worker.current_job_id.binary()):
+                return
 
         try:
             # FunctionActorManager may call pickle.loads at the same time.

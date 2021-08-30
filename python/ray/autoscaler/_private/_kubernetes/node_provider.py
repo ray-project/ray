@@ -1,6 +1,7 @@
 import copy
 import logging
 import time
+from typing import Dict
 from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
@@ -10,12 +11,22 @@ from ray.autoscaler._private._kubernetes import core_api, log_prefix, \
 from ray.autoscaler._private._kubernetes.config import bootstrap_kubernetes, \
     fillout_resources_kubernetes
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import NODE_KIND_HEAD
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND
 
 logger = logging.getLogger(__name__)
 
 MAX_TAG_RETRIES = 3
 DELAY_BEFORE_TAG_RETRY = .5
+
+RAY_COMPONENT_LABEL = "cluster.ray.io/component"
+
+
+def head_service_selector(cluster_name: str) -> Dict[str, str]:
+    """Selector for Operator-configured head service.
+    """
+    return {RAY_COMPONENT_LABEL: f"{cluster_name}-ray-head"}
 
 
 def to_label_selector(tags):
@@ -116,6 +127,12 @@ class KubernetesNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"].update(tags)
         else:
             pod_spec["metadata"]["labels"] = tags
+
+        # Allow Operator-configured service to access the head node.
+        if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
+            head_selector = head_service_selector(self.cluster_name)
+            pod_spec["metadata"]["labels"].update(head_selector)
+
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
         new_nodes = []

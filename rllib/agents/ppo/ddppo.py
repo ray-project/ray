@@ -17,6 +17,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
+import sys
 import time
 
 import ray
@@ -91,6 +92,11 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+
+    # Error if run on Win.
+    if sys.platform in ["win32", "cygwin"]:
+        raise ValueError("DD-PPO not supported on Win yet! "
+                         "Due to usage of torch.distributed.")
 
     # Auto-train_batch_size: Calculate from rollout len and envs-per-worker.
     if config["train_batch_size"] == -1:

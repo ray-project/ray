@@ -12,9 +12,11 @@ import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -635,6 +637,72 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
         self.assertEqual(num_checkpoints(trial), 3)
 
+    def testCheckpointAtEndNotBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial(
+            "__fake",
+            checkpoint_at_end=True,
+            stopping_criterion={"training_iteration": 4})
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+
+        runner.step()  # run iteration 1
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 1)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 2
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 2)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 3
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iteration 4
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
+        self.assertEqual(num_checkpoints(trial), 1)
+
+    def testCheckpointAtEndBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial(
+            "__fake",
+            checkpoint_at_end=True,
+            stopping_criterion={"training_iteration": 4})
+        # Force result buffer length
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(result_buffer_length=7))
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+        self.assertEqual(num_checkpoints(trial), 0)
+
+        runner.step()  # run iterations 1-7
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 7)
+        self.assertEqual(num_checkpoints(trial), 1)
+
     def testUserCheckpoint(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
@@ -880,6 +948,51 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter2.on_trial_complete("test_2", {"result": 3})
         assert limiter2.suggest("test_3")["score"] == 3
 
+    def testBasicVariantLimiter(self):
+        search_alg = BasicVariantGenerator(max_concurrent=2)
+
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 5,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        search_alg.add_configurations({"test": experiment_spec})
+
+        trial1 = search_alg.next_trial()
+        self.assertTrue(trial1)
+
+        trial2 = search_alg.next_trial()
+        self.assertTrue(trial2)
+
+        # Returns None because of limiting
+        trial3 = search_alg.next_trial()
+        self.assertFalse(trial3)
+
+        # Finish trial, now trial 3 should be created
+        search_alg.on_trial_complete(trial1.trial_id, None, False)
+        trial3 = search_alg.next_trial()
+        self.assertTrue(trial3)
+
+        trial4 = search_alg.next_trial()
+        self.assertFalse(trial4)
+
+        search_alg.on_trial_complete(trial2.trial_id, None, False)
+        search_alg.on_trial_complete(trial3.trial_id, None, False)
+
+        trial4 = search_alg.next_trial()
+        self.assertTrue(trial4)
+
+        trial5 = search_alg.next_trial()
+        self.assertTrue(trial5)
+
+        search_alg.on_trial_complete(trial4.trial_id, None, False)
+
+        # Should also be None because search is finished
+        trial6 = search_alg.next_trial()
+        self.assertFalse(trial6)
+
     def testBatchLimiter(self):
         class TestSuggestion(Searcher):
             def __init__(self, index):
@@ -904,6 +1017,48 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter.suggest("test_3") is None
         limiter.on_trial_complete("test_2", {"result": 3})
         assert limiter.suggest("test_3") is not None
+
+    def testBatchLimiterInfiniteLoop(self):
+        """Check whether an infinite loop when less than max_concurrent trials
+        are suggested with batch mode is avoided.
+        """
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index, max_suggestions=10):
+                self.index = index
+                self.max_suggestions = max_suggestions
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                if self.index > self.max_suggestions:
+                    return None
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+                self.index = 0
+
+        searcher = TestSuggestion(0, 2)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=5, batch=True)
+        limiter.suggest("test_1")
+        limiter.suggest("test_2")
+        limiter.suggest("test_3")  # TestSuggestion return None
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert limiter.searcher.returned_result
+
+        searcher = TestSuggestion(0, 10)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=5, batch=True)
+        limiter.suggest("test_1")
+        limiter.suggest("test_2")
+        limiter.suggest("test_3")
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert not limiter.searcher.returned_result
 
 
 class ResourcesTest(unittest.TestCase):

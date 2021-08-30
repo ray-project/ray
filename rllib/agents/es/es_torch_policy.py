@@ -3,7 +3,7 @@
 
 import gym
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models import ModelCatalog

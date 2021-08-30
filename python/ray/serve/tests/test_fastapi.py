@@ -1,3 +1,4 @@
+import sys
 import time
 from typing import Any, List, Optional
 import tempfile
@@ -6,13 +7,16 @@ import pytest
 import inspect
 import requests
 from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
-                     APIRouter, BackgroundTasks)
+                     APIRouter, BackgroundTasks, Response)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+import ray
 from ray import serve
-from ray.serve.utils import make_fastapi_class_based_view
+from ray.exceptions import GetTimeoutError
+from ray.serve.http_util import make_fastapi_class_based_view
+from ray._private.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):
@@ -76,14 +80,24 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
+        def other(self, msg: str):
+            return msg
+
     A.deploy()
 
+    # Test HTTP calls.
     resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
     resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
     resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
+
+    # Test handle calls.
+    handle = A.get_handle()
+    assert ray.get(handle.b.remote(41)) == 42
+    assert ray.get(handle.c.remote(41)) == 40
+    assert ray.get(handle.other.remote("world")) == "world"
 
 
 def test_make_fastapi_cbv_util():
@@ -218,7 +232,7 @@ def test_fastapi_features(serve_instance):
     Worker.deploy()
 
     url = "http://localhost:8000/fastapi"
-    resp = requests.get(f"{url}")
+    resp = requests.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
 
@@ -298,6 +312,227 @@ def test_fastapi_features(serve_instance):
             "Origin": "https://googlebot.com"
         })
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
+
+
+def test_fast_api_mounted_app(serve_instance):
+    app = FastAPI()
+    subapp = FastAPI()
+
+    @subapp.get("/hi")
+    def hi():
+        return "world"
+
+    app.mount("/mounted", subapp)
+
+    @serve.deployment(route_prefix="/api")
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+
+    assert requests.get(
+        "http://localhost:8000/api/mounted/hi").json() == "world"
+
+
+def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        1 / 0
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        def f(self):
+            return 1
+
+    A.deploy()
+    # Without a proper fix, the actor won't be initialized correctly.
+    # Because it will crash on each startup.
+    assert ray.get(A.get_handle().f.remote()) == 1
+
+
+def test_fastapi_duplicate_routes(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/api/v1")
+    @serve.ingress(app)
+    class App1:
+        @app.get("/")
+        def func_v1(self):
+            return "first"
+
+    @serve.deployment(route_prefix="/api/v2")
+    @serve.ingress(app)
+    class App2:
+        @app.get("/")
+        def func_v2(self):
+            return "second"
+
+    @app.get("/ignored")
+    def ignored():
+        pass
+
+    App1.deploy()
+    App2.deploy()
+
+    resp = requests.get("http://localhost:8000/api/v1")
+    assert resp.json() == "first"
+
+    resp = requests.get("http://localhost:8000/api/v2")
+    assert resp.json() == "second"
+
+    for version in ["v1", "v2"]:
+        resp = requests.get(f"http://localhost:8000/api/{version}/ignored")
+        assert resp.status_code == 404
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
+def test_doc_generation(serve_instance, route_prefix):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class App:
+        @app.get("/")
+        def func1(self, arg: str):
+            return "hello"
+
+    App.deploy()
+
+    if route_prefix is None:
+        prefix = "/App"
+    else:
+        prefix = route_prefix
+
+    if not prefix.endswith("/"):
+        prefix += "/"
+
+    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    assert r.status_code == 200
+    assert len(r.json()["paths"]) == 1
+    assert "/" in r.json()["paths"]
+    assert len(r.json()["paths"]["/"]) == 1
+    assert "get" in r.json()["paths"]["/"]
+
+    r = requests.get(f"http://localhost:8000{prefix}docs")
+    assert r.status_code == 200
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class App:
+        @app.get("/")
+        def func1(self, arg: str):
+            return "hello"
+
+        @app.post("/hello")
+        def func2(self, arg: int):
+            return "hello"
+
+    App.deploy()
+
+    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    assert r.status_code == 200
+    assert len(r.json()["paths"]) == 2
+    assert "/" in r.json()["paths"]
+    assert len(r.json()["paths"]["/"]) == 1
+    assert "get" in r.json()["paths"]["/"]
+    assert "/hello" in r.json()["paths"]
+    assert len(r.json()["paths"]["/hello"]) == 1
+    assert "post" in r.json()["paths"]["/hello"]
+
+    r = requests.get(f"http://localhost:8000{prefix}docs")
+    assert r.status_code == 200
+
+
+def test_fastapi_multiple_headers(serve_instance):
+    # https://fastapi.tiangolo.com/advanced/response-cookies/
+    app = FastAPI()
+
+    @app.get("/")
+    def func(resp: Response):
+        resp.set_cookie(key="a", value="b")
+        resp.set_cookie(key="c", value="d")
+        return "hello"
+
+    @serve.deployment(name="f")
+    @serve.ingress(app)
+    class FastAPIApp:
+        pass
+
+    FastAPIApp.deploy()
+
+    resp = requests.get("http://localhost:8000/f")
+    assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
+    # https://github.com/ray-project/ray/issues/16757
+    class TestModel(BaseModel):
+        a: str
+        b: List[str]
+
+    app = FastAPI()
+
+    @app.get("/", response_model=TestModel)
+    def test_endpoint():
+        test_model = TestModel(a="a", b=["b"])
+        return test_model
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        # https://github.com/ray-project/ray/issues/17363
+        @app.get("/inner", response_model=TestModel)
+        def test_endpoint_2(self):
+            test_model = TestModel(a="a", b=["b"])
+            return test_model
+
+    TestDeployment.deploy()
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+    resp = requests.get("http://localhost:8000/inner")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+
+def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
+    """
+    Tests that the class constructor is called before the startup hooks
+    are run in FastAPIWrapper. SignalActor event is set from a startup hook
+    and is awaited in the class constructor. If the class constructor is run
+    before the startup hooks, the SignalActor event will time out while waiting
+    and the test will pass.
+    """
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @app.on_event("startup")
+    def startup_event():
+        ray.get(signal.send.remote())
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        def __init__(self):
+            self.test_passed = False
+            try:
+                ray.get(signal.wait.remote(), timeout=.1)
+                self.test_passed = False
+            except GetTimeoutError:
+                self.test_passed = True
+
+        @app.get("/")
+        def root(self):
+            return self.test_passed
+
+    TestDeployment.deploy()
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json()
 
 
 if __name__ == "__main__":

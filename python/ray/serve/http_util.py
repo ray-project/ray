@@ -1,8 +1,10 @@
 import asyncio
 from dataclasses import dataclass
+import inspect
 import json
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
+import starlette.responses
 import starlette.requests
 
 from ray.serve.exceptions import RayServeException
@@ -100,42 +102,129 @@ class Response:
         await send({"type": "http.response.body", "body": self.body})
 
 
-def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
-    """Given ASGI app, return two async callables (on_startup, on_shutdown)
+async def receive_http_body(scope, receive, send):
+    body_buffer = []
+    more_body = True
+    while more_body:
+        message = await receive()
+        assert message["type"] == "http.request"
 
-    Detail spec at
-    https://asgi.readthedocs.io/en/latest/specs/lifespan.html
+        more_body = message["more_body"]
+        body_buffer.append(message["body"])
+
+    return b"".join(body_buffer)
+
+
+class ASGIHTTPSender:
+    """Implement the interface for ASGI sender, build Starlette Response"""
+
+    def __init__(self) -> None:
+        self.status_code: Optional[int] = 200
+        self.headers: List[Tuple[bytes, bytes]] = []
+        self.buffer: List[bytes] = []
+
+    async def __call__(self, message):
+        if (message["type"] == "http.response.start"):
+            self.status_code = message["status"]
+            self.headers = message["headers"]
+        elif (message["type"] == "http.response.body"):
+            self.buffer.append(message["body"])
+        else:
+            raise ValueError("ASGI type must be one of "
+                             "http.responses.{body,start}.")
+
+    def build_starlette_response(self) -> starlette.responses.Response:
+        resp = starlette.responses.Response(
+            b"".join(self.buffer), status_code=self.status_code)
+        resp.raw_headers.extend(self.headers)
+        return resp
+
+
+def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
+    """Transform the `cls`'s methods and class annotations to FastAPI routes.
+
+    Modified from
+    https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
+
+    Usage:
+    >>> app = FastAPI()
+    >>> class A:
+            @app.route("/{i}")
+            def func(self, i: int) -> str:
+                return self.dep + i
+    >>> # just running the app won't work, here.
+    >>> make_fastapi_class_based_view(app, A)
+    >>> # now app can be run properly
     """
-    scope = {"type": "lifespan"}
+    # Delayed import to prevent ciruclar imports in workers.
+    from fastapi import Depends, APIRouter
+    from fastapi.routing import APIRoute
 
-    class LifespanHandler:
-        def __init__(self, lifespan_type):
-            assert lifespan_type in {"startup", "shutdown"}
-            self.lifespan_type = lifespan_type
+    def get_current_servable_instance():
+        from ray import serve
+        return serve.get_replica_context().servable_object
 
-        async def receive(self):
-            return {"type": f"lifespan.{self.lifespan_type}"}
+    # Find all the class method routes
+    member_methods = {
+        func
+        for _, func in inspect.getmembers(cls, inspect.isfunction)
+    }
+    class_method_routes = [
+        route for route in fastapi_app.routes
+        if isinstance(route, APIRoute) and route.endpoint in member_methods
+    ]
 
-        async def send(self, msg):
-            # We are not doing a strict equality check here because sometimes
-            # starlette will output shutdown.complete on startup lifecycle
-            # event!
-            # https://github.com/encode/starlette/blob/5ee04ef9b1bc11dc14d299e6c855c9a3f7d5ff16/starlette/routing.py#L557 # noqa
-            if msg["type"].endswith(".complete"):
-                return
-            elif msg["type"].endswith(".failed"):
-                raise RayServeException(
-                    f"Failed to run {self.lifespan_type} events for asgi app. "
-                    f"Error: {msg.get('message', '')}")
-            else:
-                raise ValueError(f"Unknown ASGI type {msg}")
+    # Modify these routes and mount it to a new APIRouter.
+    # We need to to this (instead of modifying in place) because we want to use
+    # the laster fastapi_app.include_router to re-run the dependency analysis
+    # for each routes.
+    new_router = APIRouter()
+    for route in class_method_routes:
+        fastapi_app.routes.remove(route)
 
-    async def startup():
-        handler = LifespanHandler("startup")
-        await app(scope, handler.receive, handler.send)
+        # This block just adds a default values to the self parameters so that
+        # FastAPI knows to inject the object when calling the route.
+        # Before: def method(self, i): ...
+        # After: def method(self=Depends(...), *, i):...
+        old_endpoint = route.endpoint
+        old_signature = inspect.signature(old_endpoint)
+        old_parameters = list(old_signature.parameters.values())
+        if len(old_parameters) == 0:
+            # TODO(simon): make it more flexible to support no arguments.
+            raise RayServeException(
+                "Methods in FastAPI class-based view must have ``self`` as "
+                "their first argument.")
+        old_self_parameter = old_parameters[0]
+        new_self_parameter = old_self_parameter.replace(
+            default=Depends(get_current_servable_instance))
+        new_parameters = [new_self_parameter] + [
+            # Make the rest of the parameters keyword only because
+            # the first argument is no longer positional.
+            parameter.replace(kind=inspect.Parameter.KEYWORD_ONLY)
+            for parameter in old_parameters[1:]
+        ]
+        new_signature = old_signature.replace(parameters=new_parameters)
+        setattr(route.endpoint, "__signature__", new_signature)
+        setattr(route.endpoint, "_serve_cls", cls)
+        new_router.routes.append(route)
+    fastapi_app.include_router(new_router)
 
-    async def shutdown():
-        handler = LifespanHandler("shutdown")
-        await app(scope, handler.receive, handler.send)
+    routes = fastapi_app.routes
+    for route in routes:
+        if not isinstance(route, APIRoute):
+            continue
 
-    return startup, shutdown
+        # If there is a response model, FastAPI creates a copy of the fields.
+        # But FastAPI creates the field incorrectly by missing the outer_type_.
+        if route.response_model:
+            original_resp_fields = (
+                route.response_field.outer_type_.__fields__)
+            cloned_resp_fields = (
+                route.secure_cloned_response_field.outer_type_.__fields__)
+            for key, field in cloned_resp_fields.items():
+                field.outer_type_ = original_resp_fields[key].outer_type_
+
+        # Remove endpoints that belong to other class based views.
+        serve_cls = getattr(route.endpoint, "_serve_cls", None)
+        if serve_cls is not None and serve_cls != cls:
+            routes.remove(route)

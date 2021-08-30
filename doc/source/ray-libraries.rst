@@ -5,12 +5,21 @@ Community Integrations
 
 This page lists libraries that have integrations with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
-Ray also comes packaged with several built-in machine learning libraries:
+Ray also comes packaged with several libraries solving problems in the machine learning space:
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`
+- :ref:`datasets` (beta)
+- :ref:`workflows` (alpha)
+
+Airflow |airflow|
+-----------------
+
+Airflow is a platform created by the community to programmatically author, schedule and monitor workflows. The Airflow/Ray integration allows Airflow users to keep all of their Ray code in Python functions and define task dependencies by moving data through python functions.
+
+[`Link to integration <https://registry.astronomer.io/providers/ray>`__] [`Link to announcement <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__]
 
 ClassyVision |classyvision|
 ---------------------------
@@ -67,6 +76,14 @@ The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Emb
 
 [`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
 
+Ludwig AI |ludwig|
+------------------
+
+Ludwig is a toolbox that allows users to train and test deep learning models without the need to write code. With Ludwig, you can train a deep learning model on Ray in zero lines of code, automatically leveraging Dask on Ray for data preprocessing, Horovod on Ray for distributed training, and Ray Tune for hyperparameter optimization.
+
+[`Link to integration <https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e>`__]
+
+
 MARS |mars|
 -----------
 
@@ -102,19 +119,19 @@ RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You
 
 GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
 
-Seldon Alibi |seldon|
----------------------
-
-Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
-
-GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
-
 Scikit Learn |scikit|
 ---------------------
 
 Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
 
 [`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
+
+Seldon Alibi |seldon|
+---------------------
+
+Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
+
+GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 Spacy |spacy|
 -------------
@@ -127,6 +144,17 @@ XGBoost |xgboost|
 XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
 
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
+
+LightGBM |lightgbm|
+-------------------
+LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
+
+[`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
+
+
+.. |airflow| image:: images/airflow.png
+    :class: inline-figure
+    :height: 30
 
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
@@ -149,6 +177,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |horovod| image:: images/horovod.png
+    :class: inline-figure
+    :height: 30
+
+.. |ludwig| image:: images/ludwig.png
     :class: inline-figure
     :height: 30
 
@@ -185,6 +217,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |xgboost| image:: images/xgboost_logo.png
+    :class: inline-figure
+    :height: 30
+
+.. |lightgbm| image:: images/lightgbm_logo.png
     :class: inline-figure
     :height: 30
 

@@ -17,13 +17,13 @@ from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-import ray.test_utils
-from ray import resource_spec
+import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors)
+from ray._private.test_utils import (check_call_ray, wait_for_condition,
+                                     wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,6 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
-
-    # A driver/worker creates a temporary object during startup. Although the
-    # temporary object is freed immediately, in a rare case, we can still find
-    # the object ref in GCS because Raylet removes the object ref from GCS
-    # asynchronously.
-    # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.objects()` returns an empty dict. Here we just
-    # make sure `ray.objects()` succeeds.
-    assert len(ray.objects()) >= 0
 
     job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
@@ -63,7 +54,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.actors()
+    actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
     actor_info, = actor_table.values()
@@ -73,7 +64,7 @@ def test_global_state_api(shutdown_only):
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -733,127 +724,6 @@ def test_k8s_cpu():
         assert 50 < k8s_utils.cpu_percent() < 60
 
 
-def test_override_environment_variables_task(ray_start_regular):
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-
-def test_override_environment_variables_actor(ray_start_regular):
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-    a = EnvGetter.options(override_environment_variables={
-        "a": "b",
-        "c": "d",
-    }).remote()
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get.remote("c")) == "d")
-
-
-def test_override_environment_variables_nested_task(ray_start_regular):
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    @ray.remote
-    def get_env_wrapper(key):
-        return ray.get(get_env.remote(key))
-
-    assert (ray.get(
-        get_env_wrapper.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-
-def test_override_environment_variables_multitenancy(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "foo1": "bar1",
-            "foo2": "bar2",
-        }))
-
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    assert ray.get(get_env.remote("foo1")) == "bar1"
-    assert ray.get(get_env.remote("foo2")) == "bar2"
-    assert ray.get(
-        get_env.options(override_environment_variables={
-            "foo1": "baz1",
-        }).remote("foo1")) == "baz1"
-    assert ray.get(
-        get_env.options(override_environment_variables={
-            "foo1": "baz1",
-        }).remote("foo2")) == "bar2"
-
-
-def test_override_environment_variables_complex(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "a": "job_a",
-            "b": "job_b",
-            "z": "job_z",
-        }))
-
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    @ray.remote
-    class NestedEnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-        def nested_get(self, key):
-            aa = NestedEnvGetter.options(override_environment_variables={
-                "c": "e",
-                "d": "dd",
-            }).remote()
-            return ray.get(aa.get.remote(key))
-
-    a = EnvGetter.options(override_environment_variables={
-        "a": "b",
-        "c": "d",
-    }).remote()
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get_task.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("c")) == "e")
-    assert (ray.get(a.nested_get.remote("d")) == "dd")
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-    assert (ray.get(a.get.remote("z")) == "job_z")
-    assert (ray.get(a.get_task.remote("z")) == "job_z")
-    assert (ray.get(a.nested_get.remote("z")) == "job_z")
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("z")) == "job_z")
-
-
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
     worker_env = {
@@ -877,7 +747,7 @@ def test_sync_job_config(shutdown_only):
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
-    job_config = ray.gcs_utils.JobConfig()
+    job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)

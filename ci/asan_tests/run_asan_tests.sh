@@ -3,10 +3,11 @@
 set -euxo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+RAY_DIR="${ROOT_DIR}/../.."
 
 asan_install() {
   echo "installing"
-  (cd "${ROOT_DIR}"/../ray/python && pip install -e . --verbose)
+  (cd "${RAY_DIR}"/python && pip install -e . --verbose)
 }
 
 asan_setup() {
@@ -18,26 +19,24 @@ asan_setup() {
   pip install -U pytest==5.4.3
 
   echo "Installing cython example"
-  (cd "${ROOT_DIR}"/../ray/doc/examples/cython && python setup.py install --user)
+  (cd "${RAY_DIR}"/doc/examples/cython && python setup.py install --user)
 
   echo "Settting up the shell"
   echo "build --config=asan" >> ~/.bazelrc  # Setup cache
-  echo "LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so" >> ~/.bashrc
+  echo "LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/9/libasan.so" >> ~/.bashrc
   echo "ASAN_OPTIONS=detect_leaks=0" >> ~/.bashrc
 
   echo "Compiling ray"
-  cd "${ROOT_DIR}"/../ray/
-  git fetch
-  git pull origin master
+  cd "${RAY_DIR}"
   asan_install || true
 }
 
 asan_run() {
   (
-    export LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
+    export LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/9/libasan.so"
     export ASAN_OPTIONS="detect_leaks=0"
 
-    cd "${ROOT_DIR}"/../ray
+    cd "${RAY_DIR}"
 
     # Ray tests
     bazel test --test_tag_filters=-jenkins_only --test_output=streamed python/ray/serve/...
@@ -49,7 +48,7 @@ asan_run() {
 
 asan_recompile() {
   git fetch
-  git checkout "$1"
+  git checkout "${GIT_SHA:-$1}"
   asan_install || true
 }
 

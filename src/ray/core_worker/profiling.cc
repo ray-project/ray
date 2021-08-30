@@ -17,6 +17,7 @@
 #include <chrono>
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
@@ -59,8 +60,24 @@ void Profiler::FlushEvents() {
     }
   }
 
+  auto on_complete = [this](const Status &status) {
+    absl::MutexLock lock(&mutex_);
+    profile_flush_active_ = false;
+  };
+
   if (cur_profile_data->profile_events_size() != 0) {
-    if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, nullptr).ok()) {
+    // Check if we're backlogged first.
+    {
+      absl::MutexLock lock(&mutex_);
+      if (profile_flush_active_) {
+        RAY_LOG(WARNING) << "The GCS is backlogged processing profiling data. "
+                            "Some events may be dropped.";
+        return;  // Drop the events; we're behind.
+      } else {
+        profile_flush_active_ = true;
+      }
+    }
+    if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, on_complete).ok()) {
       RAY_LOG(WARNING)
           << "Failed to push profile events to GCS. This won't affect core Ray, but you "
              "might lose profile data, and ray timeline might not work as expected.";
@@ -73,4 +90,5 @@ void Profiler::FlushEvents() {
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray

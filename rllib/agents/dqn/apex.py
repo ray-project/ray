@@ -17,6 +17,7 @@ import copy
 from typing import Tuple
 
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
     DEFAULT_CONFIG as DQN_CONFIG, DQNTrainer, validate_config
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
@@ -31,7 +32,10 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
+from ray.tune.trainable import Trainable
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.iter import LocalIterator
 
 # yapf: disable
@@ -67,6 +71,45 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
+class OverrideDefaultResourceRequest:
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+
+        eval_config = cf["evaluation_config"]
+
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Local worker + replay buffer actors.
+                # Force replay buffers to be on same node to maximize
+                # data bandwidth between buffers and the learner (driver).
+                # Replay buffer actors each contain one shard of the total
+                # replay buffer and use 1 CPU each.
+                "CPU": cf["num_cpus_for_driver"] +
+                cf["optimizer"]["num_replay_buffer_shards"],
+                "GPU": cf["num_gpus"]
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
+                    "CPU": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "GPU": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"])
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
+
+
 # Update worker weights as they finish generating experiences.
 class UpdateWorkerWeights:
     def __init__(self, learner_thread: LearnerThread, workers: WorkerSet,
@@ -77,7 +120,7 @@ class UpdateWorkerWeights:
         self.max_weight_sync_delay = max_weight_sync_delay
         self.weights = None
 
-    def __call__(self, item: Tuple["ActorHandle", SampleBatchType]):
+    def __call__(self, item: Tuple[ActorHandle, SampleBatchType]):
         actor, batch = item
         self.steps_since_update[actor] += batch.count
         if self.steps_since_update[actor] >= self.max_weight_sync_delay:
@@ -88,6 +131,8 @@ class UpdateWorkerWeights:
                 self.weights = ray.put(
                     self.workers.local_worker().get_weights())
             actor.set_weights.remote(self.weights, _get_global_vars())
+            # Also update global vars of the local worker.
+            self.workers.local_worker().set_global_vars(_get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
             metrics = _get_shared_metrics()
@@ -115,9 +160,10 @@ def apex_execution_plan(workers: WorkerSet,
     learner_thread.start()
 
     # Update experience priorities post learning.
-    def update_prio_and_stats(item: Tuple["ActorHandle", dict, int]) -> None:
+    def update_prio_and_stats(item: Tuple[ActorHandle, dict, int]) -> None:
         actor, prio_dict, count = item
-        actor.update_priorities.remote(prio_dict)
+        if config.get("prioritized_replay"):
+            actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
@@ -127,8 +173,8 @@ def apex_execution_plan(workers: WorkerSet,
         metrics.timers["learner_overall"] = learner_thread.overall_timer
 
     # We execute the following steps concurrently:
-    # (1) Generate rollouts and store them in our replay buffer actors. Update
-    # the weights of the worker that generated the batch.
+    # (1) Generate rollouts and store them in one of our replay buffer
+    # actors. Update the weights of the worker that generated the batch.
     rollouts = ParallelRollouts(workers, mode="async", num_async=2)
     store_op = rollouts \
         .for_each(StoreToReplayBuffer(actors=replay_actors))
@@ -141,8 +187,8 @@ def apex_execution_plan(workers: WorkerSet,
                     config["optimizer"]["max_weight_sync_delay"])
             ))
 
-    # (2) Read experiences from the replay buffer actors and send to the
-    # learner thread via its in-queue.
+    # (2) Read experiences from one of the replay buffer actors and send to
+    # the learner thread via its in-queue.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
     replay_op = Replay(actors=replay_actors, num_async=4) \
         .for_each(lambda x: post_fn(x, workers, config)) \
@@ -177,7 +223,7 @@ def apex_execution_plan(workers: WorkerSet,
         replay_stats = ray.get(replay_actors[0].stats.remote(
             config["optimizer"].get("debug")))
         exploration_infos = workers.foreach_trainable_policy(
-            lambda p, _: p.get_exploration_info())
+            lambda p, _: p.get_exploration_state())
         result["info"].update({
             "exploration_infos": exploration_infos,
             "learner_queue": learner_thread.learner_queue_size.stats(),
@@ -205,4 +251,6 @@ ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
     validate_config=apex_validate_config,
-    execution_plan=apex_execution_plan)
+    execution_plan=apex_execution_plan,
+    mixins=[OverrideDefaultResourceRequest],
+)

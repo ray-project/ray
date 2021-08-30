@@ -8,25 +8,25 @@ ray.init(address="auto")
 serve.start()
 
 
-class MyBackendClass:
+@serve.deployment
+class MyDeployment:
     def __init__(self):
         self.my_counter = metrics.Counter(
             "my_counter",
             description=("The number of excellent requests to this backend."),
-            tag_keys=("backend", ))
+            tag_keys=("deployment", ))
         self.my_counter.set_default_tags({
-            "backend": serve.get_current_backend_tag()
+            "deployment": serve.get_current_deployment()
         })
 
-    def __call__(self, request):
-        if "excellent" in request.query_params:
+    def call(self, excellent=False):
+        if excellent:
             self.my_counter.inc()
 
 
-serve.create_backend("my_backend", MyBackendClass)
-serve.create_endpoint("my_endpoint", backend="my_backend")
+MyDeployment.deploy()
 
-handle = serve.get_handle("my_endpoint")
-while (True):
-    ray.get(handle.remote(excellent=True))
+handle = MyDeployment.get_handle()
+while True:
+    ray.get(handle.call.remote(excellent=True))
     time.sleep(1)

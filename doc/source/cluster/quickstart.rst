@@ -5,6 +5,8 @@ Ray Cluster Quick Start
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
+For launching Ray cluster manually,  you can refer to the :ref:`on premise cluster setup <cluster-private-setup>` guide.
+
 About the demo
 --------------
 
@@ -32,19 +34,19 @@ Before we start, you will need to install some Python dependencies as follows:
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[cluster]' boto3
+            $ pip install -U 'ray[default]' boto3
 
     .. group-tab:: Azure
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[cluster]' azure-cli azure-core
+            $ pip install -U 'ray[default]' azure-cli azure-core
 
     .. group-tab:: GCP
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[cluster]' google-api-python-client
+            $ pip install -U 'ray[default]' google-api-python-client
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 

@@ -6,7 +6,7 @@ import time
 import pytest
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -30,16 +30,16 @@ def test_controller_failure(serve_instance):
     function.deploy()
 
     assert request_with_retries(
-        "/controller_failure", timeout=1).text == "hello1"
+        "/controller_failure/", timeout=1).text == "hello1"
 
     for _ in range(10):
-        response = request_with_retries("/controller_failure", timeout=30)
+        response = request_with_retries("/controller_failure/", timeout=30)
         assert response.text == "hello1"
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/controller_failure", timeout=30)
+        response = request_with_retries("/controller_failure/", timeout=30)
         assert response.text == "hello1"
 
     def function2(_):
@@ -47,10 +47,10 @@ def test_controller_failure(serve_instance):
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
 
-    function.options(backend_def=function2).deploy()
+    function.options(func_or_class=function2).deploy()
 
     def check_controller_failure():
-        response = request_with_retries("/controller_failure", timeout=30)
+        response = request_with_retries("/controller_failure/", timeout=30)
         return response.text == "hello2"
 
     wait_for_condition(check_controller_failure)
@@ -64,9 +64,9 @@ def test_controller_failure(serve_instance):
     ray.kill(serve.api._global_client._controller, no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/controller_failure", timeout=30)
+        response = request_with_retries("/controller_failure/", timeout=30)
         assert response.text == "hello2"
-        response = request_with_retries("/controller_failure_2", timeout=30)
+        response = request_with_retries("/controller_failure_2/", timeout=30)
         assert response.text == "hello3"
 
 
@@ -84,10 +84,11 @@ def test_http_proxy_failure(serve_instance):
 
     function.deploy()
 
-    assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
+    assert request_with_retries(
+        "/proxy_failure/", timeout=1.0).text == "hello1"
 
     for _ in range(10):
-        response = request_with_retries("/proxy_failure", timeout=30)
+        response = request_with_retries("/proxy_failure/", timeout=30)
         assert response.text == "hello1"
 
     _kill_http_proxies()
@@ -95,11 +96,11 @@ def test_http_proxy_failure(serve_instance):
     def function2(_):
         return "hello2"
 
-    function.options(backend_def=function2).deploy()
+    function.options(func_or_class=function2).deploy()
 
     def check_new():
         for _ in range(10):
-            response = request_with_retries("/proxy_failure", timeout=30)
+            response = request_with_retries("/proxy_failure/", timeout=30)
             if response.text != "hello2":
                 return False
         return True
@@ -125,7 +126,7 @@ def test_worker_restart(serve_instance):
     Worker1.deploy()
 
     # Get the PID of the worker.
-    old_pid = request_with_retries("/worker_failure", timeout=1).text
+    old_pid = request_with_retries("/worker_failure/", timeout=1).text
 
     # Kill the worker.
     handles = _get_worker_handles("worker_failure")
@@ -135,7 +136,7 @@ def test_worker_restart(serve_instance):
     # Wait until the worker is killed and a one is started.
     start = time.time()
     while time.time() - start < 30:
-        response = request_with_retries("/worker_failure", timeout=30)
+        response = request_with_retries("/worker_failure/", timeout=30)
         if response.text != old_pid:
             break
     else:
@@ -177,7 +178,7 @@ def test_worker_replica_failure(serve_instance):
     start = time.time()
     while time.time() - start < 30:
         time.sleep(0.1)
-        response = request_with_retries("/replica_failure", timeout=1).text
+        response = request_with_retries("/replica_failure/", timeout=1).text
         assert response in ["1", "2"]
         responses.add(response)
         if len(responses) > 1:
@@ -196,7 +197,7 @@ def test_worker_replica_failure(serve_instance):
             try:
                 # The timeout needs to be small here because the request to
                 # the restarting worker will hang.
-                request_with_retries("/replica_failure", timeout=0.1)
+                request_with_retries("/replica_failure/", timeout=0.1)
                 break
             except TimeoutError:
                 time.sleep(0.1)

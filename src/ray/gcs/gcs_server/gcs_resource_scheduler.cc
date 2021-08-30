@@ -42,14 +42,14 @@ double LeastResourceScorer::Score(const ResourceSet &required_resources,
   return node_score;
 }
 
-double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requested,
-                                      const FractionalResourceQuantity &available) {
-  RAY_CHECK(available >= 0) << "Available resource " << available.ToDouble()
+double LeastResourceScorer::Calculate(const FixedPoint &requested,
+                                      const FixedPoint &available) {
+  RAY_CHECK(available >= 0) << "Available resource " << available.Double()
                             << " should be nonnegative.";
   if (requested > available) {
     return -1;
   }
-  return (available - requested).ToDouble() / available.ToDouble();
+  return (available - requested).Double() / available.Double();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

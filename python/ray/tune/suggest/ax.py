@@ -73,6 +73,8 @@ class AxSearch(Searcher):
             `parameter_constraints`, `outcome_constraints`.
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
+        **ax_kwargs: Passed to AxClient instance. Ignored if `AxClient` is not
+            None.
 
     Tune automatically converts search spaces to Ax's format:
 
@@ -129,7 +131,8 @@ class AxSearch(Searcher):
                  outcome_constraints: Optional[List] = None,
                  ax_client: Optional[AxClient] = None,
                  use_early_stopped_trials: Optional[bool] = None,
-                 max_concurrent: Optional[int] = None):
+                 max_concurrent: Optional[int] = None,
+                 **ax_kwargs):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
@@ -144,6 +147,7 @@ class AxSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._ax = ax_client
+        self._ax_kwargs = ax_kwargs or {}
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -173,7 +177,7 @@ class AxSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
         if not self._ax:
-            self._ax = AxClient()
+            self._ax = AxClient(**self._ax_kwargs)
 
         try:
             exp = self._ax.experiment
@@ -331,7 +335,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.lower, domain.upper],
+                        "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
                         "log_scale": True
                     }
@@ -339,7 +343,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.lower, domain.upper],
+                        "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
                         "log_scale": False
                     }

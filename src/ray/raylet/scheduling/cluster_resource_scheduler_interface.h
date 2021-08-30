@@ -16,6 +16,7 @@
 
 #include "ray/common/task/scheduling_resources.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 class ClusterResourceSchedulerInterface {
@@ -70,6 +71,15 @@ class ClusterResourceSchedulerInterface {
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
   virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
+
+  virtual double GetLocalAvailableCpus() const = 0;
+
+  /// Populate a UpdateResourcesRequest. This is inteneded to update the
+  /// resource totals on a node when a custom resource is created or deleted
+  /// (e.g. during the placement group lifecycle).
+  ///
+  /// \param Output parameter. Fills out all fields.
+  virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

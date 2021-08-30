@@ -20,10 +20,10 @@ class ThompsonSampling(Exploration):
 
     def _get_torch_exploration_action(self, action_dist, explore):
         if explore:
-            return action_dist.inputs.argmax(dim=1), None
+            return action_dist.inputs.argmax(dim=-1), None
         else:
             scores = self.model.predict(self.model.current_obs())
-            return scores.argmax(dim=1), None
+            return scores.argmax(dim=-1), None
 
 
 class UCB(Exploration):
@@ -40,7 +40,7 @@ class UCB(Exploration):
 
     def _get_torch_exploration_action(self, action_dist, explore):
         if explore:
-            return action_dist.inputs.argmax(dim=1), None
+            return action_dist.inputs.argmax(dim=-1), None
         else:
             scores = self.model.value_function()
-            return scores.argmax(dim=1), None
+            return scores.argmax(dim=-1), None

@@ -1,10 +1,23 @@
+// Copyright 2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 
 namespace ray {
 namespace gcs {
 
 GcsResourceReportPoller::GcsResourceReportPoller(
-    std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     std::function<void(const rpc::ResourcesData &)> handle_resource_report,
     std::function<int64_t(void)> get_current_time_milli,
@@ -15,7 +28,6 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     : ticker_(polling_service_),
       max_concurrent_pulls_(RayConfig::instance().gcs_max_concurrent_resource_pulls()),
       inflight_pulls_(0),
-      gcs_resource_manager_(gcs_resource_manager),
       raylet_client_pool_(raylet_client_pool),
       handle_resource_report_(handle_resource_report),
       get_current_time_milli_(get_current_time_milli),
@@ -93,8 +105,6 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
-  RAY_LOG(DEBUG) << "Trying to pull inflight_pulls " << inflight_pulls_ << "/"
-                 << max_concurrent_pulls_ << ", queue size: " << to_pull_queue_.size();
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
     auto to_pull = to_pull_queue_.front();
     if (cur_time < to_pull->next_pull_time) {

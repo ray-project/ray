@@ -19,13 +19,29 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/stats/metric.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_handling, "Request number are handling in grpc server",
+             ("Method"), (), ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
+             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
-    : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
+GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+                       int64_t keepalive_time_ms)
+    : name_(std::move(name)),
+      port_(port),
+      is_closed_(true),
+      num_threads_(num_threads),
+      keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
 }
 
@@ -41,6 +57,11 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                             RayConfig::instance().grpc_keepalive_timeout_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
+
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
@@ -76,7 +97,11 @@ void GrpcServer::Run() {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
       // performance, but we don't currently handle backpressure on the client.
-      for (int j = 0; j < 100; j++) {
+      int buffer_size = 100;
+      if (entry->GetMaxActiveRPCs() != -1) {
+        buffer_size = entry->GetMaxActiveRPCs();
+      }
+      for (int j = 0; j < buffer_size; j++) {
         entry->CreateCall();
       }
     }
@@ -135,6 +160,10 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       delete_call = true;
     }
     if (delete_call) {
+      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+        // Create a new `ServerCall` to accept the next incoming request.
+        server_call->GetServerCallFactory().CreateCall();
+      }
       delete server_call;
     }
   }

@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def test_serve_forceful_shutdown(serve_instance):
@@ -14,7 +14,7 @@ def test_serve_forceful_shutdown(serve_instance):
         while True:
             time.sleep(1000)
 
-    sleeper.config.experimental_graceful_shutdown_timeout_s = 0.1
+    sleeper._config.experimental_graceful_shutdown_timeout_s = 0.1
     sleeper.deploy()
 
     handle = sleeper.get_handle()
@@ -34,8 +34,8 @@ def test_serve_graceful_shutdown(serve_instance):
             await signal_actor.wait.remote()
             return ""
 
-    Wait.config.experimental_graceful_shutdown_wait_loop_s = 0.5
-    Wait.config.experimental_graceful_shutdown_timeout_s = 1000
+    Wait._config.experimental_graceful_shutdown_wait_loop_s = 0.5
+    Wait._config.experimental_graceful_shutdown_timeout_s = 1000
     Wait.deploy()
     handle = Wait.get_handle()
     refs = [handle.remote(signal) for _ in range(10)]

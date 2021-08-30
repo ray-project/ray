@@ -50,6 +50,13 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
+message GetNextJobIDRequest {
+}
+message GetNextJobIDReply {
+  GcsStatus status = 1;
+  int32 job_id = 2;
+}
+
 // Service for job info access.
 service JobInfoGcsService {
   // Add job to GCS Service.
@@ -60,6 +67,8 @@ service JobInfoGcsService {
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
   // Report job error.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+  // Get next job id.
+  rpc GetNextJobID(GetNextJobIDRequest) returns (GetNextJobIDReply);
 }
 
 message GetActorInfoRequest {
@@ -78,7 +87,9 @@ message GetActorInfoReply {
 
 message GetNamedActorInfoRequest {
   // Name of the actor.
-  string name = 2;
+  string name = 1;
+  // Namespace of the actor.
+  string ray_namespace = 2;
 }
 
 message GetNamedActorInfoReply {
@@ -87,7 +98,21 @@ message GetNamedActorInfoReply {
   ActorTableData actor_table_data = 2;
 }
 
+message ListNamedActorsRequest {
+  // Whether or not to include actors from all namespaces.
+  bool all_namespaces = 1;
+  // Namespace to filter to if all_namespaces is false.
+  string ray_namespace = 2;
+}
+
+message ListNamedActorsReply {
+  GcsStatus status = 1;
+  repeated NamedActorInfo named_actors_list = 2;
+}
+
 message GetAllActorInfoRequest {
+  // Whether or not to filter out actors which belong to dead jobs.
+  bool show_dead_jobs = 1;
 }
 
 message GetAllActorInfoReply {
@@ -122,6 +147,8 @@ service ActorInfoGcsService {
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Get actor data from GCS Service by name.
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
+  // Get all named actor names from GCS Service.
+  rpc ListNamedActors(ListNamedActorsRequest) returns (ListNamedActorsReply);
   // Get information of all actor from GCS Service.
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.
@@ -160,6 +187,15 @@ message ReportHeartbeatRequest {
 
 message ReportHeartbeatReply {
   GcsStatus status = 1;
+}
+
+message CheckAliveRequest {
+  int32 seq = 1;
+}
+
+message CheckAliveReply {
+  GcsStatus status = 1;
+  int32 seq = 2;
 }
 
 message GetInternalConfigRequest {
@@ -229,6 +265,8 @@ message ReportResourceUsageReply {
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message GetObjectLocationsRequest {
@@ -494,6 +532,8 @@ message WaitPlacementGroupUntilReadyReply {
 message GetNamedPlacementGroupRequest {
   // Name of the placement group.
   string name = 1;
+  // Namespace to search.
+  string ray_namespace = 2;
 }
 
 message GetNamedPlacementGroupReply {

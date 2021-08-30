@@ -1,3 +1,4 @@
+import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
@@ -56,6 +57,8 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        np.random.seed(42)
+        torch.manual_seed(42)
         ray.init()
 
     @classmethod
@@ -97,9 +100,8 @@ class TestSAC(unittest.TestCase):
                 print("Env={}".format(env))
                 if env == RandomEnv:
                     config["env_config"] = {
-                        "observation_space": Tuple(
-                            [simple_space,
-                             Discrete(2), image_space]),
+                        "observation_space": Tuple((simple_space, Discrete(2),
+                                                    image_space)),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:
@@ -115,6 +117,32 @@ class TestSAC(unittest.TestCase):
                     print(results)
                 check_compute_single_action(trainer)
                 trainer.stop()
+
+    def test_sac_fake_multi_gpu_learning(self):
+        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(sac.DEFAULT_CONFIG)
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        config["clip_actions"] = False
+        config["initial_alpha"] = 0.001
+        config["prioritized_replay"] = True
+        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
+        config["env_config"] = {"config": {"repeat_delay": 0}}
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = sac.SACTrainer(config=config, env=env)
+            num_iterations = 50
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(f"R={results['episode_reward_mean']}")
+                if results["episode_reward_mean"] > 30.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
+            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -226,6 +254,9 @@ class TestSAC(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
+                # Have to add this here (not a parameter in tf, but must be
+                # one in torch, so it gets properly copied to the GPU(s)).
+                model_dict["target_entropy"] = policy.model.target_entropy
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)
 
@@ -284,7 +315,7 @@ class TestSAC(unittest.TestCase):
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
                 c, a, e, t = policy.critic_loss, policy.actor_loss, \
-                    policy.alpha_loss, policy.td_error
+                    policy.alpha_loss, policy.model.td_error
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
@@ -400,9 +431,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, atol=0.003)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -417,12 +448,13 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, atol=0.003)
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -430,7 +462,7 @@ class TestSAC(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.random.random(size=(batch_size, )),
-        }
+        })
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
                          sess):

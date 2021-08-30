@@ -41,6 +41,24 @@ run_testng() {
     fi
 }
 
+run_timeout() {
+  local pid
+  timeout=$1
+  shift 1
+  "$@" &
+  pid=$!
+  sleep "$timeout"
+  if ps -p $pid > /dev/null
+  then
+    echo "run_timeout process exists, kill it."
+    kill -9 $pid
+  else
+    echo "run_timeout process not exist."
+    cat /tmp/ray/session_latest/logs/java-core-driver-*$pid*
+    exit 1
+  fi
+}
+
 pushd "$ROOT_DIR"/..
 echo "Build java maven deps."
 bazel build //java:gen_maven_deps
@@ -113,4 +131,11 @@ echo "Testing maven install."
 mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 # Ensure mvn test works
 mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
+popd
+
+pushd "$ROOT_DIR"
+echo "Running performance test."
+run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar io.ray.performancetest.test.ActorPerformanceTestCase1
+# The performance process may be killed by run_timeout, so clear ray here.
+ray stop
 popd

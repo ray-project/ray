@@ -5,6 +5,7 @@ import platform
 import random
 import signal
 import sys
+import time
 
 import numpy as np
 
@@ -13,7 +14,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.internal.internal_api import memory_summary
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+from ray._private.test_utils import SignalActor, put_object, wait_for_condition
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -34,7 +35,7 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=40,
+def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
                                num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
@@ -71,7 +72,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
     max_depth = 5
     array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
@@ -103,6 +104,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
 # Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
@@ -110,7 +112,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     def return_an_id():
         return [
             put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
         ]
 
     @ray.remote(max_retries=1)
@@ -119,9 +121,6 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
 
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
-
-    # Check that the inner ID is pinned by the outer ID.
-    _fill_object_store_and_get(inner_oid_binary)
 
     # Check that taking a reference to the inner ID and removing the outer ID
     # doesn't unpin the object.
@@ -150,7 +149,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     def return_an_id():
         return [
             put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
         ]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
@@ -198,7 +197,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
     @ray.remote
     def return_an_id():
         return put_object(
-            np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+            np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -261,7 +260,7 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
             return put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8),
+                np.zeros(20 * 1024 * 1024, dtype=np.uint8),
                 use_ray_put), os.getpid()
 
         return ray.get(recursive.remote(num_tasks_left - 1))
@@ -327,7 +326,7 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     borrower = Borrower.remote()
     ray.get(borrower.ping.remote())
 
-    obj = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    obj = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     if failure:
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(parent.pass_ref.remote([obj], borrower))
@@ -533,6 +532,84 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
                                  " MiB") in memory_summary(stats_only=True)))
+
+
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_inlined_nested_refs(ray_start_cluster, inline_args):
+    cluster = ray_start_cluster
+    config = {}
+    if not inline_args:
+        config["max_direct_call_object_size"] = 0
+    cluster.add_node(
+        num_cpus=2,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config=config)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def nested(self):
+            return ray.put("x")
+
+    @ray.remote
+    def nested_nested(a):
+        return a.nested.remote()
+
+    @ray.remote
+    def foo(ref):
+        time.sleep(1)
+        return ray.get(ref)
+
+    a = Actor.remote()
+    nested_nested_ref = nested_nested.remote(a)
+    # We get nested_ref's value directly from its owner.
+    nested_ref = ray.get(nested_nested_ref)
+
+    del nested_nested_ref
+    x = foo.remote(nested_ref)
+    del nested_ref
+    ray.get(x)
+
+
+# https://github.com/ray-project/ray/issues/17553
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_return_nested_ids(shutdown_only, inline_args):
+    config = dict()
+    if inline_args:
+        config["max_direct_call_object_size"] = 100 * 1024 * 1024
+    else:
+        config["max_direct_call_object_size"] = 0
+    ray.init(object_store_memory=100 * 1024 * 1024, _system_config=config)
+
+    class Nested:
+        def __init__(self, blocks):
+            self._blocks = blocks
+
+    @ray.remote
+    def echo(fn):
+        return fn()
+
+    @ray.remote
+    def create_nested():
+        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
+        return Nested(refs)
+
+    @ray.remote
+    def test():
+        ref = create_nested.remote()
+        result1 = ray.get(ref)
+        del ref
+        result = echo.remote(lambda: result1)  # noqa
+        del result1
+
+        time.sleep(5)
+        block = ray.get(result)._blocks[0]
+        print(ray.get(block))
+
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

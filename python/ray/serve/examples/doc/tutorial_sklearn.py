@@ -47,6 +47,7 @@ with open(LABEL_PATH, "w") as f:
 
 
 # __doc_define_servable_begin__
+@serve.deployment(route_prefix="/regressor")
 class BoostingModel:
     def __init__(self):
         with open(MODEL_PATH, "rb") as f:
@@ -74,8 +75,7 @@ class BoostingModel:
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
 serve.start()
-serve.create_backend("lr:v1", BoostingModel)
-serve.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
+BoostingModel.deploy()
 # __doc_deploy_end__
 
 # __doc_query_begin__

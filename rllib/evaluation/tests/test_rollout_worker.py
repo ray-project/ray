@@ -10,11 +10,11 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv,\
+    VectorizedMockEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -75,38 +75,6 @@ class FailOnStepEnv(gym.Env):
 
     def step(self, action):
         raise ValueError("kaboom")
-
-
-class MockVectorEnv(VectorEnv):
-    def __init__(self, episode_length, num_envs):
-        super().__init__(
-            observation_space=gym.spaces.Discrete(1),
-            action_space=gym.spaces.Discrete(2),
-            num_envs=num_envs)
-        self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
-
-    @override(VectorEnv)
-    def vector_reset(self):
-        return [e.reset() for e in self.envs]
-
-    @override(VectorEnv)
-    def reset_at(self, index):
-        return self.envs[index].reset()
-
-    @override(VectorEnv)
-    def vector_step(self, actions):
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
-        for i in range(len(self.envs)):
-            obs, rew, done, info = self.envs[i].step(actions[i])
-            obs_batch.append(obs)
-            rew_batch.append(rew)
-            done_batch.append(done)
-            info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, info_batch
-
-    @override(VectorEnv)
-    def get_unwrapped(self):
-        return self.envs
 
 
 class TestRolloutWorker(unittest.TestCase):
@@ -182,7 +150,7 @@ class TestRolloutWorker(unittest.TestCase):
                     0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
                 lr = policy.cur_lr
                 if fw == "tf":
-                    lr = policy._sess.run(lr)
+                    lr = policy.get_session().run(lr)
                 check(lr, expected_lr, rtol=0.05)
             agent.stop()
 
@@ -251,7 +219,7 @@ class TestRolloutWorker(unittest.TestCase):
         from ray.rllib.examples.env.random_env import RandomEnv
         action_space = gym.spaces.Box(-2.0, 1.0, (3, ))
 
-        # Clipping: True (clip between Policy's action_space.low/high),
+        # Clipping: True (clip between Policy's action_space.low/high).
         ev = RolloutWorker(
             env_creator=lambda _: RandomEnv(config=dict(
                 action_space=action_space,
@@ -264,6 +232,7 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space,
                 ignore_action_bounds=True,
             ),
+            normalize_actions=False,
             clip_actions=True,
             batch_mode="complete_episodes")
         sample = ev.sample()
@@ -288,7 +257,10 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space,
                 ignore_action_bounds=True,
             ),
-            clip_actions=False,  # <- should lead to Env complaining
+            # No normalization (+clipping) and no clipping ->
+            # Should lead to Env complaining.
+            normalize_actions=False,
+            clip_actions=False,
             batch_mode="complete_episodes")
         self.assertRaisesRegex(ValueError, r"Illegal action", ev2.sample)
         ev2.stop()
@@ -305,12 +277,41 @@ class TestRolloutWorker(unittest.TestCase):
             policy_spec=RandomPolicy,
             policy_config=dict(action_space=action_space),
             # Should not be a problem as RandomPolicy abides to bounds.
+            normalize_actions=False,
             clip_actions=False,
             batch_mode="complete_episodes")
         sample = ev3.sample()
         self.assertGreater(np.min(sample["actions"]), action_space.low[0])
         self.assertLess(np.max(sample["actions"]), action_space.high[0])
         ev3.stop()
+
+    def test_action_normalization(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5, ))
+
+        # Normalize: True (unsquash between Policy's action_space.low/high).
+        ev = RolloutWorker(
+            env_creator=lambda _: RandomEnv(config=dict(
+                action_space=action_space,
+                max_episode_len=10,
+                p_done=0.0,
+                check_action_bounds=True,
+            )),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            normalize_actions=True,
+            clip_actions=False,
+            batch_mode="complete_episodes")
+        sample = ev.sample()
+        # Check, whether the action bounds have been breached (expected).
+        # We still arrived here b/c we unsquashed according to the Env's action
+        # space.
+        self.assertGreater(np.max(sample["actions"]), action_space.high[0])
+        self.assertLess(np.min(sample["actions"]), action_space.low[0])
+        ev.stop()
 
     def test_reward_clipping(self):
         # Clipping: True (clip between -1.0 and 1.0).
@@ -478,8 +479,11 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_vector_env_support(self):
+        # Test a vector env that contains 8 actual envs
+        # (MockEnv instances).
         ev = RolloutWorker(
-            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
+            env_creator=(
+                lambda _: VectorizedMockEnv(episode_length=20, num_envs=8)),
             policy_spec=MockPolicy,
             batch_mode="truncate_episodes",
             rollout_fragment_length=10)
@@ -493,6 +497,25 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 8)
+        ev.stop()
+
+        # Test a vector env that pretends(!) to contain 4 envs, but actually
+        # only has 1 (CartPole).
+        ev = RolloutWorker(
+            env_creator=(lambda _: MockVectorEnv(20, mocked_num_envs=4)),
+            policy_spec=MockPolicy,
+            batch_mode="truncate_episodes",
+            rollout_fragment_length=10)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertGreater(result["episodes_this_iter"], 3)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertGreater(result["episodes_this_iter"], 7)
         ev.stop()
 
     def test_truncate_episodes(self):
@@ -514,7 +537,8 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs:
+            "pol0" if agent_id == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="env_steps",
             batch_mode="truncate_episodes",
@@ -531,7 +555,8 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs:
+            "pol0" if agent_id == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="agent_steps",
             batch_mode="truncate_episodes")
@@ -639,10 +664,21 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_no_env_seed(self):
         ev = RolloutWorker(
-            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
+            env_creator=lambda _: MockVectorEnv(20, mocked_num_envs=8),
             policy_spec=MockPolicy,
             seed=1)
         assert not hasattr(ev.env, "seed")
+        ev.stop()
+
+    def test_multi_env_seed(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: MockEnv2(100),
+            num_envs=3,
+            policy_spec=MockPolicy,
+            seed=1)
+        seeds = ev.foreach_env(lambda env: env.rng_seed)
+        # Make sure all environments get a different deterministic seed.
+        assert seeds == [1, 2, 3]
         ev.stop()
 
     def sample_and_flush(self, ev):

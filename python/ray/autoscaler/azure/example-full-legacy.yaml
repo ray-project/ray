@@ -68,7 +68,7 @@ head_node:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.07.06
+        imageVersion: 21.01.21
 
 # Provider-specific config for worker nodes, e.g. instance type.
 worker_nodes:
@@ -78,7 +78,7 @@ worker_nodes:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.07.06
+        imageVersion: 21.01.21
         # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
@@ -90,7 +90,7 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
-     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
+     "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
@@ -118,23 +118,26 @@ rsync_filter:
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
+    # enable docker setup
+    - sudo usermod -aG docker $USER || true
+    - sleep 10  # delay to avoid docker permission denied errors
     # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
-setup_commands:
+# NOTE: rayproject/ray-ml:latest has ray latest bundled
+setup_commands: []
     # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
     # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
-    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
-    - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U "ray[cluster] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install azure-cli-core==2.4.0 azure-mgmt-compute==12.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.1.0
+# NOTE: rayproject/ray-ml:latest has azure packages bundled
+head_setup_commands: []
+    # - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

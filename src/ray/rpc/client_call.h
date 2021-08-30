@@ -41,8 +41,8 @@ class ClientCall {
   virtual ray::Status GetStatus() = 0;
   /// Set return status.
   virtual void SetReturnStatus() = 0;
-  /// Get human-readable name for this RPC.
-  virtual std::string GetName() = 0;
+  /// Get stats handle for this RPC (for recording end).
+  virtual std::shared_ptr<StatsHandle> GetStatsHandle() = 0;
 
   virtual ~ClientCall() = default;
 };
@@ -65,8 +65,10 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback, std::string call_name)
-      : callback_(callback), call_name_(std::move(call_name)) {}
+  explicit ClientCallImpl(const ClientCallback<Reply> &callback,
+                          std::shared_ptr<StatsHandle> stats_handle)
+      : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
+        stats_handle_(std::move(stats_handle)) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -89,7 +91,7 @@ class ClientCallImpl : public ClientCall {
     }
   }
 
-  std::string GetName() override { return call_name_; }
+  std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
 
  private:
   /// The reply message.
@@ -98,11 +100,11 @@ class ClientCallImpl : public ClientCall {
   /// The callback function to handle the reply.
   ClientCallback<Reply> callback_;
 
-  /// The human-readable name of the RPC.
-  std::string call_name_;
+  /// The stats handle tracking this RPC.
+  std::shared_ptr<StatsHandle> stats_handle_;
 
   /// The response reader.
-  std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
+  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
 
   /// gRPC status of this request.
   grpc::Status status_;
@@ -156,9 +158,9 @@ class ClientCallTag {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction =
-    std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (GrpcService::Stub::*)(
-        grpc::ClientContext *context, const Request &request, grpc::CompletionQueue *cq);
+using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
+    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
+                          grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -179,7 +181,7 @@ class ClientCallManager {
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
-      cqs_.emplace_back();
+      cqs_.push_back(std::make_unique<grpc::CompletionQueue>());
       polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
                                     this, i);
     }
@@ -188,7 +190,7 @@ class ClientCallManager {
   ~ClientCallManager() {
     shutdown_ = true;
     for (auto &cq : cqs_) {
-      cq.Shutdown();
+      cq->Shutdown();
     }
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
@@ -214,11 +216,13 @@ class ClientCallManager {
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
       std::string call_name) {
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(call_name));
+    auto stats_handle = main_service_.RecordStart(call_name);
+    auto call =
+        std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle));
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
-        &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
+        &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -247,7 +251,7 @@ class ClientCallManager {
     while (true) {
       auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
-      auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
+      auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
@@ -258,6 +262,8 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         tag->GetCall()->SetReturnStatus();
+        std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
+        RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post(
@@ -266,7 +272,7 @@ class ClientCallManager {
                 // The call is finished, and we can delete this tag now.
                 delete tag;
               },
-              tag->GetCall()->GetName());
+              std::move(stats_handle));
         } else {
           delete tag;
         }
@@ -287,7 +293,7 @@ class ClientCallManager {
   std::atomic<unsigned int> rr_index_;
 
   /// The gRPC `CompletionQueue` object used to poll events.
-  std::vector<grpc::CompletionQueue> cqs_;
+  std::vector<std::unique_ptr<grpc::CompletionQueue>> cqs_;
 
   /// Polling threads to check the completion queue.
   std::vector<std::thread> polling_threads_;

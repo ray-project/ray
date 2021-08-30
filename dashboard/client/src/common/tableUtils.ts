@@ -40,14 +40,13 @@ export const getComparator = <Key extends keyof any>(
     : (a, b) => -descendingComparator(a, b, orderBy);
 };
 
-export const getFnComparator = <T>(order: Order, orderByFn: Accessor<T>) => (
-  a: T,
-  b: T,
-): number => {
-  return order === "desc"
-    ? descendingComparatorFnAccessor(a, b, orderByFn)
-    : -descendingComparatorFnAccessor(a, b, orderByFn);
-};
+export const getFnComparator =
+  <T>(order: Order, orderByFn: Accessor<T>) =>
+  (a: T, b: T): number => {
+    return order === "desc"
+      ? descendingComparatorFnAccessor(a, b, orderByFn)
+      : -descendingComparatorFnAccessor(a, b, orderByFn);
+  };
 
 export const stableSort = <T>(array: T[], comparator: Comparator<T>) => {
   const stabilizedThis = array.map((el, index) => [el, index] as [T, number]);

@@ -2,8 +2,10 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import os
 import sys
 import socket
+from typing import Optional
 
 import pytest
 import requests
@@ -11,13 +13,14 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.constants import SERVE_PROXY_NAME
+from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray._private.services import new_port
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -38,7 +41,7 @@ def ray_cluster():
 
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
-    serve.start(http_port=8003)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -46,8 +49,9 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
+    serve_controller_name = serve.api._global_client._controller_name
     actor_names = [
-        serve.api._global_client._controller_name,
+        serve_controller_name,
         format_actor_name(SERVE_PROXY_NAME,
                           serve.api._global_client._controller_name,
                           get_all_node_ids()[0][0])
@@ -57,7 +61,12 @@ def test_shutdown(ray_shutdown):
         alive = True
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
+                else:
+                    ray.get_actor(actor_name)
             except ValueError:
                 alive = False
         return alive
@@ -66,12 +75,17 @@ def test_shutdown(ray_shutdown):
 
     serve.shutdown()
     with pytest.raises(RayServeException):
-        serve.list_backends()
+        serve.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
+                else:
+                    ray.get_actor(actor_name)
                 return False
             except ValueError:
                 pass
@@ -87,7 +101,7 @@ def test_detached_deployment(ray_cluster):
     head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address)
+    ray.init(head_node.address, namespace="serve")
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
@@ -102,7 +116,7 @@ def test_detached_deployment(ray_cluster):
     ray.shutdown()
 
     # Create the second job, make sure we can still create new backends.
-    ray.init(head_node.address)
+    ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
     @serve.deployment
@@ -118,16 +132,16 @@ def test_detached_deployment(ray_cluster):
 def test_connect(detached, ray_shutdown):
     # Check that you can make API calls from within a deployment for both
     # detached and non-detached instances.
-    ray.init(num_cpus=16)
+    ray.init(num_cpus=16, namespace="serve")
     serve.start(detached=detached)
 
     @serve.deployment
-    def connect_in_backend(*args):
-        connect_in_backend.options(name="backend-ception").deploy()
+    def connect_in_deployment(*args):
+        connect_in_deployment.options(name="deployment-ception").deploy()
 
-    connect_in_backend.deploy()
-    ray.get(connect_in_backend.get_handle().remote())
-    assert "backend-ception" in serve.list_backends()
+    connect_in_deployment.deploy()
+    ray.get(connect_in_deployment.get_handle().remote())
+    assert "deployment-ception" in serve.list_deployments()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -262,6 +276,30 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_url(ray_shutdown):
+    @serve.deployment
+    def f(_):
+        pass
+
+    root_url = "https://my.domain.dev/prefix"
+
+    port = new_port()
+    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    del os.environ[SERVE_ROOT_URL_ENV_KEY]
+
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url != root_url + "/f"
+    assert f.url == f"http://127.0.0.1:{port}/f"
+    serve.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
@@ -272,9 +310,6 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
-        {
-            "http_host": None
-        },
         {
             "http_options": {
                 "host": None
@@ -299,8 +334,8 @@ def test_no_http(ray_shutdown):
 
         # Only controller actor should exist
         live_actors = [
-            actor for actor in ray.actors().values()
-            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+            actor for actor in ray.state.actors().values()
+            if actor["State"] == gcs_utils.ActorTableData.ALIVE
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
@@ -330,7 +365,7 @@ def test_http_head_only(ray_cluster):
     serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
     # Only the controller and head node actor should be started
-    assert len(ray.actors()) == 2
+    assert len(ray.state.actors()) == 2
 
     # They should all be placed on the head node
     cpu_per_nodes = {
@@ -338,6 +373,66 @@ def test_http_head_only(ray_cluster):
         for r in ray.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
+
+
+def test_serve_shutdown(ray_shutdown):
+    ray.init(namespace="serve")
+    serve.start(detached=True)
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
+
+    serve.shutdown()
+    serve.start(detached=True)
+
+    assert len(serve.list_deployments()) == 0
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
+
+
+def test_detached_namespace_default_ray_init(ray_shutdown):
+    # Can start detached instance when ray is not initialized.
+    serve.start(detached=True)
+
+
+def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start detached instance in non-anonymous namespace.
+    ray.init(namespace="foo")
+    serve.start(detached=True)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.parametrize("namespace", [None, "test_namespace"])
+@pytest.mark.parametrize("detached", [True, False])
+def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
+                                    detached: bool):
+    """
+    Tests the serve controller is started in the current namespace if not
+    anonymous or in the "serve" namespace if no namespace is specified.
+    When the controller is started in the "serve" namespace, this also tests
+    that we can get the serve controller from another namespace.
+    """
+
+    ray.init(namespace=namespace)
+    serve.start(detached=detached)
+    client = serve.api._global_client
+    if namespace:
+        controller_namespace = namespace
+    elif detached:
+        controller_namespace = "serve"
+    else:
+        controller_namespace = ray.get_runtime_context().namespace
+
+    assert ray.get_actor(
+        client._controller_name, namespace=controller_namespace)
 
 
 if __name__ == "__main__":

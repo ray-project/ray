@@ -1,7 +1,7 @@
 cluster_name: ray-release-long-running-tests
 
 docker:
-    image: anyscale/ray-ml:latest
+    image: anyscale/ray-ml:nightly
     container_name: ray_container
     pull_before_run: False
 
@@ -13,12 +13,34 @@ provider:
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: m5.xlarge
-    TagSpecifications:
-        - ResourceType: "instance"
-          Tags:
-            - Key: anyscale-user
-              Value: "release-automation@anyscale.com"
-            - Key: anyscale-custodian
-              Value: "ignore"
+available_node_types:
+    cpu_8_ondemand:
+        node_config:
+            InstanceType: m5.2xlarge
+            TagSpecifications:
+              - ResourceType: "instance"
+                Tags:
+                  - Key: anyscale-user
+                    Value: "release-automation@anyscale.com"
+                  - Key: anyscale-custodian
+                    Value: "ignore"
+                  - Key: anyscale-expiration
+                    Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+            BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                  VolumeSize: 200
+        resources: {"CPU": 8}
+        min_workers: 0
+        max_workers: 0
+
+head_node_type: cpu_8_ondemand
+worker_default_node_type: cpu_8_ondemand
+
+
+setup_commands:
+   - sudo apt update && sudo apt install -y unzip
+   - pip install --upgrade pip
+   - pip install -U tensorflow==1.14
+   - pip install -U {{env["RAY_WHEEL"]}}
+   - pip install -q "ray[all]" "gym[atari]"

@@ -44,7 +44,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                              bool redis_broadcast_enabled);
 
   virtual ~GcsResourceManager() {}
 
@@ -122,6 +123,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
+  std::string ToString() const;
+
   std::string DebugString() const;
 
   /// Update the total resources and available resources of the specified node.
@@ -131,6 +134,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdateResourceCapacity(
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
+
+  // Update node normal task resources.
+  void UpdateNodeNormalTaskResources(const NodeID &node_id,
+                                     const rpc::ResourcesData &heartbeat);
 
   /// Update resource usage of given node.
   ///
@@ -150,6 +157,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
+  /// Move the lightweight heartbeat information for broadcast into the buffer. This
+  /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
+  ///
+  /// \param buffer return parameter
+  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBroadcastData &buffer)
+      LOCKS_EXCLUDED(resource_buffer_mutex_);
+
  private:
   /// Delete the scheduling resources of the specified node.
   ///
@@ -161,21 +175,39 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
+  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
+  /// the functionality as part of a larger transaction.
+  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
+      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
+
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
-  /// A buffer containing resource usage received from node managers in the last tick.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_;
+
+  /// Protect the lightweight heartbeat deltas which are accessed by different threads.
+  absl::Mutex resource_buffer_mutex_;
+  // TODO (Alex): This buffer is only needed for the legacy redis based broadcast.
+  /// A buffer containing the lightweight heartbeats since the last broadcast.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_
+      GUARDED_BY(resource_buffer_mutex_);
+  /// A buffer containing the lightweight heartbeats since the last broadcast.
+  rpc::ResourceUsageBroadcastData resources_buffer_proto_
+      GUARDED_BY(resource_buffer_mutex_);
 
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Whether or not to broadcast resource usage via redis.
+  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  /// Max batch size for broadcasting
+  size_t max_broadcasting_batch_size_;
 
   /// Debug info.
   enum CountType {

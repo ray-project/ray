@@ -79,6 +79,7 @@ def test_get_context_dict(ray_start_regular):
             assert context_dict["job_id"] == job_id
             assert context_dict["actor_id"] is not None
             assert context_dict["task_id"] is not None
+            assert context_dict["actor_id"] != "not an ActorID"
 
     a = Actor.remote()
     ray.get(a.check.remote(context_dict["node_id"], context_dict["job_id"]))
@@ -92,6 +93,24 @@ def test_get_context_dict(ray_start_regular):
         assert "actor_id" not in context_dict
 
     ray.get(task.remote(context_dict["node_id"], context_dict["job_id"]))
+
+
+def test_current_actor(ray_start_regular):
+    @ray.remote
+    class Echo:
+        def __init__(self):
+            pass
+
+        def echo(self, s):
+            self_actor = ray.get_runtime_context().current_actor
+            return self_actor.echo2.remote(s)
+
+        def echo2(self, s):
+            return s
+
+    e = Echo.remote()
+    obj = e.echo.remote("hello")
+    assert ray.get(ray.get(obj)) == "hello"
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 from math import log
 import numpy as np
 import functools
-import tree
 import gym
+import tree  # pip install dm_tree
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -349,7 +349,7 @@ class SquashedGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
         # Unsquash values (from [low,high] to ]-inf,inf[)
-        unsquashed_values = self._unsquash(x)
+        unsquashed_values = tf.cast(self._unsquash(x), self.inputs.dtype)
         # Get log prob of unsquashed values from our Normal.
         log_prob_gaussian = self.distr.log_prob(unsquashed_values)
         # For safety reasons, clamp somehow, only then sum up.
@@ -361,6 +361,14 @@ class SquashedGaussian(TFActionDistribution):
             tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
             axis=-1)
         return log_prob
+
+    def sample_logp(self):
+        z = self.distr.sample()
+        actions = self._squash(z)
+        return actions, tf.reduce_sum(
+            self.distr.log_prob(z) -
+            tf.math.log(1 - actions * actions + SMALL_NUMBER),
+            axis=-1)
 
     @override(ActionDistribution)
     def entropy(self) -> TensorType:

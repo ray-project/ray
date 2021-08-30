@@ -1,4 +1,5 @@
 import concurrent.futures
+from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -6,13 +7,13 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
+    PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         train_op = train_op.for_each(TrainOneStep(workers))
     else:
         train_op = train_op.for_each(
-            TrainTFMultiGPU(
+            MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config.get("sgd_minibatch_size",
                                               config["train_batch_size"]),
@@ -64,7 +65,11 @@ def build_trainer(
         mixins: Optional[List[type]] = None,
         execution_plan: Optional[Callable[[
             WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan) -> Type[Trainer]:
+        ], Iterable[ResultDict]]] = default_execution_plan,
+        allow_unknown_configs: bool = False,
+        allow_unknown_subkeys: Optional[List[str]] = None,
+        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
+) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -105,6 +110,15 @@ def build_trainer(
         execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
             Iterable[ResultDict]]]): Optional callable that sets up the
             distributed execution workflow.
+        allow_unknown_configs (bool): Whether to allow unknown top-level config
+            keys.
+        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+            with value=dict, for which new sub-keys are allowed to be added to
+            the value dict. Appends to Trainer class defaults.
+        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
+            level keys with value=dict, for which we always override the entire
+            value (dict), iff the "type" key in that value dict changes.
+            Appends to Trainer class defaults.
 
     Returns:
         Type[Trainer]: A Trainer sub-class configured by the specified args.
@@ -121,11 +135,18 @@ def build_trainer(
         def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
 
+        @override(base)
+        def setup(self, config: PartialTrainerConfigDict):
+            if allow_unknown_subkeys is not None:
+                self._allow_unknown_subkeys += allow_unknown_subkeys
+            self._allow_unknown_configs = allow_unknown_configs
+            if override_all_subkeys_if_type_changes is not None:
+                self._override_all_subkeys_if_type_changes += \
+                    override_all_subkeys_if_type_changes
+            super().setup(config)
+
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
-            # Validate config via custom validation function.
-            if validate_config:
-                validate_config(config)
 
             # No `get_policy_class` function.
             if get_policy_class is None:
@@ -163,9 +184,9 @@ def build_trainer(
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
             # self._iteration will be 0.
-            evaluate_this_iter = self.config["evaluation_interval"] and \
-                                 (self._iteration + 1) % \
-                                 self.config["evaluation_interval"] == 0
+            evaluate_this_iter = \
+                self.config["evaluation_interval"] and \
+                (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
             # No evaluation necessary.
             if not evaluate_this_iter:
@@ -175,18 +196,50 @@ def build_trainer(
                 # No parallelism.
                 if not self.config["evaluation_parallel_to_training"]:
                     res = next(self.train_exec_impl)
+
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    eval_future = executor.submit(self._evaluate)
-                    # Parallelism.
-                    if self.config["evaluation_parallel_to_training"]:
+                # Parallel eval + training.
+                if self.config["evaluation_parallel_to_training"]:
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        eval_future = executor.submit(self.evaluate)
                         res = next(self.train_exec_impl)
-                    evaluation_metrics = eval_future.result()
-                    assert isinstance(evaluation_metrics, dict), \
-                        "_evaluate() needs to return a dict."
-                    res.update(evaluation_metrics)
+                        evaluation_metrics = eval_future.result()
+                # Sequential: train (already done above), then eval.
+                else:
+                    evaluation_metrics = self.evaluate()
+
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
+
+            # Check `env_task_fn` for possible update of the env's task.
+            if self.config["env_task_fn"] is not None:
+                if not callable(self.config["env_task_fn"]):
+                    raise ValueError(
+                        "`env_task_fn` must be None or a callable taking "
+                        "[train_results, env, env_ctx] as args!")
+
+                def fn(env, env_context, task_fn):
+                    new_task = task_fn(res, env, env_context)
+                    cur_task = env.get_task()
+                    if cur_task != new_task:
+                        env.set_task(new_task)
+
+                fn = partial(fn, task_fn=self.config["env_task_fn"])
+                self.workers.foreach_env_with_context(fn)
+
             return res
+
+        @staticmethod
+        @override(Trainer)
+        def _validate_config(config: PartialTrainerConfigDict,
+                             trainer_obj_or_none: Optional["Trainer"] = None):
+            # Call super (Trainer) validation method first.
+            Trainer._validate_config(config, trainer_obj_or_none)
+            # Then call user defined one, if any.
+            if validate_config is not None:
+                validate_config(config)
 
         @override(Trainer)
         def _before_evaluate(self):
@@ -227,6 +280,9 @@ def build_trainer(
                 ... True
             """
             return build_trainer(**dict(original_kwargs, **overrides))
+
+        def __repr__(self):
+            return self._name
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name

@@ -1,6 +1,6 @@
-===============================
-Serving Machine Learning Models
-===============================
+=================
+Serving ML Models
+=================
 
 .. contents::
 
@@ -17,6 +17,7 @@ You can also have Ray Serve batch requests for performance, which is especially 
 
 .. code-block:: python
 
+  @serve.deployment(route_prefix="/increment")
   class BatchingExample:
       def __init__(self):
           self.count = 0
@@ -32,8 +33,7 @@ You can also have Ray Serve batch requests for performance, which is especially 
       async def __call__(self, request):
           return await self.handle_batch(request)
 
-  serve.create_backend("counter1", BatchingExample)
-  serve.create_endpoint("counter1", backend="counter1", route="/increment")
+  BatchingExample.deploy()
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.
@@ -51,7 +51,7 @@ stacking or ensembles.
 To define a higher-level composed model you need to do three things:
 
 1. Define your underlying models (the ones that you will compose together) as
-   Ray Serve backends
+   Ray Serve deployments.
 2. Define your composed model, using the handles of the underlying models
    (see the example below).
 3. Define an endpoint representing this composed model and query it!
@@ -80,7 +80,8 @@ class will allow you to load a model using its MLflow `Model URI`:
   import pandas as pd
   import mlflow.pyfunc
 
-  class MLflowBackend:
+  @serve.deployment
+  class MLflowDeployment:
       def __init__(self, model_uri):
           self.model = mlflow.pyfunc.load_model(model_uri=model_uri)
 
@@ -89,11 +90,8 @@ class will allow you to load a model using its MLflow `Model URI`:
           df = pd.read_csv(csv_text)
           return self.model.predict(df)
 
-A Serve backend can then be created to serve the model as follows:
-
-.. code-block:: python
-
-  client.create_backend("my_backend", MLflowBackend, my_model_uri)
+  model_uri = "model:/my_registered_model/Production"
+  MLflowDeployment.deploy(model_uri)
 
 .. tip:: 
 

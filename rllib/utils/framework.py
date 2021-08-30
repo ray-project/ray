@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,11 @@ def try_import_jax(error=False):
     try:
         import jax
         import flax
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError("Could not import JAX! RLlib requires you to "
+                              "install at least one deep-learning framework: "
+                              "`pip install [torch|tensorflow|jax]`.")
         return None, None
 
     return jax, flax
@@ -79,17 +81,22 @@ def try_import_tf(error=False):
     else:
         try:
             import tensorflow as tf_module
-        except ImportError as e:
+        except ImportError:
             if error:
-                raise e
+                raise ImportError(
+                    "Could not import TensorFlow! RLlib requires you to "
+                    "install at least one deep-learning framework: "
+                    "`pip install [torch|tensorflow|jax]`.")
             return None, None, None
 
     # Try "reducing" tf to tf.compat.v1.
     try:
         tf1_module = tf_module.compat.v1
+        tf1_module.logging.set_verbosity(tf1_module.logging.ERROR)
         if not was_imported:
             tf1_module.disable_v2_behavior()
             tf1_module.enable_resource_variables()
+        tf1_module.logging.set_verbosity(tf1_module.logging.WARN)
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module
@@ -178,9 +185,12 @@ def try_import_torch(error=False):
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError(
+                "Could not import PyTorch! RLlib requires you to "
+                "install at least one deep-learning framework: "
+                "`pip install [torch|tensorflow|jax]`.")
         return _torch_stubs()
 
 
@@ -253,7 +263,10 @@ def get_variable(value,
     return value
 
 
-# Deprecated: Use rllib.models.utils::get_activation_fn instead.
+@Deprecated(
+    old="rllib/models/utils.py::get_activation_fn",
+    new="rllib/utils/framework.py::get_activation_fn",
+    error=False)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -269,10 +282,6 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
-    deprecation_warning(
-        "rllib/utils/framework.py::get_activation_fn",
-        "rllib/models/utils.py::get_activation_fn",
-        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None

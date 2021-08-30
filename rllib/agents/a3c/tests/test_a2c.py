@@ -18,7 +18,7 @@ class TestA2C(unittest.TestCase):
 
     def test_a2c_compilation(self):
         """Test whether an A2CTrainer can be built with both frameworks."""
-        config = a3c.DEFAULT_CONFIG.copy()
+        config = a3c.a2c.A2C_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["num_envs_per_worker"] = 2
 

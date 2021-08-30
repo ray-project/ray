@@ -48,20 +48,9 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: $workload"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp37-cp37m-manylinux2014_x86_64.whl"
-
 # Serve load testing tool
 cur_dir=$(pwd)
 cd /tmp && rm -rf wrk && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
 cd "$cur_dir" || exit
 
-pip install --upgrade pip
-pip install -U tensorflow==1.14
-pip install -q -U "$wheel"
-pip install -q "ray[all]" "gym[atari]"
-
-ray stop && sleep 2
-
-unset RAY_ADDRESS
 python "./workloads/$workload.py"
-

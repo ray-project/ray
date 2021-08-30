@@ -2,6 +2,7 @@ import logging
 import time
 
 import ray
+import ray._private.services
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
@@ -46,11 +47,12 @@ class Cluster:
     def address(self):
         return self.redis_address
 
-    def connect(self):
+    def connect(self, namespace=None):
         """Connect the driver to the cluster."""
         assert self.redis_address is not None
         assert not self.connected
         output_info = ray.init(
+            namespace=namespace,
             ignore_reinit_error=True,
             address=self.redis_address,
             _redis_password=self.redis_password)
@@ -162,17 +164,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            object_store_socket_names = [
-                client["ObjectStoreSocketName"] for client in clients
-            ]
-            if node.plasma_store_socket_name in object_store_socket_names:
-                return
-            else:
-                time.sleep(0.1)
-        raise TimeoutError("Timed out while waiting for nodes to join.")
+        ray._private.services.wait_for_node(self.redis_address,
+                                            node.plasma_store_socket_name,
+                                            self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.

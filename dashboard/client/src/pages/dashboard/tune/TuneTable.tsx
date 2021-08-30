@@ -215,22 +215,21 @@ class TuneTable extends React.Component<
     return trialDetails;
   };
 
-  handleMetricChoiceChange = (name: string) => (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    let { metricColumns } = this.state;
-    if (event.target.checked) {
-      metricColumns.push(name);
-      this.setState({
-        metricColumns: metricColumns,
-      });
-    } else {
-      metricColumns = metricColumns.filter((value) => value !== name);
-      this.setState({
-        metricColumns: metricColumns,
-      });
-    }
-  };
+  handleMetricChoiceChange =
+    (name: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+      let { metricColumns } = this.state;
+      if (event.target.checked) {
+        metricColumns.push(name);
+        this.setState({
+          metricColumns: metricColumns,
+        });
+      } else {
+        metricColumns = metricColumns.filter((value) => value !== name);
+        this.setState({
+          metricColumns: metricColumns,
+        });
+      }
+    };
 
   metricChoices = (metricNames: string[]) => {
     const { metricColumns } = this.state;
@@ -257,22 +256,21 @@ class TuneTable extends React.Component<
     );
   };
 
-  handleParamChoiceChange = (name: string) => (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    let { paramColumns } = this.state;
-    if (event.target.checked) {
-      paramColumns.push(name);
-      this.setState({
-        paramColumns: paramColumns,
-      });
-    } else {
-      paramColumns = paramColumns.filter((value) => value !== name);
-      this.setState({
-        paramColumns: paramColumns,
-      });
-    }
-  };
+  handleParamChoiceChange =
+    (name: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+      let { paramColumns } = this.state;
+      if (event.target.checked) {
+        paramColumns.push(name);
+        this.setState({
+          paramColumns: paramColumns,
+        });
+      } else {
+        paramColumns = paramColumns.filter((value) => value !== name);
+        this.setState({
+          paramColumns: paramColumns,
+        });
+      }
+    };
 
   paramChoices = (paramNames: string[]) => {
     const { classes } = this.props;

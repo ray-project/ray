@@ -10,9 +10,14 @@ from ray import ray_constants
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.new_dashboard.utils import Bunch
 from ray.new_dashboard.modules.reporter.reporter_agent import ReporterAgent
-from ray.test_utils import (format_web_url, RayTestTimeoutException,
-                            wait_until_server_available, wait_for_condition,
-                            fetch_prometheus)
+from ray._private.test_utils import (format_web_url, RayTestTimeoutException,
+                                     wait_until_server_available,
+                                     wait_for_condition, fetch_prometheus)
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +101,8 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
+@pytest.mark.skipif(
+    prometheus_client is None, reason="prometheus_client not installed")
 def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]

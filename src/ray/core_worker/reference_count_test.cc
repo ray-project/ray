@@ -16,11 +16,19 @@
 
 #include <vector>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/pubsub/mock_pubsub.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 
 namespace ray {
+namespace core {
 
 static const rpc::Address empty_borrower;
 static const ReferenceCounter::ReferenceTableProto empty_refs;
@@ -30,10 +38,19 @@ class ReferenceCountTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    rc = std::make_unique<ReferenceCounter>(addr);
+    publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
+    subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
+    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get());
   }
 
-  virtual void TearDown() {}
+  virtual void TearDown() {
+    publisher_.reset();
+    subscriber_.reset();
+    rc.reset();
+  }
+
+  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
+  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
 };
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
@@ -41,15 +58,182 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    rc = std::make_unique<ReferenceCounter>(addr,
-                                            /*distributed_ref_counting_enabled=*/true,
+    publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
+    subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
+    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get(),
                                             /*lineage_pinning_enabled=*/true);
   }
 
-  virtual void TearDown() {}
+  virtual void TearDown() {
+    publisher_.reset();
+    subscriber_.reset();
+    rc.reset();
+  }
+
+  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
+  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+/// The 2 classes below are implemented to support distributed mock test using
+/// MockWorkerClient.
+/// How it works? if Publish is called, the corresponding callback from
+/// the Subscriber is called.
+class MockDistributedSubscriber;
+class MockDistributedPublisher;
+
+using ObjectToCallbackMap = std::unordered_map<ObjectID, pubsub::SubscriptionCallback>;
+using ObjectToFailureCallbackMap =
+    std::unordered_map<ObjectID, pubsub::SubscriptionFailureCallback>;
+using SubscriptionCallbackMap = std::unordered_map<std::string, ObjectToCallbackMap>;
+using SubscriptionFailureCallbackMap =
+    std::unordered_map<std::string, ObjectToFailureCallbackMap>;
+
+// static maps are used to simulate distirubted environment.
+static SubscriptionCallbackMap subscription_callback_map;
+static SubscriptionFailureCallbackMap subscription_failure_callback_map;
+static pubsub::pub_internal::SubscriptionIndex<ObjectID> directory;
+
+static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
+  return publisher_id.Binary() + subscriber_id.Binary();
+}
+
+class MockCoreWorkerClientInterface : public rpc::CoreWorkerClientInterface {
+ public:
+  ~MockCoreWorkerClientInterface() = default;
+  virtual void WaitForRefRemoved(const ObjectID object_id, const ObjectID contained_in_id,
+                                 rpc::Address owner_address) = 0;
+};
+
+using PublisherFactoryFn =
+    std::function<std::shared_ptr<MockCoreWorkerClientInterface>(const rpc::Address &)>;
+
+class MockDistributedSubscriber : public pubsub::SubscriberInterface {
+ public:
+  MockDistributedSubscriber(
+      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      SubscriptionCallbackMap *subscription_callback_map,
+      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
+      WorkerID subscriber_id, PublisherFactoryFn client_factory)
+      : directory_(directory),
+        subscription_callback_map_(subscription_callback_map),
+        subscription_failure_callback_map_(subscription_failure_callback_map),
+        subscriber_id_(subscriber_id),
+        client_factory_(client_factory) {}
+
+  ~MockDistributedSubscriber() = default;
+
+  void Subscribe(
+      const std::unique_ptr<rpc::SubMessage> sub_message,
+      const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+      const std::string &key_id_binary,
+      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    const auto &request = sub_message->worker_ref_removed_message();
+    // Register the borrower callback first. It will be flushable by
+    // FlushBorrowerCallbacks from mock core worker client.
+    const auto object_id = ObjectID::FromBinary(request.reference().object_id());
+    const auto contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+    const auto owner_address = request.reference().owner_address();
+    if (client_factory_) {
+      client_factory_(publisher_address)
+          ->WaitForRefRemoved(object_id, contained_in_id, owner_address);
+    }
+    // Due to the test env, there are times that the same mssage id from the same
+    // subscriber is subscribed twice. We should just no-op in this case.
+    if (!(directory_->HasKeyId(key_id_binary) &&
+          directory_->HasSubscriber(subscriber_id_))) {
+      directory_->AddEntry(key_id_binary, subscriber_id_);
+    }
+    const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
+    const auto id = GenerateID(publisher_id, subscriber_id_);
+    auto callback_it = subscription_callback_map_->find(id);
+    if (callback_it == subscription_callback_map_->end()) {
+      callback_it = subscription_callback_map_->emplace(id, ObjectToCallbackMap()).first;
+    }
+
+    auto failure_callback_it = subscription_failure_callback_map_->find(id);
+    if (failure_callback_it == subscription_failure_callback_map_->end()) {
+      failure_callback_it =
+          subscription_failure_callback_map_->emplace(id, ObjectToFailureCallbackMap())
+              .first;
+    }
+
+    const auto oid = ObjectID::FromBinary(key_id_binary);
+    callback_it->second.emplace(oid, subscription_callback);
+    failure_callback_it->second.emplace(oid, subscription_failure_callback);
+  }
+
+  bool Unsubscribe(const rpc::ChannelType channel_type,
+                   const rpc::Address &publisher_address,
+                   const std::string &key_id_binary) override {
+    return true;
+  }
+
+  std::string DebugString() const override {
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
+    return "";
+  }
+
+  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  SubscriptionCallbackMap *subscription_callback_map_;
+  SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
+  WorkerID subscriber_id_;
+  PublisherFactoryFn client_factory_;
+};
+
+class MockDistributedPublisher : public pubsub::PublisherInterface {
+ public:
+  MockDistributedPublisher(
+      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      SubscriptionCallbackMap *subscription_callback_map,
+      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
+      WorkerID publisher_id)
+      : directory_(directory),
+        subscription_callback_map_(subscription_callback_map),
+        subscription_failure_callback_map_(subscription_failure_callback_map),
+        publisher_id_(publisher_id) {}
+  ~MockDistributedPublisher() = default;
+
+  bool RegisterSubscription(const rpc::ChannelType channel_type,
+                            const pubsub::SubscriberID &subscriber_id,
+                            const std::string &key_id_binary) {
+    RAY_CHECK(false) << "No need to implement it for testing.";
+    return false;
+  }
+
+  void PublishFailure(const rpc::ChannelType channel_type,
+                      const std::string &key_id_binary) {
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
+  }
+
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
+               const std::string &key_id_binary) {
+    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
+    const auto oid = ObjectID::FromBinary(key_id_binary);
+    RAY_CHECK(maybe_subscribers.has_value());
+    for (const auto &subscriber_id : maybe_subscribers.value().get()) {
+      const auto id = GenerateID(publisher_id_, subscriber_id);
+      const auto it = subscription_callback_map_->find(id);
+      RAY_CHECK(it != subscription_callback_map_->end());
+      const auto callback_it = it->second.find(oid);
+      RAY_CHECK(callback_it != it->second.end());
+      callback_it->second(pub_message);
+    }
+  }
+
+  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+                              const pubsub::SubscriberID &subscriber_id,
+                              const std::string &key_id_binary) {
+    return true;
+  }
+
+  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  SubscriptionCallbackMap *subscription_callback_map_;
+  SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
+  WorkerID publisher_id_;
+};
+
+class MockWorkerClient : public MockCoreWorkerClientInterface {
  public:
   // Helper function to generate a random address.
   rpc::Address CreateRandomAddress(const std::string &addr) {
@@ -60,32 +244,24 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return address;
   }
 
-  MockWorkerClient(const std::string &addr, rpc::ClientFactoryFn client_factory = nullptr)
+  MockWorkerClient(const std::string &addr, PublisherFactoryFn client_factory = nullptr)
       : address_(CreateRandomAddress(addr)),
-        rc_(rpc::WorkerAddress(address_),
-            /*distributed_ref_counting_enabled=*/true,
+        publisher_(std::make_shared<MockDistributedPublisher>(
+            &directory, &subscription_callback_map, &subscription_failure_callback_map,
+            WorkerID::FromBinary(address_.worker_id()))),
+        subscriber_(std::make_shared<MockDistributedSubscriber>(
+            &directory, &subscription_callback_map, &subscription_failure_callback_map,
+            WorkerID::FromBinary(address_.worker_id()), client_factory)),
+        rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
-  void WaitForRefRemoved(
-      const rpc::WaitForRefRemovedRequest &request,
-      const rpc::ClientCallback<rpc::WaitForRefRemovedReply> &callback) override {
+  void WaitForRefRemoved(const ObjectID object_id, const ObjectID contained_in_id,
+                         rpc::Address owner_address) override {
     auto r = num_requests_;
-    requests_[r] = {
-        std::make_shared<rpc::WaitForRefRemovedReply>(),
-        callback,
-    };
 
-    auto send_reply_callback = [this, r](Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
-      requests_[r].second(status, *requests_[r].first);
-    };
     auto borrower_callback = [=]() {
-      const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
-      ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
-      const auto owner_address = request.reference().owner_address();
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1,
-                      requests_[r].first.get(), send_reply_callback);
+          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
@@ -95,6 +271,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   bool FlushBorrowerCallbacks() {
+    // Flush all the borrower callbacks. This means that after this function is invoked,
+    // all of ref_counts will be tracked.
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
@@ -107,9 +285,16 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   void FailAllWaitForRefRemovedRequests() {
-    for (const auto &request : requests_) {
-      request.second.second(Status::IOError("disconnected"), *request.second.first);
+    // Invoke all failure callbacks so that we can simulate the borrower failure scenario.
+    for (const auto &it : subscription_failure_callback_map) {
+      auto &callback_map = it.second;
+      for (const auto &callback_it : callback_map) {
+        const auto object_id = callback_it.first;
+        const auto failure_callback = callback_it.second;
+        failure_callback(object_id.Binary());
+      }
     }
+    subscription_failure_callback_map.clear();
   }
 
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
@@ -177,17 +362,18 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
                                      nullptr);
   }
 
+  WorkerID GetID() const { return WorkerID::FromBinary(address_.worker_id()); }
+
   // Global map from Worker ID -> MockWorkerClient.
   // Global map from Object ID -> owner worker ID, list of objects that it depends on,
   // worker address that it's scheduled on. Worker map of pending return IDs.
 
   rpc::Address address_;
+  std::shared_ptr<MockDistributedPublisher> publisher_;
+  std::shared_ptr<MockDistributedSubscriber> subscriber_;
   // The ReferenceCounter at the "client".
   ReferenceCounter rc_;
   std::unordered_map<int, std::function<void()>> borrower_callbacks_;
-  std::unordered_map<int, std::pair<std::shared_ptr<rpc::WaitForRefRemovedReply>,
-                                    rpc::ClientCallback<rpc::WaitForRefRemovedReply>>>
-      requests_;
   int num_requests_ = 0;
 };
 
@@ -340,20 +526,18 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
             absl::flat_hash_set<NodeID>{node1});
 
-  if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-    // Owned object with defined object size and at least one node location should return
-    // valid locality data.
-    rc->AddObjectLocation(obj1, node2);
-    locality_data_obj1 = rc->GetLocalityData(obj1);
-    ASSERT_TRUE(locality_data_obj1.has_value());
-    ASSERT_EQ(locality_data_obj1->object_size, object_size);
-    ASSERT_EQ(locality_data_obj1->nodes_containing_object,
-              absl::flat_hash_set<NodeID>({node1, node2}));
-    rc->RemoveObjectLocation(obj1, node2);
-    locality_data_obj1 = rc->GetLocalityData(obj1);
-    ASSERT_EQ(locality_data_obj1->nodes_containing_object,
-              absl::flat_hash_set<NodeID>({node1}));
-  }
+  // Owned object with defined object size and at least one node location should return
+  // valid locality data.
+  rc->AddObjectLocation(obj1, node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_TRUE(locality_data_obj1.has_value());
+  ASSERT_EQ(locality_data_obj1->object_size, object_size);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1, node2}));
+  rc->RemoveObjectLocation(obj1, node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1}));
 
   // Borrowed object with defined object size and at least one node location should
   // return valid locality data.
@@ -423,8 +607,10 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   uint8_t data[] = {1, 2, 3, 4, 5, 6, 7, 8};
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 
-  auto rc = std::shared_ptr<ReferenceCounter>(
-      new ReferenceCounter(rpc::WorkerAddress(rpc::Address())));
+  auto publisher = std::make_shared<mock_pubsub::MockPublisher>();
+  auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
+  auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+      rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
   CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.
@@ -577,6 +763,9 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
 // outer_id = ray.put([inner_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
+  // We need to clean up the failure callback map, so that we can properly test failure
+  // scenario.
+  subscription_failure_callback_map.clear();
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
@@ -779,7 +968,6 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ASSERT_FALSE(borrower1->rc_.HasReference(outer_id2));
   // The owner should now have borrower 2 in its count.
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-
   borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
   ASSERT_FALSE(borrower2->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
@@ -2054,9 +2242,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
-  bool owned_by_us;
+  bool owned_by_us = false;
   NodeID pinned_at;
-  bool spilled;
+  bool spilled = false;
   ASSERT_TRUE(
       rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_FALSE(owned_by_us);
@@ -2145,6 +2333,7 @@ TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
   ASSERT_FALSE(rc->HasReference(id));
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -11,7 +11,7 @@ import ray.cloudpickle as pickle
 import os
 
 import ray
-from ray.tune.registry import parameter_registry
+from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
 from six import string_types
@@ -95,9 +95,10 @@ class TrainableUtil:
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found for {}"
-                                    .format(checkpoint_path))
-        return checkpoint_dir
+            raise FileNotFoundError(
+                "Checkpoint directory not found for {}".format(
+                    checkpoint_path))
+        return os.path.normpath(checkpoint_dir)
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):
@@ -149,12 +150,17 @@ class TrainableUtil:
             FileNotFoundError if the directory is not found.
         """
         marker_paths = glob.glob(
-            os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
+            os.path.join(glob.escape(logdir), "checkpoint_*/.is_checkpoint"))
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
             metadata_file = glob.glob(
-                os.path.join(chkpt_dir, "*.tune_metadata"))
+                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata"))
+            # glob.glob: filenames starting with a dot are special cases
+            # that are not matched by '*' and '?' patterns.
+            metadata_file += glob.glob(
+                os.path.join(glob.escape(chkpt_dir), ".tune_metadata"))
+            metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
                 raise ValueError(
                     "{} has zero or more than one tune_metadata.".format(
@@ -231,6 +237,11 @@ def with_parameters(trainable, **kwargs):
     the passed parameters as keyword arguments. When used with the class API,
     the ``Trainable.setup()`` method is called with the respective kwargs.
 
+    If the data already exists in the object store (are instances of
+    ObjectRef), using ``tune.with_parameters()`` is not necessary. You can
+    instead pass the object refs to the training function via the ``config``
+    or use Python partials.
+
     Args:
         trainable: Trainable to wrap.
         **kwargs: parameters to store in object store.
@@ -289,6 +300,9 @@ def with_parameters(trainable, **kwargs):
             f"`tune.with_parameters() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
             f"{type(trainable)}.")
+
+    parameter_registry = _ParameterRegistry()
+    ray.worker._post_init_hooks.append(parameter_registry.flush)
 
     # Objects are moved into the object store
     prefix = f"{str(trainable)}_"

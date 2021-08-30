@@ -1,19 +1,20 @@
 import asyncio
 import logging
+import pickle
 import traceback
 import inspect
-from typing import Union, Any, Callable, Type, Optional
+from typing import Any, Callable
 import time
 
 import starlette.responses
-from starlette.requests import Request
 
 import ray
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
-from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
-                             import_attr)
+from ray.serve.http_util import ASGIHTTPSender
+from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
@@ -23,29 +24,25 @@ from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
-from ray.serve.http_util import make_startup_shutdown_hooks
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
 
 
-def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
+def create_backend_replica(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    backend_def = backend_def
+    serialized_backend_def = serialized_backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config: BackendConfig,
-                           controller_name: str):
-            if isinstance(backend_def, str):
-                backend = import_attr(backend_def)
-            else:
-                backend = backend_def
+                           backend_config: BackendConfig, controller_name: str,
+                           detached: bool):
+            backend = cloudpickle.loads(serialized_backend_def)
 
             if inspect.isfunction(backend):
                 is_function = True
@@ -66,7 +63,10 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             if is_function:
                 _callable = backend
             else:
-                _callable = backend(*init_args)
+                # This allows backends to define an async __init__ method
+                # (required for FastAPI backend definition).
+                _callable = backend.__new__(backend)
+                await sync_to_async(_callable.__init__)(*init_args)
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
@@ -74,36 +74,31 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
                 controller_name,
                 servable_object=_callable)
 
-            self.shutdown_hook: Optional[Callable] = None
-            if backend_config.internal_metadata.is_asgi_app:
-                app = _callable._serve_asgi_app
-                startup_hook, self.shutdown_hook = make_startup_shutdown_hooks(
-                    app)
-                await startup_hook()
-
             assert controller_name, "Must provide a valid controller_name"
-            controller_handle = ray.get_actor(controller_name)
+            controller_namespace = ray.serve.api._get_controller_namespace(
+                detached)
+            controller_handle = ray.get_actor(
+                controller_name, namespace=controller_namespace)
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
-
-        def __del__(self):
-            if hasattr(self, "shutdown_hook") and self.shutdown_hook:
-                asyncio.get_event_loop().run_until_complete(
-                    self.shutdown_hook())
 
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
-                request_metadata: RequestMetadata,
+                pickled_request_metadata: bytes,
                 *request_args,
                 **request_kwargs,
         ):
+            # The request metadata should be pickled for performance.
+            request_metadata: RequestMetadata = pickle.loads(
+                pickled_request_metadata)
+
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        def ready(self):
-            pass
+        async def reconfigure(self, user_config: Any) -> None:
+            await self.backend.reconfigure(user_config)
 
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
@@ -112,12 +107,7 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             while True:
                 await asyncio.sleep(10000)
 
-    if isinstance(backend_def, str):
-        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-            backend_def)
-    else:
-        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-            backend_def.__name__)
+    RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
 
 
@@ -139,22 +129,24 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, backend_config: BackendConfig,
                  is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
+        self.backend_tag = ray.serve.api.get_replica_context().deployment
         self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function
 
         self.config = backend_config
-        self.reconfigure(self.config.user_config)
 
         self.num_ongoing_requests = 0
 
         self.request_counter = metrics.Counter(
-            "serve_backend_request_counter",
+            "serve_deployment_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("backend", ))
-        self.request_counter.set_default_tags({"backend": self.backend_tag})
+            tag_keys=("deployment", "replica"))
+        self.request_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.loop = asyncio.get_event_loop()
         self.long_poll_client = LongPollClient(
@@ -167,38 +159,41 @@ class RayServeReplica:
         )
 
         self.error_counter = metrics.Counter(
-            "serve_backend_error_counter",
+            "serve_deployment_error_counter",
             description=("The number of exceptions that have "
-                         "occurred in the backend."),
-            tag_keys=("backend", ))
-        self.error_counter.set_default_tags({"backend": self.backend_tag})
+                         "occurred in this replica."),
+            tag_keys=("deployment", "replica"))
+        self.error_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.restart_counter = metrics.Counter(
-            "serve_backend_replica_starts",
+            "serve_deployment_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.restart_counter.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
-            "serve_backend_processing_latency_ms",
+            "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.processing_latency_tracker.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.num_processing_items.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
@@ -209,7 +204,7 @@ class RayServeReplica:
             handler.setFormatter(
                 logging.Formatter(
                     handler.formatter._fmt +
-                    f" component=serve backend={self.backend_tag} "
+                    f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
 
     def get_runner_method(self, request_item: Query) -> Callable:
@@ -246,20 +241,10 @@ class RayServeReplica:
         start = time.time()
         method_to_call = None
         try:
-            # TODO(simon): Split this section out when invoke_batch is removed.
-            if self.config.internal_metadata.is_asgi_app:
-                request: Request = args[0]
-                sender = ASGIHTTPSender()
-                await self.callable._serve_asgi_app(
-                    request.scope,
-                    request._receive,
-                    sender,
-                )
-                result = sender.build_starlette_response()
-            else:
-                method_to_call = sync_to_async(
-                    self.get_runner_method(request_item))
-                result = await method_to_call(*args, **kwargs)
+            method_to_call = sync_to_async(
+                self.get_runner_method(request_item))
+            result = await method_to_call(*args, **kwargs)
+
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
@@ -277,7 +262,7 @@ class RayServeReplica:
 
         return result
 
-    def reconfigure(self, user_config) -> None:
+    async def reconfigure(self, user_config) -> None:
         if user_config:
             if self.is_function:
                 raise ValueError(
@@ -286,13 +271,12 @@ class RayServeReplica:
                 raise RayServeException("user_config specified but backend " +
                                         self.backend_tag + " missing " +
                                         BACKEND_RECONFIGURE_METHOD + " method")
-            reconfigure_method = getattr(self.callable,
-                                         BACKEND_RECONFIGURE_METHOD)
-            reconfigure_method(user_config)
+            reconfigure_method = sync_to_async(
+                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+            await reconfigure_method(user_config)
 
     def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
-        self.reconfigure(self.config.user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
@@ -326,7 +310,5 @@ class RayServeReplica:
             else:
                 logger.info(
                     f"Waiting for an additional {sleep_time}s to shut down "
-                    f"because there are {self.num_ongoing_requests}"
+                    f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
-
-        ray.actor.exit_actor()

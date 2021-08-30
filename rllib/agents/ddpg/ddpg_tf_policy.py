@@ -2,34 +2,43 @@ from gym.spaces import Box
 from functools import partial
 import logging
 import numpy as np
+import gym
+from typing import Dict, Tuple, List
 
 import ray
 import ray.experimental.tf_utils
-from ray.util.debug import log_once
 from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
     TorchDirichlet
 from ray.rllib.utils.annotations import override
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    LocalOptimizer, ModelGradients, PolicyID
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
-def build_ddpg_models(policy, observation_space, action_space, config):
+def build_ddpg_models(policy: Policy, observation_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> ModelV2:
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
@@ -80,13 +89,14 @@ def build_ddpg_models(policy, observation_space, action_space, config):
     return policy.model
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
-                                      *,
-                                      explore=True,
-                                      is_training=False,
-                                      **kwargs):
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        model: ModelV2,
+        obs_batch: SampleBatch,
+        *,
+        explore: bool = True,
+        is_training: bool = False,
+        **kwargs) -> Tuple[TensorType, ActionDistribution, List[TensorType]]:
     model_out, _ = model({
         "obs": obs_batch,
         "is_training": is_training,
@@ -102,7 +112,8 @@ def get_distribution_inputs_and_class(policy,
     return dist_inputs, distr_class, []  # []=state out
 
 
-def ddpg_actor_critic_loss(policy, model, _, train_batch):
+def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
+                           train_batch: SampleBatch) -> TensorType:
     twin_q = policy.config["twin_q"]
     gamma = policy.config["gamma"]
     n_step = policy.config["n_step"]
@@ -176,8 +187,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         q_tp1_best
 
     # Compute RHS of bellman equation.
-    q_t_selected_target = tf.stop_gradient(train_batch[SampleBatch.REWARDS] +
-                                           gamma**n_step * q_tp1_best_masked)
+    q_t_selected_target = tf.stop_gradient(
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
+        gamma**n_step * q_tp1_best_masked)
 
     # Compute the error (potentially clipped).
     if twin_q:
@@ -241,24 +253,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     return policy.critic_loss + policy.actor_loss
 
 
-def make_ddpg_optimizers(policy, config):
-    # Create separate optimizers for actor & critic losses.
-    if policy.config["framework"] in ["tf2", "tfe"]:
-        policy._actor_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config["actor_lr"])
-        policy._critic_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config["critic_lr"])
-    else:
-        policy._actor_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
-        policy._critic_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
-    # TODO: (sven) make this function return both optimizers and
-    #  TFPolicy handle optimizers vs loss terms correctly (like torch).
-    return None
-
-
-def build_apply_op(policy, optimizer, grads_and_vars):
+def build_apply_op(policy: Policy, optimizer: LocalOptimizer,
+                   grads_and_vars: ModelGradients) -> TensorType:
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     should_apply_actor_opt = tf.equal(
@@ -283,7 +279,8 @@ def build_apply_op(policy, optimizer, grads_and_vars):
             return tf.group(actor_op, critic_op)
 
 
-def gradients_fn(policy, optimizer, loss):
+def gradients_fn(policy: Policy, optimizer: LocalOptimizer,
+                 loss: TensorType) -> ModelGradients:
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
@@ -319,7 +316,8 @@ def gradients_fn(policy, optimizer, loss):
     return grads_and_vars
 
 
-def build_ddpg_stats(policy, batch):
+def build_ddpg_stats(policy: Policy,
+                     batch: SampleBatch) -> Dict[str, TensorType]:
     stats = {
         "mean_q": tf.reduce_mean(policy.q_t),
         "max_q": tf.reduce_max(policy.q_t),
@@ -328,12 +326,44 @@ def build_ddpg_stats(policy, batch):
     return stats
 
 
-def before_init_fn(policy, obs_space, action_space, config):
-    # Create global step for counting the number of update operations.
-    if config["framework"] in ["tf2", "tfe"]:
-        policy.global_step = get_variable(0, tf_name="global_step")
-    else:
-        policy.global_step = tf1.train.get_or_create_global_step()
+class ActorCriticOptimizerMixin:
+    """Mixin class to generate the necessary optimizers for actor-critic algos.
+
+    - Creates global step for counting the number of update operations.
+    - Creates separate optimizers for actor, critic, and alpha.
+    """
+
+    def __init__(self, config):
+        # Eager mode.
+        if config["framework"] in ["tf2", "tfe"]:
+            self.global_step = get_variable(0, tf_name="global_step")
+            self._actor_optimizer = tf.keras.optimizers.Adam(
+                learning_rate=config["actor_lr"])
+            self._critic_optimizer = \
+                tf.keras.optimizers.Adam(learning_rate=config["critic_lr"])
+        # Static graph mode.
+        else:
+            self.global_step = tf1.train.get_or_create_global_step()
+            self._actor_optimizer = tf1.train.AdamOptimizer(
+                learning_rate=config["actor_lr"])
+            self._critic_optimizer = \
+                tf1.train.AdamOptimizer(learning_rate=config["critic_lr"])
+
+
+def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                       action_space: gym.spaces.Space,
+                       config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors before Policy's initialization.
+
+    Adds the necessary optimizers to the given Policy.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
+    ActorCriticOptimizerMixin.__init__(policy, config)
 
 
 class ComputeTDErrorMixin:
@@ -358,12 +388,14 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def setup_mid_mixins(policy, obs_space, action_space, config):
+def setup_mid_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy, ddpg_actor_critic_loss)
 
 
 class TargetNetworkMixin:
-    def __init__(self, config):
+    def __init__(self, config: TrainerConfigDict):
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
@@ -383,19 +415,23 @@ class TargetNetworkMixin:
         self.update_target(tau=1.0)
 
     # Support both hard and soft sync.
-    def update_target(self, tau=None):
+    def update_target(self, tau: int = None) -> None:
         self._do_update(np.float32(tau or self.config.get("tau")))
 
     @override(TFPolicy)
-    def variables(self):
+    def variables(self) -> List[TensorType]:
         return self.model.variables() + self.target_model.variables()
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid, observation_space, action_space, config):
+def validate_spaces(pid: PolicyID, observation_space: gym.spaces.Space,
+                    action_space: gym.spaces.Space,
+                    config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
@@ -416,15 +452,15 @@ DDPGTFPolicy = build_tf_policy(
     loss_fn=ddpg_actor_critic_loss,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    optimizer_fn=make_ddpg_optimizers,
-    gradients_fn=gradients_fn,
+    compute_gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     validate_spaces=validate_spaces,
-    before_init=before_init_fn,
+    before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     mixins=[
         TargetNetworkMixin,
+        ActorCriticOptimizerMixin,
         ComputeTDErrorMixin,
     ])

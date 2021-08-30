@@ -19,7 +19,7 @@ First, install Ray with the proper dependencies:
 
 .. code-block:: bash
 
-  pip install 'ray[cluster]'
+  pip install 'ray[default]'
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
@@ -59,6 +59,8 @@ Next, let's start Prometheus.
     ./prometheus --config.file=./prometheus.yml
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
+
+.. _multi-node-metrics:
 
 Getting Started (Multi-nodes)
 -----------------------------

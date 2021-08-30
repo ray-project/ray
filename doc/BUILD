@@ -7,28 +7,28 @@ py_test(
     name = "plot_hyperparameter",
     size = "small",
     srcs = ["examples/plot_hyperparameter.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "medium",
     srcs = ["examples/plot_parameter_server.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "large",
     srcs = ["examples/plot_pong_example.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "progress_bar",
     size = "small",
     srcs = ["examples/progress_bar.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 
@@ -38,7 +38,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/tf_example.py",
     srcs = ["examples/doc_code/tf_example.py"],
-    tags = ["exclusive", "tf"]
+    tags = ["exclusive", "tf", "team:ml"]
 )
 
 py_test(
@@ -46,7 +46,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/torch_example.py",
     srcs = ["examples/doc_code/torch_example.py"],
-    tags = ["exclusive", "pytorch"]
+    tags = ["exclusive", "pytorch", "team:ml"]
 )
 
 py_test(
@@ -54,7 +54,15 @@ py_test(
     size = "small",
     main = "examples/doc_code/metrics_example.py",
     srcs = ["examples/doc_code/metrics_example.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:serve"]
+)
+
+py_test(
+    name = "doc_code_runtime_env_example",
+    size = "small",
+    main = "examples/doc_code/runtime_env_example.py",
+    srcs = ["examples/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
 # --------------------------------------------------------------------
@@ -67,7 +75,7 @@ py_test(
     size = "medium",
     main = "source/tune/_tutorials/tune-sklearn.py",
     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test"]
 )
 
@@ -76,6 +84,6 @@ py_test(
     size = "medium",
     main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
     srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test", "--from_scratch", "--day 0"]
 )

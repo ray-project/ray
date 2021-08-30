@@ -22,7 +22,7 @@ def ray_cluster():
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
-    cluster.connect()
+    cluster.connect(namespace="serve")
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
@@ -40,7 +40,7 @@ def test_scale_up(ray_cluster):
         return pids
 
     serve.start(detached=True)
-    client = serve.connect()
+    client = serve.api._connect()
 
     D.deploy()
     pids1 = get_pids(1)
@@ -71,11 +71,11 @@ def test_scale_up(ray_cluster):
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
-    cluster.connect()
+    cluster.connect(namespace="serve")
 
     worker_node = cluster.add_node(num_cpus=2)
 
-    @serve.deployment(version="1", num_replicas=3)
+    @serve.deployment(version="1", num_replicas=5)
     def D(*args):
         return os.getpid()
 
@@ -92,24 +92,24 @@ def test_node_failure(ray_cluster):
 
     print("Initial deploy.")
     D.deploy()
-    pids1 = get_pids(3)
+    pids1 = get_pids(5)
 
-    # Remove the node. There should still be one replica running.
+    # Remove the node. There should still be three replicas running.
     print("Kill node.")
     cluster.remove_node(worker_node)
-    pids2 = get_pids(1)
+    pids2 = get_pids(3)
     assert pids2.issubset(pids1)
 
     # Add a worker node back. One replica should get placed.
     print("Add back first node.")
     cluster.add_node(num_cpus=1)
-    pids3 = get_pids(2)
+    pids3 = get_pids(4)
     assert pids2.issubset(pids3)
 
     # Add another worker node. One more replica should get placed.
     print("Add back second node.")
     cluster.add_node(num_cpus=1)
-    pids4 = get_pids(3)
+    pids4 = get_pids(5)
     assert pids3.issubset(pids4)
 
 

@@ -21,12 +21,10 @@ import org.slf4j.LoggerFactory;
 /** An implementation of GcsClient. */
 public class GcsClient {
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
-  private RedisClient primary;
 
   private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
-    primary = new RedisClient(redisAddress, redisPassword);
     globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
   }
 
@@ -66,6 +64,11 @@ public class GcsClient {
       placementGroups.add(PlacementGroupUtils.generatePlacementGroupFromByteArray(result));
     }
     return placementGroups;
+  }
+
+  public String getInternalKV(String key) {
+    byte[] value = globalStateAccessor.getInternalKV(key);
+    return value == null ? null : new String(value);
   }
 
   public List<NodeInfo> getAllNodeInfo() {
@@ -145,8 +148,19 @@ public class GcsClient {
   }
 
   public JobId nextJobId() {
-    int jobCounter = (int) primary.incr("JobCounter".getBytes());
-    return JobId.fromInt(jobCounter);
+    return JobId.fromBytes(globalStateAccessor.getNextJobID());
+  }
+
+  public GcsNodeInfo getNodeToConnectForDriver(String nodeIpAddress) {
+    byte[] value = globalStateAccessor.getNodeToConnectForDriver(nodeIpAddress);
+    Preconditions.checkNotNull(value);
+    GcsNodeInfo nodeInfo = null;
+    try {
+      nodeInfo = GcsNodeInfo.parseFrom(value);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    return nodeInfo;
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */

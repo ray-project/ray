@@ -1,0 +1,121 @@
+common: &common
+  artifact_paths:
+    - "/tmp/bazel_event_logs/*"
+  env:
+    BUILDKITE: "true"
+    CI: "true"
+    PYTHON: "3.6"
+    RAY_USE_RANDOM_PORTS: "1"
+    RAY_DEFAULT_BUILD: "1"
+    LC_ALL: en_US.UTF-8
+    LANG: en_US.UTF-8
+
+prelude_commands: &prelude_commands |-
+  ./ci/travis/upload_build_info.sh
+  (which bazel && bazel clean) || true;
+  . ./ci/travis/ci.sh init && source ~/.zshrc
+  . ./ci/travis/ci.sh build
+  ./ci/travis/install-dependencies.sh
+
+epilogue_commands: &epilogue_commands |-
+  # Cleanup runtime environment to save storage
+  rm -rf /tmp/ray
+  # Cleanup local caches (this shouldn't clean up global disk cache)
+  bazel clean
+
+steps:
+- label: ":mac: :apple: Wheels and Jars"
+  <<: *common
+  commands:
+    # Cleanup environments
+    - ./ci/travis/upload_build_info.sh
+    - (which bazel && bazel clean) || true
+    # TODO(simon): make sure to change both PR and wheel builds
+    # Special setup for jar builds (will be installed to the machine instead)
+    # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+    # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    - diskutil list external physical
+    - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+    - java -version
+    # Build wheels
+    - export MAC_WHEELS=1
+    - export MAC_JARS=1
+    - export RAY_INSTALL_JAVA=1
+    - . ./ci/travis/ci.sh init && source ~/.zshrc
+    - . ./ci/travis/ci.sh build
+    # Test wheels
+    - . ./ci/travis/ci.sh test_wheels
+    # Build jars
+    - bash ./java/build-jar-multiplatform.sh darwin
+    # Upload the wheels and jars
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - pip install -q docker aws_requests_auth boto3
+    # Upload to branch directory.
+    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+
+
+- label: ":mac: :apple: Ray C++ and Libraries"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
+      //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
+    - *epilogue_commands
+
+- label: ":mac: :apple: Worker"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/ci.sh test_cpp
+
+- label: ":mac: :apple: Small and Large"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test $(./scripts/bazel_export_options) --config=ci
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      python/ray/tests/...
+    - *epilogue_commands
+
+- label: ":mac: :apple: Medium A-J"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
+      python/ray/tests/...
+    - *epilogue_commands
+
+- label: ":mac: :apple: Medium K-Z"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      python/ray/tests/...
+    - *epilogue_commands
+
+- label: ":mac: :apple: :snowflake: Flaky"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,flaky,flaky-mac
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      --test_env=CI
+      python/ray/tests/... python/ray/serve/...
+    - *epilogue_commands

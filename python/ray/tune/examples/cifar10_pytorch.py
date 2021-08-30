@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from filelock import FileLock
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
@@ -25,11 +26,15 @@ def load_data(data_dir="./data"):
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    trainset = torchvision.datasets.CIFAR10(
-        root=data_dir, train=True, download=True, transform=transform)
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/.data.lock")):
+        trainset = torchvision.datasets.CIFAR10(
+            root=data_dir, train=True, download=True, transform=transform)
 
-    testset = torchvision.datasets.CIFAR10(
-        root=data_dir, train=False, download=True, transform=transform)
+        testset = torchvision.datasets.CIFAR10(
+            root=data_dir, train=False, download=True, transform=transform)
 
     return trainset, testset
 # __load_data_end__
@@ -58,7 +63,7 @@ class Net(nn.Module):
 
 
 # __train_begin__
-def train_cifar(config, checkpoint_dir=None, data_dir=None):
+def train_cifar(config, checkpoint_dir=None):
     net = Net(config["l1"], config["l2"])
 
     device = "cpu"
@@ -79,6 +84,7 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
 
+    data_dir = os.path.abspath("./data")
     trainset, testset = load_data(data_dir)
 
     test_abs = int(len(trainset) * 0.8)
@@ -154,7 +160,17 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
 
 
 # __test_acc_begin__
-def test_accuracy(net, device="cpu"):
+
+def test_best_model(best_trial):
+    best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    best_trained_model.to(device)
+
+    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+
+    model_state, optimizer_state = torch.load(checkpoint_path)
+    best_trained_model.load_state_dict(model_state)
+
     trainset, testset = load_data()
 
     testloader = torch.utils.data.DataLoader(
@@ -166,19 +182,18 @@ def test_accuracy(net, device="cpu"):
         for data in testloader:
             images, labels = data
             images, labels = images.to(device), labels.to(device)
-            outputs = net(images)
+            outputs = best_trained_model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-    return correct / total
-# __test_acc_end__
 
+    print("Best trial test set accuracy: {}".format(correct / total))
+
+# __test_acc_end__
 
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-    data_dir = os.path.abspath("./data")
-    load_data(data_dir)  # Download data for all trials before starting the run
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -190,7 +205,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         grace_period=1,
         reduction_factor=2)
     result = tune.run(
-        tune.with_parameters(train_cifar, data_dir=data_dir),
+        tune.with_parameters(train_cifar),
         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
         config=config,
         metric="loss",
@@ -206,21 +221,18 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     print("Best trial final validation accuracy: {}".format(
         best_trial.last_result["accuracy"]))
 
-    best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda:0"
-        if gpus_per_trial > 1:
-            best_trained_model = nn.DataParallel(best_trained_model)
-    best_trained_model.to(device)
+    if ray.util.client.ray.is_connected():
+        # If using Ray Client, we want to make sure checkpoint access
+        # happens on the server. So we wrap `test_best_model` in a Ray task.
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.tune.utils.util import force_on_current_node
+        remote_fn = force_on_current_node(ray.remote(test_best_model))
+        ray.get(remote_fn.remote(best_trial))
+    else:
+        test_best_model(best_trial)
 
-    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
 
-    model_state, optimizer_state = torch.load(checkpoint_path)
-    best_trained_model.load_state_dict(model_state)
-
-    test_acc = test_accuracy(best_trained_model, device)
-    print("Best trial test set accuracy: {}".format(test_acc))
 # __main_end__
 
 
@@ -230,11 +242,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-address",
+        help="Address of Ray cluster for seamless distributed execution.",
+        required=False)
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=2)
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
+        if args.server_address:
+            # Connect to a remote server through Ray Client.
+            ray.init(f"ray://{args.server_address}")
+        elif args.ray_address:
+            # Run directly on the Ray cluster.
+            ray.init(args.ray_address)
         # Change this to activate training on GPUs
         main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)

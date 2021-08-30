@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "local_mode_task_submitter.h"
 
@@ -6,11 +19,10 @@
 #include <boost/asio/post.hpp>
 #include <memory>
 
-#include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 LocalModeTaskSubmitter::LocalModeTaskSubmitter(
     LocalModeRayRuntime &local_mode_ray_tuntime)
@@ -18,22 +30,14 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
-  /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
+ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                        const ActorCreationOptions &options) {
+  /// TODO(Guyang Song): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
-  if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr =
-        GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  }
-  auto func_offset =
-      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr);
-  auto exec_func_offset =
-      (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset),
-      invocation.fptr.function_name);
+      invocation.remote_function_holder.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -49,7 +53,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id);
+    builder.SetActorCreationTaskSpec(invocation.actor_id, /*serialized_actor_handle=*/"",
+                                     options.max_restarts, /*max_task_retries=*/0, {},
+                                     options.max_concurrency);
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
@@ -79,8 +85,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr,
-                         actor_contexts_, actor_contexts_mutex_);
+    TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
+                         actor_contexts_mutex_);
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
@@ -88,27 +94,30 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
-                            TaskExecutor::Invoke(
-                                ts, actor, runtime, dynamic_library_base_addr,
-                                this->actor_contexts_, this->actor_contexts_mutex_);
+                            TaskExecutor::Invoke(ts, actor, runtime,
+                                                 this->actor_contexts_,
+                                                 this->actor_contexts_mutex_);
                           },
                           std::move(task_specification)));
   }
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                            const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
-  Submit(invocation);
+ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                            const ActorCreationOptions &create_options) {
+  Submit(invocation, create_options);
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                                 const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

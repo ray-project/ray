@@ -1,8 +1,10 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
+# The GPU option is nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
+# FROM directive resets ARG
+ARG BASE_IMAGE
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
@@ -50,8 +52,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.0 \
-        numpy==1.15.4 \
+        cython==0.29.23 \
+        numpy==1.19.5 \
         psutil \
         blist \ 
         atari-py \
@@ -61,7 +63,10 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil, blist & atari-py
-    && sudo apt-get autoremove -y cmake g++ zlib1g-dev \
+    && sudo apt-get autoremove -y cmake zlib1g-dev \
+        # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
+        $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
+        g++; fi) \
     # Either install kubectl or remove wget 
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \

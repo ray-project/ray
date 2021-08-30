@@ -60,7 +60,10 @@ class LitMNIST(LightningModule):
 
         # prepare transforms standard to MNIST
         mnist_train = MNIST(
-            os.getcwd(), train=True, download=True, transform=transform)
+            os.path.expanduser("~/data"),
+            train=True,
+            download=True,
+            transform=transform)
 
         self.mnist_train, self.mnist_val = random_split(
             mnist_train, [55000, 5000])
@@ -126,6 +129,13 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Ray")
     parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
@@ -154,6 +164,8 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=2)
         args.num_epochs = 1
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
     train_mnist(

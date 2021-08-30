@@ -1,4 +1,4 @@
-flake8==3.7.7 
+flake8==3.9.1
 flake8-comprehensions
 flake8-quotes==2.0.0
 mypy==0.782

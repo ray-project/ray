@@ -1,4 +1,6 @@
 # coding: utf-8
+from freezegun import freeze_time
+from mock import patch
 import os
 import unittest
 
@@ -14,6 +16,58 @@ from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+
+
+class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S"] = "1"
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": 4,
+                "num_gpus": 2,
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+
+    @freeze_time("2021-08-03", auto_tick_seconds=15)
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testOutputWarningMessage(self, mocked_warn):
+        def train(config):
+            pass
+
+        tune.run(
+            train, resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+            })
+        msg = (
+            "No trial is running and no new trial has been started within at"
+            " least the last 1.0 seconds. This could be due to the cluster "
+            "not having enough resources available to start the next trial. "
+            "Please stop the tuning job and readjust resources_per_trial "
+            "argument passed into tune.run() and/or start a cluster with more "
+            "resources.")
+        mocked_warn.assert_called_with(msg)
+
+    @freeze_time("2021-08-03")
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testNotOutputWarningMessage(self, mocked_warn):
+        def train(config):
+            pass
+
+        tune.run(
+            train, resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+            })
+        mocked_warn.assert_not_called()
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -357,9 +411,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         }
 
         if not available:
-            self.skipTest(f"Warning: Ray reported no available resources, "
-                          f"but this is an error on the Ray core side. "
-                          f"Skipping this test for now.")
+            self.skipTest("Warning: Ray reported no available resources, "
+                          "but this is an error on the Ray core side. "
+                          "Skipping this test for now.")
 
         self.assertDictEqual(
             available, {

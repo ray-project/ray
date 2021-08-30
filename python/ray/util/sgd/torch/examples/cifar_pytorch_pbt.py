@@ -94,6 +94,13 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
@@ -110,7 +117,7 @@ if __name__ == "__main__":
         "--fp16",
         action="store_true",
         default=False,
-        help="Enables FP16 training with apex. Requires `use-gpu`.")
+        help="Enables FP16 training. Requires `use-gpu`.")
     parser.add_argument(
         "--smoke-test",
         action="store_true",
@@ -120,7 +127,10 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-    ray.init(address=args.address, log_to_driver=True)
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(address=args.address, log_to_driver=True)
 
     TorchTrainable = TorchTrainer.as_trainable(
         training_operator_cls=CifarTrainingOperator,

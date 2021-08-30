@@ -68,13 +68,14 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
         return batch
 
     if not workers.remote_workers():
-        # Handle the serial sampling case.
+        # Handle the `num_workers=0` case, in which the local worker
+        # has to do sampling as well.
         def sampler(_):
             while True:
                 yield workers.local_worker().sample()
 
-        return (LocalIterator(sampler, SharedMetrics())
-                .for_each(report_timesteps))
+        return (LocalIterator(sampler,
+                              SharedMetrics()).for_each(report_timesteps))
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
@@ -157,11 +158,7 @@ class ConcatBatches:
         self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
-        self.batch_start_time = None
-
-    def _on_fetch_start(self):
-        if self.batch_start_time is None:
-            self.batch_start_time = time.perf_counter()
+        self.last_batch_time = time.perf_counter()
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
@@ -183,10 +180,13 @@ class ConcatBatches:
                             "This may be because you have many workers or "
                             "long episodes in 'complete_episodes' batch mode.")
             out = SampleBatch.concat_samples(self.buffer)
+
+            perf_counter = time.perf_counter()
             timer = _get_shared_metrics().timers[SAMPLE_TIMER]
-            timer.push(time.perf_counter() - self.batch_start_time)
+            timer.push(perf_counter - self.last_batch_time)
             timer.push_units_processed(self.count)
-            self.batch_start_time = None
+
+            self.last_batch_time = perf_counter
             self.buffer = []
             self.count = 0
             return [out]

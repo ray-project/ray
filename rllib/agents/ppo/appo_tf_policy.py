@@ -114,8 +114,8 @@ def appo_surrogate_loss(
 
     # TODO: (sven) deprecate this when trajectory view API gets activated.
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
-                                **kw)
+        return _make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                                *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -131,8 +131,8 @@ def appo_surrogate_loss(
     policy.target_model_vars = policy.target_model.variables()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
         mask = make_time_major(mask, drop_last=policy.config["vtrace"])
 
@@ -282,7 +282,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """
     values_batched = _make_time_major(
         policy,
-        train_batch.get("seq_lens"),
+        train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
         drop_last=policy.config["vtrace"])
 
@@ -340,10 +340,6 @@ def postprocess_trajectory(
     if not policy.config["vtrace"]:
         sample_batch = compute_gae_for_sample_batch(
             policy, sample_batch, other_agent_batches, episode)
-
-    # TODO: (sven) remove this del once we have trajectory view API fully in
-    #  place.
-    del sample_batch["new_obs"]  # not used, so save some bandwidth
 
     return sample_batch
 
@@ -419,7 +415,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
-    gradients_fn=clip_gradients,
+    compute_gradients_fn=clip_gradients,
     extra_action_out_fn=add_values,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
