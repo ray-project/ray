@@ -196,6 +196,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           &io_service_)),
       object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
           io_service_, gcs_client_, core_worker_subscriber_.get(),
+          /*owner_client_pool=*/&worker_rpc_pool_,
+          /*max_object_report_batch_size=*/
+          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
