@@ -105,11 +105,16 @@ void MetricPointExporter::ExportViewData(
   metric_exporter_client_->ReportMetrics(points);
 }
 
-OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 instrumented_io_context &io_service,
-                                                 const std::string address)
-    : client_call_manager_(io_service) {
-  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
+OpenCensusProtoExporter::OpenCensusProtoExporter(
+    GetMetricsAgentClientFn get_metrics_agent_client)
+    : get_metrics_agent_client_(get_metrics_agent_client) {
+  get_metrics_agent_client(
+      [this](const Status &status, std::shared_ptr<rpc::MetricsAgentClient> client) {
+        RAY_UNUSED(status);
+        // This the gcs_server io thread.
+        absl::MutexLock lock(&client_mutex_);
+        client_ = client;
+      });
 };
 
 void OpenCensusProtoExporter::ExportViewData(
@@ -199,16 +204,42 @@ void OpenCensusProtoExporter::ExportViewData(
     }
   }
 
-  client_->ReportOCMetrics(
-      request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
-        RAY_UNUSED(reply);
-        if (!status.ok()) {
-          RAY_LOG(WARNING)
-              << "Export metrics to agent failed: " << status
-              << ". This won't affect Ray, but you can lose metrics from the cluster.";
-        }
-      });
-}
+  // Get a client copy, this is the opencensus report thread.
+  client_mutex_.Lock();
+  auto client = client_;
+  client_mutex_.Unlock();
 
+  auto report = [this, request_proto](std::shared_ptr<rpc::MetricsAgentClient> client) {
+    client->ReportOCMetrics(
+        request_proto,
+        [this](const Status &status, const rpc::ReportOCMetricsReply &reply) {
+          RAY_UNUSED(reply);
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Export metrics to agent failed: " << status
+                << ". This won't affect Ray, but you can lose metrics from the cluster.";
+            // This is the MetricsAgentClient io thread.
+            absl::MutexLock lock(&client_mutex_);
+            client_ = nullptr;
+          }
+        });
+  };
+
+  if (client == nullptr) {
+    get_metrics_agent_client_(
+        [this, report](const Status &status,
+                       std::shared_ptr<rpc::MetricsAgentClient> client) {
+          RAY_UNUSED(status);
+          if (client) {
+            report(client);
+            // This the gcs_server io thread.
+            absl::MutexLock lock(&client_mutex_);
+            client_ = client;
+          }
+        });
+  } else {
+    report(client);
+  }
+}
 }  // namespace stats
 }  // namespace ray

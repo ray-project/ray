@@ -4,6 +4,7 @@ import inspect
 import json
 from typing import Any, Dict, List, Optional, Tuple, Type
 
+import starlette.responses
 import starlette.requests
 
 from ray.serve.exceptions import RayServeException
