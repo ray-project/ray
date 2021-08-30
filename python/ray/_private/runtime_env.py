@@ -172,16 +172,6 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
 
-        # Used by Ray's experimental package loading feature.
-        # TODO(architkulkarni): This should be unified with existing fields
-        if "_packaging_uri" in runtime_env_json:
-            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
-            if self._dict["env_vars"] is None:
-                self._dict["env_vars"] = {}
-            # TODO(ekl): env vars is probably not the right long term impl.
-            self._dict["env_vars"].update(
-                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
-
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
 
@@ -612,7 +602,6 @@ def override_task_or_actor_runtime_env(
 
     # If per-actor URIs aren't specified, override them with those in the
     # job config.
-    # XXX: handle packaging URIs.
     if "uris" not in runtime_env_dict:
         if job_config.runtime_env.uris is not None:
             runtime_env_dict["uris"] = [
