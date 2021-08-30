@@ -2,7 +2,7 @@ pendulum-sac-fake-gpus:
     env: Pendulum-v0
     run: SAC
     stop:
-        episode_reward_mean: -600
+        episode_reward_mean: -700
         training_iteration: 200
     config:
         # Works for both torch and tf.
