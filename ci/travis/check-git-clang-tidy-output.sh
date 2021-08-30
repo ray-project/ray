@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# TODO: integrate this script into pull request workflow.
+
 printError() {
     printf '\033[31mERROR:\033[0m %s\n' "$@"
 }

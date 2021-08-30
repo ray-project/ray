@@ -1,10 +1,17 @@
-# Disabled checks are due to frequent false positives and noisiness.
-# They can be re-enabled later on if the benefit outweighs the cost.
+# Disable the following checks due to frequent false positives, noisiness,
+# inconsistent style with existing codebase and other reasons:
+# -misc-non-private-member-variables-in-classes (potentially too restrictive)
+# -misc-unused-parameters (can be cleaned up in batch and enabled)
+# -modernize-avoid-c-arrays (too restrictive)
+# -modernize-pass-by-value (too restrictive)
+# -modernize-return-braced-init-list (inconsistent style)
+# -modernize-use-emplace (more subtle behavior)
+# -modernize-use-trailing-return-type (inconsistent style)
+#
 # TODO: enable google-* and readability-* families of checks.
 Checks: >
   abseil-*,
   bugprone-*,
-  -bugprone-narrowing-conversions,
   misc-*,
   -misc-non-private-member-variables-in-classes,
   -misc-unused-parameters,
@@ -14,6 +21,14 @@ Checks: >
   -modernize-return-braced-init-list,
   -modernize-use-emplace,
   -modernize-use-trailing-return-type,
+  performance-*,
+
+CheckOptions:
+  # Reduce noisiness of the bugprone-narrowing-conversions check.
+  - key:   bugprone-narrowing-conversions.IgnoreConversionFromTypes
+    value: 'size_t;ptrdiff_t;size_type;difference_type'
+  - key:   bugprone-narrowing-conversions.WarnOnEquivalentBitWidth
+    value: 'false'
 
 # Turn all the warnings from the checks above into errors.
 WarningsAsErrors: "*"
