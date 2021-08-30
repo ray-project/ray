@@ -555,6 +555,9 @@ class Trainer(Trainable):
         self._env_id = self._register_if_needed(
             env or config.get("env"), config)
 
+        # Placeholder for a local replay buffer instance.
+        self.local_replay_buffer = None
+
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             # Default logdir prefix containing the agent's name and the
@@ -1610,10 +1613,10 @@ class Trainer(Trainable):
             state["optimizer"] = self.optimizer.save()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
-        if hasattr(self, "_local_replay_buffer") and \
+        if self.local_replay_buffer is not None and \
                 self.config.get("store_buffer_in_checkpoints"):
             state["local_replay_buffer"] = \
-                self._local_replay_buffer.get_state()
+                self.local_replay_buffer.get_state()
         return state
 
     def __setstate__(self, state: dict):
@@ -1626,12 +1629,12 @@ class Trainer(Trainable):
         if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
         # If necessary, restore replay data as well.
-        if hasattr(self, "_local_replay_buffer"):
+        if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
             #  buffer from checkpoint, only if user has configured this.
             if self.config.get("store_buffer_in_checkpoints"):
                 if "local_replay_buffer" in state:
-                    self._local_replay_buffer.set_state(
+                    self.local_replay_buffer.set_state(
                         state["local_replay_buffer"])
                 else:
                     logger.warning(

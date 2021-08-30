@@ -178,7 +178,7 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
         **prio_args)
     # Assign to Trainer, so we can store the LocalReplayBuffer's
     # data when we save checkpoints.
-    trainer._local_replay_buffer = local_replay_buffer
+    trainer.local_replay_buffer = local_replay_buffer
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 

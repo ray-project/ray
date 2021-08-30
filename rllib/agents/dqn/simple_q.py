@@ -140,8 +140,9 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config["replay_sequence_length"])
-
-    trainer._local_replay_buffer = local_replay_buffer
+    # Assign to Trainer, so we can store the LocalReplayBuffer's
+    # data when we save checkpoints.
+    trainer.local_replay_buffer = local_replay_buffer
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
