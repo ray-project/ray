@@ -22,14 +22,12 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
-DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
@@ -78,7 +76,6 @@ int main(int argc, char *argv[]) {
   const std::string store_socket_name = FLAGS_store_socket_name;
   const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
-  const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
@@ -241,12 +238,6 @@ int main(int argc, char *argv[]) {
                        << object_manager_config.rpc_service_threads_number
                        << ", object_chunk_size = "
                        << object_manager_config.object_chunk_size;
-        // Initialize stats.
-        const ray::stats::TagsType global_tags = {
-            {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "2.0.0.dev0"},
-            {ray::stats::NodeAddressKey, node_ip_address}};
-        ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
         raylet.reset(new ray::raylet::Raylet(
@@ -272,7 +263,6 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     raylet->Stop();
     gcs_client->Disconnect();
-    ray::stats::Shutdown();
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };

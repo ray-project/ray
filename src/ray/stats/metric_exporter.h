@@ -27,6 +27,10 @@
 namespace ray {
 namespace stats {
 
+typedef std::function<void(const Status &, std::shared_ptr<rpc::MetricsAgentClient>)>
+    GetMetricsAgentClientCallback;
+typedef std::function<void(GetMetricsAgentClientCallback)> GetMetricsAgentClientFn;
+
 /// Main function of metric exporter is collecting indicator information from
 /// opencensus data view, and sends it to the remote (for example
 /// sends metrics to dashboard agents through RPC). How to use it? Register metrics
@@ -89,15 +93,13 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
 
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  OpenCensusProtoExporter(const int port, instrumented_io_context &io_service,
-                          const std::string address);
+  OpenCensusProtoExporter(GetMetricsAgentClientFn get_metrics_agent_client);
 
   ~OpenCensusProtoExporter() = default;
 
-  static void Register(const int port, instrumented_io_context &io_service,
-                       const std::string address) {
+  static void Register(GetMetricsAgentClientFn get_metrics_agent_client) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address));
+        absl::make_unique<OpenCensusProtoExporter>(get_metrics_agent_client));
   }
 
   void ExportViewData(
@@ -105,10 +107,12 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                                   opencensus::stats::ViewData>> &data) override;
 
  private:
-  /// Call Manager for gRPC client.
-  rpc::ClientCallManager client_call_manager_;
+  /// A mutex to lock the client_.
+  absl::Mutex client_mutex_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  std::shared_ptr<rpc::MetricsAgentClient> client_;
+  /// Get MetricsAgentClient func.
+  GetMetricsAgentClientFn get_metrics_agent_client_;
 };
 
 }  // namespace stats
