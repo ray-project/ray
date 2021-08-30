@@ -287,6 +287,18 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -300,7 +312,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
@@ -323,7 +335,6 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
 
@@ -336,12 +347,13 @@ Papers
    joblib.rst
    xgboost-ray.rst
    lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst

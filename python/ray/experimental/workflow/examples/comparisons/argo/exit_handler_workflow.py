@@ -41,6 +41,5 @@ def wait_all(*deps):
 
 if __name__ == "__main__":
     workflow.init()
-
     res = intentional_fail.options(catch_exceptions=True).step()
     print(exit_handler.step(res).run())

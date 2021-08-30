@@ -195,7 +195,6 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
 
     assert ray.get([actor.incr.run_async() for _ in range(9)]) == list(
         range(2, 11))
-
     incr_lock = FileLock(incr_lock)
     incr_lock.acquire()
 
