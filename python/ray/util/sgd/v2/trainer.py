@@ -107,20 +107,25 @@ class Trainer:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
     def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None,
-              train_cls: Optional[S] = None,
-              *args,
-              **kwargs):
+              initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
 
         Args:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
+            args, kwargs: The arguments to pass into ``train_cls.__init__``.
+        """
+        self._executor.start(initialization_hook)
+
+    def run_executable(self, train_cls: Optional[S], *args, **kwargs):
+        """
+
+        Args:
             train_cls (Optional[cls]): The training class that each worker
                 should be instantiated as.
             args, kwargs: The arguments to pass into ``train_cls.__init__``.
         """
-        self._executor.start(initialization_hook)
+
 
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
