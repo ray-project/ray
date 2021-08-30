@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
+import logging
 from typing import Dict, List, Optional, Type
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,6 +15,7 @@ from ray.rllib.utils.tf_ops import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -178,7 +180,9 @@ class LSTMWrapper(RecurrentNetwork):
         self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self._rnn_model.summary()
+        # Print out model summary in INFO logging mode.
+        if logger.isEnabledFor(logging.INFO):
+            self._rnn_model.summary()
 
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action"]:
@@ -365,7 +369,7 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):
-        assert input_dict.get("seq_lens") is not None
+        assert input_dict.get(SampleBatch.SEQ_LENS) is not None
         # Push obs through underlying (wrapped) model first.
         wrapped_out, _, _ = self.wrapped_keras_model(input_dict)
 
@@ -387,11 +391,11 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
         max_seq_len = tf.shape(wrapped_out)[0] // tf.shape(
-            input_dict["seq_lens"])[0]
+            input_dict[SampleBatch.SEQ_LENS])[0]
         wrapped_out_plus_time_dim = add_time_dimension(
             wrapped_out, max_seq_len=max_seq_len, framework="tf")
         model_out, value_out, h, c = self._rnn_model([
-            wrapped_out_plus_time_dim, input_dict["seq_lens"],
+            wrapped_out_plus_time_dim, input_dict[SampleBatch.SEQ_LENS],
             input_dict["state_in_0"], input_dict["state_in_1"]
         ])
         model_out_no_time_dim = tf.reshape(

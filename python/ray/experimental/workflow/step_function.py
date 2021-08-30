@@ -3,7 +3,8 @@ from typing import Callable
 
 from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import Workflow, WorkflowData, StepType
+from ray.experimental.workflow.common import (Workflow, WorkflowData, StepType,
+                                              ensure_ray_initialized)
 
 
 class WorkflowStepFunction:
@@ -13,6 +14,7 @@ class WorkflowStepFunction:
                  func: Callable,
                  max_retries=1,
                  catch_exceptions=False,
+                 name=None,
                  ray_options=None):
         if not isinstance(max_retries, int) or max_retries < 1:
             raise ValueError("max_retries should be greater or equal to 1.")
@@ -24,10 +26,12 @@ class WorkflowStepFunction:
         self._catch_exceptions = catch_exceptions
         self._ray_options = ray_options or {}
         self._func_signature = signature.extract_signature(func)
+        self._name = name or ""
 
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
+            ensure_ray_initialized()
             flattened_args = signature.flatten_args(self._func_signature, args,
                                                     kwargs)
             workflow_inputs = serialization_context.make_workflow_inputs(
@@ -39,6 +43,7 @@ class WorkflowStepFunction:
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
+                name=self._name,
             )
             return Workflow(workflow_data)
 
@@ -53,6 +58,7 @@ class WorkflowStepFunction:
                 *,
                 max_retries: int = 1,
                 catch_exceptions: bool = False,
+                name: str = None,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -64,6 +70,10 @@ class WorkflowStepFunction:
                 If it's set to be true, (Optional[R], Optional[E]) will be
                 returned.
                 If it's false, the normal result will be returned.
+            name(str): The name of this step, which will be used to
+                generate the step_id of the step. The name will be used
+                directly as the step id if possible, otherwise deduplicated by
+                appending .N suffixes.
             **ray_options(dict): All parameters in this fields will be passed
                 to ray remote function options.
 
@@ -71,4 +81,4 @@ class WorkflowStepFunction:
             The step function itself.
         """
         return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    ray_options)
+                                    name, ray_options)

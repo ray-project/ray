@@ -142,6 +142,7 @@
 
 # Stress test for 1TB multi node non-streaming shuffle.
 - name: non_streaming_shuffle_1tb_5000_partitions
+  stable: False
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_large_scale.yaml

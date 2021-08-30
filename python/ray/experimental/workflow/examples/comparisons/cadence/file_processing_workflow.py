@@ -21,7 +21,6 @@ def upload(contents: str) -> None:
     pass
 
 
-# Note: we take a List of object refs to avoid using too much memory.
 @workflow.step
 def upload_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
@@ -37,7 +36,6 @@ def upload_all(file_contents: List[ray.ObjectRef]) -> None:
     return wait_all.step(*children)
 
 
-# Note: we take a List of object refs to avoid using too much memory.
 @workflow.step
 def process_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
@@ -62,6 +60,5 @@ def download_all(urls: List[str]) -> None:
 
 if __name__ == "__main__":
     workflow.init()
-
     res = download_all.step(FILES_TO_PROCESS)
     res.run()
