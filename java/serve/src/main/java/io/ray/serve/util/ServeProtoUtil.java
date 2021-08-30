@@ -16,15 +16,20 @@ public class ServeProtoUtil {
   public static BackendConfig parseBackendConfig(byte[] backendConfigBytes)
       throws InvalidProtocolBufferException {
 
-    // Parse BackendConfig from byte[].
-    BackendConfig inputBackendConfig = BackendConfig.parseFrom(backendConfigBytes);
-    if (inputBackendConfig == null) {
-      return null;
+    // Get a builder from BackendConfig(bytes) or create a new one.
+    BackendConfig.Builder builder = null;
+    if (backendConfigBytes == null) {
+      builder = BackendConfig.newBuilder();
+    } else {
+      BackendConfig backendConfig = BackendConfig.parseFrom(backendConfigBytes);
+      if (backendConfig == null) {
+        builder = BackendConfig.newBuilder();
+      } else {
+        builder = BackendConfig.newBuilder(backendConfig);
+      }
     }
 
-    // Copy the input BackendConfig and set default values.
-    BackendConfig.Builder builder = BackendConfig.newBuilder(inputBackendConfig);
-
+    // Set default values.
     if (builder.getNumReplicas() == 0) {
       builder.setNumReplicas(1);
     }
@@ -64,14 +69,20 @@ public class ServeProtoUtil {
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)
       throws InvalidProtocolBufferException {
 
-    // Parse RequestMetadata from byte[].
-    RequestMetadata inputRequestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
-    if (inputRequestMetadata == null) {
-      return null;
+    // Get a builder from RequestMetadata(bytes) or create a new one.
+    RequestMetadata.Builder builder = null;
+    if (requestMetadataBytes == null) {
+      builder = RequestMetadata.newBuilder();
+    } else {
+      RequestMetadata requestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
+      if (requestMetadata == null) {
+        builder = RequestMetadata.newBuilder();
+      } else {
+        builder = RequestMetadata.newBuilder(requestMetadata);
+      }
     }
 
-    // Copy the input RequestMetadata and set default values.
-    RequestMetadata.Builder builder = RequestMetadata.newBuilder(inputRequestMetadata);
+    // Set default values.
     if (StringUtils.isBlank(builder.getCallMethod())) {
       builder.setCallMethod("call");
     }
@@ -82,8 +93,19 @@ public class ServeProtoUtil {
   public static HTTPRequestWrapper parseHttpRequestWrapper(byte[] httpRequestWrapperBytes)
       throws InvalidProtocolBufferException {
 
-    // Parse RequestMetadata from byte[].
-    HTTPRequestWrapper httpRequestWrapper = HTTPRequestWrapper.parseFrom(httpRequestWrapperBytes);
-    return httpRequestWrapper;
+    // Get a builder from HTTPRequestWrapper(bytes) or create a new one.
+    HTTPRequestWrapper.Builder builder = null;
+    if (httpRequestWrapperBytes == null) {
+      builder = HTTPRequestWrapper.newBuilder();
+    } else {
+      HTTPRequestWrapper httpRequestWrapper = HTTPRequestWrapper.parseFrom(httpRequestWrapperBytes);
+      if (httpRequestWrapper == null) {
+        builder = HTTPRequestWrapper.newBuilder();
+      } else {
+        builder = HTTPRequestWrapper.newBuilder(httpRequestWrapper);
+      }
+    }
+
+    return builder.build();
   }
 }
