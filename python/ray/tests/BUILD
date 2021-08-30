@@ -65,7 +65,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_memory_scheduling.py",
-    "test_plasma_unlimited.py",
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
@@ -160,6 +159,7 @@ py_test_module_list(
     "test_failure_2.py",
     "test_failure_4.py",
     "test_object_spilling.py",
+    "test_plasma_unlimited.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -195,6 +195,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
@@ -340,6 +341,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],
@@ -354,6 +356,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],

@@ -13,9 +13,7 @@ def wait_all(*args) -> None:
 
 if __name__ == "__main__":
     workflow.init()
-
     children = []
     for msg in ["hello world", "goodbye world"]:
         children.append(hello.step(msg))
-
     wait_all.step(*children).run()

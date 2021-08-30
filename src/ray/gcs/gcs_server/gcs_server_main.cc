@@ -18,7 +18,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -27,7 +26,6 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
-DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
@@ -44,7 +42,6 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;
   const int gcs_server_port = static_cast<int>(FLAGS_gcs_server_port);
-  const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   std::string config_list;
   RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list))
       << "config_list is not a valid base64-encoded string.";
@@ -84,12 +81,6 @@ int main(int argc, char *argv[]) {
       .detach();
   promise->get_future().get();
 
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port);
-
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
@@ -123,9 +114,8 @@ int main(int argc, char *argv[]) {
   auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
-    gcs_server.Stop();
-    ray::stats::Shutdown();
     main_service.stop();
+    gcs_server.Stop();
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

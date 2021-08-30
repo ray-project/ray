@@ -420,6 +420,11 @@ class WorkerPoolTest : public ::testing::Test {
           return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
               new MockRuntimeEnvAgentClient());
         },
+        /*put_agent_address=*/
+        [](const std::string &value, const PutAgentAddressCallback &callback) {
+          RAY_UNUSED(value);
+          callback(ray::Status::OK(), 0);
+        },
         false);
     const rpc::RegisterAgentRequest request;
     rpc::RegisterAgentReply reply;
@@ -532,19 +537,19 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // Capped by soft limit of 5.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }

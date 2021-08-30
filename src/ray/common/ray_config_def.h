@@ -61,9 +61,10 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to record the creation sites of object references. This adds more
-/// information to `ray memstat`, but introduces a little extra overhead when
-/// creating object references.
-RAY_CONFIG(bool, record_ref_creation_sites, true)
+/// information to `ray memory`, but introduces a little extra overhead when
+/// creating object references (e.g. 5~10 microsec per call in Python).
+/// TODO: maybe group this under RAY_DEBUG.
+RAY_CONFIG(bool, record_ref_creation_sites, false)
 
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -213,9 +214,7 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 4)
-/// Number of threads used by client call manager in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 4)
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -362,7 +361,7 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 1.0)
+RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -451,6 +450,11 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 
 /// grpc keepalive sent interval
+/// This is only configured in GCS server now.
+/// NOTE: It is not ideal for other components because
+/// they have a failure model that considers network failures as component failures
+/// and this configuration break that assumption. We should apply to every other component
+/// after we change this failure assumption from code.
 RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 
 /// grpc keepalive timeout
