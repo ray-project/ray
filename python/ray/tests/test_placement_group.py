@@ -9,13 +9,14 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import (generate_system_config_map, get_other_nodes,
-                            kill_actor_and_wait_for_failure,
-                            run_string_as_driver, wait_for_condition,
-                            get_error_message)
+from ray._private.test_utils import (
+    generate_system_config_map, get_other_nodes,
+    kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
+    get_error_message)
 import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
+import ray._private.gcs_utils as gcs_utils
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
                                       get_current_placement_group)
@@ -550,7 +551,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
     cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address, namespace="")
+    ray.init(address=cluster.address, namespace="default_test_namespace")
 
     # Make sure both head and worker node are alive.
     nodes = ray.nodes()
@@ -983,7 +984,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1006,7 +1007,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1029,7 +1030,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1195,14 +1196,15 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
         cluster.add_node(num_cpus=num_cpu_per_node)
     cluster.wait_for_nodes()
 
-    info = ray.init(address=cluster.address, namespace="")
+    info = ray.init(
+        address=cluster.address, namespace="default_test_namespace")
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
 
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="")
+ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -1476,7 +1478,7 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 
@@ -1540,14 +1542,15 @@ def test_named_placement_group(ray_start_cluster):
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
-    info = ray.init(address=cluster.address, namespace="")
+    info = ray.init(
+        address=cluster.address, namespace="default_test_namespace")
     global_placement_group_name = "named_placement_group"
 
     # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="")
+ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],

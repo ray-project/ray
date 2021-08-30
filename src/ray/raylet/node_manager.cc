@@ -196,6 +196,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           &io_service_)),
       object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
           io_service_, gcs_client_, core_worker_subscriber_.get(),
+          /*owner_client_pool=*/&worker_rpc_pool_,
+          /*max_object_report_batch_size=*/
+          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
@@ -210,7 +213,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
-            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
+            return GetLocalObjectManager().GetLocalSpilledObjectURL(object_id);
           },
           /*spill_objects_callback=*/
           [this]() {
@@ -466,10 +469,6 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically(
-      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
-      "NodeManager.deadline_timer.report_resource_usage");
-
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -586,33 +585,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       local_gc_throttler_.AbleToRun()) {
     DoLocalGC();
     should_local_gc_ = false;
-  }
-}
-
-void NodeManager::ReportResourceUsage() {
-  if (initial_config_.pull_based_resource_reporting) {
-    return;
-  }
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_resource_report_at_ms_;
-  if (interval >
-      RayConfig::instance().num_resource_report_periods_warning() *
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last resource report was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If "
-           "resource reports keep lagging, scheduling decisions of other nodes "
-           "may become stale";
-  }
-  last_resource_report_at_ms_ = now_ms;
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  FillResourceReport(*resources_data);
-
-  if (resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
-                                                                       /*done*/ nullptr));
   }
 }
 
@@ -1332,8 +1304,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   boost::system::error_code ec;
   boost::filesystem::rename(from_path, to_path, ec);
   if (ec.value() != 0) {
-    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
-                   << " because of error " << ec.message();
+    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
+                  << " because of error " << ec.message();
     cb(false);
   }
 
@@ -1580,7 +1552,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   auto backlog_size = -1;
   if (RayConfig::instance().report_worker_backlog()) {
-    backlog_size = request.backlog_size();
+    // We add 1 to the backlog size because we need a worker to fulfill the
+    // current request, as well as workers to serve the requests in the
+    // backlog.
+    backlog_size = request.backlog_size() + 1;
   }
   RayTask task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
@@ -1600,7 +1575,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
-    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+    // We floor the available CPUs to the nearest integer to avoid starting too
+    // many workers when there is less than 1 CPU left. Otherwise, we could end
+    // up repeatedly starting the worker, then killing it because it idles for
+    // too long. The downside is that we will be slower to schedule tasks that
+    // could use a fraction of a CPU.
+    int64_t available_cpus =
+        static_cast<int64_t>(cluster_resource_scheduler_->GetLocalAvailableCpus());
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
   cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);

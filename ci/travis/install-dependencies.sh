@@ -24,9 +24,15 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [ -n "${BUILDKITE-}" ]; then
-      echo "Bazel exists, skipping the install"
-      return
+    if [[ -n "${BUILDKITE-}" ]]; then
+      # Only reinstall Bazel if we need to upgrade to a different version.
+      python="$(command -v python3 || command -v python || echo python)"
+      current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
+      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+      if [[ "$current_version" == "$new_version" ]]; then
+        echo "Bazel of the same version already exists, skipping the install"
+        return
+      fi
     fi
   fi
 
@@ -343,6 +349,14 @@ install_dependencies() {
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
+  fi
+
+  # Additional dependency for Ludwig.
+  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # dependencies with Modin.
+  if [ "${INSTALL_LUDWIG-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    pip install -U "ludwig[test]">=0.4
   fi
 
   # Data processing test dependencies.

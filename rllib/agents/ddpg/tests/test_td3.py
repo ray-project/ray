@@ -34,6 +34,23 @@ class TestTD3(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
+    def test_td3_fake_multi_gpu_learning(self):
+        """Test whether TD3Trainer can run SimpleEnv w/ faked multi-GPU."""
+        config = td3.TD3_DEFAULT_CONFIG.copy()
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        env = "ray.rllib.agents.sac.tests.test_sac.SimpleEnv"
+        config["env_config"] = {"config": {"repeat_delay": 0}}
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = td3.TD3Trainer(config=config, env=env)
+            num_iterations = 2
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+            trainer.stop()
+
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
         config = td3.TD3_DEFAULT_CONFIG.copy()

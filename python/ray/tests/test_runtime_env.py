@@ -9,7 +9,7 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray.test_utils import (
+from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
@@ -39,12 +39,12 @@ try:
 
 
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.client("{address}").env({runtime_env}).namespace("").connect()
+        ray.client("{address}").env({runtime_env}).namespace("default_test_namespace").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
                  logging_level=logging.DEBUG,
-                 namespace=""
+                 namespace="default_test_namespace"
 )
 except ValueError:
     print("ValueError")
@@ -663,32 +663,28 @@ def test_init(shutdown_only):
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             filename = get_wheel_filename(sys_platform, ray_version,
                                           py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
-            assert requests.head(url).status_code == 200
+            assert requests.head(url).status_code == 200, url
 
 
 def test_get_master_wheel_url():
     ray_version = "2.0.0.dev0"
-    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
                                        py_version)
             assert requests.head(url).status_code == 200, url
 
 
 def test_get_release_wheel_url():
-    test_commits = {
-        "1.4.0rc1": "e7c7f6371a69eb727fa469e4cd6f4fbefd143b4c",
-        "1.3.0": "0b4b444fadcdc23226e11fef066b982175804232",
-        "1.2.0": "1b1a2496ca51b745c07c79fb859946d3350d471b"
-    }
+    test_commits = {"1.6.0": "5052fe67d99f1d4bfc81b2a8694dbf2aa807bbdc"}
     for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ["36", "37", "38"]:
+        for py_version in ["36", "37", "38", "39"]:
             for version, commit in test_commits.items():
                 url = get_release_wheel_url(commit, sys_platform, version,
                                             py_version)
@@ -851,7 +847,8 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     # This hook sleeps for 15 seconds to simulate creating a runtime env.
     cluster.add_node(
         num_cpus=1,
-        runtime_env_setup_hook="ray.test_utils.sleep_setup_runtime_env")
+        runtime_env_setup_hook=(
+            "ray._private.test_utils.sleep_setup_runtime_env"))
 
     # Set a nonempty runtime env so that the runtime env setup hook is called.
     runtime_env = {"env_vars": {"a": "b"}}
@@ -898,6 +895,51 @@ def test_no_spurious_worker_startup(ray_start_cluster):
         # Check that no more workers were started.
         assert get_num_workers() <= 1
         time.sleep(0.1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_large_file_boundary(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        # Check that packages just under the max size work as expected.
+        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE - 1024 * 1024
+        with open("test_file", "wb") as f:
+            f.write(os.urandom(size))
+
+        ray.init(runtime_env={"working_dir": "."})
+
+        @ray.remote
+        class Test:
+            def get_size(self):
+                with open("test_file", "rb") as f:
+                    return len(f.read())
+
+        t = Test.remote()
+        assert ray.get(t.get_size.remote()) == size
+        os.chdir(old_dir)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_large_file_error(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        # Write to two separate files, each of which is below the threshold to
+        # make sure the error is for the full package size.
+        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE // 2 + 1
+        with open("test_file_1", "wb") as f:
+            f.write(os.urandom(size))
+
+        with open("test_file_2", "wb") as f:
+            f.write(os.urandom(size))
+
+        with pytest.raises(RuntimeError):
+            ray.init(runtime_env={"working_dir": "."})
+
+        os.chdir(old_dir)
 
 
 if __name__ == "__main__":

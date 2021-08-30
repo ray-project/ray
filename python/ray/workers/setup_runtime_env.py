@@ -26,6 +26,16 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
+    "--worker-entrypoint",
+    type=str,
+    help="the worker entrypoint: python,java etc. ")
+
+parser.add_argument(
+    "--worker-language",
+    type=str,
+    help="the worker entrypoint: python,java,cpp etc.")
+
+parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
@@ -139,7 +149,8 @@ def setup_worker(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    py_executable: str = sys.executable
+    worker_executable: str = args.worker_entrypoint
+    worker_language: str = args.worker_language
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
 
@@ -154,7 +165,7 @@ def setup_worker(input_args):
 
     # activate conda
     if runtime_env_context and runtime_env_context.conda_env_name:
-        py_executable = "python"
+        worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
         if (conda_activate_commands):
@@ -166,14 +177,29 @@ def setup_worker(input_args):
             "the context %s.", args.serialized_runtime_env,
             args.serialized_runtime_env_context)
 
-    commands += [
-        " ".join(
-            [f"exec {py_executable}"] + remaining_args +
-            # Pass the runtime for working_dir setup.
-            # We can't do it in shim process here because it requires
-            # connection to gcs.
-            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
-    ]
+    worker_command = [f"exec {worker_executable}"]
+    if worker_language == "java":
+        # Java worker don't parse the command parameters, add option.
+        remaining_args.insert(
+            len(remaining_args) - 1, "-D{}={}".format(
+                "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
+        worker_command += remaining_args
+    elif worker_language == "cpp":
+        worker_command += remaining_args
+        # cpp worker flags must use underscore
+        worker_command += [
+            "--serialized_runtime_env", f"'{args.serialized_runtime_env}'"
+        ]
+    else:
+        worker_command += remaining_args
+        # Pass the runtime for working_dir setup.
+        # We can't do it in shim process here because it requires
+        # connection to gcs.
+        worker_command += [
+            "--serialized-runtime-env", f"'{args.serialized_runtime_env}'"
+        ]
+
+    commands += [" ".join(worker_command)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 
@@ -181,6 +207,7 @@ def setup_worker(input_args):
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
+
     os.execvp("bash", ["bash", "-c", command_str])
 
 

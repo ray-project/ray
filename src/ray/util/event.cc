@@ -13,13 +13,16 @@
 // limitations under the License.
 
 #include "ray/util/event.h"
+#include <boost/filesystem.hpp>
+
+#include "absl/time/time.h"
 
 namespace ray {
 ///
 /// LogEventReporter
 ///
 LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
-                                   std::string &log_dir, bool force_flush,
+                                   const std::string &log_dir, bool force_flush,
                                    int rotate_max_file_size, int rotate_max_file_num)
     : log_dir_(log_dir),
       force_flush_(force_flush),
@@ -75,15 +78,13 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   json j;
 
   auto time_stamp = event.timestamp();
-  std::stringstream time_stamp_buffer;
-  char time_buffer[30];
   time_t epoch_time_as_time_t = time_stamp / 1000000;
 
-  struct tm *dt = localtime(&epoch_time_as_time_t);
-  strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S.", dt);
-
-  time_stamp_buffer << std::string(time_buffer) << std::setw(6) << std::setfill('0')
-                    << time_stamp % 1000000;
+  absl::Time absl_time = absl::FromTimeT(epoch_time_as_time_t);
+  std::stringstream time_stamp_buffer;
+  time_stamp_buffer << absl::FormatTime("%Y-%m-%d %H:%M:%S.", absl_time,
+                                        absl::LocalTimeZone())
+                    << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
 
   j["time_stamp"] = time_stamp_buffer.str();
   j["severity"] = Event_Severity_Name(event.severity());
@@ -118,6 +119,12 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 ///
 /// EventManager
 ///
+EventManager::EventManager() {
+  RayLog::AddFatalLogCallbacks({[](const std::string &label, const std::string &content) {
+    RayEvent::ReportEvent("FATAL", label, content);
+  }});
+}
+
 EventManager &EventManager::Instance() {
   static EventManager instance_;
   return instance_;
@@ -141,6 +148,12 @@ void EventManager::ClearReporters() { reporter_map_.clear(); }
 ///
 thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
+std::unique_ptr<RayEventContext> RayEventContext::global_context_ = nullptr;
+
+std::atomic<int> RayEventContext::global_context_started_setting_(0);
+
+std::atomic<bool> RayEventContext::global_context_finished_setting_(false);
+
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
     context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
@@ -148,24 +161,45 @@ RayEventContext &RayEventContext::Instance() {
   return *context_;
 }
 
+RayEventContext &RayEventContext::GlobalInstance() {
+  if (global_context_finished_setting_ == false) {
+    static RayEventContext tmp_instance_;
+    return tmp_instance_;
+  }
+  return *global_context_;
+}
+
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
     const std::unordered_map<std::string, std::string> &custom_fields) {
-  source_type_ = source_type;
-  custom_fields_ = custom_fields;
+  SetSourceType(source_type);
+  SetCustomFields(custom_fields);
+
+  if (!global_context_started_setting_.fetch_or(1)) {
+    global_context_ = std::make_unique<RayEventContext>();
+    global_context_->SetSourceType(source_type);
+    global_context_->SetCustomFields(custom_fields);
+    global_context_finished_setting_ = true;
+  }
 }
 
 void RayEventContext::ResetEventContext() {
   source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   custom_fields_.clear();
+  global_context_started_setting_ = 0;
+  global_context_finished_setting_ = false;
 }
 
-void RayEventContext::SetCustomFields(const std::string &key, const std::string &value) {
+void RayEventContext::SetCustomField(const std::string &key, const std::string &value) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_[key] = value;
 }
 
 void RayEventContext::SetCustomFields(
     const std::unordered_map<std::string, std::string> &custom_fields) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_ = custom_fields;
 }
 ///
@@ -189,28 +223,42 @@ void RayEvent::SendMessage(const std::string &message) {
     return;
   }
 
+  const RayEventContext &context = RayEventContext::Instance().GetInitialzed()
+                                       ? RayEventContext::Instance()
+                                       : RayEventContext::GlobalInstance();
+
   rpc::Event event;
 
   std::string event_id_buffer = std::string(18, ' ');
   FillRandom(&event_id_buffer);
   event.set_event_id(StringToHex(event_id_buffer));
 
-  event.set_source_type(RayEventContext::Instance().GetSourceType());
-  event.set_source_hostname(RayEventContext::Instance().GetSourceHostname());
-  event.set_source_pid(RayEventContext::Instance().GetSourcePid());
+  event.set_source_type(context.GetSourceType());
+  event.set_source_hostname(context.GetSourceHostname());
+  event.set_source_pid(context.GetSourcePid());
 
   event.set_severity(severity_);
   event.set_label(label_);
   event.set_message(message);
   event.set_timestamp(current_sys_time_us());
 
-  auto mp = RayEventContext::Instance().GetCustomFields();
+  auto mp = context.GetCustomFields();
   for (const auto &pair : mp) {
     custom_fields_[pair.first] = pair.second;
   }
   event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
   EventManager::Instance().Publish(event, custom_fields_);
+}
+
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir) {
+  RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+  auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+  ray::EventManager::Instance().AddReporter(
+      std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+  RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
 }
 
 }  // namespace ray

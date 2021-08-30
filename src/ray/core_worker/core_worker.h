@@ -94,7 +94,6 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
-        ref_counting_enabled(false),
         is_local_mode(false),
         num_workers(0),
         terminate_asyncio_thread(nullptr),
@@ -169,8 +168,6 @@ struct CoreWorkerOptions {
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
   std::function<bool()> kill_main;
-  /// Whether to enable object ref counting.
-  bool ref_counting_enabled;
   /// Is local mode being used.
   bool is_local_mode;
   /// The number of workers to be started in the current process.
@@ -427,7 +424,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TOOD(ilr): better way of keeping an object from being deleted
-    if (options_.ref_counting_enabled && !options_.is_local_mode) {
+    if (!options_.is_local_mode) {
       memory_store_->Delete(deleted);
     }
   }
@@ -464,6 +461,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// RegisterOwnershipInfoAndResolveFuture).
   /// \param[out] The RPC address of the worker that owns this object.
   rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+
+  /// Get the RPC address of the worker that owns the given object.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  std::vector<rpc::ObjectReference> GetObjectRefs(
+      const std::vector<ObjectID> &object_ids) const;
 
   /// Get the owner information of an object. This should be
   /// called when serializing an object ID, and the returned information should
@@ -938,15 +944,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                                    rpc::AddObjectLocationOwnerReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(
-      const rpc::RemoveObjectLocationOwnerRequest &request,
-      rpc::RemoveObjectLocationOwnerReply *reply,
+  // Implements gRPC server handler.
+  void HandleUpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1194,6 +1195,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
+
+  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies

@@ -292,7 +292,7 @@ message TaskArg {
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
-  repeated bytes nested_inlined_ids = 4;
+  repeated ObjectReference nested_inlined_refs = 4;
 }
 
 // Task spec of an actor creation task.

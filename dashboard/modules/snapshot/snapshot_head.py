@@ -1,4 +1,5 @@
 from typing import Dict, Any, List
+import hashlib
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -87,19 +88,34 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
-                "port": actor_table_entry.address.port
+                "port": actor_table_entry.address.port,
+                "metadata": dict()
             }
             actors[actor_id] = entry
+
+            deployments = await self.get_serve_info()
+            for _, deployment_info in deployments.items():
+                for replica_actor_id, actor_info in deployment_info[
+                        "actors"].items():
+                    if replica_actor_id in actors:
+                        serve_metadata = dict()
+                        serve_metadata["replica_tag"] = actor_info[
+                            "replica_tag"]
+                        serve_metadata["deployment_name"] = deployment_info[
+                            "name"]
+                        serve_metadata["version"] = actor_info["version"]
+                        actors[replica_actor_id]["metadata"][
+                            "serve"] = serve_metadata
         return actors
 
-    async def get_serve_info(self):
+    async def get_serve_info(self) -> Dict[str, Any]:
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
         except Exception:
-            return "{}"
+            return {}
 
         gcs_client = self._dashboard_head.gcs_client
 
@@ -117,9 +133,17 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                                          gcs_client) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
+        # Merge the deployments dicts of all controllers.
         deployments: Dict[str, Any] = {
             k: v
             for d in deployments_per_controller for k, v in d.items()
+        }
+        # Replace the keys (deployment names) with their hashes to prevent
+        # collisions caused by the automatic conversion to camelcase by the
+        # dashboard agent.
+        deployments = {
+            hashlib.sha1(name.encode()).hexdigest(): info
+            for name, info in deployments.items()
         }
         return deployments
 

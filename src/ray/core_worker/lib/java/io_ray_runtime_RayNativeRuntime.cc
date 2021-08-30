@@ -167,11 +167,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
             size_t data_size =
                 return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
             auto &metadata = return_objects[i]->GetMetadata();
-            auto &contained_object_id = return_objects[i]->GetNestedIds();
+            std::vector<ObjectID> contained_object_ids;
+            for (const auto &ref : return_objects[i]->GetNestedRefs()) {
+              contained_object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+            }
             auto result_ptr = &(*results)[0];
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-                result_id, data_size, metadata, contained_object_id,
+                result_id, data_size, metadata, contained_object_ids,
                 task_output_inlined_bytes, result_ptr));
 
             // A nullptr is returned if the object already exists.
@@ -244,7 +247,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   options.task_execution_callback = task_execution_callback;
   options.on_worker_shutdown = on_worker_shutdown;
   options.gc_collect = gc_collect;
-  options.ref_counting_enabled = true;
   options.num_workers = static_cast<int>(numWorkersPerProcess);
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
@@ -290,16 +292,15 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetFullName(global, native_actor_name);
 
-  const auto actor_handle = CoreWorkerProcess::GetCoreWorker()
-                                .GetNamedActorHandle(full_name, /*ray_namespace=*/"")
-                                .first;
-  ActorID actor_id;
-  if (actor_handle) {
-    actor_id = actor_handle->GetActorID();
-  } else {
-    actor_id = ActorID::Nil();
+  const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
+      full_name, /*ray_namespace=*/"");
+  const auto status = pair.second;
+  if (status.IsNotFound()) {
+    return IdToJavaByteArray<ActorID>(env, ActorID::Nil());
   }
-  return IdToJavaByteArray<ActorID>(env, actor_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  const auto actor_handle = pair.first;
+  return IdToJavaByteArray<ActorID>(env, actor_handle->GetActorID());
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(

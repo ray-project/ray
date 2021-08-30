@@ -48,6 +48,7 @@ from ray.includes.common cimport (
     CAddress,
     CObjectReference,
     CLanguage,
+    CObjectReference,
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
@@ -100,13 +101,14 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import ray._private.util_worker_handlers as util_worker_handlers
 from ray import external_storage
 from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
 import ray._private.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
-from ray import profiling
+import ray._private.profiling as profiling
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -329,6 +331,7 @@ cdef prepare_args(
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
         c_string call_site
+        c_vector[CObjectReference] inlined_refs
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -370,11 +373,13 @@ cdef prepare_args(
                         Buffer.make(arg_data))
                 for object_ref in serialized_arg.contained_object_refs:
                     inlined_ids.push_back((<ObjectRef>object_ref).native())
+                inlined_refs = (CCoreWorkerProcess.GetCoreWorker()
+                                .GetObjectRefs(inlined_ids))
                 args_vector.push_back(
                     unique_ptr[CTaskArg](new CTaskArgByValue(
                         make_shared[CRayObject](
                             arg_data, string_to_buffer(metadata),
-                            inlined_ids))))
+                            inlined_refs))))
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
@@ -442,7 +447,17 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
-        worker.actors[actor_id] = actor_class.__new__(actor_class)
+        actor = actor_class.__new__(actor_class)
+        worker.actors[actor_id] = actor
+        # Record the actor name via :actor_name: magic token in the log file.
+        # This is used for the prefix in driver logs `(actor_repr pid=123)...`
+        if (hasattr(actor_class, "__ray_actor_class__") and
+                "__repr__" in actor_class.__ray_actor_class__.__dict__):
+            print("{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
+        else:
+            print("{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -460,6 +475,10 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
         function_executor = execution_info.function
+        # Record the task name via :task_name: magic token in the log file.
+        # This is used for the prefix in driver logs `(task_name pid=123) ...`
+        print("{}{}".format(
+            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", "")))
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -620,10 +639,9 @@ cdef execute_task(
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
-        manager.increase_task_counter(job_id, function_descriptor)
-
+        manager.increase_task_counter(function_descriptor)
         # If we've reached the max number of executions for this worker, exit.
-        task_counter = manager.get_task_counter(job_id, function_descriptor)
+        task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
             exit = SystemExit(0)
             exit.is_ray_terminate = True
@@ -972,7 +990,6 @@ cdef class CoreWorker:
         options.run_on_util_worker_handler = run_on_util_worker_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
-        options.ref_counting_enabled = True
         options.is_local_mode = local_mode
         options.num_workers = 1
         options.kill_main = kill_main_task
@@ -1192,8 +1209,9 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
             c_bool put_small_object_in_memory_store
-            c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
+            c_vector[CObjectID] contained_object_ids
+            c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -1201,9 +1219,11 @@ cdef class CoreWorker:
             RayConfig.instance().put_small_object_in_memory_store() and
             inline_small_object)
         total_bytes = serialized_object.total_bytes
+        contained_object_ids = ObjectRefsToVector(
+                serialized_object.contained_object_refs)
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
-            ObjectRefsToVector(serialized_object.contained_object_refs),
+            contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object)
 
         if not object_already_exists:
@@ -1212,14 +1232,16 @@ cdef class CoreWorker:
                     Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
+                contained_object_refs = (
+                        CCoreWorkerProcess.GetCoreWorker().
+                        GetObjectRefs(contained_object_ids))
                 if owner_address is not None:
                     raise Exception(
                         "cannot put data into memory store directly"
                         " and assign owner at the same time")
-                c_object_id_vector.push_back(c_object_id)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, c_object_id_vector),
-                        c_object_id_vector, c_object_id))
+                        CRayObject(data, metadata, contained_object_refs),
+                        contained_object_ids, c_object_id))
             else:
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
@@ -1764,8 +1786,8 @@ cdef class CoreWorker:
                         CCoreWorkerProcess.GetCoreWorker().Put(
                             CRayObject(returns[0][i].get().GetData(),
                                        returns[0][i].get().GetMetadata(),
-                                       return_ids_vector),
-                            return_ids_vector, return_ids[i]))
+                                       c_vector[CObjectReference]()),
+                            c_vector[CObjectID](), return_ids[i]))
                     return_ids_vector.clear()
 
             with nogil:
@@ -1881,7 +1903,7 @@ cdef class CoreWorker:
         # the job config will not change after a job is submitted.
         if self.job_config is None:
             c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
-            self.job_config = ray.gcs_utils.JobConfig()
+            self.job_config = gcs_utils.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 

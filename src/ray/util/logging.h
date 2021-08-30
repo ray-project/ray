@@ -51,8 +51,12 @@
 #include <gtest/gtest_prod.h>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <iostream>
+#include <memory>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -182,17 +186,29 @@ class RayLogBase {
   // By default, this class is a null log because it return false here.
   virtual bool IsEnabled() const { return false; };
 
+  // This function to judge whether current log is fatal or not.
+  virtual bool IsFatal() const { return false; };
+
   template <typename T>
   RayLogBase &operator<<(const T &t) {
     if (IsEnabled()) {
       Stream() << t;
+    }
+    if (IsFatal()) {
+      ExposeStream() << t;
     }
     return *this;
   }
 
  protected:
   virtual std::ostream &Stream() { return std::cerr; };
+  virtual std::ostream &ExposeStream() { return std::cerr; };
 };
+
+/// Callback function which will be triggered to expose fatal log.
+/// The first argument: a string representing log type or label.
+/// The second argument: log content.
+using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
 class RayLog : public RayLogBase {
  public:
@@ -204,6 +220,8 @@ class RayLog : public RayLogBase {
   ///
   /// \return True if logging is enabled and false otherwise.
   virtual bool IsEnabled() const;
+
+  virtual bool IsFatal() const;
 
   /// The init function of ray log for a program which should be called only once.
   ///
@@ -239,6 +257,10 @@ class RayLog : public RayLogBase {
 
   static std::string GetLoggerName();
 
+  /// Add callback functions that will be triggered to expose fatal log.
+  static void AddFatalLogCallbacks(
+      const std::vector<FatalLogCallback> &expose_log_callbacks);
+
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
@@ -247,6 +269,14 @@ class RayLog : public RayLogBase {
   void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
+  /// log level.
+  RayLogLevel severity_;
+  /// Whether current log is fatal or not.
+  bool is_fatal_ = false;
+  /// String stream of exposed log content.
+  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
+  /// Callback functions which will be triggered to expose fatal log.
+  static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
@@ -268,6 +298,7 @@ class RayLog : public RayLogBase {
 
  protected:
   virtual std::ostream &Stream();
+  virtual std::ostream &ExposeStream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
