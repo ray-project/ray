@@ -157,17 +157,12 @@ def test_background_tasks_with_max_calls(shutdown_only):
         return os.getpid(), g.remote()
 
     nested = ray.get([f.remote() for _ in range(10)])
-    pids = []
     while nested:
         pid, g_id = nested.pop(0)
-        pids.append(pid)
         assert ray.get(g_id) == 0
-        g_id = None
-
-    nested = None
-    # Force dereference all objects, so workers can exit.
-    gc.collect()
-    for pid in pids:
+        del g_id
+        # Necessary to dereference the object via GC, so the worker can exit.
+        gc.collect()
         wait_for_pid_to_exit(pid)
 
 
