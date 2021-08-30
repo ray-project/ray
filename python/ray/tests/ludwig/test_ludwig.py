@@ -17,29 +17,32 @@
 # This file is copied and adapted from
 # https://github.com/ludwig-ai/ludwig/blob/master/tests/integration_tests/test_ray.py
 
+import contextlib
+import os
+import tempfile
+
 import pytest
+import ray
 
 ludwig_installed = True
+tf_installed = True
 
 try:
     import ludwig  # noqa: F401
 except (ImportError, ModuleNotFoundError):
     ludwig_installed = False
 
-skip = not ludwig_installed
+try:
+    import tensorflow as tf  # noqa: F401
+except (ImportError, ModuleNotFoundError):
+    tf_installed = False
+
+skip = not ludwig_installed or not tf_installed
 
 # These tests are written for versions of Modin that require python 3.7+
 pytestmark = pytest.mark.skipif(skip, reason="Missing Ludwig dependency")
 
 if not skip:
-    import contextlib
-    import os
-    import tempfile
-
-    import pytest
-    import ray
-    import tensorflow as tf
-
     from ludwig.backend.ray import RayBackend, get_horovod_kwargs
 
     from ray.tests.ludwig.ludwig_test_utils import (create_data_set_to_use,
@@ -55,6 +58,10 @@ if not skip:
     from ray.tests.ludwig.ludwig_test_utils import set_feature
     from ray.tests.ludwig.ludwig_test_utils import train_with_backend
     from ray.tests.ludwig.ludwig_test_utils import vector_feature
+else:
+
+    def spawn(func):
+        return func
 
 
 @contextlib.contextmanager
