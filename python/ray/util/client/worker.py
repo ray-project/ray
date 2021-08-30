@@ -534,14 +534,16 @@ class Worker:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
                 runtime_env.rewrite_runtime_env_uris(job_config)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config),
                     ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 runtime_env.PKG_DIR = old_dir
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
+                # prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                # self.data_client.PrepRuntimeEnv(prep_req)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 

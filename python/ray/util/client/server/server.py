@@ -70,35 +70,17 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             job_config.client_job = True
         else:
             job_config = None
-        current_job_config = None
         with disable_client_hook():
-            if ray.is_initialized():
-                worker = ray.worker.global_worker
-                current_job_config = worker.core_worker.get_job_config()
-            else:
-                extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
-                try:
-                    self.ray_connect_handler(job_config, **extra_kwargs)
-                except Exception as e:
-                    logger.exception("Running Ray Init failed:")
-                    return ray_client_pb2.InitResponse(
-                        ok=False,
-                        msg="Call to `ray.init()` on the server "
-                        f"failed with: {e}")
-        if job_config is None:
-            return ray_client_pb2.InitResponse(ok=True)
-        job_config = job_config.get_proto_job_config()
-        # If the server has been initialized, we need to compare whether the
-        # runtime env is compatible.
-        if current_job_config and \
-           set(job_config.runtime_env.uris) != set(
-                current_job_config.runtime_env.uris) and \
-                len(job_config.runtime_env.uris) > 0:
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env.uris} "
-                f"current one {current_job_config.runtime_env.uris}")
+            extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+            try:
+                self.ray_connect_handler(job_config, **extra_kwargs)
+            except Exception as e:
+                logger.exception("Running Ray Init failed:")
+                return ray_client_pb2.InitResponse(
+                    ok=False,
+                    msg="Call to `ray.init()` on the server "
+                    f"failed with: {e}")
+
         return ray_client_pb2.InitResponse(ok=True)
 
     def PrepRuntimeEnv(self, request,
