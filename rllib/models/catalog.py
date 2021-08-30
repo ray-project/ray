@@ -142,7 +142,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Use the (deprecated) `framestack=True`, to disable the above behavior
     # and to enable legacy stacking behavior (w/o using trajectory view API)
     # instead.
-    "num_framestacks": "auto",
+    "num_framestacks": 0,
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -168,7 +168,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
     # Use `num_framestacks` (int) instead.
-    "framestack": DEPRECATED_VALUE,
+    "framestack": True,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -888,10 +888,9 @@ class ModelCatalog:
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
 
-        if config.get("framestack", False) not in [DEPRECATED_VALUE, False]:
-            deprecation_warning(
-                old="framestack", new="num_framestacks=[int]", error=False)
+        if config.get("framestack") != DEPRECATED_VALUE:
+            # deprecation_warning(
+            #     old="framestack", new="num_framestacks (int)", error=False)
             # If old behavior is desired, disable traj. view-style
             # framestacking.
-            config["framestack"] = True
             config["num_framestacks"] = 0

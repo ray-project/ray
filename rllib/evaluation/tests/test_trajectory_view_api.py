@@ -46,7 +46,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -342,7 +342,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         #config["sgd_minibatch_size"] = 100
         config["seed"] = 42
         config["num_workers"] = 1
-        config["create_env_on_driver"] = True
+        #config["create_env_on_driver"] = True
         config["env"] = "Pong-v0"
 
         for _ in framework_iterator(config, frameworks="tf"):#TODO

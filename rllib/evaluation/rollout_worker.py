@@ -440,7 +440,8 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
-        model_config: ModelConfigDict = model_config or {}
+        model_config: ModelConfigDict = \
+            model_config or self.policy_config.get("model") or {}
 
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
@@ -1459,6 +1460,8 @@ def _determine_spaces_for_multi_agent_dict(
         policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
+    policy_config = policy_config or {}
+
     # Try extracting spaces from env or from given spaces dict.
     env_obs_space = None
     env_act_space = None
@@ -1491,7 +1494,7 @@ def _determine_spaces_for_multi_agent_dict(
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif policy_config and policy_config.get("observation_space"):
+            elif policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1499,6 +1502,7 @@ def _determine_spaces_for_multi_agent_dict(
                     f"{pid} and env does not have an observation space OR "
                     "no spaces received from other workers' env(s) OR no "
                     "`observation_space` specified in config!")
+            
             multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
                 observation_space=obs_space)
 
@@ -1507,7 +1511,7 @@ def _determine_spaces_for_multi_agent_dict(
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif policy_config and policy_config.get("action_space"):
+            elif policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(
