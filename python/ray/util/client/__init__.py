@@ -67,8 +67,7 @@ class _ClientContext:
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "
-                               "install the environment before ray.connect() "
-                               "returns.")
+                               "install the environment before Ray connects.")
         try:
             self.client_worker = Worker(
                 conn_str,

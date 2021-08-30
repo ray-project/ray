@@ -14,7 +14,8 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import MAX_NUM_DELETED_DEPLOYMENTS
+from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                                 MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -30,6 +31,13 @@ class ReplicaState(Enum):
     RUNNING = 3
     SHOULD_STOP = 4
     STOPPING = 5
+
+
+class ReplicaStartupStatus(Enum):
+    PENDING = 1
+    PENDING_SLOW_START = 2
+    SUCCEEDED = 3
+    FAILED = 4
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
@@ -114,14 +122,38 @@ class ActorReplicaWrapper:
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name)
+                    backend_info.backend_config, self._controller_name,
+                    self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
-    def check_ready(self) -> bool:
+    def check_ready(self) -> ReplicaStartupStatus:
+        """
+        Check if current replica has started by making ray API calls on
+        relevant actor / object ref.
+
+        Returns:
+            state (ReplicaStartupStatus):
+                PENDING:
+                    - replica reconfigure() haven't returned.
+                FAILED:
+                    - replica __init__() failed.
+                SUCCEEDED:
+                    - replica __init__() and reconfigure() succeeded.
+        """
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
-        return len(ready) == 1
+        # In case of deployment constructor failure, ray.get will help to
+        # surface exception to each update() cycle.
+        if len(ready) == 0:
+            return ReplicaStartupStatus.PENDING
+        elif len(ready) > 0:
+            try:
+                ray.get(ready)
+            except Exception:
+                return ReplicaStartupStatus.FAILED
+
+        return ReplicaStartupStatus.SUCCEEDED
 
     @property
     def actor_resources(self) -> Dict[str, float]:
@@ -154,6 +186,7 @@ class ActorReplicaWrapper:
             self._health_check_ref = self._actor_handle.run_forever.remote()
 
         ready, _ = ray.wait([self._health_check_ref], timeout=0)
+
         return len(ready) == 0
 
     def force_stop(self):
@@ -252,6 +285,7 @@ class BackendReplica(VersionedReplica):
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+
         self._state = ReplicaState.SHOULD_START
 
     def __get_state__(self) -> Dict[Any, Any]:
@@ -295,8 +329,8 @@ class BackendReplica(VersionedReplica):
             ReplicaState.STARTING_OR_UPDATING,
             ReplicaState.RUNNING,
         }, (f"State must be {ReplicaState.SHOULD_START}, "
-            f"{ReplicaState.STARTING_OR_UPDATING}, or "
-            f"{ReplicaState.RUNNING} *not* {self._state}.")
+            f"{ReplicaState.STARTING_OR_UPDATING}, or"
+            f"{ReplicaState.RUNNING}, *not* {self._state}.")
 
         self._actor.start_or_update(backend_info)
         self._start_time = time.time()
@@ -304,26 +338,32 @@ class BackendReplica(VersionedReplica):
         self._state = ReplicaState.STARTING_OR_UPDATING
         self._version = version
 
-    def check_started(self) -> Tuple[bool, bool]:
+    def check_started(self) -> ReplicaStartupStatus:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
 
         Returns:
-            (ready, past_slow_startup_threshold)
+            status (ReplicaStartupStatus): Most recent state of replica by
+                querying actor obj ref
         """
         if self._state == ReplicaState.RUNNING:
-            return True, False
+            return ReplicaStartupStatus.SUCCEEDED
+
         assert self._state == ReplicaState.STARTING_OR_UPDATING, (
             f"State must be {ReplicaState.STARTING_OR_UPDATING}, "
             f"*not* {self._state}.")
 
-        if self._actor.check_ready():
+        status = self._actor.check_ready()
+        if status == ReplicaStartupStatus.SUCCEEDED:
             self._state = ReplicaState.RUNNING
-            return True, False
+        elif status == ReplicaStartupStatus.PENDING:
+            if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
+                status = ReplicaStartupStatus.PENDING_SLOW_START
+        elif status == ReplicaStartupStatus.FAILED:
+            self._state = ReplicaState.SHOULD_STOP
 
-        time_since_start = time.time() - self._start_time
-        return False, time_since_start > SLOW_STARTUP_WARNING_S
+        return status
 
     def set_should_stop(self, graceful_shutdown_timeout_s: Duration) -> None:
         """Mark the replica to be stopped in the future.
@@ -342,7 +382,6 @@ class BackendReplica(VersionedReplica):
         # We need to handle transitions from:
         #  SHOULD_START -> SHOULD_STOP -> STOPPING
         # This means that the replica_handle may not have been created.
-
         assert self._state in {
             ReplicaState.SHOULD_STOP, ReplicaState.STOPPING
         }, (f"State must be {ReplicaState.SHOULD_STOP} or "
@@ -542,7 +581,12 @@ class BackendState:
         self._long_poll_host = long_poll_host
         self._goal_manager = goal_manager
         self._replicas: Dict[BackendTag, ReplicaStateContainer] = dict()
+        # Each time we set a new backend goal, we're trying to save new
+        # BackendInfo and bring current deployment to meet new status.
+        # In case the new backend goal failed to complete, we keep track of
+        # previous BackendInfo and rollback to it.
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
+        self._backend_matadata_backup: Dict[BackendTag, BackendInfo] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
@@ -551,11 +595,14 @@ class BackendState:
         self._prev_startup_warnings: Dict[BackendTag, float] = defaultdict(
             float)
 
+        self._replica_constructor_retry_counter: Dict[BackendTag,
+                                                      int] = defaultdict(int)
+
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata,
-             self._deleted_backend_metadata, self._target_replicas,
-             self._target_versions,
+             self._backend_matadata_backup, self._deleted_backend_metadata,
+             self._target_replicas, self._target_versions,
              self._backend_goals) = cloudpickle.loads(checkpoint)
 
             for goal_id in self._backend_goals.values():
@@ -596,8 +643,9 @@ class BackendState:
             CHECKPOINT_KEY,
             cloudpickle.dumps(
                 (self._replicas, self._backend_metadata,
-                 self._deleted_backend_metadata, self._target_replicas,
-                 self._target_versions, self._backend_goals)))
+                 self._backend_matadata_backup, self._deleted_backend_metadata,
+                 self._target_replicas, self._target_versions,
+                 self._backend_goals)))
 
     def _notify_backend_configs_changed(
             self, key: Optional[BackendTag] = None) -> None:
@@ -678,7 +726,10 @@ class BackendState:
             self._target_replicas[backend_tag] = 0
 
         self._backend_goals[backend_tag] = new_goal_id
-
+        logger.debug(
+            f"Set backend goal for {backend_tag} with version "
+            f"{backend_info if backend_info is None else backend_info.version}"
+        )
         return new_goal_id, existing_goal_id
 
     def deploy_backend(self, backend_tag: BackendTag, backend_info: BackendInfo
@@ -696,6 +747,10 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
+            # Keep a copy of previous backend info in case goal failed to
+            # complete to initiate rollback
+            self._backend_matadata_backup[
+                backend_tag] = self._backend_metadata[backend_tag]
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
@@ -706,6 +761,9 @@ class BackendState:
 
         if backend_tag not in self._replicas:
             self._replicas[backend_tag] = ReplicaStateContainer()
+
+        # Reset constructor retry counter
+        self._replica_constructor_retry_counter[backend_tag] = 0
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
@@ -735,9 +793,10 @@ class BackendState:
         if force_kill:
             self._backend_metadata[
                 backend_tag].backend_config.\
-                    experimental_graceful_shutdown_timeout_s = 0
+                experimental_graceful_shutdown_timeout_s = 0
 
         self._checkpoint()
+        self._notify_backend_configs_changed(backend_tag)
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
         return new_goal_id
@@ -886,6 +945,9 @@ class BackendState:
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, target_version))
+                logger.debug(
+                    f"Adding SHOULD_START to replica_tag: {replica_tag}, "
+                    f"backend_tag: {backend_tag}")
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -900,6 +962,8 @@ class BackendState:
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
+                logger.debug(f"Adding SHOULD_STOP to replica_tag: {replica}, "
+                             f"backend_tag: {backend_tag}")
                 replica.set_should_stop(graceful_shutdown_timeout_s)
                 self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
                                                 replica)
@@ -915,11 +979,54 @@ class BackendState:
         if checkpoint_needed:
             self._checkpoint()
 
-    def _completed_goals(self) -> List[GoalId]:
+    def _check_completed_goals(
+            self) -> Tuple[List[Tuple[str, GoalId]], List[Tuple[str, GoalId]]]:
+        """
+        In each update() cycle, upon finished calling _scale_all_backends(),
+        check difference between target vs. running relica count for each
+        backend and return a list of deployment goal_ids that should be
+        marked as completed in this cycle.
+
+        Returns:
+            completed_goals (List[Tuple[str, GoalId]]): List of goal_ids
+                successfully completed in this cycle
+            failed_goals (List[Tuple[str, GoalId]]): List of goal_ids
+                failed to start in this cycle
+        """
         completed_goals = []
+        failed_goals = []
         deleted_backends = []
         for backend_tag in self._replicas:
-            target_count = self._target_replicas.get(backend_tag, 0)
+            target_version = self._target_versions[backend_tag]
+            target_replica_count = self._target_replicas.get(backend_tag, 0)
+
+            all_running_replica_cnt = self._replicas[backend_tag].count(
+                states=[ReplicaState.RUNNING])
+            running_at_target_version_replica_cnt = self._replicas[
+                backend_tag].count(
+                    states=[ReplicaState.RUNNING], version=target_version)
+
+            failed_to_start_count = self._replica_constructor_retry_counter[
+                backend_tag]
+            failed_to_start_threshold = min(
+                MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                target_replica_count * 3)
+            # Got to make a call to complete current deploy() goal after
+            # start failure threshold reached, while we might still have
+            # pending replicas in current goal.
+            if (failed_to_start_count >= failed_to_start_threshold
+                    and failed_to_start_threshold != 0):
+                if running_at_target_version_replica_cnt > 0:
+                    # At least one RUNNING replica at target state, partial
+                    # success; We can stop tracking constructor failures and
+                    # leave it to the controller to fully scale to target
+                    # number of replicas and only return as completed once
+                    # reached target replica count
+                    self._replica_constructor_retry_counter[backend_tag] = -1
+                else:
+                    failed_goals.append((backend_tag,
+                                         self._backend_goals.pop(
+                                             backend_tag, None)))
 
             # If we have pending ops, the current goal is *not* ready.
             if (self._replicas[backend_tag].count(states=[
@@ -930,23 +1037,21 @@ class BackendState:
             ]) > 0):
                 continue
 
-            running = self._replicas[backend_tag].get(
-                states=[ReplicaState.RUNNING])
-            running_count = len(running)
+            # All replicas are in steady or terminal states beyond this point
+            # thus we can start tracking completed goals.
 
             # Check for deleting.
-            if target_count == 0 and running_count == 0:
+            if target_replica_count == 0 and all_running_replica_cnt == 0:
                 deleted_backends.append(backend_tag)
-                completed_goals.append(
-                    self._backend_goals.pop(backend_tag, None))
+                completed_goals.append((backend_tag,
+                                        self._backend_goals.pop(
+                                            backend_tag, None)))
 
             # Check for a non-zero number of backends.
-            elif target_count == running_count:
-                # Check that all running replicas are the target version.
-                target_version = self._target_versions[backend_tag]
-                if all(r.version == target_version for r in running):
-                    completed_goals.append(
-                        self._backend_goals.pop(backend_tag, None))
+            elif target_replica_count == running_at_target_version_replica_cnt:
+                completed_goals.append((backend_tag,
+                                        self._backend_goals.pop(
+                                            backend_tag, None)))
 
         for backend_tag in deleted_backends:
             end_time_ms = int(time.time() * 1000)
@@ -962,16 +1067,20 @@ class BackendState:
             del self._target_replicas[backend_tag]
             del self._target_versions[backend_tag]
 
-        return [goal for goal in completed_goals if goal]
+        return [goal for goal in completed_goals
+                if goal], [goal for goal in failed_goals if goal]
 
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
+        # Add or remove BackendReplica instances in self._replicas.
+        # This should be the only place we adjust total number of replicas
+        # we manage.
         self._scale_all_backends()
 
-        for goal_id in self._completed_goals():
-            self._goal_manager.complete_goal(goal_id)
-
+        # Shuffle all replicas from their existing state container to new state
+        # container, if we observed actor changes in corresponding status check
+        # functions.
         transitioned_backend_tags = set()
         for backend_tag, replicas in self._replicas.items():
             for replica in replicas.pop(states=[ReplicaState.RUNNING]):
@@ -1000,16 +1109,30 @@ class BackendState:
             slow_start_replicas = []
             for replica in replicas.pop(
                     states=[ReplicaState.STARTING_OR_UPDATING]):
-                ready, slow_start = replica.check_started()
-                if ready:
+                start_status = replica.check_started()
+                if start_status == ReplicaStartupStatus.SUCCEEDED:
                     # This replica should be now be added to handle's replica
                     # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
-                else:
+                elif start_status == ReplicaStartupStatus.FAILED:
+                    # Replica reconfigure (deploy / upgrade) failed
+                    if self._replica_constructor_retry_counter[backend_tag] >= 0:  # noqa: E501 line too long
+                        # Increase startup failure counter if we're tracking it
+                        self._replica_constructor_retry_counter[
+                            backend_tag] += 1
+
+                    replica.set_should_stop(0)
+                    replicas.add(ReplicaState.SHOULD_STOP, replica)
+                    transitioned_backend_tags.add(backend_tag)
+                elif start_status == ReplicaStartupStatus.PENDING:
+                    # Not done yet, remain at same state
                     replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
-                    if slow_start:
-                        slow_start_replicas.append(replica)
+                else:
+                    # Slow start, remain at same state but also add to
+                    # slow start replicas
+                    replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
+                    slow_start_replicas.append(replica)
 
             if (len(slow_start_replicas)
                     and time.time() - self._prev_startup_warnings[backend_tag]
@@ -1028,7 +1151,8 @@ class BackendState:
                 self._prev_startup_warnings[backend_tag] = time.time()
 
             for replica in replicas.pop(states=[ReplicaState.STOPPING]):
-                if not replica.check_stopped():
+                stopped = replica.check_stopped()
+                if not stopped:
                     replicas.add(ReplicaState.STOPPING, replica)
 
         if len(transitioned_backend_tags) > 0:
@@ -1037,3 +1161,40 @@ class BackendState:
                 self._notify_replica_handles_changed(tag)
                 for tag in transitioned_backend_tags
             ]
+
+        # After observe & shuffle is done with replicas sitting at new state,
+        # determine which deployment goals succeeded or failed.
+        complete_goal_ids, failed_goal_ids = self._check_completed_goals()
+
+        for backend_tag, goal_id in complete_goal_ids:
+            self._goal_manager.complete_goal(goal_id)
+            # Deployment successul, clear up backup backend_info
+            if backend_tag in self._backend_matadata_backup:
+                del self._backend_matadata_backup[backend_tag]
+
+        for backend_tag, goal_id in failed_goal_ids:
+            if backend_tag in self._backend_matadata_backup:
+                # Deployment failed, clear up current backend_info since it's
+                # meaningless to prevent us taking failed backend_info as the
+                # new backup candidate
+                if backend_tag in self._backend_matadata:
+                    del self._backend_matadata[backend_tag]
+                self.deploy_backend(backend_tag,
+                                    self._backend_matadata_backup[backend_tag])
+                # Got to make sure rollback goal is submitted before marking
+                # user's original deploy() call as successful
+                self._goal_manager.complete_goal(
+                    goal_id,
+                    RuntimeError(
+                        f"Deployment failed, reverting {backend_tag} to "
+                        "previous version "
+                        f"{self._backend_matadata_backup[backend_tag].version}"
+                        f" asynchronously."))
+            else:
+                self.delete_backend(backend_tag, force_kill=False)
+                # Got to make sure rollback goal is submitted before marking
+                # user's original deploy() call as successful
+                self._goal_manager.complete_goal(
+                    goal_id,
+                    RuntimeError(f"Deployment failed, deleting {backend_tag} "
+                                 "asynchronously."))

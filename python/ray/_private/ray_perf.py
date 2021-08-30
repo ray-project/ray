@@ -62,6 +62,21 @@ def small_value():
     return b"ok"
 
 
+@ray.remote
+def small_value_batch(n):
+    submitted = [small_value.remote() for _ in range(n)]
+    ray.get(submitted)
+    return 0
+
+
+@ray.remote
+def create_object_containing_ref():
+    obj_refs = []
+    for _ in range(10000):
+        obj_refs.append(ray.put(1))
+    return obj_refs
+
+
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = ("WARNING: Unoptimized build! "
@@ -139,6 +154,14 @@ def main(results=None):
         ray.get([do_put.remote() for _ in range(10)])
 
     results += timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
+
+    obj_containing_ref = create_object_containing_ref.remote()
+
+    def get_containing_object_ref():
+        ray.get(obj_containing_ref)
+
+    results += timeit("single client get object containing 10k refs",
+                      get_containing_object_ref)
 
     def small_task():
         ray.get(small_value.remote())

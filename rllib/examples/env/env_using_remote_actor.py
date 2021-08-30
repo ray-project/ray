@@ -27,12 +27,17 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # Get our param server (remote actor) by name.
         self._handler = ray.get_actor(
             env_config.get("param_server", "param-server"))
+        self.rng_seed = None
 
-    # def seed(self, seed=None):
-    #     print(f"Seeding env (worker={self.env_config.worker_index}) "
-    #           f"with {seed}")
-    #     self.np_random, seed = seeding.np_random(seed)
-    #     return [seed]
+    def seed(self, rng_seed: int = None):
+        if not rng_seed:
+            return
+
+        print(f"Seeding env (worker={self.env_config.worker_index}) "
+              f"with {rng_seed}")
+
+        self.rng_seed = rng_seed
+        self.np_random, _ = seeding.np_random(rng_seed)
 
     def reset(self):
         # Pass in our RNG to guarantee no race conditions.
@@ -43,7 +48,10 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # IMPORTANT: Advance the state of our RNG (self._rng was passed
         # above via ray (serialized) and thus not altered locally here!).
         # Or create a new RNG from another random number:
-        new_seed = self.np_random.randint(0, 1000000)
+        # Seed the RNG with a deterministic seed if set, otherwise, create
+        # a random one.
+        new_seed = (self.np_random.randint(0, 1000000)
+                    if not self.rng_seed else self.rng_seed)
         self.np_random, _ = seeding.np_random(new_seed)
 
         print(f"Env worker-idx={self.env_config.worker_index} "
