@@ -405,6 +405,10 @@ class Trial:
         return bool(self.placement_group_factory)
 
     def reset(self):
+        trainable_cls = self.get_trainable_cls()
+        clear_resources = (trainable_cls and
+                           trainable_cls.default_resource_request(self.config))
+
         return Trial(
             self.trainable_name,
             config=self.config,
@@ -412,8 +416,9 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=self.resources,
-            placement_group_factory=self.placement_group_factory,
+            resources=self.resources if not clear_resources else None,
+            placement_group_factory=self.placement_group_factory
+            if not clear_resources else None,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,

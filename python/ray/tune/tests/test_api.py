@@ -1,11 +1,12 @@
 import pickle
 from collections import Counter
-import shutil
-import tempfile
 import copy
+import gym
 import numpy as np
 import os
+import shutil
 import sys
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -695,6 +696,45 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
+
+    # Test rerunning rllib trials with ERRORED_ONLY.
+    def testRerunRlLib(self):
+        class TestEnv(gym.Env):
+            def __init__(self, should_fail=True):
+                self.observation_space = gym.spaces.Discrete(1)
+                self.action_space = gym.spaces.Discrete(1)
+                self.should_fail = should_fail
+
+            def reset(self):
+                return 0
+
+            def step(self, act):
+                if self.should_fail:
+                    raise Exception()
+                else:
+                    return [0, 1, True, {}]
+
+        try:
+            tune.run(
+                "PPO",
+                config={
+                    "env": TestEnv,
+                    "framework": "torch"
+                },
+                stop={"training_iteration": 1})
+        except Exception:
+            pass
+        trials = tune.run(
+            "PPO",
+            config={
+                "env": TestEnv(should_fail=False),
+                "framework": "torch"
+            },
+            resume="ERRORED_ONLY",
+            stop={
+                "training_iteration": 1
+            }).trials
+        assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
