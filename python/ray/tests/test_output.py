@@ -48,7 +48,6 @@ def f():
     while True:
         time.sleep(1)
         print("hello there")
-        print("x" * 10000)
         sys.stdout.flush()
 
 def kill():
