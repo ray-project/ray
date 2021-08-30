@@ -23,7 +23,9 @@ class ClientInterface {
   virtual ~ClientInterface() {}
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
-  virtual std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
+  virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
+  virtual void Insert(const ray::ObjectID &object_id) = 0;
+  virtual void Remove(const ray::ObjectID &object_id) = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -34,10 +36,11 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   ray::Status SendFd(MEMFD_TYPE fd) override;
 
-  std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
+  const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
-  /// Object ids that are used by this client.
-  std::unordered_set<ray::ObjectID> object_ids;
+  virtual void Insert(const ray::ObjectID &object_id) { object_ids.insert(object_id); }
+
+  virtual void Remove(const ray::ObjectID &object_id) { object_ids.erase(object_id); }
 
   std::string name = "anonymous_client";
 
@@ -46,6 +49,9 @@ class Client : public ray::ClientConnection, public ClientInterface {
   /// File descriptors that are used by this client.
   /// TODO(ekl) we should also clean up old fds that are removed.
   absl::flat_hash_set<MEMFD_TYPE> used_fds_;
+
+  /// Object ids that are used by this client.
+  std::unordered_set<ray::ObjectID> object_ids;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

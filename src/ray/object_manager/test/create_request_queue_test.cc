@@ -23,7 +23,9 @@ namespace plasma {
 class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
-  MOCK_METHOD0(GetObjectIDs, std::unordered_set<ray::ObjectID> &());
+  MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
+  MOCK_METHOD1(Insert, void(const ObjectID &object_id));
+  MOCK_METHOD1(Remove, void(const ObjectID &object_id));
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \

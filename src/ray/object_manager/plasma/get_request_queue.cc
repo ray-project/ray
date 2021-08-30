@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/object_manager/plasma/get_request_queue.h"
 
 namespace plasma {
@@ -5,30 +19,30 @@ namespace plasma {
 GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<ClientInterface> &client,
                        const std::vector<ObjectID> &object_ids, bool is_from_worker,
+                       int64_t num_objects_to_wait_for,
                        ObjectReadyCallback &object_satisfied_callback,
                        AllObjectReadyCallback &all_objects_satisfied_callback)
     : client(client),
       object_ids(object_ids.begin(), object_ids.end()),
       objects(object_ids.size()),
+      num_objects_to_wait_for(num_objects_to_wait_for),
       num_satisfied(0),
       is_from_worker(is_from_worker),
       object_satisfied_callback(object_satisfied_callback),
       all_objects_satisfied_callback(all_objects_satisfied_callback),
-      timer_(io_context) {
-  std::unordered_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
-  num_objects_to_wait_for = unique_ids.size();
-};
+      timer_(io_context){};
 
 void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
                                  int64_t timeout_ms, bool is_from_worker,
                                  ObjectReadyCallback object_satisfied_callback,
                                  AllObjectReadyCallback all_objects_satisfied_callback) {
+  const absl::flat_hash_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   // Create a get request for this object.
   auto get_request = std::make_shared<GetRequest>(
-      GetRequest(io_context_, client, object_ids, is_from_worker,
-                 object_satisfied_callback, all_objects_satisfied_callback));
-  for (auto object_id : object_ids) {
+      io_context_, client, object_ids, is_from_worker, unique_ids.size(),
+      object_satisfied_callback, all_objects_satisfied_callback);
+  for (const auto object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
@@ -51,7 +65,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
   // the client.
   if (get_request->num_satisfied == get_request->num_objects_to_wait_for ||
       timeout_ms == 0) {
-    CallGetRequestCallback(get_request);
+    OnGetRequestCompleted(get_request);
   } else if (timeout_ms != -1) {
     // Set a timer that will cause the get request to return to the client. Note
     // that a timeout of -1 is used to indicate that no timer should be set.
@@ -59,7 +73,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                            [this, get_request](const boost::system::error_code &ec) {
                              if (ec != boost::asio::error::operation_aborted) {
                                // Timer was not cancelled, take necessary action.
-                               CallGetRequestCallback(get_request);
+                               OnGetRequestCompleted(get_request);
                              }
                            });
   }
@@ -67,7 +81,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
 
 void GetRequestQueue::RemoveGetRequestsForClient(
     const std::shared_ptr<ClientInterface> &client) {
-  std::unordered_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
+  absl::flat_hash_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
   for (auto const &pair : object_get_requests_) {
     for (const auto &get_request : pair.second) {
       if (get_request->client == client) {
@@ -88,7 +102,7 @@ void GetRequestQueue::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_re
   // Remove the get request from each of the relevant object_get_requests hash
   // tables if it is present there. It should only be present there if the get
   // request timed out or if it was issued by a client that has disconnected.
-  for (ObjectID &object_id : get_request->object_ids) {
+  for (const auto &object_id : get_request->object_ids) {
     auto object_request_iter = object_get_requests_.find(object_id);
     if (object_request_iter != object_get_requests_.end()) {
       auto &get_requests = object_request_iter->second;
@@ -108,7 +122,7 @@ void GetRequestQueue::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_re
   get_request->MarkRemoved();
 }
 
-void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
+void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
   auto it = object_get_requests_.find(object_id);
   // If there are no get requests involving this object, then return.
   if (it == object_get_requests_.end()) {
@@ -130,7 +144,7 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
     get_request->object_satisfied_callback(object_id, get_request);
     // If this get request is done, reply to the client.
     if (get_request->num_satisfied == get_request->num_objects_to_wait_for) {
-      CallGetRequestCallback(get_request);
+      OnGetRequestCompleted(get_request);
     } else {
       // The call to ReturnFromGet will remove the current element in the
       // array, so we only increment the counter in the else branch.
@@ -148,16 +162,13 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
   }
 }
 
-bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) {
+bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) const {
   return object_get_requests_.count(object_id) > 0;
 }
 
-void GetRequestQueue::CallGetRequestCallback(
+void GetRequestQueue::OnGetRequestCompleted(
     const std::shared_ptr<GetRequest> &get_request) {
   get_request->all_objects_satisfied_callback(get_request);
-  // Remove the get request from each of the relevant object_get_requests hash
-  // tables if it is present there. It should only be present there if the get
-  // request timed out.
   RemoveGetRequest(get_request);
 }
 }  // namespace plasma

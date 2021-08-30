@@ -119,7 +119,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   }
   RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
-  object_ids.insert(object_id);
+  client->Insert(object_id);
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -235,9 +235,10 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
 
 int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
                                            const std::shared_ptr<Client> &client) {
-  auto it = client->object_ids.find(object_id);
-  if (it != client->object_ids.end()) {
-    client->object_ids.erase(it);
+  auto &object_ids = client->GetObjectIDs();
+  auto it = object_ids.find(object_id);
+  if (it != object_ids.end()) {
+    client->Remove(*it);
     RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
@@ -266,21 +267,22 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   }
 
   for (size_t i = 0; i < object_ids.size(); ++i) {
-    get_request_queue_.ObjectSealed(object_ids[i]);
+    get_request_queue_.MarkObjectSealed(object_ids[i]);
   }
 }
 
 int PlasmaStore::AbortObject(const ObjectID &object_id,
                              const std::shared_ptr<Client> &client) {
-  auto it = client->object_ids.find(object_id);
-  if (it == client->object_ids.end()) {
+  auto &object_ids = client->GetObjectIDs();
+  auto it = object_ids.find(object_id);
+  if (it == object_ids.end()) {
     // If the client requesting the abort is not the creator, do not
     // perform the abort.
     return 0;
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
-  client->object_ids.erase(it);
+  client->Remove(*it);
   return 1;
 }
 
@@ -299,7 +301,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
   std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
-  for (const auto &object_id : client->object_ids) {
+  auto &object_ids = client->GetObjectIDs();
+  for (const auto &object_id : object_ids) {
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
     if (entry == nullptr) {
       continue;

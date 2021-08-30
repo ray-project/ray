@@ -30,6 +30,7 @@ struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker,
+             int64_t num_objects_to_wait_for,
              ObjectReadyCallback &object_satisfied_callback,
              AllObjectReadyCallback &all_objects_satisfied_callback);
   /// The client that called get.
@@ -38,15 +39,15 @@ struct GetRequest {
   std::vector<ObjectID> object_ids;
   /// The object information for the objects in this request. This is used in
   /// the reply.
-  std::unordered_map<ObjectID, PlasmaObject> objects;
+  absl::flat_hash_map<ObjectID, PlasmaObject> objects;
   /// The minimum number of objects to wait for in this request.
-  int64_t num_objects_to_wait_for;
+  const int64_t num_objects_to_wait_for;
   /// The number of object requests in this wait request that are already
   /// satisfied.
   int64_t num_satisfied;
   /// Whether or not the request comes from the core worker. It is used to track the size
   /// of total objects that are consumed by core worker.
-  bool is_from_worker;
+  const bool is_from_worker;
 
   ObjectReadyCallback object_satisfied_callback;
   AllObjectReadyCallback all_objects_satisfied_callback;
@@ -87,6 +88,17 @@ class GetRequestQueue {
   GetRequestQueue(instrumented_io_context &io_context,
                   IObjectLifecycleManager &object_lifecycle_mgr)
       : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
+
+  /// Add a get request to get request queue. Note this will call callback functions
+  /// directly if all objects has been satisfied, otherwise store the request
+  /// in queue.
+  /// \param client the client where the request comes from.
+  /// \param object_ids the object ids to get.
+  /// \param timeout_ms timeout in millisecond, -1 is used to indicate that no timer
+  /// should be set. \param is_from_worker whether the get request from a worker or not.
+  /// \param object_callback the callback function called once any object has been
+  /// satisfied. \param all_objects_callback the callback function called when all objects
+  /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                   bool is_from_worker, ObjectReadyCallback object_callback,
@@ -97,7 +109,10 @@ class GetRequestQueue {
   /// \param client The client whose GetRequests should be removed.
   void RemoveGetRequestsForClient(const std::shared_ptr<ClientInterface> &client);
 
-  void ObjectSealed(const ObjectID &object_id);
+  /// Handle a sealed object, should be called when an object sealed. Mark
+  /// the object satisfied and call object callbacks.
+  /// \param object_id the object_id to mark.
+  void MarkObjectSealed(const ObjectID &object_id);
 
  private:
   /// Remove a GetRequest and clean up the relevant data structures.
@@ -106,21 +121,23 @@ class GetRequestQueue {
   void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Only for tests.
-  bool IsGetRequestExist(const ObjectID &object_id);
+  bool IsGetRequestExist(const ObjectID &object_id) const;
 
-  void CallGetRequestCallback(const std::shared_ptr<GetRequest> &get_request);
+  /// Called when objects satisfied. Call get request callback function and
+  /// remove get request in queue.
+  /// \param get_request the get request to be completed.
+  void OnGetRequestCompleted(const std::shared_ptr<GetRequest> &get_request);
 
   instrumented_io_context &io_context_;
 
-  /// The object store stores created objects.
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+  absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
   IObjectLifecycleManager &object_lifecycle_mgr_;
 
-  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
+  friend struct GetRequestQueueTest;
 };
 
 }  // namespace plasma
