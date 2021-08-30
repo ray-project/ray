@@ -33,10 +33,12 @@ class WorkflowStepFunction:
         def _build_workflow(*args, **kwargs) -> Workflow:
             flattened_args = signature.flatten_args(self._func_signature, args,
                                                     kwargs)
+
             def prepare_inputs():
                 ensure_ray_initialized()
                 return serialization_context.make_workflow_inputs(
                     flattened_args)
+
             workflow_data = WorkflowData(
                 func_body=self._func,
                 step_type=StepType.FUNCTION,
