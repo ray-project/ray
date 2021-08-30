@@ -1,4 +1,4 @@
-"""This example demonstrates the usage conditional search spaces with Tune.
+"""This example demonstrates the usage of conditional search spaces with Tune.
 
 It also checks that it is usable with a separate scheduler.
 
