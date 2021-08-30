@@ -7,8 +7,8 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray
-import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
@@ -16,7 +16,7 @@ from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource
+from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable

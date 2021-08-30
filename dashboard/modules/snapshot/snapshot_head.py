@@ -7,7 +7,7 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
 
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 import json
 

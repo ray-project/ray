@@ -12,9 +12,9 @@ import warnings
 import aioredis
 
 import ray
-import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.new_dashboard import k8s_utils
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.dashboard import k8s_utils
+import ray.dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2

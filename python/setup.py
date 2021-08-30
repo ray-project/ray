@@ -162,8 +162,9 @@ ray_files += [
 
 # Dashboard files.
 ray_files += [
-    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
-    os.walk("ray/new_dashboard/client/build") for filename in filenames
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
 
 # If you're adding dependencies for ray extras, please

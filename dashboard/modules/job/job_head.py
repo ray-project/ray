@@ -7,15 +7,15 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.modules.job import job_consts
-from ray.new_dashboard.modules.job.job_description import JobDescription
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.modules.job import job_consts
+from ray.dashboard.modules.job.job_description import JobDescription
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import job_agent_pb2
 from ray.core.generated import job_agent_pb2_grpc
-from ray.new_dashboard.datacenter import (
+from ray.dashboard.datacenter import (
     DataSource,
     GlobalSignals,
 )

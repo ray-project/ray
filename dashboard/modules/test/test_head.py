@@ -3,10 +3,10 @@ import logging
 
 import aiohttp.web
 
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules.test.test_utils as test_utils
-import ray.new_dashboard.modules.test.test_consts as test_consts
-from ray.new_dashboard.datacenter import DataSource
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules.test.test_utils as test_utils
+import ray.dashboard.modules.test.test_consts as test_consts
+from ray.dashboard.datacenter import DataSource
 from ray.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)

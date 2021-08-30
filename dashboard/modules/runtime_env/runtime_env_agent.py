@@ -8,8 +8,8 @@ from typing import Dict
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 import ray._private.runtime_env as runtime_env
 from ray._private.utils import import_attr

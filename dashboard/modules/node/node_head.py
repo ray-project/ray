@@ -8,16 +8,16 @@ from grpc.experimental import aio as aiogrpc
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-from ray.new_dashboard.modules.node import node_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
-from ray.new_dashboard.utils import async_loop_forever
-from ray.new_dashboard.memory_utils import GroupByType, SortingType
+from ray.dashboard.modules.node import node_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable

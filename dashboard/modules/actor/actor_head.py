@@ -2,22 +2,22 @@ import asyncio
 import logging
 import aiohttp.web
 import ray._private.utils
-from ray.new_dashboard.modules.actor import actor_utils
+from ray.dashboard.modules.actor import actor_utils
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import rest_response
-from ray.new_dashboard.modules.actor import actor_consts
-from ray.new_dashboard.modules.actor.actor_utils import \
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.utils import rest_response
+from ray.dashboard.modules.actor import actor_consts
+from ray.dashboard.modules.actor.actor_utils import \
     actor_classname_from_task_spec
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable

@@ -86,10 +86,10 @@ if __name__ == "__main__":
     do_link("serve", force=args.yes)
     do_link("_private", force=args.yes)
     do_link("node.py", force=args.yes)
-    # Link package's `new_dashboard` directly to local (repo's) dashboard.
-    # The repo's `new_dashboard` is a file, soft-linking to which will not work
+    # Link package's `dashboard` directly to local (repo's) dashboard.
+    # The repo's `dashboard` is a file, soft-linking to which will not work
     # on Mac.
-    do_link("new_dashboard", force=args.yes, local_path="../../../dashboard")
+    do_link("dashboard", force=args.yes, local_path="../../../dashboard")
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "

@@ -1,9 +1,9 @@
 import logging
 
 import aiohttp.web
-import ray.new_dashboard.modules.log.log_utils as log_utils
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.datacenter import DataSource, GlobalSignals
+import ray.dashboard.modules.log.log_utils as log_utils
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource, GlobalSignals
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable

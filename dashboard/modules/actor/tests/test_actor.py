@@ -7,11 +7,11 @@ import traceback
 import ray
 import pytest
 import redis
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray.new_dashboard.tests.conftest import *  # noqa
-from ray.new_dashboard.modules.actor import actor_consts
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.modules.actor import actor_consts
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
