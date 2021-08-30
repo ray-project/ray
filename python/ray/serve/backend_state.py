@@ -573,7 +573,8 @@ class BackendState:
 
     def __init__(self, controller_name: str, detached: bool,
                  kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
-                 goal_manager: AsyncGoalManager):
+                 goal_manager: AsyncGoalManager,
+                 all_replica_tags: Optional[List[str]]):
 
         self._controller_name = controller_name
         self._detached = detached
@@ -597,16 +598,12 @@ class BackendState:
 
         self._replica_constructor_retry_counter: Dict[BackendTag,
                                                       int] = defaultdict(int)
-
-        checkpoint = self._kv_store.get(CHECKPOINT_KEY)
-        if checkpoint is not None:
-            (self._replicas, self._backend_metadata,
-             self._backend_matadata_backup, self._deleted_backend_metadata,
-             self._target_replicas, self._target_versions,
-             self._backend_goals) = cloudpickle.loads(checkpoint)
-
-            for goal_id in self._backend_goals.values():
-                self._goal_manager.create_goal(goal_id)
+        if all_replica_tags and len(all_replica_tags) > 0:
+            # There're running replicas in current cluster, explicitly passed
+            # in with tags as primary means of in-place recovery
+            self._resume_all_backend_from_replica_tags(all_replica_tags)
+        else:
+            self._resume_from_checkpoint()
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -646,6 +643,56 @@ class BackendState:
                  self._backend_matadata_backup, self._deleted_backend_metadata,
                  self._target_replicas, self._target_versions,
                  self._backend_goals)))
+
+    def _resume_from_checkpoint(self) -> None:
+        """
+        Resume cluster from checkpoint states.
+        """
+        checkpoint = self._kv_store.get(CHECKPOINT_KEY)
+        if checkpoint is not None:
+            (self._replicas, self._backend_metadata,
+            self._backend_matadata_backup, self._deleted_backend_metadata,
+            self._target_replicas, self._target_versions,
+            self._backend_goals) = cloudpickle.loads(checkpoint)
+
+            for goal_id in self._backend_goals.values():
+                self._goal_manager.create_goal(goal_id)
+
+    def _resume_all_backend_from_replica_tags(self, all_replica_tags):
+        """
+        Resume all backends from replica tags queried by single
+        list_named_actor() call, which queries all actors in current ray
+        cluster regradless of backend tag.
+        """
+        backend_tag_to_replicas = dict(list)
+        # Each replica tag is formatted as "backend_tag#random_letter"
+        for replica_tag in all_replica_tags:
+            backend_tag = replica_tag.split("#")[0]
+            backend_tag_to_replicas[backend_tag].append(replica_tag)
+
+        for backend_tag, _ in list(
+            self._target_replicas.items()
+        ):
+            target_version = self._target_versions[backend_tag]
+            self._resume_single_backend_from_replica_tags(
+                backend_tag,
+                target_version,
+                backend_tag_to_replicas[backend_tag]
+            )
+
+    def _resume_single_backend_from_replica_tags(
+            self,
+            backend_tag: str,
+            target_version: BackendVersion,
+            replica_tags: List[str]) -> None:
+        """
+        Resume cluster from running actor names within its own backend tag.
+        """
+        for replica_tag in replica_tags:
+            self._replicas[backend_tag].add(
+                    ReplicaState.STARTING_OR_UPDATING,
+                    BackendReplica(self._controller_name, self._detached,
+                                   replica_tag, backend_tag, target_version))
 
     def _notify_backend_configs_changed(
             self, key: Optional[BackendTag] = None) -> None:
@@ -1182,7 +1229,7 @@ class BackendState:
                 self.deploy_backend(backend_tag,
                                     self._backend_matadata_backup[backend_tag])
                 # Got to make sure rollback goal is submitted before marking
-                # user's original deploy() call as successful
+                # user's original deploy() call as completed with exception
                 self._goal_manager.complete_goal(
                     goal_id,
                     RuntimeError(
@@ -1193,7 +1240,7 @@ class BackendState:
             else:
                 self.delete_backend(backend_tag, force_kill=False)
                 # Got to make sure rollback goal is submitted before marking
-                # user's original deploy() call as successful
+                # user's original deploy() call as completed with exception
                 self._goal_manager.complete_goal(
                     goal_id,
                     RuntimeError(f"Deployment failed, deleting {backend_tag} "
