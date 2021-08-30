@@ -131,8 +131,6 @@ parser.add_argument(
     help="True if Ray debugger is made available externally.")
 
 if __name__ == "__main__":
-    sys.path.insert(0, os.getcwd())
-
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
     # as a step function. For more details, check out
