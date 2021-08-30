@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -23,6 +24,8 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
+// clang-format on
+
 namespace ray {
 namespace core {
 
