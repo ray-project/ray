@@ -279,7 +279,10 @@ def test_wf_no_run():
     def f2(*w):
         pass
 
-    f2.step(*[f1.step() for _ in range(10)])
+    f = f2.step(*[f1.step() for _ in range(10)])
+
+    with pytest.raises(Exception):
+        f.run()
 
 
 if __name__ == "__main__":
