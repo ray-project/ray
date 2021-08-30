@@ -1,13 +1,14 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Optional, Set
 
 import ray
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
-from ray.util.sgd.v2.worker_group import WorkerGroup, get_node_id,\
-    get_hostname, update_env_vars
+from ray.util.sgd.v2.utils import get_node_id, get_hostname, update_env_vars
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,11 @@ class HorovodConfig(BackendConfig):
     See https://github.com/horovod/horovod/blob/master/horovod/runner/common/util/settings.py # noqa: E501
 
     Args:
-        nics (int): Network interfaces that can be used for communication.
+        nics (Optional[Set[str]): Network interfaces that can be used for
+            communication.
         verbose (int): Horovod logging verbosity.
     """
-    nics: set = None
+    nics: Optional[Set[str]] = None
     verbose: int = 1
 
     @property
@@ -41,7 +43,7 @@ class HorovodBackend(BackendInterface):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: HorovodConfig):
 
-        # TODO(matt): Implement placement group strategies.
+        # TODO(matt): Implement placement group strategies in BackendExecutor.
 
         # Initialize workers with Horovod environment variables
         setup_futures = []

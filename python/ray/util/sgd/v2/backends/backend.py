@@ -14,8 +14,8 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path
-from ray.util.sgd.v2.worker_group import WorkerGroup, get_gpu_ids, get_node_id
+from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
 
@@ -107,7 +107,8 @@ class BackendExecutor:
         if initialization_hook:
             self.worker_group.execute(initialization_hook)
 
-        self._setup_gpus()
+        if self._num_gpus_per_worker > 0:
+            self._setup_gpus()
 
         self._backend.on_start(self.worker_group, self._backend_config)
 
@@ -135,36 +136,33 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
-        if self._num_gpus_per_worker > 0:
 
-            def get_node_id_and_gpu():
-                node_id = get_node_id()
-                gpu_ids = get_gpu_ids()
-                return node_id, gpu_ids
+        def get_node_id_and_gpu():
+            node_id = get_node_id()
+            gpu_ids = get_gpu_ids()
+            return node_id, gpu_ids
 
-            node_ids_and_gpu_ids = self.worker_group.execute(
-                get_node_id_and_gpu)
+        node_ids_and_gpu_ids = self.worker_group.execute(get_node_id_and_gpu)
 
-            node_id_to_worker_id = defaultdict(list)
-            node_id_to_gpu_ids = defaultdict(list)
+        node_id_to_worker_id = defaultdict(set)
+        node_id_to_gpu_ids = defaultdict(set)
 
-            for worker_id, (node_id,
-                            gpu_ids) in enumerate(node_ids_and_gpu_ids):
-                node_id_to_worker_id[node_id].append(worker_id)
-                node_id_to_gpu_ids[node_id].extend(gpu_ids)
+        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+            node_id_to_worker_id[node_id].add(worker_id)
+            node_id_to_gpu_ids[node_id].update(gpu_ids)
 
-            futures = []
-            for node_id, gpu_ids in node_id_to_gpu_ids.items():
-                all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
+        futures = []
+        for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
 
-                def set_gpu_ids():
-                    os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+            def set_gpu_ids():
+                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
 
-                for worker_id in node_id_to_worker_id[node_id]:
-                    futures.append(
-                        self.worker_group.execute_single_async(
-                            worker_id, set_gpu_ids))
-            ray.get(futures)
+            for worker_id in node_id_to_worker_id[node_id]:
+                futures.append(
+                    self.worker_group.execute_single_async(
+                        worker_id, set_gpu_ids))
+        ray.get(futures)
 
     def start_training(
             self,
