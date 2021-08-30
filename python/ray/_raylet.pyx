@@ -330,7 +330,7 @@ cdef prepare_args(
         int64_t total_inlined
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
-        c_string call_site
+        c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
 
     worker = ray.worker.global_worker
@@ -360,6 +360,8 @@ cdef prepare_args(
                         metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
+            if RayConfig.instance().record_ref_creation_sites():
+                get_py_stack(&put_arg_call_site)
             # TODO(edoakes): any objects containing ObjectRefs are spilled to
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectRefs right now so this is a
@@ -383,14 +385,12 @@ cdef prepare_args(
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
-                call_site.clear()
-                get_py_stack(&call_site)
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(
                             serialized_arg, inline_small_object=False)),
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                        call_site)))
+                        put_arg_call_site)))
 
 
 cdef raise_if_dependency_failed(arg):

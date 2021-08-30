@@ -2363,7 +2363,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       bool copy_data = options_.language == Language::PYTHON;
       args->at(i) =
           std::make_shared<RayObject>(data, metadata, task.ArgInlinedRefs(i), copy_data);
-      arg_reference_ids->at(i).set_object_id(ObjectID::Nil().Binary());
+      arg_refs->at(i).set_object_id(ObjectID::Nil().Binary());
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the

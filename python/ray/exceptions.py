@@ -296,6 +296,12 @@ class ObjectLostError(RayError):
                "failure or system error.")
         if self.call_site:
             msg += (f" The ObjectRef was created at: {self.call_site}")
+        else:
+            msg += (
+                " To see information about where this ObjectRef was created "
+                "in Python, set the environment variable "
+                "RAY_record_ref_creation_sites=1 during `ray start` and "
+                "`ray.init()`.")
         return msg
 
 

@@ -94,12 +94,15 @@ if __name__ == "__main__":
     assert x == 42
 
 
-def test_object_lost_error(ray_start_cluster):
+@pytest.mark.parametrize("debug_enabled", [False, True])
+def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=0, _system_config={
-            "num_heartbeats_timeout": 3,
-        })
+    system_config = {
+        "num_heartbeats_timeout": 3,
+    }
+    if debug_enabled:
+        system_config["record_ref_creation_sites"] = True
+    cluster.add_node(num_cpus=0, _system_config=system_config)
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(num_cpus=1)
 
@@ -136,8 +139,8 @@ def test_object_lost_error(ray_start_cluster):
     except ray.exceptions.ObjectLostError as e:
         error = str(e)
         print(error)
-        assert "actor call" in error
-        assert "test_failure_4.py" in error
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
 
     try:
         ray.get(y)
@@ -145,16 +148,16 @@ def test_object_lost_error(ray_start_cluster):
     except ray.exceptions.RayTaskError as e:
         error = str(e)
         print(error)
-        assert "actor call" in error
-        assert "test_failure_4.py" in error
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
 
     try:
         ray.get(task_arg.remote(x))
     except ray.exceptions.RayTaskError as e:
         error = str(e)
         print(error)
-        assert "actor call" in error
-        assert "test_failure_4.py" in error
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
 
 
 if __name__ == "__main__":
