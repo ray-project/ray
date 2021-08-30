@@ -29,7 +29,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -368,10 +367,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         RAY_CHECK(!ip_address.empty() && port != 0);
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
-      },
-      /*put_agent_address=*/
-      [this](const std::string &value, const PutAgentAddressCallback &callback) {
-        PutAgentAddress(gcs_client_, self_node_id_, value, callback);
       });
   worker_pool_.SetAgentManager(agent_manager_);
 }
