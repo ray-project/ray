@@ -36,6 +36,7 @@ class DataClient:
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self.lock = threading.RLock()
+        self.outstanding_requests: Dict[int, Any] = {}
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -88,27 +89,33 @@ class DataClient:
                             self.cv.notify_all()
                 return
             except grpc.RpcError as e:
-                if e.code() in (grpc.StatusCode.CANCELLED,
-                                grpc.StatusCode.RESOURCE_EXHAUSTED):
-                    # Graceful shutdown. CANCELLED means we intentionally
-                    # ended our connection. RESOURCE_EXHAUSTED likely means
-                    # we reached client limit
+                if (e.code() == grpc.StatusCode.CANCELLED
+                        and self.client_worker._in_shutdown):
+                    # The has been cancelled because the the worker is being
+                    # closed -- shutdown gracefully
                     self._shutdown()
-                    return
-                elif e.code() == grpc.StatusCode.UNAVAILABLE:
-                    logger.exception("Server disconnected from data channel")
+                elif e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                    # Server has hit max number of clients
+                    self._shutdown()
+                elif e.code() == grpc.StatusCode.NOT_FOUND:
+                    # User took too long to reconnect.
+                    self._shutdown()
                 else:
-                    logger.exception("Got Error from data channel:")
-                try:
-                    time.sleep(3)
-                    self.client_worker._connect_grpc_channel()
-                    reconnecting = "True"
-                    continue
-                except ConnectionError:
-                    logger.info(
-                        "Reconnection failed, cancelling data channel.")
-                    self._shutdown()
-                    return
+                    logger.exception("Got error from data channel:")
+                    try:
+                        time.sleep(3)
+                        logger.warning("Attempting to reconnect data channel.")
+                        self.client_worker._connect_grpc_channel()
+                        reconnecting = "True"
+                        for request in self.outstanding_requests.values():
+                            # Retry outstanding requests
+                            self.request_queue.put(request)
+                        continue
+                    except ConnectionError:
+                        logger.warning(
+                            "Reconnection failed, cancelling data channel.")
+                        self._shutdown()
+            return
 
     def _shutdown(self):
         with self.cv:
@@ -136,6 +143,7 @@ class DataClient:
         self.request_queue.put(req)
         data = None
         with self.cv:
+            self.outstanding_requests[req_id] = req
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
@@ -147,6 +155,7 @@ class DataClient:
                     f"in handling the most recent request: {req}. Ray Client "
                     "has been disconnected.")
             data = self.ready_data[req_id]
+            del self.outstanding_requests[req_id]
             del self.ready_data[req_id]
         return data
 

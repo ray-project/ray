@@ -436,10 +436,10 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if client_id not in self.clients_last_seen:
                     # Client took too long to reconnect, session has already
                     # been cleaned up
-                    context.set_code(grpc.StatusCode.CANCELLED)
+                    context.set_code(grpc.StatusCode.NOT_FOUND)
                     context.set_details(
-                        "Cannot reconnect because session has already been "
-                        "cleaned up")
+                        "Attempted to reconnect a session that has already "
+                        "been cleaned up")
                     return
                 self.clients_last_seen[client_id] = start_time
             server = self.proxy_manager._get_server_for_client(client_id)
@@ -497,10 +497,11 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     f"Unexpected GRPC exception while proxying {client_id}."
                     " Delaying cleanup.")
                 # Delay cleanup, since client may attempt a reconnect
-                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
         except Exception:
             logger.exception("Proxying Datapath failed!")
         finally:
+            # TODO: don't always do this
+            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
             with self.clients_lock:
                 if client_id not in self.clients_last_seen:
                     logger.info(f"{client_id} not found. Skipping clean up.")

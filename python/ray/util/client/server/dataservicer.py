@@ -199,7 +199,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             if reconnecting and client_id not in self.client_last_seen:
                 # Client took too long to reconnect, session has been
                 # cleaned up.
-                context.set_code(grpc.StatusCode.CANCELLED)
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details(
+                    "Attempted to reconnect to a session that has already "
+                    "been cleaned up.")
                 return False
             if client_id in self.client_last_seen:
                 logger.debug(f"Client {client_id} has reconnected.")

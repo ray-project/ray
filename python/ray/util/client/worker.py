@@ -82,20 +82,23 @@ def backoff(timeout: int) -> int:
 
 def reconnect_on_grpc_error(func):
     @functools.wraps(func)
-    def f(self, *args, **kwargs):
+    def reconnect_wrapper(self, *args, **kwargs):
         while True:
             try:
                 return func(self, *args, **kwargs)
             except grpc.RpcError as e:
-                if e.code() in (grpc.StatusCode.CANCELLED,
-                                grpc.StatusCode.RESOURCE_EXHAUSTED):
+                if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                    # intentional shutdown
+                    raise
+                elif (e.code() == grpc.StatusCode.CANCELLED
+                      and self._in_shutdown):
                     # intentional shutdown
                     raise
                 self._connect_grpc_channel()
                 if not self.is_connected():
                     raise
 
-    return f
+    return reconnect_wrapper
 
 
 class Worker:
@@ -144,6 +147,9 @@ class Worker:
         self.total_num_tasks_scheduled = 0
         self.total_outbound_message_size_bytes = 0
 
+        # Set to True when close() is called
+        self._in_shutdown = False
+
     def _connect_grpc_channel(self):
         if self._session_ended:
             # Reconnect has already failed, give up early
@@ -165,7 +171,7 @@ class Worker:
             return
         try:
             if self.channel:
-                # Close old channel
+                # Clean up old channel
                 self.channel.close()
 
             if self._secure:
@@ -393,7 +399,6 @@ class Worker:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
-        print(task.payload_id)
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -451,6 +456,7 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
+        self._in_shutdown = True
         self.data_client.close()
         self.log_client.close()
         if self.channel:
