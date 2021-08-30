@@ -105,10 +105,10 @@ def _construct_resume_workflow_from_step(
 
 
 @ray.remote(num_returns=2)
-def _resume_workflow_step_executor(
-        workflow_id: str, step_id: "StepID",
-        store_url: str,
-        current_output: [ray.ObjectRef]) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
+def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
+                                   store_url: str, current_output: [
+                                       ray.ObjectRef
+                                   ]) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
     # TODO (yic): We need better dependency management for virtual actor
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
@@ -133,10 +133,9 @@ def _resume_workflow_step_executor(
     return wf_store.load_step_output(r), None
 
 
-def resume_workflow_step(workflow_id: str, step_id: "StepID",
-                         store_url: str,
-                         current_output: Optional[ray.ObjectRef]
-) -> WorkflowExecutionResult:
+def resume_workflow_step(
+        workflow_id: str, step_id: "StepID", store_url: str,
+        current_output: Optional[ray.ObjectRef]) -> WorkflowExecutionResult:
     """Resume a step of a workflow.
 
     Args:

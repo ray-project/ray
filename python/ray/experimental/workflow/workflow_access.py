@@ -178,10 +178,7 @@ class WorkflowManagementActor:
         except KeyError:
             current_output = None
         result = recovery.resume_workflow_step(
-            workflow_id, step_id,
-            self._store.storage_url,
-            current_output
-        )
+            workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
