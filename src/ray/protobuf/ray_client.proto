@@ -116,11 +116,14 @@ message PutResponse {
 // Requests data from the server.
 message GetRequest {
   // The reference ID for the requested object data
-  repeated bytes ids = 1;
+  repeated bytes ids = 4;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+
+  // Deprecated fields.
+  bytes id = 1 [deprecated = true];
 }
 
 message GetResponse {
