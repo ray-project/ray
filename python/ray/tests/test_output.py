@@ -38,6 +38,7 @@ def test_disable_driver_logs_breakpoint():
 import time
 import os
 import ray
+import sys
 import threading
 
 ray.init(num_cpus=2)
@@ -48,6 +49,7 @@ def f():
         time.sleep(1)
         print("hello there")
         print("x" * 10000)
+        sys.stdout.flush()
 
 def kill():
     time.sleep(5)
