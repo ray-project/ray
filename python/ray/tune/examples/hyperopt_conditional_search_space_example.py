@@ -17,16 +17,16 @@ from hyperopt import hp
 
 def f_unpack_dict(dct):
     """
-    Unpacks all sub-dictionaries in given dictionary recursively. 
-    There should be no duplicated keys across all nested 
+    Unpacks all sub-dictionaries in given dictionary recursively.
+    There should be no duplicated keys across all nested
     subdictionaries, or some instances will be lost without warning
-    
+
     Source: https://www.kaggle.com/fanvacoolt/tutorial-on-hyperopt
-    
+
     Parameters:
     ----------------
     dct : dictionary to unpack
-    
+
     Returns:
     ----------------
     : unpacked dictionary
