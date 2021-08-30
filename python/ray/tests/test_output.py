@@ -60,7 +60,8 @@ t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
 time.sleep(2)  # Enough time to print one hello.
-breakpoint()  # This should disable worker logs.
+ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
+# breakpoint()  # Only works in Py3.7+
     """
 
     proc = run_string_as_driver_nonblocking(script)
