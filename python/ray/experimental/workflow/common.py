@@ -148,10 +148,11 @@ def slugify(value: str, allow_unicode=False) -> str:
 
 
 class Workflow:
-    def __init__(self, workflow_data: WorkflowData):
+    def __init__(self, workflow_data: WorkflowData, prepare_inputs):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
             raise ValueError("Workflow should have one return value.")
         self._data = workflow_data
+        self._prepare_inputs = prepare_inputs
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
         # step id will be generated during runtime
@@ -203,7 +204,7 @@ class Workflow:
         q = deque([self])
         while q:  # deque's pythonic way to check emptyness
             w: Workflow = q.popleft()
-            for p in w._data.inputs.workflows:
+            for p in w.data.inputs.workflows:
                 if p not in visited_workflows:
                     visited_workflows.add(p)
                     q.append(p)
@@ -212,6 +213,9 @@ class Workflow:
     @property
     def data(self) -> WorkflowData:
         """Get the workflow data."""
+        if self._data.inputs is None:
+            self._data.inputs = self._prepare_inputs()
+            del self._prepare_inputs
         return self._data
 
     def __reduce__(self):

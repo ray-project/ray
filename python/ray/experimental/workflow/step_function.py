@@ -31,21 +31,22 @@ class WorkflowStepFunction:
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            ensure_ray_initialized()
             flattened_args = signature.flatten_args(self._func_signature, args,
                                                     kwargs)
-            workflow_inputs = serialization_context.make_workflow_inputs(
-                flattened_args)
+            def prepare_inputs():
+                ensure_ray_initialized()
+                return serialization_context.make_workflow_inputs(
+                    flattened_args)
             workflow_data = WorkflowData(
                 func_body=self._func,
                 step_type=StepType.FUNCTION,
-                inputs=workflow_inputs,
+                inputs=None,
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
                 name=self._name,
             )
-            return Workflow(workflow_data)
+            return Workflow(workflow_data, prepare_inputs)
 
         self.step = _build_workflow
 

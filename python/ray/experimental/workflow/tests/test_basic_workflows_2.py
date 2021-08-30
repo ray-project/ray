@@ -268,6 +268,20 @@ def test_wf_run(workflow_start_regular, tmp_path):
     assert counter.read_text() == "1"
 
 
+def test_wf_no_run():
+    @workflow.step
+    def f1():
+        pass
+
+    f1.step()
+
+    @workflow.step
+    def f2(*w):
+        pass
+
+    f2.step(*[f1.step() for _ in range(10)])
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
