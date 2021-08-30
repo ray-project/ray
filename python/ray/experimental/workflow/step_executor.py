@@ -80,7 +80,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                                f"Current step: '{current_step_id}'")
                 step_ref = recovery.resume_workflow_step(
                     workflow_id, workflow_ref.step_id,
-                    storage_url).persisted_output
+                    storage_url, None).persisted_output
                 output, _ = _resolve_object_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping

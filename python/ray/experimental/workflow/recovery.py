@@ -112,10 +112,13 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     # TODO (yic): We need better dependency management for virtual actor
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
-    # running
+    # running. This is a really bad one.
     for ref in current_output:
-        while isinstance(ref, ray.ObjectRef):
-            ref = ray.get(ref)
+        try:
+            while isinstance(ref, ray.ObjectRef):
+                ref = ray.get(ref)
+        except Exception:
+            pass
     try:
         store = storage.create_storage(store_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
