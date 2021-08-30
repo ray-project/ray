@@ -16,8 +16,17 @@ DEFAULT_HTTP_PORT = 8000
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# How often to call the control loop on the controller.
+CONTROL_LOOP_PERIOD_S = 0.1
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
+
+#: Max retry count for allowing failures in replica constructor.
+#: If no replicas at target version is running by the time we're at
+#: max construtor retry count, deploy() is considered failed.
+#: By default we set threshold as min(num_replicas * 3, this value)
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [

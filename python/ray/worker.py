@@ -1083,7 +1083,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
 
     # Print out autoscaler events only, ignoring other messages.
     for line in lines:
-        if ":event_summary:" in line:
+        if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
                        "autoscaling status. To disable autoscaler event "
@@ -1091,7 +1091,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
-            yield line.split(":event_summary:")[1]
+            yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
 
 
 def time_string() -> str:
@@ -1123,7 +1123,12 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         if data["pid"] in ["autoscaler", "raylet"]:
             return ""
         else:
-            return "pid="
+            res = "pid="
+            if data["actor_name"]:
+                res = data["actor_name"] + " " + res
+            elif data["task_name"]:
+                res = data["task_name"] + " " + res
+            return res
 
     def color_for(data: Dict[str, str]) -> str:
         """The color for this log line."""
@@ -1372,8 +1377,7 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid)
+        serialized_job_config, runtime_env_hash, worker_shim_pid)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
