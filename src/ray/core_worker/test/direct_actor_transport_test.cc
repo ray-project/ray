@@ -14,6 +14,8 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/task_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
@@ -21,8 +23,6 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-#include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/task_manager.h"
 namespace ray {
 namespace core {
 
