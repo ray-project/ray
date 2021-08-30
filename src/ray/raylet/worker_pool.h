@@ -326,6 +326,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
+  /// \param num_available_cpus The number of CPUs that are currently unused.
+  /// We aim to prestart 1 worker per CPU, up to the the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size,
                        int64_t num_available_cpus);
 
