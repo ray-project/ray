@@ -65,7 +65,7 @@ class CheckpointManager:
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = 0
 
-        self.create_logdir(log_dir)
+        self.logdir = self.create_logdir(log_dir)
 
     def on_start_training(self,
                           checkpoint_strategy: Optional[CheckpointStrategy]):
@@ -109,22 +109,18 @@ class CheckpointManager:
             with checkpoint_path.open("rb") as f:
                 return cloudpickle.load(f)
 
-    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
+    def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
         # Create directory for logs.
         log_dir = Path(log_dir) if log_dir else None
-        self.logdir = self._construct_logdir(log_dir)
-        self.logdir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Trainer logs will be logged in: {self.logdir}")
-
-    def _construct_logdir(self, logdir: Optional[Path]) -> Path:
-        """Path to the log directory."""
-        if not logdir:
+        if not log_dir:
             # Initialize timestamp for identifying this SGD training execution.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir = Path(f"sgd_{timestr}")
-
-        return construct_path(logdir, DEFAULT_RESULTS_DIR)
+            log_dir = Path(f"sgd_{timestr}")
+        log_dir = construct_path(log_dir, DEFAULT_RESULTS_DIR)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trainer logs will be logged in: {log_dir}")
+        return log_dir
 
     def create_run_dir(self):
         """Create rundir for the particular training run."""
@@ -245,13 +241,13 @@ class BackendExecutor:
         self._num_gpus_per_worker = num_gpus_per_worker
 
         if tune is not None and tune.is_session_enabled():
-            self._checkpoint_manager = TuneCheckpointManager()
+            self.checkpoint_manager = TuneCheckpointManager()
         else:
-            self._checkpoint_manager = CheckpointManager()
+            self.checkpoint_manager = CheckpointManager()
 
         self.worker_group = InactiveWorkerGroup()
 
-        self._checkpoint_manager.on_init(log_dir)
+        self.checkpoint_manager.on_init(log_dir)
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
@@ -285,7 +281,7 @@ class BackendExecutor:
                 configurations for saving checkpoints.
         """
 
-        self._checkpoint_manager.on_start_training(
+        self.checkpoint_manager.on_start_training(
             checkpoint_strategy=checkpoint_strategy)
 
         use_detailed_autofilled_metrics = env_integer(
@@ -307,7 +303,7 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
-        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
+        checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
 
         futures = []
         for world_rank in range(len(self.worker_group)):
@@ -410,7 +406,7 @@ class BackendExecutor:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(results)
+                self.checkpoint_manager._process_checkpoint(results)
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise SGDBackendError(f"Unexpected result type: "
@@ -479,7 +475,7 @@ class BackendExecutor:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(results)
+                self.checkpoint_manager._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
         return self.get_with_failure_handling(futures)
@@ -527,6 +523,31 @@ class BackendExecutor:
     @property
     def is_started(self):
         return not isinstance(self.worker_group, InactiveWorkerGroup)
+
+    @property
+    def latest_run_dir(self) -> Optional[Path]:
+        """Path to the latest run directory."""
+        return self.checkpoint_manager.latest_run_dir
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        """Path to the latest checkpoint directory."""
+        return self.checkpoint_manager.latest_checkpoint_dir
+
+    @property
+    def latest_checkpoint_path(self) -> Optional[Path]:
+        """Path to the latest persisted checkpoint."""
+        return self.checkpoint_manager.latest_checkpoint_path
+
+    @property
+    def latest_checkpoint(self) -> Optional[Dict]:
+        """Latest checkpoint object."""
+        return self.checkpoint_manager.latest_checkpoint
+
+    @property
+    def logdir(self) -> Path:
+        """Path to Trainer logdir."""
+        return self.checkpoint_manager.logdir
 
 
 class BackendInterface:
