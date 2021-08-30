@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>1.1.0-SNAPSHOT</version>
+  <version>1.6.0</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
   <description>An open source framework that provides a simple, universal API for building distributed applications.
@@ -63,8 +63,8 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
-    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
+    <projetct.version>1.6.0</projetct.version>
+    <projetct.version>1.6.0</projetct.version>
   </properties>
 
   <dependencyManagement>
