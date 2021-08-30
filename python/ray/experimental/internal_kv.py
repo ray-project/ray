@@ -17,7 +17,7 @@ def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
     RAY_KV_USE_GCS env variable, we fall back to using the Ray worker redis
     client directly.
     """
-    global _initialized
+    global global_gcs_client, _initialized
 
     if not _initialized:
         if gcs_client is not None:
