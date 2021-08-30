@@ -1109,6 +1109,13 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
+double ClusterResourceScheduler::GetLocalAvailableCpus() const {
+  NodeResources local_resources;
+  RAY_CHECK(GetNodeResources(local_node_id_, &local_resources));
+  auto &capacity = local_resources.predefined_resources[CPU];
+  return capacity.available.Double();
+}
+
 ray::gcs::NodeResourceInfoAccessor::ResourceMap
 ClusterResourceScheduler::GetResourceTotals() const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;

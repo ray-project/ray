@@ -61,7 +61,8 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port, int num_threads = 1);
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1,
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -120,6 +121,10 @@ class GrpcServer {
   std::unique_ptr<grpc::Server> server_;
   /// The polling threads used to check the completion queues.
   std::vector<std::thread> polling_threads_;
+  /// The interval to send a new gRPC keepalive timeout from server -> client.
+  /// gRPC server cannot get the ping response within the time, it triggers
+  /// the watchdog timer fired error, which will close the connection.
+  const int64_t keepalive_time_ms_;
 };
 
 /// Base class that represents an abstract gRPC service.
