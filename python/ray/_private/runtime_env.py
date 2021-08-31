@@ -610,7 +610,7 @@ def override_task_or_actor_runtime_env(
     # If per-actor URIs aren't specified, override them with those in the
     # job config.
     if "uris" not in runtime_env_dict:
-        if job_config.runtime_env.uris is not None:
+        if job_config.runtime_env.uris:
             runtime_env_dict["uris"] = [
                 str(uri) for uri in job_config.runtime_env.uris
             ]
