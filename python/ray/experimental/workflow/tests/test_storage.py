@@ -175,8 +175,10 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
 
+
 def test_embedded_objectrefs(workflow_start_regular):
     workflow_id = test_workflow_storage.__name__
+
     class ObjectRefsWrapper:
         def __init__(self, refs):
             self.refs = refs
@@ -187,7 +189,7 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 
-    asyncio_run(wf_storage._put(["key"],  wrapped))
+    asyncio_run(wf_storage._put(["key"], wrapped))
 
     # Be extremely explicit about shutting down. We want to make sure the
     # `_get` call deserializes the full object and puts it in the object store.
@@ -199,7 +201,7 @@ def test_embedded_objectrefs(workflow_start_regular):
     workflow.init(url)
     storage2 = get_workflow_storage(workflow_id)
 
-    result = asyncio_run(wf_storage._get(["key"]))
+    result = asyncio_run(storage2._get(["key"]))
     assert ray.get(result.refs) == [1, 2]
 
 
