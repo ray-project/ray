@@ -20,6 +20,7 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "absl/types/optional.h"
 
 namespace ray {
 
@@ -458,7 +459,7 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+  virtual absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
                                                 bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.

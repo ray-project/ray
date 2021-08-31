@@ -106,7 +106,7 @@ class MockNodeInfoAccessor : public gcs::NodeInfoAccessor {
                Status(const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
                       const gcs::StatusCallback &done));
 
-  MOCK_CONST_METHOD2(Get, boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id,
+  MOCK_CONST_METHOD2(Get, absl::optional<rpc::GcsNodeInfo>(const NodeID &node_id,
                                                             bool filter_dead_nodes));
 
   MOCK_CONST_METHOD0(GetAll, const std::unordered_map<NodeID, rpc::GcsNodeInfo> &());
