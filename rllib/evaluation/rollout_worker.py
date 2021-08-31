@@ -1562,7 +1562,8 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
 
     # Do some test runs with the provided env.
     if isinstance(env, gym.Env):
-        assert hasattr(env, "observation_space") and hasattr(env, "action_space")
+        assert hasattr(env, "observation_space") and hasattr(
+            env, "action_space")
         dummy_obs = env.reset()
         if not env.observation_space.contains(dummy_obs):
             msg += "(NOT OK)"
