@@ -351,6 +351,14 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
   fi
 
+  # Additional dependency for Ludwig.
+  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # dependencies with Modin.
+  if [ "${INSTALL_LUDWIG-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    pip install -U "ludwig[test]">=0.4
+  fi
+
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
