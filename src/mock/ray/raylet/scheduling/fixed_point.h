@@ -1,0 +1,2 @@
+class MockFixedPoint : public FixedPoint {
+};
