@@ -275,7 +275,8 @@ class BackendReplica(VersionedReplica):
 
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: BackendVersion):
+                 version: BackendVersion,
+                 state: Optional[ReplicaState] = ReplicaState.SHOULD_START):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag, controller_name), detached,
             controller_name, replica_tag, backend_tag)
@@ -286,7 +287,7 @@ class BackendReplica(VersionedReplica):
         self._start_time = None
         self._prev_slow_startup_warning_time = None
 
-        self._state = ReplicaState.SHOULD_START
+        self._state = state
 
     def __get_state__(self) -> Dict[Any, Any]:
         return self.__dict__.copy()
@@ -599,19 +600,14 @@ class BackendState:
         self._replica_constructor_retry_counter: Dict[BackendTag,
                                                       int] = defaultdict(int)
 
+        self._resume_from_checkpoint()
         if all_replica_tags and len(all_replica_tags) > 0:
             # There're running replicas in current cluster, explicitly passed
             # in with tags as primary means of in-place recovery
-
-            # Recover target states and versions
-            # import ipdb
-            # ipdb.set_trace()
-            self._resume_from_checkpoint()
             # Reset current replicas
             self._replicas = dict()
             self._resume_all_backend_from_replica_tags(all_replica_tags)
-        else:
-            self._resume_from_checkpoint()
+
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -644,7 +640,6 @@ class BackendState:
         return shutdown_goals
 
     def _checkpoint(self) -> None:
-        logger.info(">>>>> _checkpoint called !")
         self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
@@ -682,9 +677,8 @@ class BackendState:
         for backend_tag, _ in list(
             self._target_replicas.items()
         ):
-            import ipdb
-            ipdb.set_trace()
             target_version = self._target_versions[backend_tag]
+            self._replicas[backend_tag] = ReplicaStateContainer()
             self._resume_single_backend_from_replica_tags(
                 backend_tag,
                 target_version,
@@ -699,11 +693,14 @@ class BackendState:
         """
         Resume cluster from running actor names within its own backend tag.
         """
+        # import ipdb
+        # ipdb.set_trace()
         for replica_tag in replica_tags:
             self._replicas[backend_tag].add(
                     ReplicaState.STARTING_OR_UPDATING,
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag, target_version))
+                                   replica_tag, backend_tag, target_version,
+                                   state=ReplicaState.STARTING_OR_UPDATING))
 
     def _notify_backend_configs_changed(
             self, key: Optional[BackendTag] = None) -> None:

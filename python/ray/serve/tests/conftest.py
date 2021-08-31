@@ -59,8 +59,7 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
             new=MockReplicaActorWrapper), patch(
                 "time.time", new=timer.time), patch(
                     "ray.serve.long_poll.LongPollHost"
-                ) as mock_long_poll, patch.object(
-                    BackendState, "_checkpoint") as mock_checkpoint:
+                ) as mock_long_poll:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
