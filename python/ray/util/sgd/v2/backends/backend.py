@@ -55,7 +55,7 @@ class BackendExecutor:
         log_dir (Optional[str|Path]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
-        max_retries (Optional[int]): Number of retries when Ray actors fail.
+        max_retries (int): Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
 
     Attributes:
@@ -79,7 +79,7 @@ class BackendExecutor:
             num_cpus_per_worker: float = 1,
             num_gpus_per_worker: float = 0,
             log_dir: Optional[Union[str, Path]] = None,
-            max_retries: Optional[int] = 3,
+            max_retries: int = 3,
     ):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
@@ -553,16 +553,12 @@ class Backend(metaclass=abc.ABCMeta):
                        backend_config: BackendConfig):
         """Logic for handling failures.
 
-        By default, the failed workers are removed from the ``WorkerGroup``.
-        The backend and session are shutdown on the remaining workers. Then
-        new workers are added back in.
+        By default, restart all workers.
         """
-        worker_group.remove_workers(failed_worker_indexes)
-        if len(worker_group) > 0:
-            self.on_shutdown(worker_group, backend_config)
-            worker_group.execute(shutdown_session)
-        worker_group.add_workers(len(failed_worker_indexes))
+        worker_group.shutdown()
+        worker_group.start()
         self.on_start(worker_group, backend_config)
+
 
 
 class InactiveWorkerGroupError(Exception):

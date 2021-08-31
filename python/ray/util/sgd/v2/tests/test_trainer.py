@@ -2,17 +2,17 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import horovod.torch as hvd_torch
+#import horovod.torch as hvd_torch
 import pytest
 import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
 
-from ray.util.sgd.v2 import Trainer, TorchConfig
+from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
+    HorovodConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
-from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
@@ -21,8 +21,8 @@ from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
 
-from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
+# from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
+#     horovod_torch_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -768,7 +768,7 @@ def test_start_max_failures(ray_start_2_cpus):
         trainer.start(initialization_hook=init_hook_fail)
 
 
-@pytest.mark.parametrize("backend", ["test", "torch", "tf"])
+@pytest.mark.parametrize("backend", ["test", "torch", "tf", "horovod"])
 def test_worker_kill(ray_start_2_cpus, backend):
     if backend == "test":
         test_config = TestConfig()
@@ -776,6 +776,8 @@ def test_worker_kill(ray_start_2_cpus, backend):
         test_config = TorchConfig()
     elif backend == "tf":
         test_config = TensorflowConfig()
+    elif backend == "horovod":
+        test_config = HorovodConfig()
 
     trainer = Trainer(test_config, num_workers=2)
 

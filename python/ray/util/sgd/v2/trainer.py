@@ -57,7 +57,7 @@ class Trainer:
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
-         max_retries (Optional[int]): Number of retries when Ray actors fail.
+         max_retries (int): Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
 
@@ -68,7 +68,7 @@ class Trainer:
             use_gpu: bool = False,
             resources_per_worker: Optional[Dict[str, float]] = None,
             logdir: Optional[str] = None,
-            max_retries: Optional[int] = 3,
+            max_retries: int = 3,
     ):
 
         self._backend = backend
