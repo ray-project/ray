@@ -1,22 +1,20 @@
-from typing import List, Dict
-
 from ray.tests.conftest import *  # noqa
 
 import pytest
 
-import numpy as np
-
 import ray
-from ray import ObjectRef
 from ray.experimental import workflow
+
 
 @workflow.step
 def gen_dataset():
     return ray.data.range(1000)
 
+
 @workflow.step
 def transform_dataset(in_data):
     return in_data.map(lambda x: x * 2)
+
 
 @workflow.step
 def sum_dataset(ds):

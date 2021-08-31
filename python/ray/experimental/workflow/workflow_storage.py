@@ -482,7 +482,7 @@ class WorkflowStorage:
         # TODO (Alex): We should dedupe these puts with the global coordinator.
         task = put_helper.remote(loc, obj_ref, self)
         upload_tasks.append(task)
-        return _load_object_ref, (loc, self._storage)
+        return _load_object_ref, (loc, self)
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
