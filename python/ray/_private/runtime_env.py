@@ -27,7 +27,9 @@ PKG_DIR = None
 logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-GCS_STORAGE_MAX_SIZE = 512 * 1024 * 1024  # 512MiB
+# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
+# limit, but for some reason that causes failures when downloading.
+GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 
 
 class RuntimeEnvDict:
@@ -466,7 +468,7 @@ def fetch_package(pkg_uri: str) -> int:
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
-            "working_dir package exceeds the maximum size of 512MiB. You "
+            "working_dir package exceeds the maximum size of 100MiB. You "
             "can exclude large files using the 'excludes' option to the "
             "runtime_env.")
 
