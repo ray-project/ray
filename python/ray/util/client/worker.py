@@ -103,7 +103,7 @@ class Worker:
         self.channel_lock = threading.Lock()
         self.channel = None
         self.server = None
-        self._conn_state = grpc.ChannelConnectivity.IDLE
+        self._conn_state = grpc.ChannelConnectivity.SHUTDOWN
         self._converted: Dict[str, ClientStub] = {}
         self._session_ended = False
 
