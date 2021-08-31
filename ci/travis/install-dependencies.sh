@@ -338,6 +338,12 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
+
+
+    # Install Atari ROMs. Previously these have been shipped with atari_py
+    if [[ "${OSTYPE}" = linux* ]]; then
+      eval "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    fi
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
