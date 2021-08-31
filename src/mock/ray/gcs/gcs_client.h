@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "mock/ray/gcs/accessor.h"
+
 namespace ray {
 namespace gcs {
 
@@ -31,6 +35,11 @@ class MockGcsClient : public GcsClient {
   MOCK_METHOD(void, Disconnect, (), (override));
   MOCK_METHOD((std::pair<std::string, int>), GetGcsServerAddress, (), (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
+  MockGcsClient() {
+    mock_actor_accessor = new MockActorInfoAccessor();
+    GcsClient::actor_accessor_.reset(mock_actor_accessor);
+  }
+  MockActorInfoAccessor* mock_actor_accessor;
 };
 
 }  // namespace gcs

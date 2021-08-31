@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "gtest/gtest_prod.h"
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -166,7 +167,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  GcsClient(const GcsClientOptions &options) : options_(options) {}
+  GcsClient(const GcsClientOptions &options = GcsClientOptions()) : options_(options) {}
 
   GcsClientOptions options_;
 
@@ -184,6 +185,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+
 };
 
 }  // namespace gcs

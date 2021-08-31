@@ -85,7 +85,10 @@ class DefaultActorCreator : public ActorCreatorInterface {
                             gcs::StatusCallback callback) override {
     if (::RayConfig::instance().actor_register_async()) {
       auto actor_id = task_spec.ActorCreationId();
-      registering_actors_[actor_id].emplace_back(std::move(callback));
+      registering_actors_[actor_id] = {};
+      if (callback != nullptr) {
+        registering_actors_[actor_id].emplace_back(std::move(callback));
+      }
       return gcs_client_->Actors().AsyncRegisterActor(
           task_spec, [actor_id, this](Status status) {
             std::vector<ray::gcs::StatusCallback> cbs;

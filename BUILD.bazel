@@ -887,6 +887,19 @@ cc_test(
 )
 
 cc_test(
+    name = "actor_creator_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "actor_manager_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
