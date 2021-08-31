@@ -83,8 +83,8 @@ def upload_paths(paths, resp, destination):
         of["key"] = {
             "wheels": f"latest/{fn}",
             "branch_wheels": f"{branch}/{sha}/{fn}",
-            "jars": f"jars/latest/{fn}/{current_os}",
-            "branch_jars": f"jars/{branch}/{sha}/{fn}/{current_os}",
+            "jars": f"jars/latest/{current_os}/{fn}",
+            "branch_jars": f"jars/{branch}/{sha}/{current_os}/{fn}",
             "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}"
         }[destination]
         of["file"] = open(path, "rb")
