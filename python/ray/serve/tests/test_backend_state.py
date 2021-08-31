@@ -14,6 +14,7 @@ from ray.serve.common import (
 )
 from ray.serve.backend_state import (
     BackendState,
+    BackendStateManager,
     BackendVersion,
     ReplicaStartupStatus,
     ReplicaState,
@@ -1667,54 +1668,6 @@ def test_health_check(mock_backend_state):
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
 
 
-def test_shutdown(mock_backend_state):
-    """
-    Test that shutdown waits for all backends to be deleted and the backends
-    are force-killed without a grace period.
-    """
-    backend_state, timer, goal_manager = mock_backend_state
-
-    b_info_1, b_version_1 = backend_info()
-    create_goal, updating = backend_state.deploy(b_info_1)
-
-    # Single replica should be created.
-    backend_state.update()
-    check_counts(
-        backend_state,
-        total=1,
-        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
-    backend_state._replicas.get()[0]._actor.set_ready()
-
-    # Now the replica should be marked running.
-    backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
-
-    # Test shutdown flow
-    assert not backend_state._replicas.get()[0]._actor.stopped
-
-    shutdown_goal = backend_state.shutdown()[0]
-
-    backend_state.update()
-
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
-    assert backend_state._replicas.get()[0]._actor.stopped
-    assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
-    assert not backend_state._replicas.get()[0]._actor.cleaned_up
-    assert not goal_manager.check_complete(shutdown_goal)
-
-    # Once it's done stopping, replica should be removed.
-    replica = backend_state._replicas.get()[0]
-    replica._actor.set_done_stopping()
-    backend_state.update()
-    check_counts(backend_state, total=0)
-
-    # TODO(edoakes): can we remove this extra update period for completing it?
-    deleted = backend_state.update()
-    assert deleted
-    assert goal_manager.check_complete(shutdown_goal)
-    assert replica._actor.cleaned_up
-
-
 def _constructor_failure_loop_two_replica(backend_state, num_loops):
     """Helper function to exact constructor failure loops.
     """
@@ -1930,6 +1883,80 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
     assert backend_state._replica_constructor_retry_counter == 4
     assert goal_manager.check_complete(create_goal)
     assert goal_obj.exception is None
+
+
+@pytest.fixture
+def mock_backend_state_manager() -> Tuple[BackendStateManager, Mock, Mock]:
+    timer = MockTimer()
+    with patch(
+            "ray.serve.backend_state.ActorReplicaWrapper",
+            new=MockReplicaActorWrapper), patch(
+                "time.time", new=timer.time), patch(
+                    "ray.serve.storage.kv_store.RayInternalKVStore"
+                ) as mock_kv_store, patch(
+                    "ray.serve.long_poll.LongPollHost"
+                ) as mock_long_poll, patch.object(
+                    BackendStateManager, "_checkpoint") as mock_checkpoint:
+
+        mock_kv_store.get = Mock(return_value=None)
+        goal_manager = AsyncGoalManager()
+        backend_state_manager = BackendStateManager(
+            "name", True, mock_kv_store, mock_long_poll, goal_manager)
+        mock_checkpoint.return_value = None
+        yield backend_state_manager, timer, goal_manager
+
+
+def test_shutdown(mock_backend_state_manager):
+    """
+    Test that shutdown waits for all backends to be deleted and the backends
+    are force-killed without a grace period.
+    """
+    backend_state_manager, timer, goal_manager = mock_backend_state_manager
+
+    tag = "test"
+
+    b_info_1, b_version_1 = backend_info()
+    create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
+
+    backend_state = backend_state_manager._backend_states[tag]
+
+    # Single replica should be created.
+    backend_state_manager.update()
+    check_counts(
+        backend_state,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+    backend_state._replicas.get()[0]._actor.set_ready()
+
+    # Now the replica should be marked running.
+    backend_state_manager.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+
+    # Test shutdown flow
+    assert not backend_state._replicas.get()[0]._actor.stopped
+
+    shutdown_goal = backend_state_manager.shutdown()[0]
+
+    backend_state_manager.update()
+
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
+    assert backend_state._replicas.get()[0]._actor.stopped
+    assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
+    assert not backend_state._replicas.get()[0]._actor.cleaned_up
+    assert not goal_manager.check_complete(shutdown_goal)
+
+    # Once it's done stopping, replica should be removed.
+    replica = backend_state._replicas.get()[0]
+    replica._actor.set_done_stopping()
+    backend_state.update()
+    check_counts(backend_state, total=0)
+
+    # TODO(edoakes): can we remove this extra update period for completing it?
+    backend_state_manager.update()
+    assert goal_manager.check_complete(shutdown_goal)
+    assert replica._actor.cleaned_up
+
+    assert len(backend_state_manager._backend_states) == 0
 
 
 if __name__ == "__main__":
