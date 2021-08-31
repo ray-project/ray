@@ -49,6 +49,7 @@ class MockWorker {
     options.task_execution_callback =
         std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
     options.num_workers = 1;
+    options.metrics_agent_port = -1;
     CoreWorkerProcess::Initialize(options);
   }
 

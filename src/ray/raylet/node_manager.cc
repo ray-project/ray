@@ -29,7 +29,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -197,6 +196,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           &io_service_)),
       object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
           io_service_, gcs_client_, core_worker_subscriber_.get(),
+          /*owner_client_pool=*/&worker_rpc_pool_,
+          /*max_object_report_batch_size=*/
+          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
@@ -368,10 +370,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         RAY_CHECK(!ip_address.empty() && port != 0);
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
-      },
-      /*put_agent_address=*/
-      [this](const std::string &value, const PutAgentAddressCallback &callback) {
-        PutAgentAddress(gcs_client_, self_node_id_, value, callback);
       });
   worker_pool_.SetAgentManager(agent_manager_);
 }

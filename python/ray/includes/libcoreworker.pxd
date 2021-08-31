@@ -305,6 +305,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
+        int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
         int worker_shim_pid
