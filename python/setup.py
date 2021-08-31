@@ -45,12 +45,7 @@ pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
 
 def find_version(*filepath):
     # Extract version information from filepath
-    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                                  fp.read(), re.M)
-        if version_match:
-            return version_match.group(1)
-        raise RuntimeError("Unable to find version string.")
+    return "1.6.0"
 
 
 class SetupType(Enum):
@@ -128,14 +123,14 @@ if BUILD_JAVA or os.path.exists(
         os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
-if setup_spec.type == SetupType.RAY_CPP:
-    setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
-    # C++ API library and project template files.
-    setup_spec.files_to_include += [
-        os.path.join(dirpath, filename)
-        for dirpath, dirnames, filenames in os.walk("ray/cpp")
-        for filename in filenames
-    ]
+# if setup_spec.type == SetupType.RAY_CPP:
+#     setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
+#     # C++ API library and project template files.
+#     setup_spec.files_to_include += [
+#         os.path.join(dirpath, filename)
+#         for dirpath, dirnames, filenames in os.walk("ray/cpp")
+#         for filename in filenames
+#     ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -415,7 +410,7 @@ def copy_file(target_dir, filename, rootdir):
 
 
 def pip_run(build_ext):
-    build(True, BUILD_JAVA, True)
+    # build(False, BUILD_JAVA, False)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -460,15 +455,15 @@ def api_main(program, *args):
 
     if parsed_args.command == "build":
         kwargs = dict(build_python=False, build_java=False, build_cpp=False)
-        for lang in parsed_args.language.split(","):
-            if "python" in lang:
-                kwargs.update(build_python=True)
-            elif "java" in lang:
-                kwargs.update(build_java=True)
-            elif "cpp" in lang:
-                kwargs.update(build_cpp=True)
-            else:
-                raise ValueError("invalid language: {!r}".format(lang))
+        # for lang in parsed_args.language.split(","):
+        #     if "python" in lang:
+        #         kwargs.update(build_python=True)
+        #     elif "java" in lang:
+        #         kwargs.update(build_java=True)
+        #     elif "cpp" in lang:
+        #         kwargs.update(build_cpp=True)
+        #     else:
+        #         raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
     elif parsed_args.command == "bazel_version":
         print(".".join(map(str, SUPPORTED_BAZEL)))
