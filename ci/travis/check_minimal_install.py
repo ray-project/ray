@@ -40,6 +40,9 @@ def assert_packages_not_installed(blacklist: List[str]):
         f"Check the install logs and primary dependencies if any of these " \
         f"packages were installed as part of another install step."
 
+    print(f"Confirmed that blacklisted packages are not installed in "
+          f"current Python environment: {blacklist}")
+
 
 if __name__ == "__main__":
     assert_packages_not_installed(DEFAULT_BLACKLIST)
