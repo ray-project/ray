@@ -27,8 +27,8 @@ pendulum-sac-fake-gpus:
         num_workers: 0
         metrics_smoothing_episodes: 5
 
-        # 4x batch size (2 GPUs).
-        train_batch_size: 1024
+        # 1x batch size (despite 2 GPUs).
+        # train_batch_size: 256
         optimization:
           actor_learning_rate: 0.001
           critic_learning_rate: 0.001
