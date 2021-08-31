@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import unittest
 
@@ -22,6 +21,7 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
+
         num_iterations = 1
 
         for _ in framework_iterator(config):
@@ -50,35 +50,7 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-            trainer.stop()
 
-    def test_dqn_fake_multi_gpu_learning(self):
-        """Test whether DQNTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(dqn.DEFAULT_CONFIG)
-
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-
-        # Double batch size (2 GPUs).
-        config["train_batch_size"] = 64
-        # Mimic tuned_example for DQN CartPole.
-        config["n_step"] = 3
-        config["model"]["fcnet_hiddens"] = [64]
-        config["model"]["fcnet_activation"] = "linear"
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print("reward={}".format(results["episode_reward_mean"]))
-                if results["episode_reward_mean"] > 65.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"
             trainer.stop()
 
     def test_dqn_n_step(self):
