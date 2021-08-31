@@ -31,6 +31,7 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
@@ -1391,16 +1392,7 @@ class Trainer(Trainable):
             deprecation_warning(old="simple_optimizer", error=False)
 
         # Loop through all policy definitions in multi-agent policies.
-        multiagent_config = config["multiagent"]
-        policies = multiagent_config.get("policies")
-        if not policies:
-            policies = {DEFAULT_POLICY_ID}
-        if isinstance(policies, set):
-            policies = multiagent_config["policies"] = {
-                pid: PolicySpec()
-                for pid in policies
-            }
-        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
+        policies, is_multi_agent = check_multi_agent(config)
 
         for pid, policy_spec in policies.copy().items():
             # Policy IDs must be strings.
@@ -1448,7 +1440,7 @@ class Trainer(Trainable):
                 config["simple_optimizer"] = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif is_multiagent:
+            elif is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
