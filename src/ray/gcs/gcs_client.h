@@ -185,7 +185,6 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
-
 };
 
 }  // namespace gcs

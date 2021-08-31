@@ -29,7 +29,7 @@ class ActorCreatorTest : public ::testing::Test {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
     actor_creator = std::make_unique<DefaultActorCreator>(gcs_client);
   }
-  TaskSpecification GetTaskSpec(const ActorID& actor_id) {
+  TaskSpecification GetTaskSpec(const ActorID &actor_id) {
     rpc::TaskSpec task_spec;
     task_spec.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
     rpc::ActorCreationTaskSpec actor_creation_task_spec;
@@ -48,8 +48,8 @@ TEST_F(ActorCreatorTest, IsRegister) {
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&cb),
-                                 ::testing::Return(Status::OK())));
+      .WillOnce(
+          ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   actor_creator->AsyncRegisterActor(task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   cb(Status::OK());
@@ -62,16 +62,16 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_))
-      .WillRepeatedly(::testing::DoAll(::testing::SaveArg<1>(&cb),
-                                       ::testing::Return(Status::OK())));
+      .WillRepeatedly(
+          ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   int cnt = 0;
   auto per_finish_cb = [&cnt](Status status) {
-                         ASSERT_TRUE(status.ok());
-                         cnt++;
-                       };
+    ASSERT_TRUE(status.ok());
+    cnt++;
+  };
   actor_creator->AsyncRegisterActor(task_spec, per_finish_cb);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  for(int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 100; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
   }
   cb(Status::OK());
@@ -79,9 +79,8 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   ASSERT_EQ(101, cnt);
 }
 
-
-}
-}
+}  // namespace core
+}  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -31,7 +31,7 @@ namespace gcs {
 
 class MockGcsClient : public GcsClient {
  public:
-  MOCK_METHOD(Status, Connect, (instrumented_io_context &io_service), (override));
+  MOCK_METHOD(Status, Connect, (instrumented_io_context & io_service), (override));
   MOCK_METHOD(void, Disconnect, (), (override));
   MOCK_METHOD((std::pair<std::string, int>), GetGcsServerAddress, (), (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
@@ -39,7 +39,7 @@ class MockGcsClient : public GcsClient {
     mock_actor_accessor = new MockActorInfoAccessor();
     GcsClient::actor_accessor_.reset(mock_actor_accessor);
   }
-  MockActorInfoAccessor* mock_actor_accessor;
+  MockActorInfoAccessor *mock_actor_accessor;
 };
 
 }  // namespace gcs
