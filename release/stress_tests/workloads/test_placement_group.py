@@ -104,6 +104,8 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         else:
             pgs_unremoved.append(pg)
 
+    ray.get([pg.ready() for pg in pgs_unremoved])
+
     tasks = []
     max_actor_cnt = 5
     actor_cnt = 0
@@ -124,7 +126,6 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     for pg in pgs_removed:
         remove_placement_group(pg)
 
-    ray.get([pg.ready() for pg in pgs_unremoved])
     ray.get(tasks)
     ray.get([actor.ping.remote() for actor in actors])
     # Since placement groups are scheduled, remove them.

@@ -24,6 +24,7 @@ NUM_NODES = 5
 CUSTOM_RESOURCES = {"pg_custom": RESOURCE_QUANTITY}
 # Create pg that uses 1 resource of cpu & custom resource.
 NUM_PG = RESOURCE_QUANTITY
+BUNDLES = [{"pg_custom": 1}] * NUM_NODES
 
 
 @ray.remote(num_cpus=0, resources={"pg_custom": 1}, max_calls=0)
@@ -57,6 +58,9 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         else:
             pgs_unremoved.append(pg)
 
+    print("wait for unremove pgs to be ready")
+    ray.get([pg.ready() for pg in pgs_unremoved])
+
     tasks = []
     max_actor_cnt = 5
     actor_cnt = 0
@@ -77,10 +81,12 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     for pg in pgs_removed:
         remove_placement_group(pg)
 
-    ray.get([pg.ready() for pg in pgs_unremoved])
+    print("wait for tasks to be finished")
     ray.get(tasks)
+    print("wait for actors to be finished")
     ray.get([actor.ping.remote() for actor in actors])
     # Since placement groups are scheduled, remove them.
+    print("remove all groups")
     for pg in pgs_unremoved:
         remove_placement_group(pg)
 
@@ -105,7 +111,6 @@ if __name__ == "__main__":
     total_removing_time = 0
     repeat = 1
     total_trial = repeat * NUM_PG
-    BUNDLES = [{"pg_custom": 1}] * NUM_NODES
 
     # Create and remove placement groups.
     for _ in range(repeat):
