@@ -827,6 +827,18 @@ cc_test(
 )
 
 cc_test(
+    name = "direct_actor_transport_mock_test",
+    srcs = ["src/ray/core_worker/test/direct_actor_transport_mock_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "direct_task_transport_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
