@@ -832,17 +832,6 @@ def start_redis(node_ip_address,
             addresses for the remaining shards, and the processes that were
             started.
     """
-
-    if len(redirect_files) != 1 + num_redis_shards:
-        raise ValueError("The number of redirect file pairs should be equal "
-                         "to the number of redis shards (including the "
-                         "primary shard) we will start.")
-    if redis_shard_ports is None:
-        redis_shard_ports = num_redis_shards * [None]
-    elif len(redis_shard_ports) != num_redis_shards:
-        raise RuntimeError("The number of Redis shard ports does not match "
-                           "the number of Redis shards.")
-
     processes = []
 
     if external_addresses is not None:
@@ -855,6 +844,17 @@ def start_redis(node_ip_address,
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
+        if len(redirect_files) != 1 + num_redis_shards:
+            raise ValueError(
+                "The number of redirect file pairs should be equal "
+                "to the number of redis shards (including the "
+                "primary shard) we will start.")
+        if redis_shard_ports is None:
+            redis_shard_ports = num_redis_shards * [None]
+        elif len(redis_shard_ports) != num_redis_shards:
+            raise RuntimeError(
+                "The number of Redis shard ports does not match "
+                "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -910,7 +910,7 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None and len(external_addresses) > 1:
+        if external_addresses is not None:
             shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
@@ -1209,7 +1209,7 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
-        if redis_password:
+        if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
@@ -1448,8 +1448,6 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            setup_worker_path,
-            worker_setup_hook,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1462,9 +1460,8 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", setup_worker_path, worker_setup_hook, redis_address,
-            plasma_store_name, raylet_name, redis_password, session_dir,
-            log_dir, node_ip_address)
+            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1472,8 +1469,11 @@ def start_raylet(redis_address,
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    python_executable = sys.executable
-    start_worker_command_args = [
+    start_worker_command = [
+        sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1486,10 +1486,7 @@ def start_raylet(redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
-        start_worker_command_args += [f"--redis-password={redis_password}"]
-    start_worker_command = _wrap_worker_command(
-        setup_worker_path, worker_setup_hook, session_dir, python_executable,
-        "python", start_worker_command_args)
+        start_worker_command += [f"--redis-password={redis_password}"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1595,21 +1592,6 @@ def start_raylet(redis_address,
     return process_info
 
 
-def _wrap_worker_command(setup_worker_path, worker_setup_hook, session_dir,
-                         worker_entrypoint, worker_language, worker_command):
-    if sys.platform == "win32":
-        return [worker_entrypoint] + worker_command
-    wrapped_worker_command = [
-        sys.executable, setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
-        f"--worker-entrypoint={worker_entrypoint}",
-        f"--worker-language={worker_language}"
-    ]
-    wrapped_worker_command += worker_command
-    return wrapped_worker_command
-
-
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1623,8 +1605,6 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        setup_worker_path,
-        worker_setup_hook,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1666,21 +1646,19 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command_args = ["-D{}={}".format(*pair) for pair in pairs]
+    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command_args += ["-cp", ray_jars]
+    command += ["-cp", ray_jars]
 
-    command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
-                                session_dir, "java", "java", command_args)
+    return command
 
 
-def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
-                             worker_setup_hook, redis_address,
+def build_cpp_worker_command(cpp_worker_options, redis_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
@@ -1699,7 +1677,8 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         The command string for starting CPP worker.
     """
 
-    command_args = [
+    command = [
+        DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1711,9 +1690,7 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
-                                session_dir, DEFAULT_WORKER_EXECUTABLE, "cpp",
-                                command_args)
+    return command
 
 
 def determine_plasma_store_config(object_store_memory,
@@ -1951,12 +1928,10 @@ def start_ray_client_server(redis_address,
     conda_shim_flag = (
         "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
-    python_executable = sys.executable
     command = [
-        python_executable,
+        sys.executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
-        f"--worker-entrypoint={python_executable}",
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),

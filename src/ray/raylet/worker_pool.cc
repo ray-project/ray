@@ -327,6 +327,15 @@ Process WorkerPool::StartWorkerProcess(
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
+    } else {
+      // The "shim process" setup worker is not needed, so do not run it.
+      // Check that the arg really is the path to the setup worker before erasing it, to
+      // prevent breaking tests that mock out the worker command args.
+      if (worker_command_args.size() >= 4 &&
+          worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+        worker_command_args.erase(worker_command_args.begin() + 1,
+                                  worker_command_args.begin() + 4);
+      }
     }
 
     worker_command_args.push_back("--runtime-env-hash=" +
@@ -1063,8 +1072,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 }
 
-void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
-                                 int64_t backlog_size) {
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size,
+                                 int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 || task_spec.HasRuntimeEnv()) {
@@ -1079,19 +1088,14 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   for (auto &entry : state.starting_worker_processes) {
     num_usable_workers += entry.second.num_starting_workers;
   }
-  // The number of workers total regardless of suitability for this task.
-  int num_workers_total = 0;
-  for (const auto &worker : GetAllRegisteredWorkers()) {
-    if (!worker->IsDead()) {
-      num_workers_total++;
-    }
-  }
-  auto desired_usable_workers =
-      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+  // Some existing workers may be holding less than 1 CPU each, so we should
+  // start as many workers as needed to fill up the remaining CPUs.
+  auto desired_usable_workers = std::min<int64_t>(num_available_cpus, backlog_size);
   if (num_usable_workers < desired_usable_workers) {
+    // Account for workers that are idle or already starting.
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
-                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+                   << backlog_size << " and available CPUs " << num_available_cpus;
     for (int i = 0; i < num_needed; i++) {
       PopWorkerStatus status;
       StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,

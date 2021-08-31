@@ -29,15 +29,6 @@ CreatorOperator
     :members:
     :exclude-members: setup
 
-.. _ref-lightning-operator:
-
-Pytorch Lightning LightningOperator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.util.sgd.torch.lightning_operator.LightningOperator
-    :members:
-    :exclude-members: setup, train_epoch, train_batch, validate, validate_batch, state_dict, load_state_dict
-
 .. _BaseTorchTrainable-doc:
 
 BaseTorchTrainable

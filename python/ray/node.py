@@ -692,10 +692,12 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-        for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(
-                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+        redis_log_files = []
+        if self._ray_params.external_addresses is None:
+            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
+            for i in range(self._ray_params.num_redis_shards):
+                redis_log_files.append(
+                    self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(

@@ -251,28 +251,6 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
             RayConfig::instance().maximum_profile_table_rows_count());
 }
 
-TEST_F(GlobalStateAccessorTest, TestObjectTable) {
-  int object_count = 1;
-  ASSERT_EQ(global_state_->GetAllObjectInfo().size(), 0);
-  std::vector<ObjectID> object_ids;
-  object_ids.reserve(object_count);
-  for (int index = 0; index < object_count; ++index) {
-    ObjectID object_id = ObjectID::FromRandom();
-    object_ids.emplace_back(object_id);
-    NodeID node_id = NodeID::FromRandom();
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id, 0,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-  }
-  ASSERT_EQ(global_state_->GetAllObjectInfo().size(), object_count);
-
-  for (auto &object_id : object_ids) {
-    ASSERT_TRUE(global_state_->GetObjectInfo(object_id));
-  }
-}
-
 TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
