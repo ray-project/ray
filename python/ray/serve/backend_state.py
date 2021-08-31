@@ -40,6 +40,13 @@ class ReplicaStartupStatus(Enum):
     FAILED = 4
 
 
+class GoalStatus(Enum):
+    NONE = 1
+    SUCCEEDED = 2
+    SUCCESSFULLY_DELETED = 3
+    FAILED = 4
+
+
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 
@@ -114,6 +121,7 @@ class ActorReplicaWrapper:
                 self._replica_tag, self._backend_tag) +
                          f" component=serve deployment={self._backend_tag} "
                          f"replica={self._replica_tag}")
+
             self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
@@ -570,6 +578,8 @@ class ReplicaStateContainer:
 
 
 class BackendState:
+    """Manages the target state and replicas for a single backend."""
+
     def __init__(self, name: str, controller_name: str, detached: bool,
                  long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
                  checkpoint_fn: Callable):
@@ -578,7 +588,7 @@ class BackendState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._goal_manager: AsyncGoalManager = goal_manager
-        self._checkpoint = checkpoint_fn
+        self._checkpoint_fn = checkpoint_fn
 
         # Each time we set a new backend goal, we're trying to save new
         # BackendInfo and bring current deployment to meet new status.
@@ -699,7 +709,7 @@ class BackendState:
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
-        self._checkpoint()
+        self._checkpoint_fn()
         self._notify_backend_configs_changed()
 
         if existing_goal_id is not None:
@@ -712,7 +722,7 @@ class BackendState:
             self._target_info.backend_config.\
                 experimental_graceful_shutdown_timeout_s = 0
 
-        self._checkpoint()
+        self._checkpoint_fn()
         self._notify_backend_configs_changed()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -879,16 +889,18 @@ class BackendState:
 
         return True
 
-    def _check_if_curr_goal_complete(self) -> Tuple[bool, bool, bool]:
+    def _check_curr_goal_status(self) -> GoalStatus:
         """
         In each update() cycle, upon finished calling _scale_all_backends(),
         check difference between target vs. running relica count for each
         backend and return whether or not the current goal is complete.
 
         Returns:
-            successful, failed, deleted (Tuple[bool, bool, bool])
+            AsyncGoalStatus
         """
-        successful, failed, deleted = False, False, False
+
+        if self._curr_goal is None:
+            return GoalStatus.NONE
 
         target_version = self._target_version
         target_replica_count = self._target_replicas
@@ -915,7 +927,7 @@ class BackendState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                failed = True
+                return GoalStatus.FAILED
 
         # If we have pending ops, the current goal is *not* ready.
         if (self._replicas.count(states=[
@@ -926,16 +938,13 @@ class BackendState:
         ]) == 0):
             # Check for deleting.
             if target_replica_count == 0 and all_running_replica_cnt == 0:
-                deleted = True
+                return GoalStatus.SUCCESSFULLY_DELETED
 
             # Check for a non-zero number of backends.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                successful = True
+                return GoalStatus.SUCCEEDED
 
-        # At most one of the three should be true.
-        assert sum([successful, failed, deleted]) <= 1
-
-        return successful, failed, deleted
+        return GoalStatus.NONE
 
     def _check_and_update_replicas(self) -> bool:
         transitioned = False
@@ -1018,18 +1027,18 @@ class BackendState:
         # we manage.
         self._scale_backend_replicas()
 
-        transitioned_replicas = self._check_and_update_replicas()
-        if transitioned_replicas:
+        transitioned = self._check_and_update_replicas()
+        if transitioned:
             self._notify_replica_handles_changed()
-            self._checkpoint()
+            self._checkpoint_fn()
 
-        successful, failed, deleted = self._check_if_curr_goal_complete()
-        if successful:
+        status = self._check_curr_goal_status()
+        if status == GoalStatus.SUCCEEDED:
             # Deployment successul, complete the goal and clear the
             # backup backend_info.
             self._goal_manager.complete_goal(self._curr_goal)
             self._rollback_info = None
-        elif failed:
+        elif status == GoalStatus.FAILED:
             # Roll back or delete the deployment if it failed.
             if self._rollback_info is None:
                 # No info to roll back to, delete it.
@@ -1050,10 +1059,10 @@ class BackendState:
                 self._curr_goal = None
                 self._rollback_info = None
                 self.deploy(rollback_info)
-        elif deleted:
+        elif status == GoalStatus.SUCCESSFULLY_DELETED:
             self._goal_manager.complete_goal(self._curr_goal)
 
-        return deleted
+        return status == GoalStatus.SUCCESSFULLY_DELETED
 
 
 class BackendStateManager:
