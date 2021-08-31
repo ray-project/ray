@@ -35,18 +35,15 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
     actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
-        *client_pool,
-        *memory_store,
-        *task_finisher,
-        *actor_creator,
-        nullptr);
+        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
     rpc::TaskSpec task_spec;
     task_spec.set_type(rpc::TaskType::ACTOR_TASK);
     task_spec.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
-    task_spec.set_task_id(TaskID::ForActorTask(JobID::FromInt(10), TaskID::Nil(), 0, actor_id).Binary());
+    task_spec.set_task_id(
+        TaskID::ForActorTask(JobID::FromInt(10), TaskID::Nil(), 0, actor_id).Binary());
     return TaskSpecification(task_spec);
   }
 
@@ -75,14 +72,16 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(creation_task_spec, ::testing::_))
-      .WillOnce(
-          ::testing::DoAll(::testing::SaveArg<1>(&register_cb), ::testing::Return(Status::OK())));
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
+                                 ::testing::Return(Status::OK())));
   actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
   actor_task_submitter->SubmitTask(GetActorTaskSpec(actor_id));
-  EXPECT_CALL(*task_finisher, PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
+  EXPECT_CALL(*task_finisher,
+              PendingTaskFailed(task_spec.TaskId(),
+                                rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
   register_cb(Status::IOError(""));
 }
-}
-}
+}  // namespace core
+}  // namespace ray
