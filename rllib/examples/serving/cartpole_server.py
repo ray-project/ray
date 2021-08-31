@@ -55,7 +55,7 @@ def get_cli_args():
         help="The base-port to use (on localhost). "
         f"Default is {SERVER_BASE_PORT}.")
     parser.add_argument(
-        "--chatty-callbacks",
+        "--callbacks-verbose",
         action="store_true",
         help="Activates info-messages for different events on "
         "server/client (episode steps, postprocessing, etc..).")
@@ -155,7 +155,7 @@ if __name__ == "__main__":
         # Disable OPE, since the rollouts are coming from online clients.
         "input_evaluation": [],
         # Create a "chatty" client/server or not.
-        "callbacks": MyCallbacks if args.chatty_callbacks else None,
+        "callbacks": MyCallbacks if args.callbacks_verbose else None,
         # DL framework to use.
         "framework": args.framework,
         # Set to INFO so we'll see the server's actual address:port.
