@@ -98,6 +98,7 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
+        metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
         worker_shim_pid(0) {}
@@ -175,6 +176,9 @@ struct CoreWorkerOptions {
   std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
+  /// The port number of a metrics agent that imports metrics from core workers.
+  /// -1 means there's no such agent.
+  int metrics_agent_port;
   /// If false, the constructor won't connect and notify raylets that it is
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.
@@ -328,24 +332,6 @@ class CoreWorkerProcess {
 
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
-
-  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
-      std::make_pair<std::string, int>("", 0);
-  /// To protect accessing the `gcs_server_address_`.
-  absl::Mutex gcs_server_address_mutex_;
-  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
-  // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
-
-  /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_;
-
-  // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-
-  // Current node id.
-  NodeID current_node_id_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -964,15 +950,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                                    rpc::AddObjectLocationOwnerReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(
-      const rpc::RemoveObjectLocationOwnerRequest &request,
-      rpc::RemoveObjectLocationOwnerReply *reply,
+  // Implements gRPC server handler.
+  void HandleUpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1220,6 +1201,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
+
+  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
