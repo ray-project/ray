@@ -107,7 +107,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
   };
   if (task_spec.IsActorCreationTask()) {
-    auto status = actor_creator_->AsyncRegisterActor(
+    RAY_UNUSED(actor_creator_->AsyncRegisterActor(
         task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
                     this](Status status) mutable {
           if (!status.ok()) {
@@ -116,7 +116,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           } else {
             resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
           }
-        });
+                   }));
   } else {
     resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
   }

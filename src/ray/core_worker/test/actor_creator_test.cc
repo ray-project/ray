@@ -39,6 +39,7 @@ class ActorCreatorTest : public ::testing::Test {
   }
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
   std::unique_ptr<DefaultActorCreator> actor_creator;
+
 };
 
 TEST_F(ActorCreatorTest, IsRegister) {
@@ -47,7 +48,7 @@ TEST_F(ActorCreatorTest, IsRegister) {
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_))
+              AsyncRegisterActor(task_spec, ::testing::_))
       .WillOnce(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   actor_creator->AsyncRegisterActor(task_spec, nullptr);
