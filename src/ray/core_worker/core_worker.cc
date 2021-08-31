@@ -2653,39 +2653,49 @@ void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleAddObjectLocationOwner(
-    const rpc::AddObjectLocationOwnerRequest &request,
-    rpc::AddObjectLocationOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
+void CoreWorker::HandleUpdateObjectLocationBatch(
+    const rpc::UpdateObjectLocationBatchRequest &request,
+    rpc::UpdateObjectLocationBatchReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &worker_id = request.intended_worker_id();
+  if (HandleWrongRecipient(WorkerID::FromBinary(worker_id), send_reply_callback)) {
     return;
   }
-  auto object_id = ObjectID::FromBinary(request.object_id());
-  auto reference_exists = reference_counter_->AddObjectLocation(
-      object_id, NodeID::FromBinary(request.node_id()));
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
+  const auto &node_id = NodeID::FromBinary(request.node_id());
+  const auto &object_location_states = request.object_location_states();
+
+  for (const auto &object_location_state : object_location_states) {
+    const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
+    const auto &state = object_location_state.state();
+
+    if (state == rpc::ObjectLocationState::ADDED) {
+      AddObjectLocationOwner(object_id, node_id);
+    } else if (state == rpc::ObjectLocationState::REMOVED) {
+      RemoveObjectLocationOwner(object_id, node_id);
+    } else {
+      RAY_LOG(FATAL) << "Invalid object location state " << state
+                     << " has been received.";
+    }
+  }
+
+  send_reply_callback(Status::OK(), /*success_callback_on_reply*/ nullptr,
+                      /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::HandleRemoveObjectLocationOwner(
-    const rpc::RemoveObjectLocationOwnerRequest &request,
-    rpc::RemoveObjectLocationOwnerReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
+void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
+                                        const NodeID &node_id) {
+  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
   }
-  auto object_id = ObjectID::FromBinary(request.object_id());
-  auto reference_exists = reference_counter_->RemoveObjectLocation(
-      object_id, NodeID::FromBinary(request.node_id()));
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
+}
+
+void CoreWorker::RemoveObjectLocationOwner(const ObjectID &object_id,
+                                           const NodeID &node_id) {
+  auto reference_exists = reference_counter_->RemoveObjectLocation(object_id, node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
+  }
 }
 
 void CoreWorker::ProcessSubscribeObjectLocations(

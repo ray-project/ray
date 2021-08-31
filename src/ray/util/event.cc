@@ -148,6 +148,12 @@ void EventManager::ClearReporters() { reporter_map_.clear(); }
 ///
 thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
+std::unique_ptr<RayEventContext> RayEventContext::global_context_ = nullptr;
+
+std::atomic<int> RayEventContext::global_context_started_setting_(0);
+
+std::atomic<bool> RayEventContext::global_context_finished_setting_(false);
+
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
     context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
@@ -155,24 +161,45 @@ RayEventContext &RayEventContext::Instance() {
   return *context_;
 }
 
+RayEventContext &RayEventContext::GlobalInstance() {
+  if (global_context_finished_setting_ == false) {
+    static RayEventContext tmp_instance_;
+    return tmp_instance_;
+  }
+  return *global_context_;
+}
+
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
     const std::unordered_map<std::string, std::string> &custom_fields) {
-  source_type_ = source_type;
-  custom_fields_ = custom_fields;
+  SetSourceType(source_type);
+  SetCustomFields(custom_fields);
+
+  if (!global_context_started_setting_.fetch_or(1)) {
+    global_context_ = std::make_unique<RayEventContext>();
+    global_context_->SetSourceType(source_type);
+    global_context_->SetCustomFields(custom_fields);
+    global_context_finished_setting_ = true;
+  }
 }
 
 void RayEventContext::ResetEventContext() {
   source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   custom_fields_.clear();
+  global_context_started_setting_ = 0;
+  global_context_finished_setting_ = false;
 }
 
-void RayEventContext::SetCustomFields(const std::string &key, const std::string &value) {
+void RayEventContext::SetCustomField(const std::string &key, const std::string &value) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_[key] = value;
 }
 
 void RayEventContext::SetCustomFields(
     const std::unordered_map<std::string, std::string> &custom_fields) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_ = custom_fields;
 }
 ///
@@ -196,22 +223,26 @@ void RayEvent::SendMessage(const std::string &message) {
     return;
   }
 
+  const RayEventContext &context = RayEventContext::Instance().GetInitialzed()
+                                       ? RayEventContext::Instance()
+                                       : RayEventContext::GlobalInstance();
+
   rpc::Event event;
 
   std::string event_id_buffer = std::string(18, ' ');
   FillRandom(&event_id_buffer);
   event.set_event_id(StringToHex(event_id_buffer));
 
-  event.set_source_type(RayEventContext::Instance().GetSourceType());
-  event.set_source_hostname(RayEventContext::Instance().GetSourceHostname());
-  event.set_source_pid(RayEventContext::Instance().GetSourcePid());
+  event.set_source_type(context.GetSourceType());
+  event.set_source_hostname(context.GetSourceHostname());
+  event.set_source_pid(context.GetSourcePid());
 
   event.set_severity(severity_);
   event.set_label(label_);
   event.set_message(message);
   event.set_timestamp(current_sys_time_us());
 
-  auto mp = RayEventContext::Instance().GetCustomFields();
+  auto mp = context.GetCustomFields();
   for (const auto &pair : mp) {
     custom_fields_[pair.first] = pair.second;
   }

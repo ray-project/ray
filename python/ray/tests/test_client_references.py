@@ -1,5 +1,5 @@
 import pytest
-from ray.util.client import RayAPIStub
+from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
@@ -128,7 +128,8 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address, namespace="")
+        real_ray.init(
+            address=cluster.address, namespace="default_test_namespace")
 
         def test_cond():
             return object_memory_usage() == 0
@@ -190,7 +191,8 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(address=cluster.address, namespace="")
+        real_ray.init(
+            address=cluster.address, namespace="default_test_namespace")
 
         wait_for_condition(test_cond, timeout=10)
 
@@ -257,8 +259,8 @@ def test_named_actor_refcount(ray_start_regular):
         ActorTest.options(name="actor", lifetime="detached").remote()
 
         def connect_api():
-            api = RayAPIStub()
-            api.connect("localhost:50051", namespace="")
+            api = _ClientContext()
+            api.connect("localhost:50051", namespace="default_test_namespace")
             api.get_actor("actor")
             return api
 

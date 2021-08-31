@@ -42,6 +42,8 @@ MOCK_MODULES = [
     "gym.spaces",
     "horovod",
     "horovod.ray",
+    "hyperopt",
+    "hyperopt.hp"
     "kubernetes",
     "mlflow",
     "modin",
@@ -52,13 +54,6 @@ MOCK_MODULES = [
     "optuna.samplers",
     "optuna.trial",
     "psutil",
-    "pytorch_lightning.core.step_result",
-    "pytorch_lightning.overrides.data_parallel",
-    "pytorch_lightning.utilities.model_utils",
-    "pytorch_lightning.trainer.model_hooks",
-    "pytorch_lightning.trainer.optimizers",
-    "pytorch_lightning.utilities.exceptions",
-    "pytorch_lightning.utilities.memory",
     "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
@@ -92,43 +87,27 @@ MOCK_MODULES = [
     "zoopt",
 ]
 
+CHILD_MOCK_MODULES = [
+    "pytorch_lightning", "pytorch_lightning.accelerators",
+    "pytorch_lightning.plugins", "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.utilities", "tensorflow.keras.callbacks"
+]
+
 import scipy.stats
 import scipy.linalg
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
+
 # ray.rllib.models.action_dist.py and
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
-sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
-sys.modules["pytorch_lightning"] = ChildClassMock()
+
+for mod_name in CHILD_MOCK_MODULES:
+    sys.modules[mod_name] = ChildClassMock()
 
 assert "ray" not in sys.modules, (
     "If ray is already imported, we will not render documentation correctly!")
-
-
-class SimpleClass(object):
-    pass
-
-
-class SimpleClass2(object):
-    pass
-
-
-# ray.util.sgd.torch.lightning_operator.LightningOperator extends
-# TrainingOperator, pytorch_lightning.TrainerOptimizersMixin,
-# and pytorch_lightning.TrainerModelHooksMixin.
-# But, we are mocking all pytorch_lightning modules, causing the ptl base
-# classes to have a different metaclass than TrainingOperator.
-# To fix this, we replace the base classes with dummy classes that extend
-# object.
-# We have to create 2 dummy classes, one for TrainerOptimizersMixin and one
-# for TrainerModelHooksMixin so that we don't extend from the same base
-# class twice.
-setattr(sys.modules["pytorch_lightning.trainer.optimizers"],
-        "TrainerOptimizersMixin", SimpleClass)
-setattr(sys.modules["pytorch_lightning.trainer.model_hooks"],
-        "TrainerModelHooksMixin", SimpleClass2)
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the

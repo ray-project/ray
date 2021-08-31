@@ -1,14 +1,19 @@
 import logging
+import os
 from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +26,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
 
-    Current subclasses: JSONDatasource, CSVDatasource
+    Current subclasses:
+        JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
     def prepare_read(
@@ -33,6 +39,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         import pyarrow as pa
         import numpy as np
 
@@ -97,6 +104,57 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_files().")
+
+    def do_write(self,
+                 blocks: List[ObjectRef[Block]],
+                 metadata: List[BlockMetadata],
+                 path: str,
+                 dataset_uuid: str,
+                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 **write_args) -> List[ObjectRef[WriteResult]]:
+        """Creates and returns write tasks for a file-based datasource."""
+        path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        path = path[0]
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
+
+        _write_block_to_file = self._write_block
+
+        @ray.remote
+        def write_block(write_path: str, block: Block):
+            logger.debug(f"Writing {write_path} file.")
+            fs = filesystem
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            with fs.open_output_stream(write_path) as f:
+                _write_block_to_file(f, BlockAccessor.for_block(block))
+
+        file_format = self._file_format()
+        write_tasks = []
+        for block_idx, block in enumerate(blocks):
+            write_path = os.path.join(
+                path, f"{dataset_uuid}_{block_idx:06}.{file_format}")
+            write_task = write_block.remote(write_path, block)
+            write_tasks.append(write_task)
+
+        return write_tasks
+
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
+        """Writes a block to a single file, passing all kwargs to the writer.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _write_files().")
+
+    def _file_format(self):
+        """Returns the file format string, to be used as the file extension
+        when writing files.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _file_format().")
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and

@@ -74,7 +74,8 @@ class DashboardHead:
             if self._gcs_rpc_error_counter > \
                     dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR:
                 logger.error(
-                    "Dashboard suicide, the GCS RPC error count %s > %s",
+                    "Dashboard exiting because it received too many GCS RPC "
+                    "errors count: %s, threshold is %s.",
                     self._gcs_rpc_error_counter,
                     dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR)
                 # TODO(fyrestone): Do not use ray.state in

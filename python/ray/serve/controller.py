@@ -2,25 +2,24 @@ import asyncio
 import json
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState, ReplicaState
+from ray.serve.backend_state import ReplicaState, BackendState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
-    EndpointInfo,
     EndpointTag,
+    EndpointInfo,
     GoalId,
     NodeId,
     ReplicaTag,
-    TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import ALL_HTTP_METHODS
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -30,9 +29,6 @@ from ray.serve.utils import logger
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
-
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
 
 SNAPSHOT_KEY = "serve-deployments-snapshot"
 
@@ -68,7 +64,9 @@ class ServeController:
                        http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=controller_name)
+        controller_namespace = ray.get_runtime_context().namespace
+        self.kv_store = RayInternalKVStore(
+            namespace=f"{controller_name}-{controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -85,10 +83,11 @@ class ServeController:
         self.backend_state = BackendState(controller_name, detached,
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    async def wait_for_goal(self, goal_id: GoalId) -> None:
-        await self.goal_manager.wait_for_goal(goal_id)
+    async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
+        return await self.goal_manager.wait_for_goal(goal_id)
 
     async def _num_pending_goals(self) -> int:
         return self.goal_manager.num_pending_goals()
@@ -103,6 +102,10 @@ class ServeController:
         """
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
+
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
+        """Returns a dictionary of backend tag to backend config."""
+        return self.endpoint_state.get_endpoints()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
@@ -135,7 +138,7 @@ class ServeController:
                                    backend_info.deployer_job_id.hex())
             entry[
                 "class_name"] = backend_info.replica_config.func_or_class_name
-            entry["version"] = backend_info.version or "Unversioned"
+            entry["version"] = backend_info.version or "None"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
             # Or refactor the route_prefix logic in the Deployment class.
@@ -158,7 +161,8 @@ class ServeController:
                         continue
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
-                    replica_version = replica.version.code_version
+                    replica_version = ("None" if replica.version.unversioned
+                                       else replica.version.code_version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
@@ -171,10 +175,6 @@ class ServeController:
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
         return self.backend_state.get_running_replica_handles()
-
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
-        """Returns a dictionary of backend tag to backend config."""
-        return self.endpoint_state.get_endpoints()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -215,7 +215,6 @@ class ServeController:
                         f"prev_version '{prev_version}' "
                         "does not match with the existing "
                         f"version '{existing_backend_info.version}'.")
-
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(
@@ -229,13 +228,8 @@ class ServeController:
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
             endpoint_info = EndpointInfo(
-                ALL_HTTP_METHODS,
-                route=route_prefix,
-                python_methods=python_methods)
-            self.endpoint_state.update_endpoint(name, endpoint_info,
-                                                TrafficPolicy({
-                                                    name: 1.0
-                                                }))
+                route=route_prefix, python_methods=python_methods)
+            self.endpoint_state.update_endpoint(name, endpoint_info)
             return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
