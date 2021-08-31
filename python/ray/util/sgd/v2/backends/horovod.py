@@ -4,11 +4,17 @@ from dataclasses import dataclass
 from typing import Optional, Set
 
 import ray
-from horovod.ray.runner import Coordinator
-from horovod.ray.utils import detect_nics, nics_to_env_var
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.utils import get_node_id, get_hostname, update_env_vars
 from ray.util.sgd.v2.worker_group import WorkerGroup
+
+try:
+    from horovod.ray.runner import Coordinator
+    from horovod.ray.utils import detect_nics, nics_to_env_var
+except ImportError:
+    Coordinator = None
+    detect_nics = None
+    nics_to_env_var = None
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +32,12 @@ class HorovodConfig(BackendConfig):
     """
     nics: Optional[Set[str]] = None
     verbose: int = 1
+
+    def __post_init__(self):
+        if Coordinator is None:
+            raise ValueError(
+                "`horovod[ray]` is not installed. "
+                "Please install 'horovod[ray]' to use this backend.")
 
     @property
     def backend_cls(self):
