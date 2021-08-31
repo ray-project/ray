@@ -215,7 +215,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(3, ))
-        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        obs_space = Box(-1.0, 1.0, (4, ))
         max_seq_len = 50
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
@@ -235,7 +235,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "use_lstm": True,
                 "max_seq_len": max_seq_len,
             },
-        },
+        }
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
