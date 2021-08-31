@@ -465,7 +465,8 @@ class WorkflowStorage:
                 # Cloudpickle doesn't support private dispatch tables, so we
                 # extend the cloudpickler instead to avoid changing
                 # cloudpickle's global dispatch table which is shared with
-                # `ray.put`
+                # `ray.put`. See
+                # https://github.com/cloudpipe/cloudpickle/issues/437
                 class ObjectRefPickler(cloudpickle.CloudPickler):
                     _object_ref_reducer = {
                         ray.ObjectRef: lambda ref: self._put_object_ref(
