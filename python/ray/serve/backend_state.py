@@ -159,6 +159,10 @@ class ActorReplicaWrapper:
     def actor_resources(self) -> Dict[str, float]:
         return self._actor_resources
 
+    @property
+    def available_resources(self) -> Dict[str, float]:
+        return ray.available_resources()
+
     def graceful_stop(self) -> None:
         """Request the actor to exit gracefully."""
         try:
@@ -437,7 +441,8 @@ class BackendReplica(VersionedReplica):
         }
         available = {
             k: v
-            for k, v in ray.available_resources().items() if k in required
+            for k, v in self._actor.available_resources.items()
+            if k in required
         }
         return required, available
 
@@ -566,12 +571,11 @@ class ReplicaStateContainer:
 
 class BackendState:
     def __init__(self, name: str, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
-                 goal_manager: AsyncGoalManager, checkpoint_fn: Callable):
+                 long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
+                 checkpoint_fn: Callable):
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
-        self._kv_store: RayInternalKVStore = kv_store
         self._long_poll_host: LongPollHost = long_poll_host
         self._goal_manager: AsyncGoalManager = goal_manager
         self._checkpoint = checkpoint_fn
@@ -1070,7 +1074,7 @@ class BackendStateManager:
         self._goal_manager = goal_manager
         self._create_backend_state: Callable = lambda name: BackendState(
             name, controller_name, detached,
-            kv_store, long_poll_host, goal_manager, self._checkpoint)
+            long_poll_host, goal_manager, self._checkpoint)
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()

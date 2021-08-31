@@ -179,6 +179,11 @@ class MockReplicaActorWrapper:
     def actor_resources(self) -> Dict[str, float]:
         return {"CPU": 0.1}
 
+    @property
+    def available_resources(self) -> Dict[str, float]:
+        # Only used to print a warning.
+        return {}
+
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
@@ -239,15 +244,11 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
             "ray.serve.backend_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
                 "time.time", new=timer.time), patch(
-                    "ray.serve.storage.kv_store.RayInternalKVStore"
-                ) as mock_kv_store, patch(
                     "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
-        mock_kv_store.get = Mock(return_value=None)
         goal_manager = AsyncGoalManager()
-        backend_state = BackendState("name", "name", True, mock_kv_store,
-                                     mock_long_poll, goal_manager,
-                                     lambda: None)
+        backend_state = BackendState("name", "name", True, mock_long_poll,
+                                     goal_manager, lambda: None)
         yield backend_state, timer, goal_manager
 
 
@@ -492,6 +493,7 @@ def check_counts(backend_state: BackendState,
 def test_create_delete_single_replica(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
+    print("1")
     b_info_1, b_version_1 = backend_info()
     create_goal, updating = backend_state.deploy(b_info_1)
     assert updating
