@@ -280,7 +280,7 @@ class ClientCallManager {
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post(
-              [this, tag]() {
+              [tag]() {
                 tag->GetCall()->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
                 delete tag;
