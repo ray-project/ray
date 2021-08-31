@@ -107,10 +107,14 @@ void MetricPointExporter::ExportViewData(
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(
     GetMetricsAgentClientFn get_metrics_agent_client)
-    : get_metrics_agent_client_(get_metrics_agent_client) {
+    : enabled_(true), get_metrics_agent_client_(get_metrics_agent_client) {
   get_metrics_agent_client(
       [this](const Status &status, std::shared_ptr<rpc::MetricsAgentClient> client) {
-        RAY_UNUSED(status);
+        if (status.IsAgentDisabled()) {
+          RAY_LOG(INFO) << "Disable OpenCensusProtoExporter.";
+          enabled_ = false;
+          return;
+        }
         // This the gcs_server io thread.
         absl::MutexLock lock(&client_mutex_);
         client_ = client;
@@ -120,6 +124,7 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
+  if (!enabled_) return;
   // Start converting opencensus data into their protobuf format.
   // The format can be found here
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
@@ -229,7 +234,11 @@ void OpenCensusProtoExporter::ExportViewData(
     get_metrics_agent_client_(
         [this, report](const Status &status,
                        std::shared_ptr<rpc::MetricsAgentClient> client) {
-          RAY_UNUSED(status);
+          if (status.IsAgentDisabled()) {
+            RAY_LOG(INFO) << "Disable OpenCensusProtoExporter.";
+            enabled_ = false;
+            return;
+          }
           if (client) {
             report(client);
             // This the gcs_server io thread.

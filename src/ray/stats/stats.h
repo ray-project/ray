@@ -111,14 +111,14 @@ static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent
       [get_agent_address, client_call_manager](GetMetricsAgentClientCallback callback) {
         get_agent_address([client_call_manager, callback](Status status, auto &value) {
           if (status.ok()) {
-            RAY_LOG(INFO) << "Discover metrics agent addresss";
+            RAY_LOG(INFO) << "Discover metrics agent addresss.";
             rpc::RegisterAgentRequest register_agent;
             register_agent.ParseFromString(*value);
             callback(status, std::make_shared<rpc::MetricsAgentClient>(
                                  register_agent.agent_ip_address(),
                                  register_agent.agent_port(), *client_call_manager));
           } else {
-            RAY_LOG(ERROR) << "Discover metrics agent address failed: " << status;
+            RAY_LOG(DEBUG) << "Discover metrics agent address failed: " << status;
             callback(status, std::shared_ptr<rpc::MetricsAgentClient>());
           }
         });

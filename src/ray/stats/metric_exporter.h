@@ -107,6 +107,8 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                                   opencensus::stats::ViewData>> &data) override;
 
  private:
+  /// A flag to enable / disable the exporter.
+  std::atomic<bool> enabled_;
   /// A mutex to lock the client_.
   absl::Mutex client_mutex_;
   /// Client to call a metrics agent gRPC server.

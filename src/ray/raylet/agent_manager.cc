@@ -56,6 +56,9 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
     RAY_LOG(INFO) << "Not starting agent, the agent command is empty.";
+    mark_agent_disabled_([](ray::Status status, const boost::optional<int> &result) {
+      RAY_LOG(INFO) << "The agent is disabled, " << status;
+    });
     return;
   }
 

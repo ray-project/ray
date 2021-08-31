@@ -47,6 +47,7 @@ typedef std::function<void(ray::Status status, const boost::optional<int> &resul
 typedef std::function<void(const std::string &value,
                            const PutAgentAddressCallback &callback)>
     PutAgentAddressFn;
+typedef std::function<void(const PutAgentAddressCallback &callback)> MarkAgentDisabledFn;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -58,11 +59,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   explicit AgentManager(Options options, DelayExecutorFn delay_executor,
                         RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
                         PutAgentAddressFn put_agent_address,
+                        MarkAgentDisabledFn mark_agent_disabled,
                         bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)),
-        put_agent_address_(put_agent_address) {
+        put_agent_address_(put_agent_address),
+        mark_agent_disabled_(mark_agent_disabled) {
     if (start_agent) {
       StartAgent();
     }
@@ -94,6 +97,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   PutAgentAddressFn put_agent_address_;
+  MarkAgentDisabledFn mark_agent_disabled_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
 };
 

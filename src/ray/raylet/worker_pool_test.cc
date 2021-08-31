@@ -425,6 +425,8 @@ class WorkerPoolTest : public ::testing::Test {
           RAY_UNUSED(value);
           callback(ray::Status::OK(), 0);
         },
+        /*mark_agent_disabled=*/
+        [](const PutAgentAddressCallback &callback) { callback(ray::Status::OK(), 0); },
         false);
     const rpc::RegisterAgentRequest request;
     rpc::RegisterAgentReply reply;

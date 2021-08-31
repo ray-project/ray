@@ -101,6 +101,8 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
+  // agent status
+  AgentDisabled = 31,
 };
 
 #if defined(__clang__)
@@ -205,6 +207,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static Status AgentDisabled() {
+    return Status(StatusCode::AgentDisabled, "dashboard agent is disabled");
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -239,6 +245,7 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
+  bool IsAgentDisabled() const { return code() == StatusCode::AgentDisabled; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

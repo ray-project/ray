@@ -375,6 +375,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       /*put_agent_address=*/
       [this](const std::string &value, const PutAgentAddressCallback &callback) {
         PutAgentAddress(gcs_client_, self_node_id_, value, callback);
+      },
+      /*mark_agent_disabled=*/
+      [this](const PutAgentAddressCallback &callback) {
+        MarkAgentDisabled(gcs_client_, self_node_id_, callback);
       });
   worker_pool_.SetAgentManager(agent_manager_);
 }

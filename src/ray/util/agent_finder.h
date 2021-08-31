@@ -29,6 +29,7 @@ typedef std::function<void(Status status, const boost::optional<std::string> &re
     GetAgentAddressCallback;
 typedef std::function<void(Status status, const boost::optional<int> &result)>
     PutAgentAddressCallback;
+static const std::string _AgentDisabled = "AgentDisabled";
 
 static inline void GetAgentAddress(std::shared_ptr<gcs::RedisClient> redis_client,
                                    NodeID node_id, GetAgentAddressCallback callback) {
@@ -36,7 +37,12 @@ static inline void GetAgentAddress(std::shared_ptr<gcs::RedisClient> redis_clien
   ray::Status status = redis_client->GetPrimaryContext()->RunArgvAsync(
       {"HGET", key, "value"}, [key, callback](auto redis_reply) {
         if (!redis_reply->IsNil()) {
-          callback(Status::OK(), redis_reply->ReadAsString());
+          const auto &value = redis_reply->ReadAsString();
+          if (value == _AgentDisabled) {
+            callback(Status::AgentDisabled(), value);
+          } else {
+            callback(Status::OK(), value);
+          }
         } else {
           callback(Status::NotFound("Failed to find the key = " + key), std::string());
         }
@@ -50,7 +56,14 @@ static inline void GetAgentAddress(std::shared_ptr<gcs::RedisClient> redis_clien
 static inline void GetAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
                                    NodeID node_id, GetAgentAddressCallback callback) {
   auto key = std::string(kDashboardAgentAddressPrefix) + ":" + node_id.Hex();
-  ray::Status status = gcs_client->InternalKV().AsyncInternalKVGet(key, callback);
+  ray::Status status = gcs_client->InternalKV().AsyncInternalKVGet(
+      key, [callback](Status status, const boost::optional<std::string> &result) {
+        if (status.ok() && *result == _AgentDisabled) {
+          callback(Status::AgentDisabled(), result);
+        } else {
+          callback(status, result);
+        }
+      });
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Get agent address failed, key = " << key;
     callback(status, std::string());
@@ -68,5 +81,10 @@ static inline void PutAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
                    << ", value = " << value;
     callback(status, 0);
   }
+}
+
+static inline void MarkAgentDisabled(std::shared_ptr<gcs::GcsClient> gcs_client,
+                                     NodeID node_id, PutAgentAddressCallback callback) {
+  PutAgentAddress(gcs_client, node_id, _AgentDisabled, callback);
 }
 }  // namespace ray
