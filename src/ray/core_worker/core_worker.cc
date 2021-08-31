@@ -22,7 +22,6 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
@@ -126,8 +125,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())),
-      current_node_id_(NodeID::Nil()) {
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -157,37 +155,6 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
 
-  // Begin to get gcs server address from raylet.
-  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
-      options_.raylet_ip_address, options_.node_manager_port,
-      [this](std::string ip, int port) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        gcs_server_address_.first = ip;
-        gcs_server_address_.second = port;
-      });
-
-  // Initialize gcs client.
-  // As the synchronous and the asynchronous context of redis client is not used in this
-  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
-  // `enable_async_conn` as false.
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
-      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
-      options_.gcs_options.password_,
-      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
-      /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
-      gcs_options, [this](std::pair<std::string, int> *address) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        if (gcs_server_address_.second != 0) {
-          address->first = gcs_server_address_.first;
-          address->second = gcs_server_address_.second;
-          return true;
-        }
-        return false;
-      });
-
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
     // 1. This is a driver process. In this case, the driver is ready to use right after
@@ -215,35 +182,13 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(global_tags, [this](const stats::GetAgentAddressCallback &callback) {
-    worker_map_mutex_.Lock();
-    auto current_node_id = current_node_id_;
-    worker_map_mutex_.Unlock();
-    if (current_node_id.IsNil()) {
-      callback(ray::Status::Invalid("No core worker created."), std::string());
-      return;
-    }
-    GetAgentAddress(gcs_client_, current_node_id, callback);
-  });
+  stats::Init(global_tags, options_.metrics_agent_port);
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
                  std::unordered_map<std::string, std::string>(), options_.log_dir);
   }
-
-  io_thread_ = std::thread([&] {
-#ifndef _WIN32
-    // Block SIGINT and SIGTERM so they will be handled by the main thread.
-    sigset_t mask;
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGINT);
-    sigaddset(&mask, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &mask, NULL);
-#endif
-    SetThreadName("worker_process.io");
-    io_service_.run();
-  });
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -264,10 +209,6 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
-  }
-  io_service_.stop();
-  if (io_thread_.joinable()) {
-    io_thread_.join();
   }
 }
 
@@ -375,9 +316,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   workers_.emplace(worker->GetWorkerID(), worker);
-  if (current_node_id_.IsNil()) {
-    current_node_id_ = worker->GetCurrentNodeId();
-  }
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
 }
@@ -2715,39 +2653,49 @@ void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleAddObjectLocationOwner(
-    const rpc::AddObjectLocationOwnerRequest &request,
-    rpc::AddObjectLocationOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
+void CoreWorker::HandleUpdateObjectLocationBatch(
+    const rpc::UpdateObjectLocationBatchRequest &request,
+    rpc::UpdateObjectLocationBatchReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &worker_id = request.intended_worker_id();
+  if (HandleWrongRecipient(WorkerID::FromBinary(worker_id), send_reply_callback)) {
     return;
   }
-  auto object_id = ObjectID::FromBinary(request.object_id());
-  auto reference_exists = reference_counter_->AddObjectLocation(
-      object_id, NodeID::FromBinary(request.node_id()));
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
+  const auto &node_id = NodeID::FromBinary(request.node_id());
+  const auto &object_location_states = request.object_location_states();
+
+  for (const auto &object_location_state : object_location_states) {
+    const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
+    const auto &state = object_location_state.state();
+
+    if (state == rpc::ObjectLocationState::ADDED) {
+      AddObjectLocationOwner(object_id, node_id);
+    } else if (state == rpc::ObjectLocationState::REMOVED) {
+      RemoveObjectLocationOwner(object_id, node_id);
+    } else {
+      RAY_LOG(FATAL) << "Invalid object location state " << state
+                     << " has been received.";
+    }
+  }
+
+  send_reply_callback(Status::OK(), /*success_callback_on_reply*/ nullptr,
+                      /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::HandleRemoveObjectLocationOwner(
-    const rpc::RemoveObjectLocationOwnerRequest &request,
-    rpc::RemoveObjectLocationOwnerReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
+void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
+                                        const NodeID &node_id) {
+  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
   }
-  auto object_id = ObjectID::FromBinary(request.object_id());
-  auto reference_exists = reference_counter_->RemoveObjectLocation(
-      object_id, NodeID::FromBinary(request.node_id()));
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
+}
+
+void CoreWorker::RemoveObjectLocationOwner(const ObjectID &object_id,
+                                           const NodeID &node_id) {
+  auto reference_exists = reference_counter_->RemoveObjectLocation(object_id, node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
+  }
 }
 
 void CoreWorker::ProcessSubscribeObjectLocations(

@@ -1117,7 +1117,14 @@ def time_string() -> str:
     return output
 
 
+# When we enter a breakpoint, worker logs are automatically disabled via this.
+_worker_logs_enabled = True
+
+
 def print_worker_logs(data: Dict[str, str], print_file: Any):
+    if not _worker_logs_enabled:
+        return
+
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
@@ -1368,6 +1375,9 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    else:
+        # Add hook to suppress worker logs during breakpoint.
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb._driver_set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 
@@ -1377,7 +1387,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, runtime_env_hash, worker_shim_pid)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
+        worker_shim_pid)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the

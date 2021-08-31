@@ -218,12 +218,13 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
 
-        self.dashboard_agent_port = ray_params.dashboard_agent_port or 0
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port)
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port)
 
         ray_params.update_if_absent(
-            dashboard_agent_port=self.dashboard_agent_port,
+            metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port)
 
         if head:
@@ -777,6 +778,7 @@ class Node:
             config=self._config,
             fate_share=self.kernel_fate_share,
             gcs_server_port=self._ray_params.gcs_server_port,
+            metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
@@ -821,7 +823,7 @@ class Node:
             worker_port_list=self._ray_params.worker_port_list,
             object_manager_port=self._ray_params.object_manager_port,
             redis_password=self._ray_params.redis_password,
-            dashboard_agent_port=self._ray_params.dashboard_agent_port,
+            metrics_agent_port=self._ray_params.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.
             dashboard_agent_listen_port,
