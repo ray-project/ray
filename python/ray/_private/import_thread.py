@@ -152,7 +152,7 @@ class ImportThread:
                 # Function manager may be waiting on actor class to be
                 # loaded for deserialization, notify it to wake up and
                 # check if the actor class it was looking for is loaded
-                self.worker.function_actor_manager.notify_all()
+                self.worker.function_actor_manager.cv.notify_all()
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
