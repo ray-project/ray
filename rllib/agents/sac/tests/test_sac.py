@@ -81,6 +81,8 @@ class TestSAC(unittest.TestCase):
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
         config["buffer_size"] = 40000
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -116,6 +118,22 @@ class TestSAC(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+
+                # Test, whether the replay buffer is saved along with
+                # a checkpoint (no point in doing it for all frameworks since
+                # this is framework agnostic).
+                if fw == "tf" and env == "CartPole-v0":
+                    checkpoint = trainer.save()
+                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer.restore(checkpoint)
+                    # Get some data from the buffer and compare.
+                    data = trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    check(data, new_data)
+                    new_trainer.stop()
+
                 trainer.stop()
 
     def test_sac_fake_multi_gpu_learning(self):

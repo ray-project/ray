@@ -22,6 +22,7 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
+
         num_iterations = 1
 
         for _ in framework_iterator(config):
@@ -50,6 +51,7 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+
             trainer.stop()
 
     def test_dqn_fake_multi_gpu_learning(self):

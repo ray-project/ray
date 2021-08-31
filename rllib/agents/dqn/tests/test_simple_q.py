@@ -32,6 +32,7 @@ class TestSimpleQ(unittest.TestCase):
         config["num_workers"] = 0
         # Test with compression.
         config["compress_observations"] = True
+
         num_iterations = 2
 
         for _ in framework_iterator(config):

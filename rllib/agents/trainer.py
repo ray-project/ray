@@ -41,6 +41,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -322,7 +323,7 @@ COMMON_CONFIG: TrainerConfigDict = {
         "intra_op_parallelism_threads": 8,
         "inter_op_parallelism_threads": 8,
     },
-    # Whether to LZ4 compress individual observations
+    # Whether to LZ4 compress individual observations.
     "compress_observations": False,
     # Wait for metric batches for at most this many seconds. Those that
     # have not returned in time will be collected in the next train iteration.
@@ -554,6 +555,9 @@ class Trainer(Trainable):
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(
             env or config.get("env"), config)
+
+        # Placeholder for a local replay buffer instance.
+        self.local_replay_buffer = None
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1608,6 +1612,12 @@ class Trainer(Trainable):
             state["worker"] = self.workers.local_worker().save()
         if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
             state["optimizer"] = self.optimizer.save()
+        # TODO: Experimental functionality: Store contents of replay buffer
+        #  to checkpoint, only if user has configured this.
+        if self.local_replay_buffer is not None and \
+                self.config.get("store_buffer_in_checkpoints"):
+            state["local_replay_buffer"] = \
+                self.local_replay_buffer.get_state()
         return state
 
     def __setstate__(self, state: dict):
@@ -1616,8 +1626,26 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+        # Restore optimizer data, if necessary.
         if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
+        # If necessary, restore replay data as well.
+        if self.local_replay_buffer is not None:
+            # TODO: Experimental functionality: Restore contents of replay
+            #  buffer from checkpoint, only if user has configured this.
+            if self.config.get("store_buffer_in_checkpoints"):
+                if "local_replay_buffer" in state:
+                    self.local_replay_buffer.set_state(
+                        state["local_replay_buffer"])
+                else:
+                    logger.warning(
+                        "`store_buffer_in_checkpoints` is True, but no replay "
+                        "data found in state!")
+            elif "local_replay_buffer" in state and \
+                    log_once("no_store_buffer_in_checkpoints_but_data_found"):
+                logger.warning(
+                    "`store_buffer_in_checkpoints` is False, but some replay "
+                    "data found in state!")
 
     @staticmethod
     def with_updates(**overrides) -> Type["Trainer"]:
