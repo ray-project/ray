@@ -185,6 +185,20 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
+- label: ":python: Minimal install"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/install-minimal.sh
+    - ./ci/travis/env_info.sh
+    - python ./ci/travis/check_minimal_install.py
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_2
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_3
+
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
   commands:
@@ -276,7 +290,7 @@
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_tf,-flaky
+      --test_tag_filters=learning_tests_tf,-fake_gpus,-flaky
       rllib/...
 - label: ":brain: RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -285,7 +299,7 @@
     - RLLIB_TESTING=1 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_tf,-flaky
+      --test_tag_filters=learning_tests_tf,-fake_gpus,-flaky
       rllib/...
 - label: ":brain: RLlib: Learning tests with Torch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -294,7 +308,16 @@
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_torch,-flaky
+      --test_tag_filters=learning_tests_torch,-fake_gpus,-flaky
+      rllib/...
+- label: ":brain: RLlib: Learning tests w/ fake GPUs (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=fake_gpus,-flaky
       rllib/...
 - label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
