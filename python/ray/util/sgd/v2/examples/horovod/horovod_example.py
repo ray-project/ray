@@ -1,15 +1,15 @@
 import argparse
 import os
-from filelock import FileLock
 
+import horovod.torch as hvd
+import ray
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 import torch.utils.data.distributed
-
-import horovod.torch as hvd
-from horovod.ray import RayExecutor
+from filelock import FileLock
+from ray.util.sgd.v2 import Trainer
+from torchvision import datasets, transforms
 
 
 def metric_average(val, name):
@@ -37,15 +37,17 @@ class Net(nn.Module):
         return F.log_softmax(x)
 
 
-def train_fn(data_dir=None,
-             seed=42,
-             use_cuda=False,
-             batch_size=64,
-             use_adasum=False,
-             lr=0.01,
-             momentum=0.5,
-             num_epochs=10,
-             log_interval=10):
+def train_func(config):
+    data_dir = config.get("data_dir", None)
+    seed = config.get("seed", 42)
+    use_cuda = config.get("use_cuda", False)
+    batch_size = config.get("batch_size", 64)
+    use_adasum = config.get("use_adasum", False)
+    lr = config.get("lr", 0.01)
+    momentum = config.get("momentum", 0.5)
+    num_epochs = config.get("num_epochs", 10)
+    log_interval = config.get("log_interval", 10)
+
     # Horovod: initialize library.
     hvd.init()
     torch.manual_seed(seed)
@@ -59,7 +61,7 @@ def train_fn(data_dir=None,
     torch.set_num_threads(1)
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
-    data_dir = data_dir or "./data"
+    data_dir = data_dir or "~/data"
     with FileLock(os.path.expanduser("~/.horovod_lock")):
         train_dataset = \
             datasets.MNIST(data_dir, train=True, download=True,
@@ -95,10 +97,12 @@ def train_fn(data_dir=None,
         named_parameters=model.named_parameters(),
         op=hvd.Adasum if use_adasum else hvd.Average)
 
+    results = []
     for epoch in range(1, num_epochs + 1):
         model.train()
         # Horovod: set epoch to sampler for shuffling.
         train_sampler.set_epoch(epoch)
+        num_batches = len(train_loader)
         for batch_idx, (data, target) in enumerate(train_loader):
             if use_cuda:
                 data, target = data.cuda(), target.cuda()
@@ -113,13 +117,17 @@ def train_fn(data_dir=None,
                 print("Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch, batch_idx * len(data), len(train_sampler),
                     100. * batch_idx / len(train_loader), loss.item()))
+            if batch_idx == num_batches - 1:
+                results.append(loss.item())
+    return results
 
 
-def main(num_workers, use_gpu, **kwargs):
-    settings = RayExecutor.create_settings(timeout_s=30)
-    executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
-    executor.start()
-    executor.run(train_fn, **kwargs)
+def main(num_workers, use_gpu, kwargs):
+    trainer = Trainer("horovod", use_gpu=use_gpu, num_workers=num_workers)
+    trainer.start()
+    loss_per_epoch = trainer.run(train_func, config=kwargs)
+    trainer.shutdown()
+    print(loss_per_epoch)
 
 
 if __name__ == "__main__":
@@ -152,7 +160,7 @@ if __name__ == "__main__":
         metavar="M",
         help="SGD momentum (default: 0.5)")
     parser.add_argument(
-        "--use-cuda",
+        "--use-gpu",
         action="store_true",
         default=False,
         help="enables CUDA training")
@@ -176,7 +184,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=4,
+        default=2,
         help="Number of Ray workers to use for training.")
     parser.add_argument(
         "--data-dir",
@@ -191,17 +199,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    import ray
-
     if args.address:
         ray.init(args.address)
     else:
         ray.init()
 
+    use_cuda = args.use_gpu if args.use_gpu is not None else False
+
     kwargs = {
         "data_dir": args.data_dir,
         "seed": args.seed,
-        "use_cuda": args.use_cuda if args.use_cuda else False,
+        "use_cuda": use_cuda,
         "batch_size": args.batch_size,
         "use_adasum": args.use_adasum if args.use_adasum else False,
         "lr": args.lr,
@@ -210,7 +218,4 @@ if __name__ == "__main__":
         "log_interval": args.log_interval
     }
 
-    main(
-        num_workers=args.num_workers,
-        use_gpu=args.use_cuda if args.use_cuda else False,
-        kwargs=kwargs)
+    main(num_workers=args.num_workers, use_gpu=use_cuda, kwargs=kwargs)
