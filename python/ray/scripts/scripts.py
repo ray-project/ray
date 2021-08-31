@@ -1795,7 +1795,7 @@ def healthcheck(address, redis_password, component):
             options = (("grpc.enable_http_proxy", 0), )
             channel = grpc.insecure_channel(gcs_address, options=options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest(seq=0)
+            request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
                 request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
             if reply.status.code == 0:
