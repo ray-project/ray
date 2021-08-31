@@ -333,7 +333,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(request, context, "KVGet")
 
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
-        return self._call_inner_function(request, context, "KVGet")
+        return self._call_inner_function(request, context, "KVDel")
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
         return self._call_inner_function(request, context, "KVList")
