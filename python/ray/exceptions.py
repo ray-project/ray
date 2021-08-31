@@ -279,7 +279,8 @@ class ObjectStoreFullError(RayError):
 
 
 class ObjectLostError(RayError):
-    """Indicates that an object has been lost due to node failure.
+    """Generic error for unreachable objects. Indicates that an object has been
+    lost due to node failure or system error.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -290,6 +291,32 @@ class ObjectLostError(RayError):
 
     def __str__(self):
         return (f"Object {self.object_ref_hex} is lost due to node failure.")
+
+
+class ObjectReleasedError(ObjectLostError):
+    """Indicates that an object has been released while there was still a
+    reference to it.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            f"Object {self.object_ref_hex} cannot be retrieved because it "
+            "has already been released.\n\n"
+            "This is likely due to a corner case in the distributed "
+            "reference counting protocol that can occur when a worker passes "
+            "an ObjectRef, then exits before the ref count at the "
+            "ObjectRef's owner can be updated. For example, suppose we "
+            "call x_ref = foo.remote(...), pass [x_ref] to an actor A, and "
+            "then actor A passes x_ref to actor B by calling "
+            "B.bar.remote(x_ref). In this case, the driver may release x "
+            "before B.bar executes.\n\n"
+            "If your application does not match this scenario, then this is "
+            "likely a system-level bug in the distributed ref counting "
+            "protocol. Please file an issue on GitHub at "
+            "https://github.com/ray-project/ray/issues/new/choose.")
 
 
 class GetTimeoutError(RayError):
@@ -325,6 +352,7 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
+    ObjectReleasedError,
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,

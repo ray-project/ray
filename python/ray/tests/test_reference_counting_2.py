@@ -314,7 +314,7 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
         def resolve_ref(self):
             assert self.ref is not None
             if failure:
-                with pytest.raises(ray.exceptions.ObjectLostError):
+                with pytest.raises(ray.exceptions.ObjectReleasedError):
                     ray.get(self.ref)
             else:
                 ray.get(self.ref)

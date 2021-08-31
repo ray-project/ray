@@ -109,14 +109,12 @@ enum ErrorType {
   // Indicates that a task failed because the actor died unexpectedly before
   // finishing it.
   ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be restarted.
-  // Note, this currently only happens to actor objects. When the actor's
-  // state is already after the object's creating task, the actor cannot
-  // re-run the task.
-  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
-  // 1) A object that was put by the driver.
-  // 2) The object's creating task is already cleaned up from GCS (this
-  // currently crashes raylet).
+  // This object was lost from distributed memory to a node failure or system
+  // error. We use this error when lineage reconstruction is enabled, but the
+  // object cannot be reconstructed but the lineage is not available..
+  // TODO(swang): We may want to break down this error type further, e.g.,
+  // object's lineage was evicted or object depended on an actor task that
+  // can't be reconstructed.
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
@@ -130,6 +128,16 @@ enum ErrorType {
   ACTOR_CREATION_FAILED = 6;
   // Indicates that the runtime_env failed to be created.
   RUNTIME_ENV_SETUP_FAILED = 7;
+  // This object was lost from distributed memory to a node failure or system
+  // error. We use this error when lineage reconstruction is disabled.
+  OBJECT_LOST = 8;
+  // This object is unreachable because its owner has died.
+  OWNER_DIED = 9;
+  // This object is unreachable because the owner is alive but no longer has a
+  // record of this object, meaning that the physical object has likely already
+  // been released from distributed memory. This can happen in distributed
+  // reference counting, due to a bug or corner case.
+  OBJECT_RELEASED = 10;
 }
 
 /// The task exception encapsulates all information about task
