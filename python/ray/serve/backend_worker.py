@@ -18,7 +18,6 @@ from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
@@ -148,16 +147,6 @@ class RayServeReplica:
             "replica": self.replica_tag
         })
 
-        self.loop = asyncio.get_event_loop()
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
-                _update_backend_configs,
-            },
-            call_in_event_loop=self.loop,
-        )
-
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=("The number of exceptions that have "
@@ -274,9 +263,6 @@ class RayServeReplica:
             reconfigure_method = sync_to_async(
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
-
-    def _update_backend_configs(self, new_config: BackendConfig) -> None:
-        self.config = new_config
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()

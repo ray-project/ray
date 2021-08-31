@@ -7,7 +7,6 @@ import random
 
 from ray.actor import ActorHandle
 from ray.serve.common import BackendTag
-from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -48,12 +47,11 @@ class ReplicaSet:
     def __init__(
             self,
             backend_tag,
+            max_concurrent_queries: int,
             event_loop: asyncio.AbstractEventLoop,
     ):
         self.backend_tag = backend_tag
-        # NOTE(simon): We have to do this because max_concurrent_queries
-        # and the replica handles come from different long poll keys.
-        self.max_concurrent_queries: int = 8
+        self.max_concurrent_queries: int = max_concurrent_queries
         self.in_flight_queries: Dict[ActorHandle, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
@@ -64,9 +62,9 @@ class ReplicaSet:
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
 
         # Used to unblock this replica set waiting for free replicas. A newly
-        # added replica or updated max_concurrent_queries value means the
-        # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event(loop=event_loop)
+        # added replica means the query that waits on a free replica might be
+        # unblocked.
+        self.replicas_updated_event = asyncio.Event(loop=event_loop)
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
@@ -77,14 +75,6 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set_default_tags({
             "deployment": self.backend_tag
         })
-
-    def set_max_concurrent_queries(self, backend_config: BackendConfig):
-        new_value: int = backend_config.max_concurrent_queries
-        if new_value != self.max_concurrent_queries:
-            self.max_concurrent_queries = new_value
-            logger.debug(
-                f"ReplicaSet: changing max_concurrent_queries to {new_value}")
-            self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
         added, removed, _ = compute_iterable_delta(
@@ -104,7 +94,7 @@ class ReplicaSet:
             self.replica_iterator = itertools.cycle(handles)
             logger.debug(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
-            self.config_updated_event.set()
+            self.replicas_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
@@ -161,10 +151,11 @@ class ReplicaSet:
                 logger.debug(
                     "All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
-                    self._all_query_refs + [self.config_updated_event.wait()],
+                    self._all_query_refs +
+                    [self.replicas_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED)
-                if self.config_updated_event.is_set():
-                    self.config_updated_event.clear()
+                if self.replicas_updated_event.is_set():
+                    self.replicas_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
@@ -179,6 +170,7 @@ class Router:
             self,
             controller_handle: ActorHandle,
             backend_tag: BackendTag,
+            max_concurrent_queries: int,
             event_loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: choose backend, and assign replica.
@@ -187,7 +179,8 @@ class Router:
             controller_handle(ActorHandle): The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(backend_tag, event_loop)
+        self._replica_set = ReplicaSet(backend_tag, max_concurrent_queries,
+                                       event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -199,8 +192,6 @@ class Router:
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
-                _replica_set.set_max_concurrent_queries,
                 (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
                 _replica_set.update_worker_replicas,
             },

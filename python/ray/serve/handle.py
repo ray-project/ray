@@ -75,6 +75,7 @@ class RayServeHandle:
             endpoint_name: EndpointTag,
             handle_options: Optional[HandleOptions] = None,
             *,
+            max_concurrent_queries: int = 10,
             known_python_methods: List[str] = [],
             _router: Optional[Router] = None,
             _internal_pickled_http_request: bool = False,
@@ -82,6 +83,7 @@ class RayServeHandle:
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
         self.handle_options = handle_options or HandleOptions()
+        self.max_concurrent_queries = max_concurrent_queries
         self.known_python_methods = known_python_methods
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
         self._pickled_http_request = _internal_pickled_http_request
@@ -102,6 +104,7 @@ class RayServeHandle:
         return Router(
             self.controller_handle,
             self.endpoint_name,
+            self.max_concurrent_queries,
             event_loop=asyncio.get_event_loop(),
         )
 
@@ -136,6 +139,7 @@ class RayServeHandle:
             self.controller_handle,
             self.endpoint_name,
             new_options,
+            max_concurrent_queries=self.max_concurrent_queries,
             _router=self.router,
             _internal_pickled_http_request=self._pickled_http_request,
         )
@@ -205,6 +209,7 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.endpoint_name,
+            self.max_concurrent_queries,
             event_loop=create_or_get_async_loop_in_thread(),
         )
 

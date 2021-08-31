@@ -608,7 +608,6 @@ class BackendState:
             for goal_id in self._backend_goals.values():
                 self._goal_manager.create_goal(goal_id)
 
-        self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
 
     def shutdown(self) -> List[GoalId]:
@@ -646,14 +645,6 @@ class BackendState:
                  self._backend_matadata_backup, self._deleted_backend_metadata,
                  self._target_replicas, self._target_versions,
                  self._backend_goals)))
-
-    def _notify_backend_configs_changed(
-            self, key: Optional[BackendTag] = None) -> None:
-        for key, config in self.get_backend_configs(key).items():
-            self._long_poll_host.notify_changed(
-                (LongPollNamespace.BACKEND_CONFIGS, key),
-                config,
-            )
 
     def get_running_replica_handles(
             self,
@@ -775,7 +766,6 @@ class BackendState:
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
         self._checkpoint()
-        self._notify_backend_configs_changed(backend_tag)
 
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -796,7 +786,6 @@ class BackendState:
                 experimental_graceful_shutdown_timeout_s = 0
 
         self._checkpoint()
-        self._notify_backend_configs_changed(backend_tag)
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
         return new_goal_id

@@ -272,6 +272,7 @@ class Client:
             missing_ok: Optional[bool] = False,
             sync: bool = True,
             _internal_pickled_http_request: bool = False,
+            max_concurrent_queries: int = 10,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
@@ -282,6 +283,8 @@ class Client:
             sync (bool): If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
+            max_concurrent_queries(int): Max number of queries to send to each
+                replica before getting a response.
 
         Returns:
             RayServeHandle
@@ -323,6 +326,7 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
+                max_concurrent_queries=max_concurrent_queries,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
@@ -330,6 +334,7 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
+                max_concurrent_queries=max_concurrent_queries,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -768,7 +773,10 @@ class Deployment:
             ServeHandle
         """
         return _get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync)
+            self._name,
+            missing_ok=True,
+            sync=sync,
+            max_concurrent_queries=self.max_concurrent_queries)
 
     @PublicAPI
     def options(
