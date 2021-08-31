@@ -63,7 +63,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<MockLeasePolicyInterface> lease_policy;
 };
 
-TEST_F(DirectTaskTransportTest, ActorCreationOk) {
+TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetCreatingTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(task_spec.TaskId(), _, _));
@@ -77,6 +77,19 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   register_cb(Status::OK());
   create_cb(Status::OK());
 }
+
+TEST_F(DirectTaskTransportTest, ActorRegisterFail) {
+  auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  auto task_spec = GetCreatingTaskSpec(actor_id);
+  EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _)).Times(0);
+  std::function<void(Status)> register_cb;
+  EXPECT_CALL(*actor_creator, AsyncRegisterActor(task_spec, _))
+      .WillOnce(DoAll(SaveArg<1>(&register_cb), Return(Status::OK())));
+  EXPECT_CALL(*actor_creator, AsyncCreateActor(_, _)).Times(0);
+  ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
+  register_cb(Status::IOError(""));
+}
+
 
 }  // namespace core
 }  // namespace ray

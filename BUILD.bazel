@@ -829,8 +829,20 @@ cc_test(
 cc_test(
     name = "direct_task_transport_test",
     size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc",
-            "src/ray/core_worker/test/direct_task_transport_test_2.cc"],
+    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "direct_task_transport_mock_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/direct_task_transport_mock_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
