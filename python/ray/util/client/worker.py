@@ -9,13 +9,8 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Tuple
-from typing import Optional
-from typing import TYPE_CHECKING
+import tempfile
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import grpc
 
@@ -26,16 +21,11 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.util.client.client_pickler import convert_to_arg
-from ray.util.client.client_pickler import dumps_from_client
-from ray.util.client.client_pickler import loads_from_server
-from ray.util.client.common import ClientStub
-from ray.util.client.common import ClientActorHandle
-from ray.util.client.common import ClientActorClass
-from ray.util.client.common import ClientRemoteFunc
-from ray.util.client.common import ClientActorRef
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_OPTIONS
+from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
+                                            loads_from_server)
+from ray.util.client.common import (ClientActorClass, ClientActorHandle,
+                                    ClientActorRef, ClientObjectRef,
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -529,21 +519,19 @@ class Worker:
                 return
 
             import ray._private.runtime_env as runtime_env
-            import tempfile
             with tempfile.TemporaryDirectory() as tmp_dir:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
+                runtime_env.PKG_DIR = old_dir
 
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config),
                     ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
-                # prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                # self.data_client.PrepRuntimeEnv(prep_req)
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
