@@ -19,39 +19,53 @@ namespace plasma {
 GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<ClientInterface> &client,
                        const std::vector<ObjectID> &object_ids, bool is_from_worker,
-                       int64_t num_objects_to_wait_for,
-                       ObjectReadyCallback &object_satisfied_callback,
-                       AllObjectReadyCallback &all_objects_satisfied_callback)
+                       int64_t num_unique_objects_to_wait_for)
     : client(client),
       object_ids(object_ids.begin(), object_ids.end()),
       objects(object_ids.size()),
-      num_objects_to_wait_for(num_objects_to_wait_for),
-      num_satisfied(0),
+      num_unique_objects_to_wait_for(num_unique_objects_to_wait_for),
+      num_unique_objects_satisfied(0),
       is_from_worker(is_from_worker),
-      object_satisfied_callback(object_satisfied_callback),
-      all_objects_satisfied_callback(all_objects_satisfied_callback),
-      timer_(io_context){};
+      timer_(io_context) {}
+
+void GetRequest::AsyncWait(
+    int64_t timeout_ms,
+    std::function<void(const boost::system::error_code &)> on_timeout) {
+  RAY_CHECK(!is_removed_);
+  // Set an expiry time relative to now.
+  timer_.expires_from_now(std::chrono::milliseconds(timeout_ms));
+  timer_.async_wait(on_timeout);
+}
+
+void GetRequest::CancelTimer() {
+  RAY_CHECK(!is_removed_);
+  timer_.cancel();
+}
+
+void GetRequest::MarkRemoved() {
+  RAY_CHECK(!is_removed_);
+  is_removed_ = true;
+}
+
+bool GetRequest::IsRemoved() const { return is_removed_; }
 
 void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
-                                 int64_t timeout_ms, bool is_from_worker,
-                                 ObjectReadyCallback object_satisfied_callback,
-                                 AllObjectReadyCallback all_objects_satisfied_callback) {
+                                 int64_t timeout_ms, bool is_from_worker) {
   absl::MutexLock lock(&mu_);
   const absl::flat_hash_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   // Create a get request for this object.
-  auto get_request = std::make_shared<GetRequest>(
-      io_context_, client, object_ids, is_from_worker, unique_ids.size(),
-      object_satisfied_callback, all_objects_satisfied_callback);
-  for (const auto object_id : object_ids) {
+  auto get_request = std::make_shared<GetRequest>(io_context_, client, object_ids,
+                                                  is_from_worker, unique_ids.size());
+  for (const auto &object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
     if (entry && entry->Sealed()) {
       // Update the get request to take into account the present object.
       entry->ToPlasmaObject(&get_request->objects[object_id], /* checksealed */ true);
-      get_request->num_satisfied += 1;
-      get_request->object_satisfied_callback(object_id, get_request);
+      get_request->num_unique_objects_satisfied += 1;
+      object_satisfied_callback_(object_id, get_request);
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -64,7 +78,8 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
 
   // If all of the objects are present already or if the timeout is 0, return to
   // the client.
-  if (get_request->num_satisfied == get_request->num_objects_to_wait_for ||
+  if (get_request->num_unique_objects_satisfied ==
+          get_request->num_unique_objects_to_wait_for ||
       timeout_ms == 0) {
     OnGetRequestCompleted(get_request);
   } else if (timeout_ms != -1) {
@@ -144,10 +159,11 @@ void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
     RAY_CHECK(entry != nullptr);
     entry->ToPlasmaObject(&get_request->objects[object_id], /* check sealed */ true);
-    get_request->num_satisfied += 1;
-    get_request->object_satisfied_callback(object_id, get_request);
+    get_request->num_unique_objects_satisfied += 1;
+    object_satisfied_callback_(object_id, get_request);
     // If this get request is done, reply to the client.
-    if (get_request->num_satisfied == get_request->num_objects_to_wait_for) {
+    if (get_request->num_unique_objects_satisfied ==
+        get_request->num_unique_objects_to_wait_for) {
       OnGetRequestCompleted(get_request);
     } else {
       // The call to ReturnFromGet will remove the current element in the
@@ -166,13 +182,13 @@ void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
   }
 }
 
-bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) const {
+bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) {
   return object_get_requests_.count(object_id) > 0;
 }
 
 void GetRequestQueue::OnGetRequestCompleted(
     const std::shared_ptr<GetRequest> &get_request) {
-  get_request->all_objects_satisfied_callback(get_request);
+  all_objects_satisfied_callback_(get_request);
   RemoveGetRequest(get_request);
 }
 }  // namespace plasma

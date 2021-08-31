@@ -90,7 +90,11 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
           [this]() { return GetDebugDump(); }),
-      get_request_queue_(io_context_, object_lifecycle_mgr_) {
+      get_request_queue_(io_context_, object_lifecycle_mgr_,
+                         [this](const ObjectID &object_id, const auto &request) {
+                           this->AddToClientObjectIds(object_id, request->client);
+                         },
+                         [this](const auto &request) { this->ReturnFromGet(request); }) {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
@@ -225,12 +229,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms, bool is_from_worker) {
-  get_request_queue_.AddRequest(
-      client, object_ids, timeout_ms, is_from_worker,
-      [this](const ObjectID &object_id, const auto &request) {
-        this->AddToClientObjectIds(object_id, request->client);
-      },
-      [this](const auto &request) { this->ReturnFromGet(request); });
+  get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
 int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,

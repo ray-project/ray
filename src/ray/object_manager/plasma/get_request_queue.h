@@ -30,9 +30,7 @@ struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker,
-             int64_t num_objects_to_wait_for,
-             ObjectReadyCallback &object_satisfied_callback,
-             AllObjectReadyCallback &all_objects_satisfied_callback);
+             int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -41,37 +39,23 @@ struct GetRequest {
   /// the reply.
   absl::flat_hash_map<ObjectID, PlasmaObject> objects;
   /// The minimum number of objects to wait for in this request.
-  const int64_t num_objects_to_wait_for;
+  const int64_t num_unique_objects_to_wait_for;
   /// The number of object requests in this wait request that are already
   /// satisfied.
-  int64_t num_satisfied;
+  int64_t num_unique_objects_satisfied;
   /// Whether or not the request comes from the core worker. It is used to track the size
   /// of total objects that are consumed by core worker.
   const bool is_from_worker;
 
-  ObjectReadyCallback object_satisfied_callback;
-  AllObjectReadyCallback all_objects_satisfied_callback;
-
   void AsyncWait(int64_t timeout_ms,
-                 std::function<void(const boost::system::error_code &)> on_timeout) {
-    RAY_CHECK(!is_removed_);
-    // Set an expiry time relative to now.
-    timer_.expires_from_now(std::chrono::milliseconds(timeout_ms));
-    timer_.async_wait(on_timeout);
-  }
+                 std::function<void(const boost::system::error_code &)> on_timeout);
 
-  void CancelTimer() {
-    RAY_CHECK(!is_removed_);
-    timer_.cancel();
-  }
+  void CancelTimer();
 
   /// Mark that the get request is removed.
-  void MarkRemoved() {
-    RAY_CHECK(!is_removed_);
-    is_removed_ = true;
-  }
+  void MarkRemoved();
 
-  bool IsRemoved() const { return is_removed_; }
+  bool IsRemoved() const;
 
  private:
   /// The timer that will time out and cause this wait to return to
@@ -86,8 +70,13 @@ struct GetRequest {
 class GetRequestQueue {
  public:
   GetRequestQueue(instrumented_io_context &io_context,
-                  IObjectLifecycleManager &object_lifecycle_mgr)
-      : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
+                  IObjectLifecycleManager &object_lifecycle_mgr,
+                  ObjectReadyCallback object_callback,
+                  AllObjectReadyCallback all_objects_callback)
+      : io_context_(io_context),
+        object_lifecycle_mgr_(object_lifecycle_mgr),
+        object_satisfied_callback_(object_callback),
+        all_objects_satisfied_callback_(all_objects_callback) {}
 
   /// Add a get request to get request queue. Note this will call callback functions
   /// directly if all objects has been satisfied, otherwise store the request
@@ -101,8 +90,7 @@ class GetRequestQueue {
   /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                  bool is_from_worker, ObjectReadyCallback object_callback,
-                  AllObjectReadyCallback all_objects_callback);
+                  bool is_from_worker);
 
   /// Remove all of the GetRequests for a given client.
   ///
@@ -122,12 +110,13 @@ class GetRequestQueue {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Only for tests.
-  bool IsGetRequestExist(const ObjectID &object_id) const;
+  bool IsGetRequestExist(const ObjectID &object_id);
 
   /// Called when objects satisfied. Call get request callback function and
   /// remove get request in queue.
   /// \param get_request the get request to be completed.
-  void OnGetRequestCompleted(const std::shared_ptr<GetRequest> &get_request);
+  void OnGetRequestCompleted(const std::shared_ptr<GetRequest> &get_request)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   instrumented_io_context &io_context_;
 
@@ -140,6 +129,9 @@ class GetRequestQueue {
   absl::Mutex mu_;
 
   IObjectLifecycleManager &object_lifecycle_mgr_;
+
+  ObjectReadyCallback object_satisfied_callback_;
+  AllObjectReadyCallback all_objects_satisfied_callback_;
 
   friend struct GetRequestQueueTest;
 };
