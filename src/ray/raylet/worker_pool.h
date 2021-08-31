@@ -498,7 +498,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// The runtime envs for tasks in this map have been successfully created,
     /// and the tasks are now waiting for a worker to start. Note that this map
     /// does not include tasks that have a dedicated worker assigned to them.
-    std::unordered_map<RuntimeEnvHash, std::deque<TaskWaitingForWorkerInfo>> waiting_tasks_by_env_hash;
+    absl::flat_hash_map<RuntimeEnvHash, std::deque<TaskWaitingForWorkerInfo>> waiting_tasks_by_env_hash;
     /// A map from runtime env hash to workers that are starting in that
     /// runtime env. Note that this map does not include dedicated workers that
     /// have already been assigned to a task.
