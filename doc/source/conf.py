@@ -44,6 +44,8 @@ MOCK_MODULES = [
     "horovod.ray",
     "horovod.ray.runner",
     "horovod.ray.utils",
+    "hyperopt",
+    "hyperopt.hp"
     "kubernetes",
     "mlflow",
     "modin",

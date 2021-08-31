@@ -1,0 +1,29 @@
+cartpole-ppo-fake-gpus:
+    env: CartPole-v0
+    run: PPO
+    stop:
+        episode_reward_mean: 150
+        training_iteration: 400
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        gamma: 0.99
+        lr: 0.0003
+        num_workers: 1
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+
+        # Double batch size (2 GPUs).
+        train_batch_size: 8000
+
+        model:
+            # Test w/ LSTMs.
+            use_lstm: true
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true
