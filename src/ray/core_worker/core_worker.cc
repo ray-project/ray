@@ -565,6 +565,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         },
         "CoreWorker.ReconstructObject");
   };
+  auto push_error_callback = [this](const JobID &job_id, const std::string &type,
+                                    const std::string &error_message, double timestamp) {
+    return PushError(job_id, type, error_message, timestamp);
+  };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
       /* retry_task_callback= */
@@ -589,7 +593,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback));
+      check_node_alive_fn, reconstruct_object_callback, push_error_callback));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors

@@ -63,6 +63,9 @@ class TaskResubmissionInterface {
 
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
+using PushErrorCallback =
+    std::function<Status(const JobID &job_id, const std::string &type,
+                         const std::string &error_message, double timestamp)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -70,12 +73,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               std::shared_ptr<ReferenceCounter> reference_counter,
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
-              ReconstructObjectCallback reconstruct_object_callback)
+              ReconstructObjectCallback reconstruct_object_callback,
+              PushErrorCallback push_error_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
-        reconstruct_object_callback_(reconstruct_object_callback) {
+        reconstruct_object_callback_(reconstruct_object_callback),
+        push_error_callback_(push_error_callback) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
@@ -269,6 +274,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// returned by the task (or store an error if the object is not
   /// recoverable).
   const ReconstructObjectCallback reconstruct_object_callback_;
+
+  // Called to push an error to the relevant driver.
+  const PushErrorCallback push_error_callback_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;

@@ -306,10 +306,16 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
   if (num_retries_left != 0) {
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    std::ostringstream stream;
     auto num_retries_left_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << num_retries_left_str << " retries left for task " << spec.TaskId()
-                  << ", attempting to resubmit.";
+    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
+           << ", attempting to resubmit.";
+    RAY_CHECK_OK(
+        push_error_callback_(spec.JobId(), "retry_task", stream.str(), timestamp));
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {
