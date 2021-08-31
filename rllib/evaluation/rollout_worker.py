@@ -34,6 +34,7 @@ from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -459,18 +460,29 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        self.env = None
-
+        # Update the global seed for numpy/random/tf-eager/torch.
         _update_global_seed(policy_config, seed)
 
-        # Create an env for this worker.
+        # A single environment provided by the user (via config.env). This may
+        # also remain None.
+        # 1) Create the env using the user provided env_creator. This may return
+        #    a gym.Env (incl. MultiAgentEnv), an already vectorized VectorEnv,
+        #    BaseEnv, ExternalEnv, or an ActorHandle (remote env).
+        # 2) Wrap - if applicable - with Atari/recording/rendering wrappers.
+        # 3) Seed the env, if necessary.
+        # 4) Vectorize the existing single env by creating more clones of
+        #    this env and wrapping it with the RLlib BaseEnv class.
+        self.env = None
+
+        # Create a (single) env for this worker.
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
+
         if self.env is not None:
             # Validate environment (general validation function).
-            self.env = _validate_env(self.env)
+            _validate_env(self.env, env_context=self.env_context)
             # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
@@ -549,27 +561,38 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
-            # Ideally, we would use the same make_env() function below
+            # Ideally, we would use the same make_sub_env() function below
             # to create self.env, but wrap(env) and self.env has a cyclic
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
             _update_env_seed(self.env, seed, worker_index, 0)
 
-        def make_env(vector_index):
-            env = wrap(
-                env_creator(
-                    env_context.copy_with_overrides(
-                        worker_index=worker_index,
-                        vector_index=vector_index,
-                        remote=remote_worker_envs)))
-            # make_env() is used to created additional environments
-            # during environment vectorization below.
-            # So we make sure a deterministic random seed is set on
-            # all the environments if specified.
+        def make_sub_env(vector_index):
+            # Used to created additional environments during environment
+            # vectorization.
+
+            # Create the env context (config dict + meta-data) for
+            # this particular sub-env within the vectorized one.
+            env_ctx = env_context.copy_with_overrides(
+                worker_index=worker_index,
+                vector_index=vector_index,
+                remote=remote_worker_envs)
+            # Create the sub-env.
+            env = env_creator(env_ctx)
+            # Validate first.
+            _validate_env(env, env_context=env_ctx)
+            # Custom validation function given by user.
+            if validate_env is not None:
+                validate_env(env, env_ctx)
+            # Use our wrapper, defined above.
+            env = wrap(env)
+
+            # Make sure a deterministic random seed is set on
+            # all the sub-environments if specified.
             _update_env_seed(env, seed, worker_index, vector_index)
             return env
 
-        self.make_env_fn = make_env
+        self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
         policy_dict = _determine_spaces_for_multi_agent_dict(
@@ -650,18 +673,22 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
+        # Vectorize environment, if any.
         self.num_envs: int = num_envs
-
+        # This RolloutWorker has no env.
         if self.env is None:
             self.async_env = None
+        # Use a custom env-vectorizer and call it providing self.env.
         elif "custom_vector_env" in policy_config:
-            custom_vec_wrapper = policy_config["custom_vector_env"]
-            self.async_env = custom_vec_wrapper(self.env)
+            self.async_env = policy_config["custom_vector_env"](self.env)
+        # Default: Vectorize self.env via the make_sub_env function. This adds
+        # further clones of self.env and creates a RLlib BaseEnv (which is
+        # vectorized under the hood).
         else:
             # Always use vector env for consistency even if num_envs = 1.
             self.async_env: BaseEnv = BaseEnv.to_base_env(
                 self.env,
-                make_env=make_env,
+                make_env=self.make_sub_env_fn,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
@@ -1519,18 +1546,30 @@ def _determine_spaces_for_multi_agent_dict(
     return multi_agent_dict
 
 
-def _validate_env(env: Any) -> EnvType:
-    # Allow this as a special case (assumed gym.Env).
-    if hasattr(env, "observation_space") and hasattr(env, "action_space"):
-        return env
+def _validate_env(env: EnvType, env_context: EnvContext = None):
+
+    msg = "Validating sub-env at vector index=0 ... "
 
     allowed_types = [
         gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
         ray.actor.ActorHandle
     ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
-        raise ValueError(
+        raise EnvError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
-            "function returned {} ({}).".format(env, type(env)))
-    return env
+            "function returned {} (type={}).".format(env, type(env)))
+
+    # Do some test runs with the provided env.
+    if isinstance(env, gym.Env):
+        assert hasattr(env, "observation_space") and hasattr(env, "action_space")
+        dummy_obs = env.reset()
+        if not env.observation_space.contains(dummy_obs):
+            msg += "(NOT OK)"
+            logger.warning(msg)
+            raise EnvError(
+                f"Env's `observation_space` {env.observation_space} does not "
+                f"contain returned observation after a reset ({dummy_obs})!")
+        elif env_context.vector_index == 0:
+            msg += "(ok)"
+            logger.info(msg)
