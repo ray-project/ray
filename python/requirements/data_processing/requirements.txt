@@ -4,3 +4,4 @@ aioboto3==8.3.0
 flask_cors
 moto[s3]
 s3fs
+pytest-repeat

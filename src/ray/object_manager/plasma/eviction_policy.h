@@ -48,8 +48,7 @@ class IEvictionPolicy {
   /// cache.
   ///
   /// \param object_id The object ID of the object that was created.
-  /// \param is_create Whether we are creating a new object (vs reading an object).
-  virtual void ObjectCreated(const ObjectID &object_id, bool is_create) = 0;
+  virtual void ObjectCreated(const ObjectID &object_id) = 0;
 
   /// This method will be called when the Plasma store needs more space, perhaps
   /// to create a new object. When this method is called, the eviction
@@ -62,7 +61,7 @@ class IEvictionPolicy {
   ///        be stored into this vector.
   /// \return The number of bytes of space that is still needed, if
   /// any. If negative, then the required space has been made.
-  virtual int64_t RequireSpace(int64_t size, std::vector<ObjectID> *objects_to_evict) = 0;
+  virtual int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) = 0;
 
   /// This method will be called whenever an unused object in the Plasma store
   /// starts to be used. When this method is called, the eviction policy will
@@ -92,7 +91,7 @@ class IEvictionPolicy {
   ///        be stored into this vector.
   /// \return The total number of bytes of space chosen to be evicted.
   virtual int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                                       std::vector<ObjectID> *objects_to_evict) = 0;
+                                       std::vector<ObjectID> &objects_to_evict) = 0;
 
   /// This method will be called when an object is going to be removed
   ///
@@ -118,7 +117,7 @@ class LRUCache {
   int64_t Remove(const ObjectID &key);
 
   int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                               std::vector<ObjectID> *objects_to_evict);
+                               std::vector<ObjectID> &objects_to_evict);
 
   int64_t OriginalCapacity() const;
 
@@ -129,6 +128,8 @@ class LRUCache {
   void AdjustCapacity(int64_t delta);
 
   void Foreach(std::function<void(const ObjectID &)>);
+
+  bool Exists(const ObjectID &key) const;
 
   std::string DebugString() const;
 
@@ -160,16 +161,16 @@ class EvictionPolicy : public IEvictionPolicy {
  public:
   EvictionPolicy(const IObjectStore &object_store, const IAllocator &allocator);
 
-  void ObjectCreated(const ObjectID &object_id, bool is_create) override;
+  void ObjectCreated(const ObjectID &object_id) override;
 
-  int64_t RequireSpace(int64_t size, std::vector<ObjectID> *objects_to_evict) override;
+  int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) override;
 
   void BeginObjectAccess(const ObjectID &object_id) override;
 
   void EndObjectAccess(const ObjectID &object_id) override;
 
   int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                               std::vector<ObjectID> *objects_to_evict) override;
+                               std::vector<ObjectID> &objects_to_evict) override;
 
   void RemoveObject(const ObjectID &object_id) override;
 
@@ -178,6 +179,9 @@ class EvictionPolicy : public IEvictionPolicy {
  private:
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;
+
+  /// Returns whether the object exist in cache or not
+  bool IsObjectExists(const ObjectID &object_id) const;
 
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
@@ -188,6 +192,8 @@ class EvictionPolicy : public IEvictionPolicy {
   const IObjectStore &object_store_;
 
   const IAllocator &allocator_;
+
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 }  // namespace plasma

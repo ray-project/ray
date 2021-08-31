@@ -950,15 +950,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                                    rpc::AddObjectLocationOwnerReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(
-      const rpc::RemoveObjectLocationOwnerRequest &request,
-      rpc::RemoveObjectLocationOwnerReply *reply,
+  // Implements gRPC server handler.
+  void HandleUpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1206,6 +1201,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
+
+  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies

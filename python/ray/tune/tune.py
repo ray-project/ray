@@ -22,7 +22,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
-from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -101,6 +101,7 @@ def run(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
+        max_concurrent_trials: Optional[int] = None,
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
         ray_auto_init: Optional = None,
@@ -280,6 +281,12 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
+        max_concurrent_trials (int): Maximum number of trials to run
+            concurrently. Must be non-negative. If None or 0, no limit will
+            be applied. This is achieved by wrapping the ``search_alg`` in
+            a :class:`ConcurrencyLimiter`, and thus setting this argument
+            will raise an exception if the ``search_alg`` is already a
+            :class:`ConcurrencyLimiter`. Defaults to None.
         _remote (bool): Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
@@ -434,16 +441,52 @@ def run(
         from ray.tune.suggest import create_searcher
         search_alg = create_searcher(search_alg)
 
+    # if local_mode=True is set during ray.init().
+    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+
+    if is_local_mode:
+        max_concurrent_trials = 1
+
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
         from ray.tune.schedulers import create_scheduler
         scheduler = create_scheduler(scheduler)
 
-    if issubclass(type(search_alg), Searcher):
-        search_alg = SearchGenerator(search_alg)
-
     if not search_alg:
-        search_alg = BasicVariantGenerator()
+        search_alg = BasicVariantGenerator(
+            max_concurrent=max_concurrent_trials or 0)
+    elif max_concurrent_trials:
+        if isinstance(search_alg, ConcurrencyLimiter):
+            if search_alg.max_concurrent != max_concurrent_trials:
+                raise ValueError(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter` with `max_concurrent="
+                    f"{search_alg.max_concurrent}. FIX THIS by setting "
+                    "`max_concurrent_trials=None`.")
+            else:
+                logger.warning(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter`. `max_concurrent_trials` "
+                    "will be ignored.")
+        else:
+            if max_concurrent_trials < 1:
+                raise ValueError(
+                    "`max_concurrent_trials` must be greater or equal than 1, "
+                    f"got {max_concurrent_trials}.")
+            if isinstance(search_alg, Searcher):
+                search_alg = ConcurrencyLimiter(
+                    search_alg, max_concurrent=max_concurrent_trials)
+            elif not is_local_mode:
+                logger.warning(
+                    "You have passed a `SearchGenerator` instance as the "
+                    "`search_alg`, but `max_concurrent_trials` requires a "
+                    "`Searcher` instance`. `max_concurrent_trials` "
+                    "will be ignored.")
+
+    if isinstance(search_alg, Searcher):
+        search_alg = SearchGenerator(search_alg)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
@@ -484,7 +527,10 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info("TrialRunner resumed, ignoring new add_experiment.")
+        logger.info("TrialRunner resumed, ignoring new add_experiment but "
+                    "updating trial resources.")
+        if resources_per_trial:
+            runner.update_pending_trial_resources(resources_per_trial)
 
     progress_reporter = progress_reporter or detect_reporter()
 
@@ -495,6 +541,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
+
+    # Calls setup on callbacks
+    runner.setup_experiments(
+        experiments=experiments, total_num_samples=search_alg.total_samples)
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -546,7 +596,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
-    runner.cleanup_trials()
+    runner.cleanup()
 
     incomplete_trials = []
     for trial in runner.get_trials():

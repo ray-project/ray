@@ -28,11 +28,11 @@ namespace plasma {
 
 class MockEvictionPolicy : public IEvictionPolicy {
  public:
-  MOCK_METHOD2(ObjectCreated, void(const ObjectID &, bool));
-  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD1(ObjectCreated, void(const ObjectID &));
+  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
   MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
-  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
 };
