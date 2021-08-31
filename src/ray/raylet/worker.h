@@ -67,6 +67,7 @@ class WorkerInterface {
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual void SetRuntimeEnvHash(int runtime_env_hash) = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -121,9 +122,9 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
-         const Language &language, rpc::WorkerType worker_type,
-         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
+  Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
+         rpc::WorkerType worker_type, const std::string &ip_address,
+         std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -156,6 +157,7 @@ class Worker : public WorkerInterface {
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
+  void SetRuntimeEnvHash(int runtime_env_hash);
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -244,7 +246,11 @@ class Worker : public WorkerInterface {
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
-  const int runtime_env_hash_;
+  /// Note that actors with dynamic options can only be run on a specific
+  /// worker, so in this case, the runtime env will actually be a unique
+  /// per-actor integer.
+  /// 0 means that the worker was started with the default runtime env.
+  int runtime_env_hash_ = 0;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is

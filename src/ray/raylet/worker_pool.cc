@@ -508,7 +508,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto shim_process = Process::FromPid(worker_shim_pid);
   worker->SetShimProcess(shim_process);
-  if (state.starting_worker_processes.count(shim_process) == 0) {
+  auto worker_it = state.starting_worker_processes.find(shim_process);
+  if (worker_it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
                      << shim_process.GetId();
     Status status = Status::Invalid("Unknown worker");
@@ -542,12 +543,25 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const auto &shim_process = worker->GetShimProcess();
   RAY_CHECK(shim_process.IsValid());
+  RAY_LOG(DEBUG) << "Worker started " << shim_process.GetId();
 
   auto it = state.starting_worker_processes.find(shim_process);
   if (it != state.starting_worker_processes.end()) {
+    const auto &runtime_env_hash = it->second.runtime_env_hash;
+    worker->SetRuntimeEnvHash(runtime_env_hash);
+
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
+
+      auto workers_it = state.starting_workers_by_env_hash.find(runtime_env_hash);
+      if (workers_it != state.starting_workers_by_env_hash.end()) {
+        workers_it->second.erase(shim_process);
+        if (workers_it->second.empty()) {
+          state.starting_workers_by_env_hash.erase(workers_it);
+        }
+      }
+
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
     }
@@ -750,19 +764,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  bool no_workers_starting = false;
-  auto runtime_env_hash = worker->GetRuntimeEnvHash();
-  auto workers_it = state.starting_workers_by_env_hash.find(runtime_env_hash);
-  if (workers_it != state.starting_workers_by_env_hash.end()) {
-    workers_it->second.erase(worker->GetShimProcess());
-    if (workers_it->second.empty()) {
-      state.starting_workers_by_env_hash.erase(workers_it);
-      no_workers_starting = true;
-    }
-  }
-
   // Try to dispatch a task to this worker.
   bool worker_used = false;
+  auto runtime_env_hash = worker->GetRuntimeEnvHash();
   auto &waiting_tasks = state.waiting_tasks_by_env_hash[runtime_env_hash];
   while (!worker_used && !waiting_tasks.empty()) {
     auto &task_info = waiting_tasks.front();
@@ -771,11 +775,15 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
   if (waiting_tasks.empty()) {
     state.waiting_tasks_by_env_hash.erase(runtime_env_hash);
-  } else if (no_workers_starting) {
-    // Still have tasks queued, but no other worker is starting. Trigger the
-    // error so the PopWorker client tries again.
-    TriggerAsyncCallbacksForFailedWorkerStart(state, runtime_env_hash,
-                                              PopWorkerStatus::WorkerPendingRegistration);
+  } else {
+    if (state.starting_workers_by_env_hash.count(runtime_env_hash) == 0) {
+      // Still have tasks queued, but no other worker is starting. Trigger the
+      // error so the PopWorker client tries again.
+      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+      // startup concurrency maxed out or job not started.
+      TriggerAsyncCallbacksForFailedWorkerStart(
+          state, runtime_env_hash, PopWorkerStatus::WorkerPendingRegistration);
+    }
   }
 
   if (!worker_used) {
@@ -939,12 +947,21 @@ void WorkerPool::TryKillingIdleWorkers() {
 
 void WorkerPool::TriggerAsyncCallbacksForFailedWorkerStart(
     State &state, const RuntimeEnvHash &runtime_env_hash, const PopWorkerStatus &status) {
-  if (state.starting_workers_by_env_hash.count(runtime_env_hash) == 0) {
-    // There are no other workers starting with this runtime env. Trigger
-    // all queued callbacks for this runtime env.
-    for (const auto &task : state.waiting_tasks_by_env_hash[runtime_env_hash]) {
-      PopWorkerCallbackAsync(std::move(task.callback), nullptr, status);
-    }
+  size_t num_starting_workers = 0;
+  auto it = state.starting_workers_by_env_hash.find(runtime_env_hash);
+  if (it != state.starting_workers_by_env_hash.end()) {
+    num_starting_workers = it->second.size();
+  }
+
+  auto &waiting_tasks = state.waiting_tasks_by_env_hash[runtime_env_hash];
+  while (waiting_tasks.size() > num_starting_workers) {
+    // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+    // startup concurrency maxed out or job not started.
+    auto &task = waiting_tasks.back();
+    PopWorkerCallbackAsync(std::move(task.callback), nullptr, status);
+    waiting_tasks.pop_back();
+  }
+  if (waiting_tasks.empty()) {
     state.waiting_tasks_by_env_hash.erase(runtime_env_hash);
   }
 }
@@ -1031,8 +1048,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
     } else {
-      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
-      // startup concurrency maxed out or job not started.
       TriggerAsyncCallbacksForFailedWorkerStart(state, runtime_env_hash, status);
     }
   };
@@ -1040,8 +1055,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   RuntimeEnvHash runtime_env_hash = task_spec.GetRuntimeEnvHash();
   if (requires_dedicated_worker) {
     dynamic_options = task_spec.DynamicWorkerOptions();
-    RAY_CHECK(runtime_env_hash == 0)
-        << "Cannot use both dynamic worker options and custom runtime env";
+    // Override the runtime env hash so that the task gets assigned a dedicated
+    // worker.
     runtime_env_hash = dedicated_worker_counter_++;
   }
 
@@ -1051,7 +1066,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   if (task_spec.HasRuntimeEnv()) {
     agent_manager_->CreateRuntimeEnv(
         task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-        [this, start_worker_process_fn, callback, &state, task_spec, runtime_env_hash,
+        [this, start_worker_process_fn, &state, task_spec, runtime_env_hash,
          dynamic_options, allocated_instances_serialized_json, requires_dedicated_worker](
             bool success, const std::string &serialized_runtime_env_context) {
           if (success) {

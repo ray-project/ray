@@ -26,9 +26,8 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
-               const Language &language, rpc::WorkerType worker_type,
-               const std::string &ip_address,
+Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
+               rpc::WorkerType worker_type, const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
@@ -39,7 +38,6 @@ Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &
       port_(-1),
       connection_(connection),
       assigned_job_id_(job_id),
-      runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
@@ -127,6 +125,10 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
+
+void Worker::SetRuntimeEnvHash(int runtime_env_hash) {
+  runtime_env_hash_ = runtime_env_hash;
+}
 
 int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
