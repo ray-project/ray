@@ -929,7 +929,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, runtime_env_hash,
+                  serialized_job_config, metrics_agent_port, runtime_env_hash,
                   worker_shim_pid):
         self.is_local_mode = local_mode
 
@@ -981,6 +981,7 @@ cdef class CoreWorker:
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
+        options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.worker_shim_pid = worker_shim_pid
