@@ -66,8 +66,7 @@ class ServeController:
                        http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        controller_namespace = ray.serve.api._get_controller_namespace(
-            detached)
+        controller_namespace = ray.get_runtime_context().namespace
         self.kv_store = RayInternalKVStore(
             namespace=f"{controller_name}-{controller_namespace}")
 
