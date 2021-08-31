@@ -543,6 +543,16 @@ py_test(
 )
 
 py_test(
+    name = "hyperopt_conditional_search_space_example",
+    size = "medium",
+    srcs = ["examples/hyperopt_conditional_search_space_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+
+py_test(
     name = "lightgbm_example",
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
