@@ -588,8 +588,8 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
-Make sure that worker nodes have the access to write to the cloud storage. Failing to do so would cause error message like ``Error message (1): fatal error: Unable to locate credentials``.
-For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
+Make sure that worker nodes have the write access to the cloud storage. Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes. Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 .. _tune-docker:
 
