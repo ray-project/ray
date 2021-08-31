@@ -617,15 +617,16 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(connection_str: str,
-                  redis_address: str,
+                  redis_address: Optional[str],
                   *,
                   redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
-    ip, port = redis_address.split(":")
-    gcs_client = connect_to_gcs(ip, int(port), redis_password)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    if redis_address is not None:
+        ip, port = redis_address.split(":")
+        gcs_client = connect_to_gcs(ip, int(port), redis_password)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
