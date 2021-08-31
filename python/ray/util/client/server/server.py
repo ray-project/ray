@@ -6,6 +6,7 @@ from collections import defaultdict
 import os
 import queue
 import pickle
+import sys
 
 import threading
 from typing import Any
@@ -513,6 +514,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             working_dir = runtime_env.ensure_runtime_env_setup(uris)
             if working_dir:
                 os.chdir(working_dir)
+                # NOTE(edoakes): we need to insert into the sys.path here
+                # because the working_dir gets set up *after* we go through
+                # the usual worker setup process. We should unify these
+                # codepaths.
+                sys.path.insert(0, working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
