@@ -106,8 +106,7 @@ class GetRequestQueue {
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
   /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Only for tests.
   bool IsGetRequestExist(const ObjectID &object_id);
@@ -123,10 +122,7 @@ class GetRequestQueue {
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_ GUARDED_BY(mu_);
-
-  /// Mutex to protect the `object_get_requests_`.
-  absl::Mutex mu_;
+      object_get_requests_;
 
   IObjectLifecycleManager &object_lifecycle_mgr_;
 

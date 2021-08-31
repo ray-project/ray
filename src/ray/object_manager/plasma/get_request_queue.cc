@@ -52,7 +52,6 @@ bool GetRequest::IsRemoved() const { return is_removed_; }
 void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
                                  int64_t timeout_ms, bool is_from_worker) {
-  absl::MutexLock lock(&mu_);
   const absl::flat_hash_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   // Create a get request for this object.
   auto get_request = std::make_shared<GetRequest>(io_context_, client, object_ids,
@@ -88,7 +87,6 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
     get_request->AsyncWait(timeout_ms,
                            [this, get_request](const boost::system::error_code &ec) {
                              if (ec != boost::asio::error::operation_aborted) {
-                               absl::MutexLock lock(&mu_);
                                // Timer was not cancelled, take necessary action.
                                OnGetRequestCompleted(get_request);
                              }
@@ -98,7 +96,6 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
 
 void GetRequestQueue::RemoveGetRequestsForClient(
     const std::shared_ptr<ClientInterface> &client) {
-  absl::MutexLock lock(&mu_);
   absl::flat_hash_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
   for (auto const &pair : object_get_requests_) {
     for (const auto &get_request : pair.second) {
@@ -141,7 +138,6 @@ void GetRequestQueue::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_re
 }
 
 void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
-  absl::MutexLock lock(&mu_);
   auto it = object_get_requests_.find(object_id);
   // If there are no get requests involving this object, then return.
   if (it == object_get_requests_.end()) {
