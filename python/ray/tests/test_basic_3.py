@@ -228,22 +228,16 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "_system_config": {
-            "event_stats_print_interval_ms": 100,
-            "debug_dump_period_milliseconds": 100,
-            "event_stats": True
-        }
-    }],
-    indirect=True)
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
 
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
-    cluster.add_node(num_cpus=4, )
+    cluster.add_node(
+        num_cpus=4, _system_config={
+            "debug_dump_period_milliseconds": 100,
+        })
     ray.init(address=cluster.address)
 
     # A slow function never returns. It will hold cpu resources all the way.
@@ -270,7 +264,8 @@ def test_worker_startup_count(ray_start_cluster):
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    return int(line[len(num_workers_prefix):])
+                    num_workers = int(line[len(num_workers_prefix):])
+                    return num_workers
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
@@ -281,7 +276,14 @@ def test_worker_startup_count(ray_start_cluster):
 
     # Check that no more workers started for a while.
     for i in range(100):
-        num = get_num_workers()
+        # Sometimes the debug state file can be empty. Retry if needed.
+        for _ in range(3):
+            num = get_num_workers()
+            if num is None:
+                print("Retrying parse debug_state.txt")
+                time.sleep(0.05)
+            else:
+                break
         assert num == 16
         time.sleep(0.1)
 

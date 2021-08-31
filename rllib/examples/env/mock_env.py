@@ -39,6 +39,7 @@ class MockEnv2(gym.Env):
         self.i = 0
         self.observation_space = gym.spaces.Discrete(100)
         self.action_space = gym.spaces.Discrete(2)
+        self.rng_seed = None
 
     def reset(self):
         self.i = 0
@@ -47,6 +48,9 @@ class MockEnv2(gym.Env):
     def step(self, action):
         self.i += 1
         return self.i, 100.0, self.i >= self.episode_length, {}
+
+    def seed(self, rng_seed):
+        self.rng_seed = rng_seed
 
 
 class VectorizedMockEnv(VectorEnv):

@@ -40,6 +40,19 @@ _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
 
 
+def _get_controller_namespace(detached):
+    controller_namespace = ray.get_runtime_context().namespace
+
+    if not detached:
+        return controller_namespace
+
+    # Start controller in "serve" namespace if detached and currently
+    # in anonymous namespace.
+    if _UUID_RE.fullmatch(controller_namespace) is not None:
+        controller_namespace = "serve"
+    return controller_namespace
+
+
 def _get_global_client():
     if _global_client is not None:
         return _global_client
@@ -137,7 +150,10 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    ray.get_actor(self._controller_name)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached)
+                    ray.get_actor(
+                        self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -158,7 +174,15 @@ class Client:
 
         ready, _ = ray.wait(
             [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-        return len(ready) == 1
+        # AsyncGoal could return exception if set, ray.get()
+        # retrieves and throws it to user code explicitly.
+        if len(ready) == 1:
+            async_goal_exception = ray.get(ready)[0]
+            if async_goal_exception is not None:
+                raise async_goal_exception
+            return True
+        else:
+            return False
 
     @_ensure_connected
     def deploy(self,
@@ -331,9 +355,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown(). This should *not* be set in
-          an anonymous Ray namespace because you will not be able to reconnect
-          to the instance after the script exits.
+          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -368,22 +390,12 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    current_namespace = ray.get_runtime_context().namespace
-    if detached:
-        if _UUID_RE.fullmatch(current_namespace) is not None:
-            raise RuntimeError(
-                "serve.start(detached=True) should not be called in anonymous "
-                "Ray namespaces because you won't be able to reconnect to the "
-                "Serve instance after the script exits. If you want to start "
-                "a long-lived Serve instance, provide a namespace when "
-                "connecting to Ray. See the documentation for more details: "
-                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
-            )
+    controller_namespace = _get_controller_namespace(detached)
 
     try:
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
-                    f"'{current_namespace}'.")
+                    f"'{controller_namespace}'.")
         return client
     except RayServeException:
         pass
@@ -409,6 +421,7 @@ def start(
         resources={
             get_current_node_resource_key(): 0.01
         },
+        namespace=controller_namespace,
     ).remote(
         controller_name,
         http_options,
@@ -429,7 +442,7 @@ def start(
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
     logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
-                f"namespace '{current_namespace}'.")
+                f"namespace '{controller_namespace}'.")
     return client
 
 
@@ -452,12 +465,15 @@ def _connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
+        controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = _get_controller_namespace(detached=False)
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name)
+        controller = ray.get_actor(
+            controller_name, namespace=controller_namespace)
     except ValueError:
         raise RayServeException("There is no "
                                 "instance running on this Ray cluster. Please "
