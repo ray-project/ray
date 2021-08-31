@@ -265,6 +265,7 @@ def test_worker_startup_count(ray_start_cluster):
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
                     num_workers = int(line[len(num_workers_prefix):])
+                    print(num_workers)
                     return num_workers
         return None
 
