@@ -72,10 +72,14 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   EXPECT_CALL(*actor_creator, AsyncRegisterActor(task_spec, _)).
       WillOnce(
           DoAll(SaveArg<1>(&register_cb), Return(Status::OK())));
-
-  // EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _)).
-  //     WillOnce()
+  std::function<void(Status)> create_cb;
+  EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _)).
+      WillOnce(
+          DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
   ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
+  register_cb(Status::OK());
+  create_cb(Status::OK());
+
 }
 
 }
