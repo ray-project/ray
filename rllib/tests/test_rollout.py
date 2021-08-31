@@ -87,7 +87,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                       rllib_dir, tmp_dir, algo) +
                   "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
-                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 150.0}\"" +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 100.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
@@ -125,7 +125,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 150.0
+        assert mean_reward >= 100.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -162,7 +162,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 150.0}
+        stop = {"episode_reward_mean": 100.0}
         tune.run(
             algo,
             config=config,
@@ -211,7 +211,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 150.0
+        assert mean_reward >= 100.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
