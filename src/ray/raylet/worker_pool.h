@@ -502,7 +502,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from runtime env hash to workers that are starting in that
     /// runtime env. Note that this map does not include dedicated workers that
     /// have already been assigned to a task.
-    std::unordered_map<RuntimeEnvHash, std::unordered_set<Process>> starting_workers_by_env_hash;
+    absl::flat_hash_map<RuntimeEnvHash, std::unordered_set<Process>> starting_workers_by_env_hash;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
