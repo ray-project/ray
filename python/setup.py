@@ -410,7 +410,7 @@ def copy_file(target_dir, filename, rootdir):
 
 
 def pip_run(build_ext):
-    # build(False, BUILD_JAVA, False)
+    build(True, BUILD_JAVA, False)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -455,15 +455,15 @@ def api_main(program, *args):
 
     if parsed_args.command == "build":
         kwargs = dict(build_python=False, build_java=False, build_cpp=False)
-        # for lang in parsed_args.language.split(","):
-        #     if "python" in lang:
-        #         kwargs.update(build_python=True)
-        #     elif "java" in lang:
-        #         kwargs.update(build_java=True)
-        #     elif "cpp" in lang:
-        #         kwargs.update(build_cpp=True)
-        #     else:
-        #         raise ValueError("invalid language: {!r}".format(lang))
+        for lang in parsed_args.language.split(","):
+            if "python" in lang:
+                kwargs.update(build_python=True)
+            elif "java" in lang:
+                kwargs.update(build_java=True)
+            # elif "cpp" in lang:
+            #     kwargs.update(build_cpp=True)
+            else:
+                raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
     elif parsed_args.command == "bazel_version":
         print(".".join(map(str, SUPPORTED_BAZEL)))
