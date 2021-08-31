@@ -318,8 +318,6 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs,
                                                object_refs)
-        context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_refs)
 
     def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
