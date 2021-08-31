@@ -339,10 +339,11 @@ install_dependencies() {
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
 
-
     # Install Atari ROMs. Previously these have been shipped with atari_py
     if [[ "${OSTYPE}" = linux* ]]; then
-      eval "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+      bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    else
+      echo "Not installing Atari roms on ${OSTYPE}"
     fi
   fi
 
