@@ -27,7 +27,8 @@ namespace core {
 
 class MockLocalityDataProviderInterface : public LocalityDataProviderInterface {
  public:
-  MOCK_METHOD(absl::optional<LocalityData>, GetLocalityData, (const ObjectID &object_id), (override));
+  MOCK_METHOD(absl::optional<LocalityData>, GetLocalityData, (const ObjectID &object_id),
+              (override));
 };
 
 }  // namespace core
@@ -38,7 +39,8 @@ namespace core {
 
 class MockLeasePolicyInterface : public LeasePolicyInterface {
  public:
-  MOCK_METHOD(rpc::Address, GetBestNodeForTask, (const TaskSpecification &spec), (override));
+  MOCK_METHOD(rpc::Address, GetBestNodeForTask, (const TaskSpecification &spec),
+              (override));
 };
 
 }  // namespace core

@@ -36,14 +36,13 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     task_submitter = std::make_unique<CoreWorkerDirectTaskSubmitter>(
         rpc::Address(), /* rpc_address */
-        raylet_client, /* lease_client */
-        client_pool, /* core_worker_client_pool */
-        nullptr, /* lease_client_factory */
-        lease_policy, /* lease_policy */
-        std::make_shared<CoreWorkerMemoryStore>(),
-        task_finisher,
+        raylet_client,  /* lease_client */
+        client_pool,    /* core_worker_client_pool */
+        nullptr,        /* lease_client_factory */
+        lease_policy,   /* lease_policy */
+        std::make_shared<CoreWorkerMemoryStore>(), task_finisher,
         NodeID::Nil(), /* local_raylet_id */
-        0, /* lease_timeout_ms */
+        0,             /* lease_timeout_ms */
         actor_creator);
   }
 
@@ -69,18 +68,15 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   auto task_spec = GetCreatingTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(task_spec.TaskId(), _, _));
   std::function<void(Status)> register_cb;
-  EXPECT_CALL(*actor_creator, AsyncRegisterActor(task_spec, _)).
-      WillOnce(
-          DoAll(SaveArg<1>(&register_cb), Return(Status::OK())));
+  EXPECT_CALL(*actor_creator, AsyncRegisterActor(task_spec, _))
+      .WillOnce(DoAll(SaveArg<1>(&register_cb), Return(Status::OK())));
   std::function<void(Status)> create_cb;
-  EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _)).
-      WillOnce(
-          DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
+  EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
+      .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
   ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
   register_cb(Status::OK());
   create_cb(Status::OK());
-
 }
 
-}
-}
+}  // namespace core
+}  // namespace ray
