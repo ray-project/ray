@@ -276,16 +276,9 @@ class RemoteFunction:
 
         if runtime_env is None:
             runtime_env = self._runtime_env
-        if runtime_env:
-            if runtime_env.get("working_dir"):
-                raise NotImplementedError(
-                    "Overriding working_dir for tasks is not supported. "
-                    "Please use ray.init(runtime_env={'working_dir': ...}) "
-                    "to configure per-job environment instead.")
-            runtime_env_dict = runtime_support.RuntimeEnvDict(
-                runtime_env).get_parsed_dict()
-        else:
-            runtime_env_dict = {}
+        job_config = worker.core_worker.get_job_config()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_config)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "

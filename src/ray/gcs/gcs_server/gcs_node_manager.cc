@@ -17,6 +17,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -156,6 +158,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       RAY_LOG(INFO) << "Publish RemoveNode, msg=" << error_message.str();
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
+              .WithField("node_id", node_id.Hex())
+              .WithField("ip", removed_node->node_manager_address())
+          << error_message.str();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
                                          error_data_ptr->SerializeAsString(), nullptr));
     }
