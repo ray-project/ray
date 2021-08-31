@@ -64,7 +64,9 @@ class ServeController:
                        http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=controller_name)
+        controller_namespace = ray.get_runtime_context().namespace
+        self.kv_store = RayInternalKVStore(
+            namespace=f"{controller_name}-{controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))

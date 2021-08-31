@@ -14,8 +14,9 @@ class BaseWorker:
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
+
         Args:
-            func(Callable): The function to execute.
+            func (Callable): The function to execute.
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)

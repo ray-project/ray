@@ -361,7 +361,7 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 1.0)
+RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -401,6 +401,9 @@ RAY_CONFIG(int, publish_batch_size, 5000)
 
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
+
+/// The maximum batch size for OBOD report.
+RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.

@@ -8,7 +8,7 @@
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
-    
+
 .. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
     :target: https://twitter.com/raydistributed
 
@@ -33,10 +33,11 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
+.. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
 .. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
 

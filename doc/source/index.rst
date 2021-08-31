@@ -335,7 +335,6 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
 
@@ -348,6 +347,7 @@ Papers
    joblib.rst
    xgboost-ray.rst
    lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::

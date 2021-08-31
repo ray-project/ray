@@ -3,7 +3,8 @@ from typing import Callable
 
 from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import Workflow, WorkflowData, StepType
+from ray.experimental.workflow.common import (Workflow, WorkflowData, StepType,
+                                              ensure_ray_initialized)
 
 
 class WorkflowStepFunction:
@@ -32,18 +33,22 @@ class WorkflowStepFunction:
         def _build_workflow(*args, **kwargs) -> Workflow:
             flattened_args = signature.flatten_args(self._func_signature, args,
                                                     kwargs)
-            workflow_inputs = serialization_context.make_workflow_inputs(
-                flattened_args)
+
+            def prepare_inputs():
+                ensure_ray_initialized()
+                return serialization_context.make_workflow_inputs(
+                    flattened_args)
+
             workflow_data = WorkflowData(
                 func_body=self._func,
                 step_type=StepType.FUNCTION,
-                inputs=workflow_inputs,
+                inputs=None,
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
                 name=self._name,
             )
-            return Workflow(workflow_data)
+            return Workflow(workflow_data, prepare_inputs)
 
         self.step = _build_workflow
 

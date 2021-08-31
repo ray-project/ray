@@ -1,9 +1,10 @@
+import os
 from contextlib import closing
 import logging
 import socket
 from pathlib import Path
 from threading import Thread
-from typing import Tuple, List
+from typing import Tuple, Dict, List, Any
 
 import ray
 from ray.exceptions import RayActorError
@@ -84,3 +85,28 @@ class PropagatingThread(Thread):
         if self.exc:
             raise self.exc
         return self.ret
+
+
+def get_node_id() -> str:
+    """Returns the ID of the node that this worker is on."""
+    return ray.get_runtime_context().node_id.hex()
+
+
+def get_hostname() -> str:
+    """Returns the hostname that this worker is on."""
+    return socket.gethostname()
+
+
+def get_gpu_ids() -> List[int]:
+    """Return list of CUDA device IDs available to this worker."""
+    return ray.get_gpu_ids()
+
+
+def update_env_vars(env_vars: Dict[str, Any]):
+    """Updates the environment variables on this worker process.
+
+    Args:
+        env_vars (Dict): Environment variables to set.
+    """
+    sanitized = {k: str(v) for k, v in env_vars.items()}
+    os.environ.update(sanitized)

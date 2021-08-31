@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
+from ray.cluster_utils import Cluster
 from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
@@ -20,6 +21,34 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_2_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def gen_execute_special(special_f):
@@ -246,6 +275,80 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 
     e.start_training(check_process_group)
     assert not any(e.finish_training())
+
+
+@pytest.mark.parametrize("worker_results", [(1, ["0"]), (2, ["0,1", "0,1"]),
+                                            (3, ["0", "0,1", "0,1"]),
+                                            (4, ["0,1", "0,1", "0,1", "0,1"])])
+def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    num_workers, expected_results = worker_results
+
+    e = BackendExecutor(
+        config,
+        num_workers=num_workers,
+        num_cpus_per_worker=0,
+        num_gpus_per_worker=1)
+    e.start()
+    e.start_training(get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [(1, ["0"]), (2, ["0", "0"]), (3, ["0,1", "0,1", "0,1"]),
+     (4, ["0,1", "0,1", "0,1", "0,1"]), (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
+     (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
+     (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+     (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"])])
+def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    num_workers, expected_results = worker_results
+
+    e = BackendExecutor(
+        config,
+        num_workers=num_workers,
+        num_cpus_per_worker=0,
+        num_gpus_per_worker=0.5)
+    e.start()
+    e.start_training(get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize("worker_results",
+                         [(1, ["0,1"]), (2, ["0,1,2,3", "0,1,2,3"]),
+                          (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
+                          (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"])])
+def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    num_workers, expected_results = worker_results
+
+    e = BackendExecutor(
+        config,
+        num_workers=num_workers,
+        num_cpus_per_worker=0,
+        num_gpus_per_worker=2)
+    e.start()
+    e.start_training(get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
 
 
 if __name__ == "__main__":
