@@ -830,7 +830,7 @@ cc_test(
     name = "direct_task_transport_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc",
-            "src/ray/core_worker/test/direct_actor_transport_test_2.cc"],
+            "src/ray/core_worker/test/direct_task_transport_test_2.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
