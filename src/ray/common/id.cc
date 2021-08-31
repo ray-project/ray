@@ -246,9 +246,8 @@ bool ObjectID::IsActorID(const ObjectID &object_id) {
 }
 
 ActorID ObjectID::ToActorID(const ObjectID &object_id) {
-  std::string actor_id(reinterpret_cast<const char *>(
-                           object_id.id_ + (ObjectID::kLength - ActorID::kLength)),
-                       reinterpret_cast<const char *>(object_id.id_ + ObjectID::kLength));
+  auto beg = reinterpret_cast<const char*>(object_id.id_) + ObjectID::kLength - ActorID::kLength - ObjectID::kIndexBytesLength;
+  std::string actor_id(beg, beg + ActorID::kLength);
   return ActorID::FromBinary(actor_id);
 }
 

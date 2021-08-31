@@ -67,8 +67,13 @@ class DirectTaskTransportTest : public ::testing::Test {
 
 TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  ASSERT_TRUE(ObjectID::IsActorID(ObjectID::ForActorHandle(actor_id)));
+  ASSERT_EQ(actor_id, ObjectID::ToActorID(ObjectID::ForActorHandle(actor_id)));
   auto creation_task_spec = GetCreatingTaskSpec(actor_id);
   auto task_spec = GetActorTaskSpec(actor_id);
+  auto task_arg = task_spec.GetMutableMessage().add_args();
+  auto inline_obj_ref = task_arg->add_nested_inlined_refs();
+  inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(creation_task_spec, ::testing::_))
@@ -77,11 +82,34 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  actor_task_submitter->SubmitTask(GetActorTaskSpec(actor_id));
+  actor_task_submitter->SubmitTask(task_spec);
   EXPECT_CALL(*task_finisher,
               PendingTaskFailed(task_spec.TaskId(),
                                 rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
   register_cb(Status::IOError(""));
 }
+
+TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
+  auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  ASSERT_TRUE(ObjectID::IsActorID(ObjectID::ForActorHandle(actor_id)));
+  ASSERT_EQ(actor_id, ObjectID::ToActorID(ObjectID::ForActorHandle(actor_id)));
+  auto creation_task_spec = GetCreatingTaskSpec(actor_id);
+  auto task_spec = GetActorTaskSpec(actor_id);
+  auto task_arg = task_spec.GetMutableMessage().add_args();
+  auto inline_obj_ref = task_arg->add_nested_inlined_refs();
+  inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
+  std::function<void(Status)> register_cb;
+  EXPECT_CALL(*gcs_client->mock_actor_accessor,
+              AsyncRegisterActor(creation_task_spec, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
+                                 ::testing::Return(Status::OK())));
+  actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
+  ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id);
+  actor_task_submitter->SubmitTask(task_spec);
+  EXPECT_CALL(*task_finisher, PendingTaskFailed(_, _, _, _, _)).Times(0);
+  register_cb(Status::OK());
+}
+
 }  // namespace core
 }  // namespace ray
