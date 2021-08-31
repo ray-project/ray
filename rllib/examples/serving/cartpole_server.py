@@ -52,22 +52,24 @@ def get_cli_args():
         "--chatty-callbacks",
         action="store_true",
         help="Activates info-messages for different events on "
-             "server/client (episode steps, postprocessing, etc..).")
+        "server/client (episode steps, postprocessing, etc..).")
     parser.add_argument(
         "--num-workers",
         type=int,
         default=2,
         help="The number of workers to use. Each worker will create "
-             "its own listening socket for incoming experiences.")
+        "its own listening socket for incoming experiences.")
     parser.add_argument(
         "--no-restore",
         action="store_true",
         help="Do not restore from a previously saved checkpoint (location of "
-             "which is saved in `last_checkpoint_[algo-name].out`).")
+        "which is saved in `last_checkpoint_[algo-name].out`).")
 
     # General args.
     parser.add_argument(
-        "--run", default="PPO", choices=["DQN", "PPO"],
+        "--run",
+        default="PPO",
+        choices=["DQN", "PPO"],
         help="The RLlib-registered algorithm to use.")
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
@@ -215,4 +217,9 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        tune.run(args.run, config=config, stop=stop, verbose=2, restore=checkpoint_path)
+        tune.run(
+            args.run,
+            config=config,
+            stop=stop,
+            verbose=2,
+            restore=checkpoint_path)
