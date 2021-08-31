@@ -361,7 +361,17 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
   fake_time_ += 10.;
   // Objects are spilled to the empty URL locally if it is spilled to external storages.
   ObjectSpilled(obj1, "");
+  // If objects are spilled to external storages, the node id should be Nil().
+  // So this shouldn't invoke restoration.
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // Now Nil ID is properly updated.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
                                  0);
 
   // We request a local restore.
@@ -370,7 +380,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
 
   // The call can be retried after a delay.
   fake_time_ += 10.;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
                                  0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);

@@ -460,19 +460,18 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // If we can restore directly from this raylet, then try to do so.
-  const std::string locally_spilled_url = get_locally_spilled_object_url_(object_id);
-  bool can_restore_directly =
-      !locally_spilled_url.empty() ||  // If the object is spilled locally
-      (!request.spilled_url.empty() &&
-       request.spilled_node_id
-           .IsNil());  // Or if the object is spilled on external storages.
-  if (can_restore_directly) {
-    const auto spilled_url =
-        locally_spilled_url.empty() ? request.spilled_url : locally_spilled_url;
+  // check if we can restore the object directly in the current raylet.
+  // first check local spilled objects
+  std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
+  if (direct_restore_url.empty()) {
+    if (!request.spilled_url.empty() && request.spilled_node_id.IsNil()) {
+      direct_restore_url = request.spilled_url;
+    }
+  }
+  if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(object_id, spilled_url,
+    restore_spilled_object_(object_id, direct_restore_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id
