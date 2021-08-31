@@ -498,7 +498,7 @@ class FunctionActorManager:
                 # and we hold the function_manager lock, we may be blocking
                 # the import_thread from loading the actor class. Use cv.wait
                 # to temporarily yield control to the import thread.
-                self.cv.wait(timeout=0.001)
+                self.cv.wait()
             except RuntimeError:
                 # We don't hold the function_manager lock, just sleep regularly
                 time.sleep(0.001)
