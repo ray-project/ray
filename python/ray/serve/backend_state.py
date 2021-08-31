@@ -574,7 +574,7 @@ class BackendState:
     def __init__(self, controller_name: str, detached: bool,
                  kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
                  goal_manager: AsyncGoalManager,
-                 all_replica_tags: Optional[List[str]]):
+                 all_replica_tags: Optional[List[str]] = None):
 
         self._controller_name = controller_name
         self._detached = detached
@@ -598,9 +598,17 @@ class BackendState:
 
         self._replica_constructor_retry_counter: Dict[BackendTag,
                                                       int] = defaultdict(int)
+
         if all_replica_tags and len(all_replica_tags) > 0:
             # There're running replicas in current cluster, explicitly passed
             # in with tags as primary means of in-place recovery
+
+            # Recover target states and versions
+            # import ipdb
+            # ipdb.set_trace()
+            self._resume_from_checkpoint()
+            # Reset current replicas
+            self._replicas = dict()
             self._resume_all_backend_from_replica_tags(all_replica_tags)
         else:
             self._resume_from_checkpoint()
@@ -636,6 +644,7 @@ class BackendState:
         return shutdown_goals
 
     def _checkpoint(self) -> None:
+        logger.info(">>>>> _checkpoint called !")
         self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
@@ -664,7 +673,7 @@ class BackendState:
         list_named_actor() call, which queries all actors in current ray
         cluster regradless of backend tag.
         """
-        backend_tag_to_replicas = dict(list)
+        backend_tag_to_replicas = defaultdict(list)
         # Each replica tag is formatted as "backend_tag#random_letter"
         for replica_tag in all_replica_tags:
             backend_tag = replica_tag.split("#")[0]
@@ -673,6 +682,8 @@ class BackendState:
         for backend_tag, _ in list(
             self._target_replicas.items()
         ):
+            import ipdb
+            ipdb.set_trace()
             target_version = self._target_versions[backend_tag]
             self._resume_single_backend_from_replica_tags(
                 backend_tag,

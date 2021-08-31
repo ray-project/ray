@@ -1,9 +1,21 @@
 import os
+from typing import Tuple
+from unittest.mock import patch, Mock
 
 import pytest
 
 import ray
 from ray import serve
+from ray.serve.backend_state import (
+    BackendState,
+    CHECKPOINT_KEY,
+)
+from ray.serve.storage.kv_store import RayLocalKVStore
+from ray.serve.async_goal_manager import AsyncGoalManager
+from ray.serve.tests.test_backend_state import (
+    MockTimer,
+    MockReplicaActorWrapper,
+)
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -36,3 +48,25 @@ def serve_instance(_shared_serve_instance):
     # Clear all state between tests to avoid naming collisions.
     for deployment in serve.list_deployments().values():
         deployment.delete()
+
+
+# For all test in tests or subdir of tests that needs to mock backend_state
+@pytest.fixture
+def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
+    timer = MockTimer()
+    with patch(
+            "ray.serve.backend_state.ActorReplicaWrapper",
+            new=MockReplicaActorWrapper), patch(
+                "time.time", new=timer.time), patch(
+                    "ray.serve.long_poll.LongPollHost"
+                ) as mock_long_poll, patch.object(
+                    BackendState, "_checkpoint") as mock_checkpoint:
+
+        kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
+        goal_manager = AsyncGoalManager()
+        backend_state = BackendState("name", True, kv_store,
+                                     mock_long_poll, goal_manager)
+
+        yield backend_state, timer, goal_manager
+        # Clear checkpoint at the end of each test
+        kv_store.delete(CHECKPOINT_KEY)

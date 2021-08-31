@@ -20,7 +20,6 @@ from ray.serve.backend_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.utils import get_random_letters
 
 TEST_TAG = "TEST"
@@ -231,27 +230,6 @@ class MockTimer:
 
     def advance(self, by):
         self._curr += by
-
-
-@pytest.fixture
-def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
-    timer = MockTimer()
-    with patch(
-            "ray.serve.backend_state.ActorReplicaWrapper",
-            new=MockReplicaActorWrapper), patch(
-                "time.time", new=timer.time), patch(
-                    "ray.serve.storage.kv_store.RayInternalKVStore"
-                ) as mock_kv_store, patch(
-                    "ray.serve.long_poll.LongPollHost"
-                ) as mock_long_poll, patch.object(
-                    BackendState, "_checkpoint") as mock_checkpoint:
-
-        mock_kv_store.get = Mock(return_value=None)
-        goal_manager = AsyncGoalManager()
-        backend_state = BackendState("name", True, mock_kv_store,
-                                     mock_long_poll, goal_manager)
-        mock_checkpoint.return_value = None
-        yield backend_state, timer, goal_manager
 
 
 def replica(version: Optional[BackendVersion] = None) -> VersionedReplica:
