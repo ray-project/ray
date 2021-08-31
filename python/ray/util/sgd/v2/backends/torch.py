@@ -3,7 +3,7 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional, List
+from typing import Optional
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend

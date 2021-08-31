@@ -2,7 +2,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-#import horovod.torch as hvd_torch
+import horovod.torch as hvd_torch
 import pytest
 import ray
 import ray.util.sgd.v2 as sgd
@@ -21,8 +21,8 @@ from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
 
-# from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-#     horovod_torch_train_func
+from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
+    horovod_torch_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 

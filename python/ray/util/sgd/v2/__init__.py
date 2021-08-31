@@ -7,6 +7,6 @@ from ray.util.sgd.v2.session import load_checkpoint, save_checkpoint, report, \
 
 __all__ = [
     "BackendConfig", "HorovodConfig", "load_checkpoint", "report",
-                                                              "save_checkpoint",
-    "SGDCallback", "TensorflowConfig", "TorchConfig", "Trainer", "world_rank"
+    "save_checkpoint", "SGDCallback", "TensorflowConfig", "TorchConfig",
+    "Trainer", "world_rank"
 ]

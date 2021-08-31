@@ -81,4 +81,3 @@ class TensorflowBackend(Backend):
             worker_group.execute(shutdown_session)
         worker_group.add_workers(len(failed_worker_indexes))
         self.on_start(worker_group, backend_config)
-

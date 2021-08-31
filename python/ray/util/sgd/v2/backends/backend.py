@@ -15,7 +15,8 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids
+from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
+    check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -559,7 +560,6 @@ class Backend(metaclass=abc.ABCMeta):
         worker_group.shutdown()
         worker_group.start()
         self.on_start(worker_group, backend_config)
-
 
 
 class InactiveWorkerGroupError(Exception):
