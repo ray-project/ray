@@ -116,7 +116,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           } else {
             resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
           }
-                   }));
+        }));
   } else {
     resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
   }

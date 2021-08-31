@@ -39,7 +39,6 @@ class ActorCreatorTest : public ::testing::Test {
   }
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
   std::unique_ptr<DefaultActorCreator> actor_creator;
-
 };
 
 TEST_F(ActorCreatorTest, IsRegister) {

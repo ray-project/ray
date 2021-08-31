@@ -63,9 +63,9 @@ class MessageWrapper {
   /// Serialize the message to a string.
   const std::string Serialize() const { return message_->SerializeAsString(); }
 
-  bool operator==(const MessageWrapper<Message>& rhs) const {
-    return google::protobuf::util::MessageDifferencer::Equivalent(
-        GetMessage(), rhs.GetMessage());
+  bool operator==(const MessageWrapper<Message> &rhs) const {
+    return google::protobuf::util::MessageDifferencer::Equivalent(GetMessage(),
+                                                                  rhs.GetMessage());
   }
 
  protected:
