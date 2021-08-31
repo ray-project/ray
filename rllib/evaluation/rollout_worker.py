@@ -465,9 +465,9 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # A single environment provided by the user (via config.env). This may
         # also remain None.
-        # 1) Create the env using the user provided env_creator. This may return
-        #    a gym.Env (incl. MultiAgentEnv), an already vectorized VectorEnv,
-        #    BaseEnv, ExternalEnv, or an ActorHandle (remote env).
+        # 1) Create the env using the user provided env_creator. This may
+        #    return a gym.Env (incl. MultiAgentEnv), an already vectorized
+        #    VectorEnv, BaseEnv, ExternalEnv, or an ActorHandle (remote env).
         # 2) Wrap - if applicable - with Atari/recording/rendering wrappers.
         # 3) Seed the env, if necessary.
         # 4) Vectorize the existing single env by creating more clones of
@@ -1547,14 +1547,15 @@ def _determine_spaces_for_multi_agent_dict(
 
 
 def _validate_env(env: EnvType, env_context: EnvContext = None):
-
-    msg = "Validating sub-env at vector index=0 ... "
+    # Base message for checking the env for vector-index=0
+    msg = f"Validating sub-env at vector index={env_context.vector_index} ..."
 
     allowed_types = [
         gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
         ray.actor.ActorHandle
     ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
+        logger.warning(msg + " (NOT OK)")
         raise EnvError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
@@ -1562,15 +1563,19 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
 
     # Do some test runs with the provided env.
     if isinstance(env, gym.Env):
+        # Make sure the gym.Env has the two space attributes properly set.
         assert hasattr(env, "observation_space") and hasattr(
             env, "action_space")
+        # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
+        # Check, if observation is ok (part of the observation space). If not,
+        # error.
         if not env.observation_space.contains(dummy_obs):
-            msg += "(NOT OK)"
-            logger.warning(msg)
+            logger.warning(msg + " (NOT OK)")
             raise EnvError(
                 f"Env's `observation_space` {env.observation_space} does not "
                 f"contain returned observation after a reset ({dummy_obs})!")
+        # Only for vector-index=0, write the INFO log-line (to avoid log
+        # spamming).
         elif env_context.vector_index == 0:
-            msg += "(ok)"
-            logger.info(msg)
+            logger.info(msg + " (ok)")
