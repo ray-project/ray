@@ -191,6 +191,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/install-minimal.sh
     - ./ci/travis/env_info.sh
+    - python ./ci/travis/check_minimal_install.py
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_basic
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
