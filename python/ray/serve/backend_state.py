@@ -1198,6 +1198,7 @@ class BackendStateManager:
         for backend_tag, backend_state in self._backend_states.items():
             deleted = backend_state.update()
             if deleted:
+                deleted_tags.append(backend_tag)
                 backend_info = backend_state.target_info
                 backend_info.end_time_ms = int(time.time() * 1000)
                 if (len(self._deleted_backend_metadata) >
