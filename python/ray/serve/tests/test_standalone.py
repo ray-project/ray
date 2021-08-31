@@ -444,9 +444,9 @@ def test_checkpoint_isolation_namespace(ray_shutdown):
 import ray
 from ray import serve
 
-ray.init(address="{}", namespace="{}")
+ray.init(address="{address}", namespace="{namespace}")
 
-serve.start(detached=True)
+serve.start(detached=True, http_options={{"port": {port}}})
 
 @serve.deployment
 class A:
@@ -454,8 +454,12 @@ class A:
 
 A.deploy()"""
 
-    run_string_as_driver(driver_template.format(address, "test_namespace1"))
-    run_string_as_driver(driver_template.format(address, "test_namespace2"))
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace1", port=8000))
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace2", port=8001))
 
 
 if __name__ == "__main__":
