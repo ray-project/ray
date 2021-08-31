@@ -69,7 +69,7 @@ py_test(
 
 py_test(
     name = "test_convergence",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
