@@ -728,16 +728,21 @@ def test_worker_start_failure(ray_start_2_cpus):
 
     trainer = Trainer(test_config, num_workers=2)
 
+    restart = trainer._executor._restart
+
     def init_hook():
         pass
 
     def init_hook_fail():
-        # Only fail on first invocation.
-        trainer._executor._initialization_hook = init_hook
         ray.actor.exit_actor()
 
-    trainer.start(initialization_hook=init_hook_fail)
-    assert len(trainer._executor.worker_group) == 2
+    def restart_patched(self):
+        self._initialization_hook = init_hook
+        restart()
+
+    with patch.object(BackendExecutor, "_restart", restart_patched):
+        trainer.start(initialization_hook=init_hook_fail)
+        assert len(trainer._executor.worker_group) == 2
 
 
 def test_max_failures(ray_start_2_cpus):

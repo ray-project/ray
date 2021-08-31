@@ -90,6 +90,7 @@ class BackendExecutor:
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
+        self._initialization_hook = None
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
@@ -520,7 +521,7 @@ class BackendExecutor:
 
     def _restart(self):
         self.worker_group.shutdown()
-        if hasattr(self, "_initialization_hook"):
+        if self._initialization_hook is not None:
             initialization_hook = self._initialization_hook
         else:
             initialization_hook = None
