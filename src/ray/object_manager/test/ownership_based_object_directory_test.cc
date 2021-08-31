@@ -107,7 +107,7 @@ class MockNodeInfoAccessor : public gcs::NodeInfoAccessor {
                       const gcs::StatusCallback &done));
 
   MOCK_CONST_METHOD2(Get, absl::optional<rpc::GcsNodeInfo>(const NodeID &node_id,
-                                                            bool filter_dead_nodes));
+                                                           bool filter_dead_nodes));
 
   MOCK_CONST_METHOD0(GetAll, const std::unordered_map<NodeID, rpc::GcsNodeInfo> &());
 

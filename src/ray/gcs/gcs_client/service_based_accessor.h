@@ -161,7 +161,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
   absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                        bool filter_dead_nodes = false) const override;
+                                       bool filter_dead_nodes = false) const override;
 
   const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override;
 

@@ -375,7 +375,7 @@ struct GcsServerMocker {
     }
 
     absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                          bool filter_dead_nodes = true) const override {
+                                         bool filter_dead_nodes = true) const override {
       return absl::nullopt;
     }
 
