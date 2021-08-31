@@ -9,7 +9,6 @@ import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
 public class ConcurrencyGroupTest extends BaseTest {
 
   private static class ConcurrentActor {
@@ -119,6 +118,7 @@ public class ConcurrencyGroupTest extends BaseTest {
     }
   }
 
+  @Test
   public void testMaxConcurrencyForGroups() {
     ConcurrencyGroup group1 =
         new ConcurrencyGroupBuilder<CountDownActor>()
