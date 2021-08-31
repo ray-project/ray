@@ -5,6 +5,7 @@ import grpc
 import logging
 from itertools import chain
 import json
+import os
 import socket
 import sys
 from threading import Lock, Thread, RLock
@@ -214,16 +215,24 @@ class ProxyManager():
         output, error = self.node.get_log_file_handles(
             f"ray_client_server_{specific_server.port}", unique=True)
 
+        # Set up the working_dir for the server.
+        # TODO(edoakes): this should go be unified with the worker setup code
+        # by going through the runtime_env agent.
         uris = job_config.get_runtime_env_uris() if job_config else []
         if uris:
+            # Download and set up the working_dir locally.
             working_dir = runtime_pkg.ensure_runtime_env_setup(uris)
 
-            env_vars = job_config.runtime_env.get("env_vars", None) or {}
+            # Set PYTHONPATH in the environment variables so the working_dir
+            # is included in the module search path.
+            runtime_env = job_config.runtime_env
+            env_vars = runtime_env.get("env_vars", None) or {}
             python_path = working_dir
             if "PYTHONPATH" in env_vars:
-                python_path += os.pathsep + job_config.runtime_env["PYTHONPATH"]
+                python_path += (os.pathsep + runtime_env["PYTHONPATH"])
             env_vars["PYTHONPATH"] = python_path
-            job_config.runtime_env["env_vars"] = env_vars
+            runtime_env["env_vars"] = env_vars
+            job_config.set_runtime_env(runtime_env)
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
 
@@ -350,10 +359,6 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
         return self._call_inner_function(request, context, "Init")
-
-    def PrepRuntimeEnv(self, request,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        return self._call_inner_function(request, context, "PrepRuntimeEnv")
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         """Proxies internal_kv.put.

@@ -498,13 +498,6 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _call_init(self, init_request: ray_client_pb2.InitRequest) -> None:
-        init_resp = self.data_client.Init(init_request)
-        if not init_resp.ok:
-            raise ConnectionAbortedError(
-                f"Init Failure From Server:\n{init_resp.msg}")
-        return
-
     def _server_init(self,
                      job_config: JobConfig,
                      ray_init_kwargs: Optional[Dict[str, Any]] = None):
@@ -513,25 +506,28 @@ class Worker:
             ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest(
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                return
+                serialized_job_config = None
+            else:
+                # Generate and upload URIs for the working directory.
+                import ray._private.runtime_env as runtime_env
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
+                                                      tmp_dir)
+                    runtime_env.rewrite_runtime_env_uris(job_config)
+                    runtime_env.upload_runtime_env_package_if_needed(
+                        job_config)
+                    runtime_env.PKG_DIR = old_dir
 
-            import ray._private.runtime_env as runtime_env
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
-                # Generate the uri for runtime env
-                runtime_env.rewrite_runtime_env_uris(job_config)
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
+                serialized_job_config = pickle.dumps(job_config)
 
-                init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config),
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
+            response = self.data_client.Init(
+                ray_client_pb2.InitRequest(
+                    job_config=serialized_job_config,
+                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+            if not response.ok:
+                raise ConnectionAbortedError(
+                    f"Initialization failure from server:\n{response.msg}")
+
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
