@@ -3,7 +3,6 @@ It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
 import base64
-import functools
 import json
 import logging
 import time
@@ -38,6 +37,7 @@ from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.common import GRPC_OPTIONS
+from ray.util.client.common import INT32_MAX
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -78,27 +78,6 @@ def backoff(timeout: int) -> int:
     if timeout > MAX_TIMEOUT_SEC:
         timeout = MAX_TIMEOUT_SEC
     return timeout
-
-
-def reconnect_on_grpc_error(func):
-    @functools.wraps(func)
-    def reconnect_wrapper(self, *args, **kwargs):
-        while True:
-            try:
-                return func(self, *args, **kwargs)
-            except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
-                    # intentional shutdown
-                    raise
-                elif (e.code() == grpc.StatusCode.CANCELLED
-                      and self._in_shutdown):
-                    # intentional shutdown
-                    raise
-                self._connect_grpc_channel()
-                if not self.is_connected():
-                    raise
-
-    return reconnect_wrapper
 
 
 class Worker:
@@ -149,6 +128,47 @@ class Worker:
 
         # Set to True when close() is called
         self._in_shutdown = False
+
+        # Used to create unique IDs for RPCs to the RayletServicer
+        self._req_id_lock = threading.Lock()
+        self._req_id = 0
+
+    def _call_stub(self, stub_name: str, *args, **kwargs):
+        """
+        Calls the stub specified by stub_name, and retries on grpc internal
+        errors
+        """
+        while True:
+            try:
+                return getattr(self.server, stub_name)(*args, **kwargs)
+            except grpc.RpcError as e:
+                if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED
+                                or grpc.INVALID_ARGUMENT):
+                    # intentional shutdown
+                    raise
+                elif (e.code() == grpc.StatusCode.CANCELLED
+                      and self._in_shutdown):
+                    # intentional shutdown
+                    raise
+                self._connect_grpc_channel()
+                if not self.is_connected():
+                    raise
+
+    def _add_ids_to_request(self, request: Any):
+        """
+        Adds a unique req_id and the current thread's identifier to the
+        request. These values are useful for preventing mutating operations
+        from being replayed on the server side in the event that the client
+        must retry a request.
+        Args:
+            request - A gRPC message to add the thread and request IDs to
+        """
+        request.thread_id = threading.get_ident()
+        with self._req_id_lock:
+            self._req_id += 1
+            if self._req_id > INT32_MAX:
+                self._req_id = 0
+            request.req_id = self._req_id
 
     def _connect_grpc_channel(self):
         if self._session_ended:
@@ -345,7 +365,6 @@ class Worker:
         return ClientObjectRef(resp.id)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
-    @reconnect_on_grpc_error
     def wait(self,
              object_refs: List[ClientObjectRef],
              *,
@@ -367,7 +386,7 @@ class Worker:
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
-        resp = self.server.WaitObject(req, metadata=self.metadata)
+        resp = self._call_stub("WaitObject", req, metadata=self.metadata)
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
@@ -380,7 +399,6 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    @reconnect_on_grpc_error
     def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
         task = instance._prepare_client_task()
         for arg in args:
@@ -390,13 +408,13 @@ class Worker:
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
         return self._call_schedule_for_task(task)
 
-    @reconnect_on_grpc_error
     def _call_schedule_for_task(
             self, task: ray_client_pb2.ClientTask) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
+        self._add_ids_to_request(task)
         try:
-            ticket = self.server.Schedule(task, metadata=self.metadata)
+            ticket = self._call_stub("Schedule", task, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
         if not ticket.valid:
@@ -475,7 +493,6 @@ class Worker:
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
 
-    @reconnect_on_grpc_error
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
         if not isinstance(actor, ClientActorHandle):
@@ -487,11 +504,11 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            self._add_ids_to_request(term)
+            self._call_stub("Terminate", term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
-    @reconnect_on_grpc_error
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
         if not isinstance(obj, ClientObjectRef):
@@ -505,15 +522,15 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            self._add_ids_to_request(term)
+            self._call_stub("Terminate", term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
-    @reconnect_on_grpc_error
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self.server.ClusterInfo(req, metadata=self.metadata)
+        resp = self._call_stub("ClusterInfo", req, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
@@ -522,43 +539,40 @@ class Worker:
             return resp.runtime_context
         return json.loads(resp.json)
 
-    @reconnect_on_grpc_error
     def internal_kv_get(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self.server.KVGet(req, metadata=self.metadata)
+        resp = self._call_stub("KVGet", req, metadata=self.metadata)
         return resp.value
 
-    @reconnect_on_grpc_error
     def internal_kv_exists(self, key: bytes) -> bytes:
+        # TODO: This doesn't look right?
         req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self.server.KVGet(req, metadata=self.metadata)
+        resp = self._call_stub("KVGet", req, metadata=self.metadata)
         return resp.value
 
-    @reconnect_on_grpc_error
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
             key=key, value=value, overwrite=overwrite)
-        resp = self.server.KVPut(req, metadata=self.metadata)
+        self._add_ids_to_request(req)
+        resp = self._call_stub("KVPut", req, metadata=self.metadata)
         return resp.already_exists
 
-    @reconnect_on_grpc_error
     def internal_kv_del(self, key: bytes) -> None:
         req = ray_client_pb2.KVDelRequest(key=key)
-        self.server.KVDel(req, metadata=self.metadata)
+        self._add_ids_to_request(req)
+        self._call_stub("KVDel", req, metadata=self.metadata)
 
-    @reconnect_on_grpc_error
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
-        return self.server.KVList(req, metadata=self.metadata).keys
+        return self._call_stub("KVList", req, metadata=self.metadata).keys
 
-    @reconnect_on_grpc_error
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(
             all_namespaces=all_namespaces)
         return json.loads(
-            self.server.ListNamedActors(req,
-                                        metadata=self.metadata).actors_json)
+            self._call_stub("ListNamedActors", req,
+                            metadata=self.metadata).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:

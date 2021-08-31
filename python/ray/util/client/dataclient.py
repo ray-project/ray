@@ -11,12 +11,9 @@ from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for request_id -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 

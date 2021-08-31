@@ -10,7 +10,7 @@ import sys
 from threading import Lock, Thread, RLock
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.cloudpickle.compat import pickle
@@ -21,6 +21,7 @@ from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray.util.client.server.dataservicer import (
     WAIT_FOR_CLIENT_RECONNECT_SECONDS, _get_reconnecting_from_context)
+from ray.util.client.common import _get_client_id_from_context
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
@@ -39,19 +40,6 @@ CHECK_CHANNEL_TIMEOUT_S = 10
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
-
-
-def _get_client_id_from_context(context: Any) -> str:
-    """
-    Get `client_id` from gRPC metadata. If the `client_id` is not present,
-    this function logs an error and sets the status_code.
-    """
-    metadata = {k: v for k, v in context.invocation_metadata()}
-    client_id = metadata.get("client_id") or ""
-    if client_id == "":
-        logger.error("Client connecting with no client_id")
-        context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-    return client_id
 
 
 @dataclass
@@ -307,7 +295,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
     def _call_inner_function(
             self, request, context,
             method: str) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
-        client_id = _get_client_id_from_context(context)
+        client_id = _get_client_id_from_context(context, logger)
         chan = self.proxy_manager.get_channel(client_id)
         if not chan:
             logger.error(f"Channel for Client: {client_id} not found!")
@@ -427,7 +415,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def Datapath(self, request_iterator, context):
         cleanup_requested = False
         start_time = time.time()
-        client_id = _get_client_id_from_context(context)
+        client_id = _get_client_id_from_context(context, logger)
         if client_id == "":
             return
         reconnecting = _get_reconnecting_from_context(context)
@@ -526,7 +514,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         self.proxy_manager = proxy_manager
 
     def Logstream(self, request_iterator, context):
-        client_id = _get_client_id_from_context(context)
+        client_id = _get_client_id_from_context(context, logger)
         if client_id == "":
             return
         logger.debug(f"New logstream connection from client {client_id}: ")

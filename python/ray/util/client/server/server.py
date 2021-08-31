@@ -3,6 +3,7 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
+import functools
 import os
 import queue
 import pickle
@@ -11,6 +12,7 @@ import threading
 from typing import Any
 from typing import Dict
 from typing import Set
+from typing import Tuple
 from typing import Optional
 from typing import Callable
 from ray import cloudpickle
@@ -23,7 +25,8 @@ import time
 import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
-                                    CLIENT_SERVER_MAX_THREADS)
+                                    CLIENT_SERVER_MAX_THREADS,
+                                    _get_client_id_from_context)
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -39,6 +42,26 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
                                             30)
+
+
+def _use_replay_cache(func):
+    @functools.wraps(func)
+    def wrapper(self, request, context):
+        client_id = _get_client_id_from_context(context, logger)
+        thread_id = request.thread_id
+        req_id = request.req_id
+        with self.state_lock:
+            cache = self.replay_cache[client_id]
+            if thread_id in cache:
+                cached_req_id, cached_resp = cache[thread_id]
+                if cached_req_id == req_id:
+                    return cached_resp
+        resp = func(self, request, context)
+        with self.state_lock:
+            cache[thread_id] = (req_id, resp)
+        return resp
+
+    return wrapper
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -61,6 +84,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.named_actors = set()
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
+        # Maps a client_id to a dictionary. Each dictionary map's
+        # a thread_id to a tuple consisting of the last response to a mutating
+        # call, and that call's request id
+        self.replay_cache: Dict[str, Dict[int, Tuple[int, Any]]] = defaultdict(
+            dict)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
@@ -109,6 +137,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             raise grpc.RpcError(f"Prepare runtime env failed with {e}")
         return ray_client_pb2.PrepRuntimeEnvResponse()
 
+    @_use_replay_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
@@ -120,6 +149,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             value = ray.experimental.internal_kv._internal_kv_get(request.key)
         return ray_client_pb2.KVGetResponse(value=value)
 
+    @_use_replay_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
         with disable_client_hook():
             ray.experimental.internal_kv._internal_kv_del(request.key)
@@ -256,6 +286,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
+    @_use_replay_cache
     def Terminate(self, req, context=None):
         if req.WhichOneof("terminate_type") == "task_object":
             try:
@@ -409,6 +440,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
+    @_use_replay_cache
     def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s" % (task.name,

@@ -1,3 +1,4 @@
+import logging
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -17,6 +18,10 @@ from typing import List
 from typing import Dict
 from typing import Optional
 from typing import Union
+
+# The maximum field value for int32 id's -- which is also the maximum
+# number of simultaneous in-flight requests.
+INT32_MAX = (2**31) - 1
 
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
@@ -391,3 +396,16 @@ class ClientServerHandle:
     # expected simply a gRPC server
     def __getattr__(self, attr):
         return getattr(self.grpc_server, attr)
+
+
+def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
+    """
+    Get `client_id` from gRPC metadata. If the `client_id` is not present,
+    this function logs an error and sets the status_code.
+    """
+    metadata = {k: v for k, v in context.invocation_metadata()}
+    client_id = metadata.get("client_id") or ""
+    if client_id == "":
+        logger.error("Client connecting with no client_id")
+        context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+    return client_id

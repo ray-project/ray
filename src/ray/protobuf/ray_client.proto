@@ -76,6 +76,10 @@ message ClientTask {
   TaskOptions options = 7;
   // Options passed to create the default remote task excution environment.
   TaskOptions baseline_options = 8;
+  // Thread that scheduled this task
+  int64 thread_id = 10;
+  // Identifier for this ticket
+  int32 req_id = 11;
 }
 
 message ClientTaskTicket {
@@ -204,6 +208,10 @@ message TerminateRequest {
     ActorTerminate actor = 2;
     TaskObjectTerminate task_object = 3;
   }
+  // Thread that made this request
+  int64 thread_id = 4;
+  // Identifier for this request
+  int32 req_id = 5;
 }
 
 message TerminateResponse {
@@ -230,6 +238,10 @@ message KVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
+  // Thread that made this request
+  int64 thread_id = 4;
+  // Identifier for this request
+  int32 req_id = 5;
 }
 
 message KVPutResponse {
@@ -238,6 +250,10 @@ message KVPutResponse {
 
 message KVDelRequest {
   bytes key = 1;
+  // Thread that made this request
+  int64 thread_id = 2;
+  // Identifier for this request
+  int32 req_id = 3;
 }
 
 message KVDelResponse {
@@ -336,9 +352,11 @@ message ConnectionInfoResponse {
 }
 
 message ConnectionCleanupRequest {
+  // Explicitly request that connection is cleaned up for graceful shutdown
 }
 
 message ConnectionCleanupResponse {
+  // Acknowledge cleanup request
 }
 
 message DataRequest {
