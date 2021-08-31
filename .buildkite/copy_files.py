@@ -76,13 +76,15 @@ def upload_paths(paths, resp, destination):
     branch = os.environ["BUILDKITE_BRANCH"]
     bk_job_id = os.environ["BUILDKITE_JOB_ID"]
 
+    current_os = os.uname().sysname.lower()
+
     for path in paths:
         fn = os.path.split(path)[-1]
         of["key"] = {
             "wheels": f"latest/{fn}",
             "branch_wheels": f"{branch}/{sha}/{fn}",
-            "jars": f"jars/latest/{fn}",
-            "branch_jars": f"jars/{branch}/{sha}/{fn}",
+            "jars": f"jars/latest/{fn}/{current_os}",
+            "branch_jars": f"jars/{branch}/{sha}/{fn}/{current_os}",
             "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}"
         }[destination]
         of["file"] = open(path, "rb")
