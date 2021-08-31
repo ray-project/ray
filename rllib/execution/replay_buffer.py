@@ -555,10 +555,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return stat
 
     def get_state(self) -> Dict[str, Any]:
-        state = {
-            "num_added": self.num_added,
-            "replay_buffers": {}
-        }
+        state = {"num_added": self.num_added, "replay_buffers": {}}
         for policy_id, replay_buffer in self.replay_buffers.items():
             state["replay_buffers"][policy_id] = replay_buffer.get_state()
         return state

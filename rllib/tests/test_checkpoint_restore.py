@@ -71,6 +71,9 @@ def ckpt_restore_test(alg_name,
                       object_store=False,
                       replay_buffer=False):
     config = CONFIGS[alg_name]
+    # If required, store replay buffer data in checkpoints as well.
+    config["store_buffer_in_checkpoints"] = replay_buffer
+
     frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in ([False, True] if object_store else [False]):
