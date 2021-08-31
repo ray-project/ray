@@ -38,9 +38,13 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
-  virtual void Insert(const ray::ObjectID &object_id) { object_ids.insert(object_id); }
+  virtual void Insert(const ray::ObjectID &object_id) override {
+    object_ids.insert(object_id);
+  }
 
-  virtual void Remove(const ray::ObjectID &object_id) { object_ids.erase(object_id); }
+  virtual void Remove(const ray::ObjectID &object_id) override {
+    object_ids.erase(object_id);
+  }
 
   std::string name = "anonymous_client";
 
