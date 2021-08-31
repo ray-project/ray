@@ -24,8 +24,8 @@ class ClientInterface {
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
-  virtual void Insert(const ray::ObjectID &object_id) = 0;
-  virtual void Remove(const ray::ObjectID &object_id) = 0;
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) = 0;
+  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -38,11 +38,11 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
-  virtual void Insert(const ray::ObjectID &object_id) override {
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) override {
     object_ids.insert(object_id);
   }
 
-  virtual void Remove(const ray::ObjectID &object_id) override {
+  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
     object_ids.erase(object_id);
   }
 

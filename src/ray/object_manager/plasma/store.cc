@@ -123,7 +123,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   }
   RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
-  client->Insert(object_id);
+  client->MarkObjectAsUsed(object_id);
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -237,7 +237,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
-    client->Remove(*it);
+    client->MarkObjectAsUnused(*it);
     RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
@@ -281,7 +281,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
-  client->Remove(*it);
+  client->MarkObjectAsUnused(*it);
   return 1;
 }
 

@@ -56,7 +56,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
   // Create a get request for this object.
   auto get_request = std::make_shared<GetRequest>(io_context_, client, object_ids,
                                                   is_from_worker, unique_ids.size());
-  for (const auto &object_id : object_ids) {
+  for (const auto &object_id : unique_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
@@ -96,6 +96,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
 
 void GetRequestQueue::RemoveGetRequestsForClient(
     const std::shared_ptr<ClientInterface> &client) {
+  /// TODO: Preventing duplicated can be optimized.
   absl::flat_hash_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
   for (auto const &pair : object_get_requests_) {
     for (const auto &get_request : pair.second) {
@@ -179,7 +180,11 @@ void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
 }
 
 bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) {
-  return object_get_requests_.count(object_id) > 0;
+  return object_get_requests_.contains(object_id);
+}
+
+int64_t GetRequestQueue::GetRequestCount(const ObjectID &object_id) {
+  return object_get_requests_[object_id].size();
 }
 
 void GetRequestQueue::OnGetRequestCompleted(

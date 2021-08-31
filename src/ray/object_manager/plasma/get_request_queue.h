@@ -110,6 +110,7 @@ class GetRequestQueue {
 
   /// Only for tests.
   bool IsGetRequestExist(const ObjectID &object_id);
+  int64_t GetRequestCount(const ObjectID &object_id);
 
   /// Called when objects satisfied. Call get request callback function and
   /// remove get request in queue.

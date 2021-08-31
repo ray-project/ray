@@ -26,8 +26,8 @@ class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
   MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
-  MOCK_METHOD1(Insert, void(const ObjectID &object_id));
-  MOCK_METHOD1(Remove, void(const ObjectID &object_id));
+  MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
+  MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
 };
 
 class MockObjectLifecycleManager : public IObjectLifecycleManager {
@@ -55,21 +55,19 @@ struct GetRequestQueueTest : public Test {
     object1.object_info.metadata_size = 0;
     object2.object_info.data_size = 10;
     object2.object_info.metadata_size = 0;
-    thread_ = std::thread([this] { io_context_.run(); });
   }
 
-  void TearDown() override {
-    io_context_.stop();
-    if (thread_.joinable()) {
-      thread_.join();
-    }
-  }
+  void TearDown() override { io_context_.stop(); }
 
  protected:
   void MarkObject(LocalObject &object, ObjectState state) { object.state = state; }
 
   bool IsGetRequestExist(GetRequestQueue &queue, const ObjectID &object_id) {
     return queue.IsGetRequestExist(object_id);
+  }
+
+  int64_t GetRequestCount(GetRequestQueue &queue, const ObjectID &object_id) {
+    return queue.GetRequestCount(object_id);
   }
 
   void AssertNoLeak(GetRequestQueue &queue) {
@@ -97,16 +95,12 @@ TEST_F(GetRequestQueueTest, TestObjectSealed) {
   auto client = std::make_shared<MockClient>();
 
   /// Test object has been satisfied.
-  {
-    std::vector<ObjectID> object_ids{object_id1};
-    /// Mock the object already sealed.
-    MarkObject(object1, ObjectState::PLASMA_SEALED);
-    EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-        .Times(1)
-        .WillOnce(Return(&object1));
-    get_request_queue.AddRequest(client, object_ids, 1000, false);
-    EXPECT_TRUE(satisfied);
-  }
+  std::vector<ObjectID> object_ids{object_id1};
+  /// Mock the object already sealed.
+  MarkObject(object1, ObjectState::PLASMA_SEALED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_)).Times(1).WillOnce(Return(&object1));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  EXPECT_TRUE(satisfied);
 
   AssertNoLeak(get_request_queue);
 }
@@ -121,15 +115,13 @@ TEST_F(GetRequestQueueTest, TestObjectTimeout) {
   auto client = std::make_shared<MockClient>();
 
   /// Test object not satisfied, time out.
-  {
-    std::vector<ObjectID> object_ids{object_id1};
-    MarkObject(object1, ObjectState::PLASMA_CREATED);
-    EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-        .Times(1)
-        .WillOnce(Return(&object1));
-    get_request_queue.AddRequest(client, object_ids, 1000, false);
-    promise.get_future().get();
-  }
+  std::vector<ObjectID> object_ids{object_id1};
+  MarkObject(object1, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_)).Times(1).WillOnce(Return(&object1));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  /// This trigger timeout
+  io_context_.run_one();
+  promise.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }
@@ -144,17 +136,15 @@ TEST_F(GetRequestQueueTest, TestObjectNotSealed) {
   auto client = std::make_shared<MockClient>();
 
   /// Test object not satisfied, then sealed.
-  {
-    std::vector<ObjectID> object_ids{object_id1};
-    MarkObject(object1, ObjectState::PLASMA_CREATED);
-    EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-        .Times(2)
-        .WillRepeatedly(Return(&object1));
-    get_request_queue.AddRequest(client, object_ids, /*timeout_ms*/ -1, false);
-    MarkObject(object1, ObjectState::PLASMA_SEALED);
-    get_request_queue.MarkObjectSealed(object_id1);
-    promise.get_future().get();
-  }
+  std::vector<ObjectID> object_ids{object_id1};
+  MarkObject(object1, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
+      .Times(2)
+      .WillRepeatedly(Return(&object1));
+  get_request_queue.AddRequest(client, object_ids, /*timeout_ms*/ -1, false);
+  MarkObject(object1, ObjectState::PLASMA_SEALED);
+  get_request_queue.MarkObjectSealed(object_id1);
+  promise.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }
@@ -176,26 +166,48 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   auto client = std::make_shared<MockClient>();
 
   /// Test get request of mulitiple objects, one sealed, one timed out.
-  {
-    std::vector<ObjectID> object_ids{object_id1, object_id2};
-    MarkObject(object1, ObjectState::PLASMA_SEALED);
-    MarkObject(object2, ObjectState::PLASMA_CREATED);
-    EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-        .Times(3)
-        .WillOnce(Return(&object1))
-        .WillOnce(Return(&object2))
-        .WillOnce(Return(&object2));
-    get_request_queue.AddRequest(client, object_ids, 1000, false);
-    promise1.get_future().get();
-    EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
-    EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
-    MarkObject(object2, ObjectState::PLASMA_SEALED);
-    get_request_queue.MarkObjectSealed(object_id2);
-    promise2.get_future().get();
-    promise3.get_future().get();
-  }
+  std::vector<ObjectID> object_ids{object_id1, object_id2};
+  MarkObject(object1, ObjectState::PLASMA_SEALED);
+  MarkObject(object2, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
+      .Times(3)
+      .WillOnce(Return(&object1))
+      .WillOnce(Return(&object2))
+      .WillOnce(Return(&object2));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  promise1.get_future().get();
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
+  MarkObject(object2, ObjectState::PLASMA_SEALED);
+  get_request_queue.MarkObjectSealed(object_id2);
+  promise2.get_future().get();
+  promise3.get_future().get();
 
   AssertNoLeak(get_request_queue);
+}
+
+TEST_F(GetRequestQueueTest, TestDuplicateObjects) {
+  MockObjectLifecycleManager object_lifecycle_manager;
+  GetRequestQueue get_request_queue(
+      io_context_, object_lifecycle_manager,
+      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const std::shared_ptr<GetRequest> &get_req) {});
+  auto client = std::make_shared<MockClient>();
+
+  /// Test get request of duplicated objects.
+  std::vector<ObjectID> object_ids{object_id1, object_id2, object_id1};
+  /// Set state to PLASMA_CREATED, so we can check them using IsGetRequestExist.
+  MarkObject(object1, ObjectState::PLASMA_CREATED);
+  MarkObject(object2, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
+      .Times(2)
+      .WillOnce(Return(&object1))
+      .WillOnce(Return(&object2));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
+  EXPECT_EQ(1, GetRequestCount(get_request_queue, object_id1));
+  EXPECT_EQ(1, GetRequestCount(get_request_queue, object_id2));
 }
 
 TEST_F(GetRequestQueueTest, TestRemoveAll) {
@@ -207,23 +219,21 @@ TEST_F(GetRequestQueueTest, TestRemoveAll) {
   auto client = std::make_shared<MockClient>();
 
   /// Test get request two not-sealed objects, remove all requests for this client.
-  {
-    std::vector<ObjectID> object_ids{object_id1, object_id2};
-    MarkObject(object1, ObjectState::PLASMA_CREATED);
-    MarkObject(object2, ObjectState::PLASMA_CREATED);
-    EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-        .Times(2)
-        .WillOnce(Return(&object1))
-        .WillOnce(Return(&object2));
-    get_request_queue.AddRequest(client, object_ids, 1000, false);
+  std::vector<ObjectID> object_ids{object_id1, object_id2};
+  MarkObject(object1, ObjectState::PLASMA_CREATED);
+  MarkObject(object2, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
+      .Times(2)
+      .WillOnce(Return(&object1))
+      .WillOnce(Return(&object2));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
 
-    EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
-    EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
 
-    get_request_queue.RemoveGetRequestsForClient(client);
-    EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
-    EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id2));
-  }
+  get_request_queue.RemoveGetRequestsForClient(client);
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id2));
 
   AssertNoLeak(get_request_queue);
 }
