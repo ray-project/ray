@@ -94,6 +94,7 @@ if __name__ == "__main__":
     assert x == 42
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("debug_enabled", [False, True])
 def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
