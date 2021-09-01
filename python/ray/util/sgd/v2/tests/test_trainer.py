@@ -8,6 +8,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
+from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
@@ -43,6 +44,14 @@ def ray_start_2_cpus_2_gpus():
 @pytest.fixture
 def ray_start_8_cpus():
     address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpus_4_gpus_4_extra():
+    address_info = ray.init(num_cpus=4, num_gpus=4, resources={"extra": 4})
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -827,6 +836,69 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     output = trainer.run(train)
     assert output == [1, 1]
+
+
+@pytest.mark.parametrize("resource", ["CPU", "GPU", "extra"])
+@pytest.mark.parametrize("num_requested", [0.5, 1, 2])
+def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
+    num_workers = 2
+    config = TestConfig()
+    original = ray.available_resources().get(resource)
+    resources_per_worker = {resource: num_requested}
+    use_gpu = resource == "GPU"
+    trainer = Trainer(
+        config,
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        resources_per_worker=resources_per_worker)
+
+    trainer.start()
+    expected = original - num_workers * num_requested
+    wait_for_condition(
+        lambda: ray.available_resources().get(resource, 0) == expected)
+
+    trainer.shutdown()
+    wait_for_condition(
+        lambda: ray.available_resources().get(resource, 0) == original)
+
+
+def test_gpu_requests(ray_start_2_cpus):
+
+    # GPUs should not be requested if `use_gpu` is False.
+    with pytest.raises(ValueError):
+        Trainer(
+            TestConfig(),
+            num_workers=2,
+            use_gpu=False,
+            resources_per_worker={"GPU": 1})
+
+    # GPUs should not be set to 0 if `use_gpu` is True.
+    with pytest.raises(ValueError):
+        Trainer(
+            TestConfig(),
+            num_workers=2,
+            use_gpu=True,
+            resources_per_worker={"GPU": 0})
+
+    # 0 GPUs will be requested and should not raise an error.
+    Trainer(TestConfig(), num_workers=2, use_gpu=False)
+
+    # 1 GPU will be requested and should not raise an error.
+    Trainer(TestConfig(), num_workers=2, use_gpu=True)
+
+    # Partial GPUs should not raise an error.
+    Trainer(
+        TestConfig(),
+        num_workers=2,
+        use_gpu=True,
+        resources_per_worker={"GPU": 0.1})
+
+    # Multiple GPUs should not raise an error.
+    Trainer(
+        TestConfig(),
+        num_workers=2,
+        use_gpu=True,
+        resources_per_worker={"GPU": 2})
 
 
 if __name__ == "__main__":
