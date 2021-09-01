@@ -312,7 +312,7 @@ class ObjectReleasedError(ObjectLostError):
             "call x_ref = foo.remote(...), pass [x_ref] to an actor A, and "
             "then actor A passes x_ref to actor B by calling "
             "B.bar.remote(x_ref). In this case, the driver may release x "
-            "before B.bar executes.\n\n"
+            "before B.bar executes, and B will receive this error.\n\n"
             "If your application does not match this scenario, then this is "
             "likely a system-level bug in the distributed ref counting "
             "protocol. Please file an issue on GitHub at "
