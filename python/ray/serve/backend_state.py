@@ -42,9 +42,10 @@ class ReplicaStartupStatus(Enum):
 
 class GoalStatus(Enum):
     NONE = 1
-    SUCCEEDED = 2
-    SUCCESSFULLY_DELETED = 3
-    FAILED = 4
+    PENDING = 2
+    SUCCEEDED = 3
+    SUCCESSFULLY_DELETED = 4
+    FAILED = 5
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
@@ -944,7 +945,7 @@ class BackendState:
             elif target_replica_count == running_at_target_version_replica_cnt:
                 return GoalStatus.SUCCEEDED
 
-        return GoalStatus.NONE
+        return GoalStatus.PENDING
 
     def _check_and_update_replicas(self) -> bool:
         transitioned = False

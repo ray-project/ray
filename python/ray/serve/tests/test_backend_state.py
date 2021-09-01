@@ -493,7 +493,6 @@ def check_counts(backend_state: BackendState,
 def test_create_delete_single_replica(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    print("1")
     b_info_1, b_version_1 = backend_info()
     create_goal, updating = backend_state.deploy(b_info_1)
     assert updating
