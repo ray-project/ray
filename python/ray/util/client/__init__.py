@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-08-16"
+CURRENT_PROTOCOL_VERSION = "2021-08-26"
 
 
 class _ClientContext:
@@ -67,8 +67,7 @@ class _ClientContext:
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "
-                               "install the environment before ray.connect() "
-                               "returns.")
+                               "install the environment before Ray connects.")
         try:
             self.client_worker = Worker(
                 conn_str,

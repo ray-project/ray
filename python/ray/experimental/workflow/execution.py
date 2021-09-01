@@ -23,18 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None,
-        overwrite: bool = True) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously.
-
-    # TODO(suquark): The current "run" always overwrite existing workflow.
-    # We need to fix this later.
     """
     store = get_global_storage()
     assert ray.is_initialized()
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
+
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
 
@@ -42,7 +39,19 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
-        commit_step(ws, "", entry_workflow)
+
+        wf_exists = True
+        try:
+            ws.get_entrypoint_step_id()
+        except Exception:
+            wf_exists = False
+
+        # We only commit for
+        #  - virtual actor tasks: it's dynamic tasks, so we always add
+        #  - it's a new workflow
+        # TODO (yic): follow up with force rerun
+        if entry_workflow.data.step_type != StepType.FUNCTION or not wf_exists:
+            commit_step(ws, "", entry_workflow, None)
         workflow_manager = get_or_create_management_actor()
         ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
         # NOTE: It is important to 'ray.get' the returned output. This

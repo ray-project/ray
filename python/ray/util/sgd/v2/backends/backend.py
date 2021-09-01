@@ -1,4 +1,6 @@
 import logging
+import os
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, TypeVar, List, Optional, Dict, Union
@@ -12,7 +14,7 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path
+from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -50,7 +52,8 @@ class BackendExecutor:
             generated.
 
     Attributes:
-        logdir (Path): Path to the file directory where logs will be persisted.
+        logdir (Path): Path to the file directory where logs will be
+            persisted.
         latest_run_dir (Optional[Path]): Path to the file directory for the
             latest run. Configured through ``start_training``.
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
@@ -104,7 +107,63 @@ class BackendExecutor:
                                         self._num_gpus_per_worker)
         if initialization_hook:
             self.worker_group.execute(initialization_hook)
+
+        if self._num_gpus_per_worker > 0:
+            self._setup_gpus()
+
         self._backend.on_start(self.worker_group, self._backend_config)
+
+    def _setup_gpus(self):
+        """Sets CUDA_VISIBLE_DEVICES on all workers.
+
+        For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
+        visible to all workers on that worker's node.
+
+        This allows GPU workers on the same node to communicate with one
+        another.
+
+        Example:
+
+            Setup:
+            - Node1:
+                - Worker1: {0, 1}
+                - Worker2: {2, 3}
+            - Node2:
+                - Worker3: {0, 1}
+
+            CUDA_VISIBLE_DEVICES:
+            - Worker1: "0,1,2,3"
+            - Worker2: "0,1,2,3"
+            - Worker2: "0,1"
+
+        """
+
+        def get_node_id_and_gpu():
+            node_id = get_node_id()
+            gpu_ids = get_gpu_ids()
+            return node_id, gpu_ids
+
+        node_ids_and_gpu_ids = self.worker_group.execute(get_node_id_and_gpu)
+
+        node_id_to_worker_id = defaultdict(set)
+        node_id_to_gpu_ids = defaultdict(set)
+
+        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+            node_id_to_worker_id[node_id].add(worker_id)
+            node_id_to_gpu_ids[node_id].update(gpu_ids)
+
+        futures = []
+        for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
+
+            def set_gpu_ids():
+                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+
+            for worker_id in node_id_to_worker_id[node_id]:
+                futures.append(
+                    self.worker_group.execute_single_async(
+                        worker_id, set_gpu_ids))
+        ray.get(futures)
 
     def start_training(
             self,

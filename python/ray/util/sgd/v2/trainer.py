@@ -6,6 +6,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
 
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError
+from ray.util.sgd.v2.backends.horovod import HorovodConfig
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
@@ -33,6 +34,7 @@ S = TypeVar("S")
 logger = logging.getLogger(__name__)
 
 BACKEND_NAME_TO_CONFIG_CLS = {
+    "horovod": HorovodConfig,
     "tensorflow": TensorflowConfig,
     "torch": TorchConfig
 }
@@ -158,7 +160,7 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training()
+            callback.start_training(logdir=self.logdir)
 
         try:
             iterator = self.run_iterator(

@@ -3,6 +3,7 @@ import time
 
 import pytest
 import pandas as pd
+import numpy as np
 
 import ray
 from ray.data.dataset_pipeline import DatasetPipeline
@@ -124,6 +125,38 @@ def test_split(ray_start_regular_shared):
     shards = pipe.split(3)
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     ray.get(refs)
+
+
+def test_split_at_indices(ray_start_regular_shared):
+    indices = [2, 5]
+    n = 8
+    pipe = ray.data.range(n) \
+        .map(lambda x: x + 1) \
+        .repeat(2)
+
+    @ray.remote
+    def consume(shard, i):
+        total = 0
+        out = []
+        for row in shard.iter_rows():
+            total += 1
+            out.append(row)
+        if i == 0:
+            assert total == 2 * indices[i]
+        elif i < len(indices):
+            assert total == 2 * (indices[i] - indices[i - 1])
+        else:
+            assert total == 2 * (n - indices[i - 1])
+        return out
+
+    shards = pipe.split_at_indices(indices)
+    refs = [consume.remote(s, i) for i, s in enumerate(shards)]
+    outs = ray.get(refs)
+    np.testing.assert_equal(
+        np.array(outs, dtype=np.object),
+        np.array(
+            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]],
+            dtype=np.object))
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):

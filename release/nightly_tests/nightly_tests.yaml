@@ -136,20 +136,21 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 7200
+    timeout: 9000
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
 # Stress test for 1TB multi node non-streaming shuffle.
-- name: non_streaming_shuffle_1tb_5000_partitions
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_large_scale.yaml
+# - name: non_streaming_shuffle_1tb_5000_partitions
+#   stable: False
+#   cluster:
+#     app_config: shuffle/shuffle_app_config.yaml
+#     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
-  run:
-    timeout: 7200
-    prepare: python wait_cluster.py 20 900
-    script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
+#   run:
+#     timeout: 7200
+#     prepare: python wait_cluster.py 20 900
+#     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 # Test large scale dask on ray test without spilling.
 - name: dask_on_ray_large_scale_test_no_spilling
