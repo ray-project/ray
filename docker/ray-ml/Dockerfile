@@ -15,6 +15,7 @@ RUN sudo apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
+        unzip \
         unrar \
     && $HOME/anaconda3/bin/pip install -U pip \
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
