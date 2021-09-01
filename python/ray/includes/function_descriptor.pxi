@@ -167,7 +167,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
                                         typed_descriptor.FunctionHash())
 
     @classmethod
-    def from_function(cls, function, pickled_function):
+    def from_function(cls, function, uuid):
         """Create a FunctionDescriptor from a function instance.
 
         This function is used to create the function descriptor from
@@ -178,9 +178,10 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             cls: Current class which is required argument for classmethod.
             function: the python function used to create the function
                 descriptor.
-            pickled_function: This is factored in to ensure that any
-                modifications to the function result in a different function
-                descriptor.
+            uuid: Used to uniquely identify a function.
+                  Ideally we can use the pickled function bytes
+                  but cloudpickle isn't stable in some cases
+                  for the same function.
 
         Returns:
             The FunctionDescriptor instance created according to the function.
@@ -189,11 +190,9 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         function_name = function.__qualname__
         class_name = ""
 
-        pickled_function_hash = hashlib.shake_128(pickled_function).hexdigest(
-          ray_constants.ID_SIZE)
-
         return cls(module_name, function_name, class_name,
-                   pickled_function_hash)
+                   hashlib.shake_128(uuid.bytes).hexdigest(
+                    ray_constants.ID_SIZE))
 
     @classmethod
     def from_class(cls, target_class):
