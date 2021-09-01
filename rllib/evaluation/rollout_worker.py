@@ -1555,11 +1555,19 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
         ray.actor.ActorHandle
     ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
-        logger.warning(msg + " (NOT OK)")
-        raise EnvError(
-            "Returned env should be an instance of gym.Env, MultiAgentEnv, "
-            "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
-            "function returned {} (type={}).".format(env, type(env)))
+        # Allow this as a special case (assumed gym.Env).
+        # TODO: Disallow this early-out. Everything should conform to a few
+        #  supported classes, i.e. gym.Env/MultiAgentEnv/etc...
+        if hasattr(env, "observation_space") and hasattr(env, "action_space"):
+            logger.warning(msg + f" (warning; invalid env-type={type(env)})")
+            return
+        else:
+            logger.warning(msg + " (NOT OK)")
+            raise EnvError(
+                "Returned env should be an instance of gym.Env (incl. "
+                "MultiAgentEnv), ExternalEnv, VectorEnv, or BaseEnv. "
+                f"The provided env creator function returned {env} "
+                f"(type={type(env)}).")
 
     # Do some test runs with the provided env.
     if isinstance(env, gym.Env):
@@ -1575,7 +1583,6 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
             raise EnvError(
                 f"Env's `observation_space` {env.observation_space} does not "
                 f"contain returned observation after a reset ({dummy_obs})!")
-        # Only for vector-index=0, write the INFO log-line (to avoid log
-        # spamming).
-        elif env_context.vector_index == 0:
-            logger.info(msg + " (ok)")
+
+    # Log that everything is ok.
+    logger.info(msg + " (ok)")
