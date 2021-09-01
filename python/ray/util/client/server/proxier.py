@@ -96,7 +96,7 @@ class SpecificServer:
 
     def set_result(self, proc: Optional[ProcessInfo]) -> None:
         """Set the result of the internal future if it is currently unset."""
-        if not self.process_handle_future.done():
+        if not self.is_ready():
             self.process_handle_future.set_result(proc)
 
 

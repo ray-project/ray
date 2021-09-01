@@ -506,7 +506,8 @@ class Worker:
             if job_config is None:
                 serialized_job_config = None
             else:
-                # Generate and upload URIs for the working directory.
+                # Generate and upload URIs for the working directory. This
+                # uses internal_kv to upload to the GCS.
                 import ray._private.runtime_env as runtime_env
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
