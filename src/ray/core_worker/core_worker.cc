@@ -3197,7 +3197,7 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     }
   });
   future.wait();
-  for (const auto& s : ret) {
+  for (const auto &s : ret) {
     if (!s.ok()) {
       return s;
     }
