@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hiredis/hiredis.h"
+#include "ray/common/protocol.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
