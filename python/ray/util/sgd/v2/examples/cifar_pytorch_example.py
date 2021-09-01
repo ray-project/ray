@@ -67,9 +67,9 @@ def load_image(item, transform):
 
 #dataset = dataset.map(load_image).repeat(times=2).random_shuffle()
 train_dataset = train_dataset.map(lambda item: load_image(item,
-                                                          train_transform)).limit(2)
+                                                          train_transform)).repeat(3).random_shuffle()
 val_dataset = val_dataset.map(lambda item: load_image(item,
-                                                      val_transform)).limit(2)
+                                                      val_transform)).repeat(3).random_shuffle
 
 data_transforms = {
     'train': transforms.Compose([
@@ -150,13 +150,13 @@ def train_model(config):
 
     best_acc = 0.0
 
-    for item in image_datasets["train"]:
-        print("Image Dataset", item)
-    samplers = {k: DistributedSampler(v) for k, v in image_datasets.items()}
-    dataloaders = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=2,
-                                       sampler=samplers[x])
-        for x in ['train', 'val']}
+    # for item in image_datasets["train"]:
+    #     print("Image Dataset", item)
+    # samplers = {k: DistributedSampler(v) for k, v in image_datasets.items()}
+    # dataloaders = {
+    #     x: torch.utils.data.DataLoader(image_datasets[x], batch_size=2,
+    #                                    sampler=samplers[x])
+    #     for x in ['train', 'val']}
     # dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 
     for epoch in range(epoch, num_epochs):
@@ -173,21 +173,21 @@ def train_model(config):
             running_loss = 0.0
             running_corrects = 0
 
-            dataset = sgd.get_dataset_shard(phase).random_shuffle()
+            dataset = sgd.get_dataset_shard(phase)
             print(dataset.count())
             #print(dataset_sizes[phase])
             # assert dataset.count() == dataset_sizes[phase], (dataset.count(
             #
             # ), dataset_sizes[phase])
 
-            for inputs, labels in dataloaders[phase]:
-                print("DataLoader size:", len(dataloaders))
+            # for inputs, labels in dataloaders[phase]:
+            #     print("DataLoader size:", len(dataloaders))
 
             # Iterate over data.
-            # for batch in dataset.iter_batches(batch_size=1):
-            #     #print(batch)
-            #     inputs = torch.stack([b[0] for b in batch])
-            #     labels = torch.stack([b[1] for b in batch])
+            for batch in dataset.iter_batches(batch_size=1):
+                #print(batch)
+                inputs = torch.stack([b[0] for b in batch])
+                labels = torch.stack([b[1] for b in batch])
                 print("Phase", phase, inputs)
                 print("Input shape", inputs.shape)
                 print("Label shape", labels.shape)
