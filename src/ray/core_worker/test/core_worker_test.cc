@@ -248,11 +248,10 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
-      auto return_refs =
-        driver.SubmitTask(func, args, options, /*max_retries=*/0,
-                        /*retry_exceptions=*/false,
-                        std::make_pair(PlacementGroupID::Nil(), -1), true,
-                        /*debugger_breakpoint=*/"");
+      auto return_refs = driver.SubmitTask(
+          func, args, options, /*max_retries=*/0,
+          /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+          /*debugger_breakpoint=*/"");
       auto return_ids = ObjectRefsToIds(return_refs);
 
       ASSERT_EQ(return_ids.size(), 1);
@@ -854,19 +853,17 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   TaskOptions options;
 
   // Submit func1. The function should start looping forever.
-  auto return_ids1 =
-      ObjectRefsToIds(driver.SubmitTask(func1, args, options, /*max_retries=*/0,
-                    /*retry_exceptions=*/false,
-                    std::make_pair(PlacementGroupID::Nil(), -1), true,
-                    /*debugger_breakpoint=*/""));
+  auto return_ids1 = ObjectRefsToIds(driver.SubmitTask(
+      func1, args, options, /*max_retries=*/0,
+      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+      /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids1.size(), 1);
 
   // Submit func2. The function should be queued at the worker indefinitely.
-  auto return_ids2 =
-      ObjectRefsToIds(driver.SubmitTask(func2, args, options, /*max_retries=*/0,
-                    /*retry_exceptions=*/false,
-                    std::make_pair(PlacementGroupID::Nil(), -1), true,
-                    /*debugger_breakpoint=*/""));
+  auto return_ids2 = ObjectRefsToIds(driver.SubmitTask(
+      func2, args, options, /*max_retries=*/0,
+      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+      /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids2.size(), 1);
 
   // Cancel func2 by removing it from the worker's queue

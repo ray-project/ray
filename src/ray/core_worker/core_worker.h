@@ -710,12 +710,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> SubmitTask(const RayFunction &function,
-                  const std::vector<std::unique_ptr<TaskArg>> &args,
-                  const TaskOptions &task_options,
-                  int max_retries, bool retry_exceptions, BundleID placement_options,
-                  bool placement_group_capture_child_tasks,
-                  const std::string &debugger_breakpoint);
+  std::vector<rpc::ObjectReference> SubmitTask(
+      const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options, int max_retries, bool retry_exceptions,
+      BundleID placement_options, bool placement_group_capture_child_tasks,
+      const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
