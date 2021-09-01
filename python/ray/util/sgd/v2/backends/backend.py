@@ -78,11 +78,12 @@ class CheckpointManager:
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = 0
 
-    def on_start_training(self,
-                          checkpoint_strategy: Optional[CheckpointStrategy],
-                          run_dir: Path,
-                          checkpoint_id: Optional[int] = None,
-                          ):
+    def on_start_training(
+            self,
+            checkpoint_strategy: Optional[CheckpointStrategy],
+            run_dir: Path,
+            checkpoint_id: Optional[int] = None,
+    ):
         """Checkpoint code executed during BackendExecutor start_training."""
         # Restart checkpointing.
         self._checkpoint_id = checkpoint_id if checkpoint_id else 0
@@ -192,6 +193,7 @@ class TuneCheckpointManager(CheckpointManager):
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
+
 
 class TrainingWorkerError(Exception):
     """Raised if a worker fails during training."""
@@ -352,7 +354,8 @@ class BackendExecutor:
             checkpoint_id (Optional[int]): The checkpoint id to start with.
         """
         self.checkpoint_manager.on_start_training(
-            checkpoint_strategy=checkpoint_strategy, run_dir=run_dir,
+            checkpoint_strategy=checkpoint_strategy,
+            run_dir=run_dir,
             checkpoint_id=checkpoint_id)
 
         use_detailed_autofilled_metrics = env_integer(
