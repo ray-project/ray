@@ -180,6 +180,7 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
   MarkObject(object2, ObjectState::PLASMA_SEALED);
   get_request_queue.MarkObjectSealed(object_id2);
+  io_context_.run_one();
   promise2.get_future().get();
   promise3.get_future().get();
 
