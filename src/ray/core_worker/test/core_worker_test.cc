@@ -146,6 +146,7 @@ class CoreWorkerTest : public ::testing::Test {
       options.raylet_ip_address = "127.0.0.1";
       options.driver_name = "core_worker_test";
       options.num_workers = 1;
+      options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
     }
   }
@@ -248,6 +249,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       TaskOptions options;
       std::vector<ObjectID> return_ids;
       driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
+                        /*retry_exceptions=*/false,
                         std::make_pair(PlacementGroupID::Nil(), -1), true,
                         /*debugger_breakpoint=*/"");
 
@@ -854,12 +856,14 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
 
   // Submit func1. The function should start looping forever.
   driver.SubmitTask(func1, args, options, &return_ids1, /*max_retries=*/0,
+                    /*retry_exceptions=*/false,
                     std::make_pair(PlacementGroupID::Nil(), -1), true,
                     /*debugger_breakpoint=*/"");
   ASSERT_EQ(return_ids1.size(), 1);
 
   // Submit func2. The function should be queued at the worker indefinitely.
   driver.SubmitTask(func2, args, options, &return_ids2, /*max_retries=*/0,
+                    /*retry_exceptions=*/false,
                     std::make_pair(PlacementGroupID::Nil(), -1), true,
                     /*debugger_breakpoint=*/"");
   ASSERT_EQ(return_ids2.size(), 1);

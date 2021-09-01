@@ -42,8 +42,8 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                 invocation.args, options, &return_ids);
   } else {
     core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, options,
-                           &return_ids, 1, std::make_pair(PlacementGroupID::Nil(), -1),
-                           true, "");
+                           &return_ids, 1, false,
+                           std::make_pair(PlacementGroupID::Nil(), -1), true, "");
   }
   return return_ids[0];
 }

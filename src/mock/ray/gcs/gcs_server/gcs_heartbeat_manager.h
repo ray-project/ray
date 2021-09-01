@@ -1,4 +1,4 @@
-// Copyright 2021 The Ray Authors.
+// Copyright  The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/stats/stats.h"
-
 namespace ray {
+namespace gcs {
 
-namespace stats {
-std::shared_ptr<IOServicePool> metrics_io_service_pool;
-std::shared_ptr<MetricExporterClient> exporter;
-absl::Mutex stats_mutex;
-}  // namespace stats
+class MockGcsHeartbeatManager : public GcsHeartbeatManager {
+ public:
+  MOCK_METHOD(void, HandleReportHeartbeat,
+              (const rpc::ReportHeartbeatRequest &request,
+               rpc::ReportHeartbeatReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleCheckAlive,
+              (const rpc::CheckAliveRequest &request, rpc::CheckAliveReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+};
 
+}  // namespace gcs
 }  // namespace ray

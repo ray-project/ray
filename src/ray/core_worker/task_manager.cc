@@ -266,7 +266,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.pending = false;
     num_pending_tasks_--;
 
-    // A finished task can be only be re-executed if it has some number of
+    // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable = it->second.num_retries_left != 0 &&
@@ -284,6 +284,45 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
+bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
+  int num_retries_left = 0;
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to retry task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to retry task that was not pending " << task_id;
+    spec = it->second.spec;
+    num_retries_left = it->second.num_retries_left;
+    if (num_retries_left > 0) {
+      it->second.num_retries_left--;
+    } else {
+      RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
+    }
+  }
+
+  // We should not hold the lock during these calls because they may trigger
+  // callbacks in this or other classes.
+  if (num_retries_left != 0) {
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    std::ostringstream stream;
+    auto num_retries_left_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
+           << ", attempting to resubmit.";
+    RAY_CHECK_OK(
+        push_error_callback_(spec.JobId(), "retry_task", stream.str(), timestamp));
+    retry_task_callback_(spec, /*delay=*/true);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool TaskManager::PendingTaskFailed(
     const TaskID &task_id, rpc::ErrorType error_type, Status *status,
     const std::shared_ptr<rpc::RayException> &creation_task_exception,
@@ -292,9 +331,9 @@ bool TaskManager::PendingTaskFailed(
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  int num_retries_left = 0;
+  const bool will_retry = RetryTaskIfPossible(task_id);
+  const bool release_lineage = !will_retry;
   TaskSpecification spec;
-  bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -303,30 +342,13 @@ bool TaskManager::PendingTaskFailed(
     RAY_CHECK(it->second.pending)
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
-    if (num_retries_left == 0) {
+    if (!will_retry) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
-    } else if (num_retries_left == -1) {
-      release_lineage = false;
-    } else {
-      RAY_CHECK(num_retries_left > 0);
-      it->second.num_retries_left--;
-      release_lineage = false;
     }
   }
 
-  bool will_retry = false;
-  // We should not hold the lock during these calls because they may trigger
-  // callbacks in this or other classes.
-  if (num_retries_left != 0) {
-    auto retries_str =
-        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
-                  << ", attempting to resubmit.";
-    retry_task_callback_(spec, /*delay=*/true);
-    will_retry = true;
-  } else {
+  if (!will_retry) {
     // Throttled logging of task failure errors.
     {
       absl::MutexLock lock(&mu_);
