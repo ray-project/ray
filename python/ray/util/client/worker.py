@@ -159,8 +159,7 @@ class Worker:
                     "the Ray Client port on the head node is reachable "
                     "from your local machine. See https://docs.ray.io/en"
                     "/latest/cluster/ray-client.html#step-2-check-ports for "
-                    "more information."
-                )
+                    "more information.")
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
