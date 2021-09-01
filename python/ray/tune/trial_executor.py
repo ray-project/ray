@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 # Ideally we want to use @cache; but it's only available for python 3.9.
-# Caching is only helpful for no autoscaler case.
+# Caching is only helpful/correct for no autoscaler case.
 @lru_cache()
 def _get_cluster_resources_no_autoscaler() -> Dict:
     return ray.cluster_resources()
@@ -43,8 +43,10 @@ def _get_insufficient_resources_warning_threshold() -> float:
             os.environ.get(
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
+        # Set the default to 10s so that we don't prematurely determine that
+        # a cluster cannot fulfill the resources requirements.
         return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "5"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "10"))
 
 
 @lru_cache()
@@ -93,7 +95,7 @@ class TrialExecutor(metaclass=ABCMeta):
         self._trials_to_cache = set()
         # The next two variables are used to keep track of if there is any
         # "progress" made between subsequent calls to `on_no_available_trials`.
-        # TODO(xwjiang): Clean this up once figure out who should have a
+        # TODO(xwjiang): Clean this up once figuring out who should have a
         #  holistic view of trials - runner or executor.
         #  Also iterating over list of trials every time is very inefficient.
         #  Need better visibility APIs into trials.
