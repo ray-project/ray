@@ -8,7 +8,6 @@ from ray.actor import ActorHandle
 from ray.serve.common import (
     BackendConfig,
     BackendInfo,
-    BackendTag,
     ReplicaConfig,
     ReplicaTag,
 )
@@ -124,10 +123,10 @@ class TestUserConfigHash:
 
 class MockReplicaActorWrapper:
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
-        self._backend_tag = backend_tag
+        self._backend_tag = replica_tag.deployment_tag
         self._state = ReplicaState.SHOULD_START
 
         # Will be set when `start()` is called.
@@ -146,6 +145,14 @@ class MockReplicaActorWrapper:
         self.health_check_called = False
         # Returned by the health check.
         self.healthy = True
+
+    @property
+    def replica_tag(self) -> str:
+        return str(self._replica_tag)
+
+    @property
+    def backend_tag(self) -> str:
+        return self._backend_tag
 
     @property
     def actor_handle(self) -> ActorHandle:

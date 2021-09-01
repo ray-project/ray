@@ -62,13 +62,13 @@ class ActorReplicaWrapper:
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
         self._replica_tag = replica_tag
-        self._backend_tag = backend_tag
+        self._backend_tag = replica_tag.deployment_tag
 
         self._ready_obj_ref = None
         self._drain_obj_ref = None
@@ -92,6 +92,14 @@ class ActorReplicaWrapper:
         self._drain_obj_ref = None
 
     @property
+    def replica_tag(self) -> str:
+        return str(self._replica_tag)
+
+    @property
+    def backend_tag(self) -> str:
+        return self._backend_tag
+
+    @property
     def actor_handle(self) -> ActorHandle:
         return ray.get_actor(self._actor_name)
 
@@ -108,8 +116,8 @@ class ActorReplicaWrapper:
             except ValueError:
                 logger.debug(
                     "Creating placement group '{}' for deployment '{}'".format(
-                        self._placement_group_name, self._backend_tag) +
-                    f" component=serve deployment={self._backend_tag}")
+                        self._placement_group_name, self.backend_tag) +
+                    f" component=serve deployment={self.backend_tag}")
                 self._placement_group = ray.util.placement_group(
                     [self._actor_resources],
                     lifetime="detached" if self._detached else None,
@@ -119,9 +127,9 @@ class ActorReplicaWrapper:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
             logger.debug("Starting replica '{}' for deployment '{}'.".format(
-                self._replica_tag, self._backend_tag) +
-                         f" component=serve deployment={self._backend_tag} "
-                         f"replica={self._replica_tag}")
+                self.replica_tag, self.backend_tag) +
+                         f" component=serve deployment={self.backend_tag} "
+                         f"replica={self.replica_tag}")
 
             self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
@@ -129,7 +137,7 @@ class ActorReplicaWrapper:
                 placement_group=self._placement_group,
                 placement_group_capture_child_tasks=False,
                 **backend_info.replica_config.ray_actor_options).remote(
-                    self._backend_tag, self._replica_tag,
+                    self.backend_tag, self.replica_tag,
                     backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name,
                     self._detached)
@@ -287,14 +295,13 @@ class BackendReplica(VersionedReplica):
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: BackendVersion):
+                 replica_tag: ReplicaTag, version: BackendVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag, controller_name), detached,
-            controller_name, replica_tag, backend_tag)
+            format_actor_name(replica_tag.name, controller_name), detached,
+            controller_name, replica_tag)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
-        self._backend_tag = backend_tag
+        self._backend_tag = replica_tag.deployment_tag
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
@@ -318,8 +325,12 @@ class BackendReplica(VersionedReplica):
             self.stop()
 
     @property
-    def replica_tag(self) -> ReplicaTag:
-        return self._replica_tag
+    def replica_tag(self) -> str:
+        return str(self._replica_tag)
+
+    @property
+    def backend_tag(self) -> str:
+        return self._backend_tag
 
     @property
     def version(self):
@@ -421,10 +432,10 @@ class BackendReplica(VersionedReplica):
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
             logger.debug(
-                f"Replica {self._replica_tag} did not shutdown after "
+                f"Replica {self.replica_tag} did not shutdown after "
                 f"{self._graceful_shutdown_timeout_s}s, force-killing. "
-                f"component=serve deployment={self._backend_tag} "
-                f"replica={self._replica_tag}")
+                f"component=serve deployment={self.backend_tag} "
+                f"replica={self.replica_tag}")
 
             self._actor.force_stop()
         return False
@@ -886,12 +897,11 @@ class BackendState:
                             f"'{self._name}'. component=serve "
                             f"deployment={self._name}")
             for _ in range(to_add):
-                replica_tag = "{}#{}".format(self._name, get_random_letters())
+                replica_tag = ReplicaTag(self._name, get_random_letters())
                 self._replicas.add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, self._name,
-                                   self._target_version))
+                                   replica_tag, self._target_version))
                 logger.debug(
                     f"Adding SHOULD_START to replica_tag: {replica_tag}, "
                     f"backend_tag: {self._name}")
