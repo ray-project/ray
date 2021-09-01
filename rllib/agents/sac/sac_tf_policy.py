@@ -405,11 +405,35 @@ def sac_actor_critic_loss(
         td_error = base_td_error
 
     # Calculate one or two critic losses (2 in the twin_q case).
-    prio_weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
-    critic_loss = [tf.reduce_mean(prio_weights * huber_loss(base_td_error))]
-    if policy.config["twin_q"]:
-        critic_loss.append(
-            tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
+    # prio_weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        # critic_loss = [tf.reduce_mean(prio_weights * huber_loss(base_td_error))]
+        mse_critic_loss_1 = tf.keras.losses.MeanSquaredError()
+        critic_loss = [
+            0.5 * mse_critic_loss_1(q_t_selected_target, q_t_selected)
+        ]
+        if policy.config["twin_q"]:
+            # critic_loss.append(
+            #    tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
+            mse_critic_loss_2 = tf.keras.losses.MeanSquaredError()
+            critic_loss.append(
+                0.5 * mse_critic_loss_2(q_t_selected_target, q_t_selected)
+            )
+    else:
+        # critic_loss.append(
+        #    tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
+        critic_loss = [
+            tf1.losses.mean_squared_error(
+                labels=q_t_selected_target, predictions=q_t_selected, weights=0.5)
+        ]
+        if policy.config["twin_q"]:
+            # critic_loss.append(
+            #    tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
+            critic_loss.append(
+                tf1.losses.mean_squared_error(
+                    labels=q_t_selected_target,
+                    predictions=twin_q_t_selected,
+                    weights=0.5))
 
     def make_alpha_actor_losses():
         local_alpha_loss = get_alpha_loss_op(policy_t, log_pis_t)
