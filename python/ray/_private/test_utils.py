@@ -3,6 +3,7 @@ import errno
 import io
 import fnmatch
 import os
+import json
 import pathlib
 import subprocess
 import sys
@@ -20,7 +21,6 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 from ray.util.queue import Queue, _QueueActor, Empty
-import requests
 from ray.scripts.scripts import main as ray_main
 from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
                                                get_hook_logger)
@@ -536,6 +536,30 @@ def get_error_message(pub_sub, num, error_type=None, timeout=20):
     return msgs
 
 
+def init_log_pubsub():
+    """Initialize redis error info pub/sub"""
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    log_pubsub_channel = gcs_utils.LOG_FILE_CHANNEL
+    p.psubscribe(log_pubsub_channel)
+    return p
+
+
+def get_log_message(pub_sub, num, timeout=20):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        msgs = log_lines
+
+    return msgs
+
+
 def format_web_url(url):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
@@ -560,6 +584,9 @@ def object_memory_usage() -> bool:
 
 
 def fetch_prometheus(prom_addresses):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
     components_dict = {}
     metric_names = set()
     metric_samples = []

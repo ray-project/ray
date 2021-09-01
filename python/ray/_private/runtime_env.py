@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 import os
 import sys
@@ -26,7 +26,10 @@ PKG_DIR = None
 
 logger = logging.getLogger(__name__)
 
-FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
+FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
+# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
+# limit, but for some reason that causes failures when downloading.
+GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 
 
 class RuntimeEnvDict:
@@ -171,16 +174,6 @@ class RuntimeEnvDict:
                     for (k, v) in env_vars.items())):
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
-
-        # Used by Ray's experimental package loading feature.
-        # TODO(architkulkarni): This should be unified with existing fields
-        if "_packaging_uri" in runtime_env_json:
-            self._dict["_packaging_uri"] = runtime_env_json["_packaging_uri"]
-            if self._dict["env_vars"] is None:
-                self._dict["env_vars"] = {}
-            # TODO(ekl): env vars is probably not the right long term impl.
-            self._dict["env_vars"].update(
-                RAY_PACKAGING_URI=self._dict["_packaging_uri"])
 
         if "_ray_release" in runtime_env_json:
             self._dict["_ray_release"] = runtime_env_json["_ray_release"]
@@ -473,6 +466,12 @@ def fetch_package(pkg_uri: str) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
+    if len(data) >= GCS_STORAGE_MAX_SIZE:
+        raise RuntimeError(
+            "working_dir package exceeds the maximum size of 100MiB. You "
+            "can exclude large files using the 'excludes' option to the "
+            "runtime_env.")
+
     _internal_kv_put(gcs_key, data)
     return len(data)
 
@@ -540,7 +539,7 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
             [Protocol.GCS.value + "://" + pkg_name])
 
 
-def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
+def upload_runtime_env_package_if_needed(job_config: JobConfig):
     """Upload runtime env if it's not there.
 
     It'll check whether the runtime environment exists in the cluster or not.
@@ -595,3 +594,27 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     # Right now, multiple pkg_uris are not supported correctly.
     # We return the last one as working directory
     return str(pkg_dir) if pkg_dir else None
+
+
+def override_task_or_actor_runtime_env(
+        runtime_env: Optional[Dict[str, Any]],
+        job_config: ray.job_config.JobConfig) -> Dict[str, Any]:
+    if runtime_env:
+        if runtime_env.get("working_dir"):
+            raise NotImplementedError(
+                "Overriding working_dir for actors is not supported. "
+                "Please use ray.init(runtime_env={'working_dir': ...}) "
+                "to configure per-job environment instead.")
+        runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
+    else:
+        runtime_env_dict = {}
+
+    # If per-actor URIs aren't specified, override them with those in the
+    # job config.
+    if "uris" not in runtime_env_dict:
+        if job_config.runtime_env.uris:
+            runtime_env_dict["uris"] = [
+                str(uri) for uri in job_config.runtime_env.uris
+            ]
+
+    return runtime_env_dict

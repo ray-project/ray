@@ -39,12 +39,12 @@ try:
 
 
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.client("{address}").env({runtime_env}).namespace("").connect()
+        ray.client("{address}").env({runtime_env}).namespace("default_test_namespace").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
                  logging_level=logging.DEBUG,
-                 namespace=""
+                 namespace="default_test_namespace"
 )
 except ValueError:
     print("ValueError")
@@ -52,8 +52,8 @@ except ValueError:
 except TypeError:
     print("TypeError")
     sys.exit(0)
-except:
-    print("ERROR")
+except Exception as e:
+    print("ERROR:", str(e))
     sys.exit(0)
 
 
@@ -214,7 +214,7 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
         execute_statement = "sys.exit(0)"
         script = driver_script.format(**locals())
         out = run_string_as_driver(script, env)
-        assert out != "ERROR"
+        assert not out.startswith("ERROR:")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -895,6 +895,51 @@ def test_no_spurious_worker_startup(ray_start_cluster):
         # Check that no more workers were started.
         assert get_num_workers() <= 1
         time.sleep(0.1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_large_file_boundary(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        # Check that packages just under the max size work as expected.
+        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE - 1024 * 1024
+        with open("test_file", "wb") as f:
+            f.write(os.urandom(size))
+
+        ray.init(runtime_env={"working_dir": "."})
+
+        @ray.remote
+        class Test:
+            def get_size(self):
+                with open("test_file", "rb") as f:
+                    return len(f.read())
+
+        t = Test.remote()
+        assert ray.get(t.get_size.remote()) == size
+        os.chdir(old_dir)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_large_file_error(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        # Write to two separate files, each of which is below the threshold to
+        # make sure the error is for the full package size.
+        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE // 2 + 1
+        with open("test_file_1", "wb") as f:
+            f.write(os.urandom(size))
+
+        with open("test_file_2", "wb") as f:
+            f.write(os.urandom(size))
+
+        with pytest.raises(RuntimeError):
+            ray.init(runtime_env={"working_dir": "."})
+
+        os.chdir(old_dir)
 
 
 if __name__ == "__main__":

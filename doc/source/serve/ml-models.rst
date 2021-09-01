@@ -90,7 +90,8 @@ class will allow you to load a model using its MLflow `Model URI`:
           df = pd.read_csv(csv_text)
           return self.model.predict(df)
 
-  MLflowDeployment.deploy()
+  model_uri = "model:/my_registered_model/Production"
+  MLflowDeployment.deploy(model_uri)
 
 .. tip:: 
 

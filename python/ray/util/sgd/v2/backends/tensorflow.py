@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import List
 
 import ray
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
+from ray.util.sgd.v2.session import shutdown_session
 from ray.util.sgd.v2.utils import get_address_and_port
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
@@ -50,7 +51,7 @@ def setup_tensorflow_environment(worker_addresses: List[str], index: int):
     os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
 
-class TensorflowBackend(BackendInterface):
+class TensorflowBackend(Backend):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: TensorflowConfig):
         if len(worker_group) > 1:
@@ -75,7 +76,18 @@ class TensorflowBackend(BackendInterface):
         else:
             logger.info("Distributed Tensorflow is not being used.")
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: BackendConfig):
-        # Currently no additional steps are needed to shut down Tensorflow.
-        pass
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        """Failure handling for Tensorflow.
+
+        Instead of restarting all workers, the failed workers are
+        removed from the ``WorkerGroup``. The backend and session are
+        shutdown on the remaining workers. Then new workers are added back in.
+        """
+        worker_group.remove_workers(failed_worker_indexes)
+        if len(worker_group) > 0:
+            self.on_shutdown(worker_group, backend_config)
+            worker_group.execute(shutdown_session)
+        worker_group.add_workers(len(failed_worker_indexes))
+        self.on_start(worker_group, backend_config)

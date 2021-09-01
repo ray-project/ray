@@ -100,7 +100,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
-         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb) {
+         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
+         bool *is_application_level_error) {
+        // TODO(jjyao): Support retrying application-level errors for Java
+        *is_application_level_error = false;
+
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
@@ -292,16 +296,15 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetFullName(global, native_actor_name);
 
-  const auto actor_handle = CoreWorkerProcess::GetCoreWorker()
-                                .GetNamedActorHandle(full_name, /*ray_namespace=*/"")
-                                .first;
-  ActorID actor_id;
-  if (actor_handle) {
-    actor_id = actor_handle->GetActorID();
-  } else {
-    actor_id = ActorID::Nil();
+  const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
+      full_name, /*ray_namespace=*/"");
+  const auto status = pair.second;
+  if (status.IsNotFound()) {
+    return IdToJavaByteArray<ActorID>(env, ActorID::Nil());
   }
-  return IdToJavaByteArray<ActorID>(env, actor_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  const auto actor_handle = pair.first;
+  return IdToJavaByteArray<ActorID>(env, actor_handle->GetActorID());
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(

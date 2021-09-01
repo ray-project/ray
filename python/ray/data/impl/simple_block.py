@@ -58,6 +58,9 @@ class SimpleBlockAccessor(BlockAccessor):
         import pandas
         return pandas.DataFrame(self._items)
 
+    def to_numpy(self) -> np.ndarray:
+        return np.array(self._items)
+
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
         return pyarrow.Table.from_pandas(self.to_pandas())

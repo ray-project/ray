@@ -880,6 +880,7 @@ def _process_observations(
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
+                policies=worker.policy_map,
                 episode=episode,
                 env_index=env_id)
 

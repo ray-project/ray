@@ -70,7 +70,8 @@ struct CoreWorkerOptions {
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes)>;
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+      bool *is_application_level_error)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -712,7 +713,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, BundleID placement_options,
+                  int max_retries, bool retry_exceptions, BundleID placement_options,
                   bool placement_group_capture_child_tasks,
                   const std::string &debugger_breakpoint);
 
@@ -950,15 +951,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                                    rpc::AddObjectLocationOwnerReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(
-      const rpc::RemoveObjectLocationOwnerRequest &request,
-      rpc::RemoveObjectLocationOwnerReply *reply,
+  // Implements gRPC server handler.
+  void HandleUpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -1127,7 +1123,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
-                     ReferenceCounter::ReferenceTableProto *borrowed_refs);
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs,
+                     bool *is_application_level_error);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
@@ -1206,6 +1203,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
+
+  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
