@@ -115,8 +115,7 @@ class GetRequestQueue {
   /// Called when objects satisfied. Call get request callback function and
   /// remove get request in queue.
   /// \param get_request the get request to be completed.
-  void OnGetRequestCompleted(const std::shared_ptr<GetRequest> &get_request)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void OnGetRequestCompleted(const std::shared_ptr<GetRequest> &get_request);
 
   instrumented_io_context &io_context_;
 
