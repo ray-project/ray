@@ -264,11 +264,11 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
+        0.5 * torch.mean(torch.pow(q_t_selected_target - q_t_selected, 2.0))
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(
-            torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
+        critic_loss.append(0.5 * torch.mean(
+            torch.pow(q_t_selected_target - twin_q_t_selected, 2.0)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
