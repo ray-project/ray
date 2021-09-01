@@ -169,11 +169,10 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   std::vector<ObjectID> object_ids{object_id1, object_id2};
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   MarkObject(object2, ObjectState::PLASMA_CREATED);
-  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
-      .Times(3)
-      .WillOnce(Return(&object1))
-      .WillOnce(Return(&object2))
-      .WillOnce(Return(&object2));
+  EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id1)))
+      .WillRepeatedly(Return(&object1));
+  EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id2)))
+      .WillRepeatedly(Return(&object2));
   get_request_queue.AddRequest(client, object_ids, 1000, false);
   promise1.get_future().get();
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
