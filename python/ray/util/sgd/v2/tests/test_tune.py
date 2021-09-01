@@ -141,9 +141,10 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
+    checkpoint_file = os.path.join(trial.checkpoint.value,
+                                   TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
-    with open(checkpoint_file) as f:
+    with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
         assert checkpoint["hello"] == "world"
 
@@ -156,15 +157,19 @@ def test_reuse_checkpoint(ray_start_2_cpus):
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
-            sgd.report(test=i, training_iteration=i)
             sgd.save_checkpoint(iter=i)
+            sgd.report(test=i, training_iteration=i)
 
     trainer = Trainer(TestConfig())
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
     last_ckpt = trial.checkpoint.value
-    assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
+    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file, "rb") as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["iter"] == 4
     analysis = tune.run(
         TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
     trial_dfs = list(analysis.trial_dataframes.values())
@@ -190,7 +195,11 @@ def test_retry(ray_start_2_cpus):
 
     analysis = tune.run(TestTrainable, max_failures=3)
     last_ckpt = analysis.trials[0].checkpoint.value
-    assert os.path.exists(os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME))
+    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file, "rb") as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["iter"] == 3
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 4
 
