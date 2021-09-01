@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pprint
 import random
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -69,12 +69,12 @@ class _StringValue:
         return self.value
 
 
-def update_global_seed_if_necessary(framework: str, seed: int):
+def update_global_seed_if_necessary(framework: str, seed: Optional[int]):
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.
     """
-    if not seed:
+    if seed is None:
         return
 
     # Python random module.
