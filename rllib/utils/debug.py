@@ -1,9 +1,11 @@
 import numpy as np
 import os
 import pprint
+import random
 from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 
@@ -67,8 +69,7 @@ class _StringValue:
         return self.value
 
 
-def update_global_seed_if_necessary(globals: Dict[str, Any], framework: str,
-                                    seed: int):
+def update_global_seed_if_necessary(framework: str, seed: int):
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.
@@ -77,15 +78,13 @@ def update_global_seed_if_necessary(globals: Dict[str, Any], framework: str,
         return
 
     # Python random module.
-    if "random" in globals and globals["random"]:
-        globals["random"].seed(seed)
+    random.seed(seed)
     # Numpy.
-    if "np" in globals and globals["np"]:
-        globals["np"].random.seed(seed)
+    np.random.seed(seed)
 
     # Torch.
-    if "torch" in globals and globals["torch"] and framework == "torch":
-        torch = globals["torch"]
+    if framework == "torch":
+        torch, _ = try_import_torch()
         torch.manual_seed(seed)
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
@@ -101,9 +100,11 @@ def update_global_seed_if_necessary(globals: Dict[str, Any], framework: str,
                 torch.set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
-    # Tf2.x.
-    elif "tf" in globals and globals["tf"] and framework == "tf2":
-        globals["tf"].random.set_seed(seed)
-    # Tf-eager.
-    elif "tf1" in globals and globals["tf1"] and framework == "tfe":
-        globals["tf1"].set_random_seed(seed)
+    elif framework == "tf2" or framework == "tfe":
+        tf1, tf, _ = try_import_tf()
+        # Tf2.x.
+        if framework == "tf2":
+            tf.random.set_seed(seed)
+        # Tf-eager.
+        elif framework == "tfe":
+            tf1.set_random_seed(seed)

@@ -419,8 +419,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
-        update_global_seed_if_necessary(globals(),
-                                        policy_config.get("framework"), seed)
+        update_global_seed_if_necessary(policy_config.get("framework"), seed)
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
