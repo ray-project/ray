@@ -6,6 +6,7 @@ from collections import defaultdict
 import os
 import queue
 import pickle
+import sys
 
 import threading
 from typing import Any
@@ -283,7 +284,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def _async_get_object(
             self,
-            request,
+            request: ray_client_pb2.GetRequest,
             client_id: str,
             req_id: int,
             result_queue: queue.Queue,
@@ -292,11 +293,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         main loop when the desired object is ready. If there is some failure
         in scheduling, a GetResponse will be immediately returned.
         """
-        if request.id not in self.object_refs[client_id]:
-            return ray_client_pb2.GetResponse(valid=False)
+        refs = []
+        for rid in request.ids:
+            ref = self.object_refs[client_id].get(rid, None)
+            if ref:
+                refs.append(ref)
+            else:
+                return ray_client_pb2.GetResponse(valid=False)
         try:
-            object_ref = self.object_refs[client_id][request.id]
-            logger.debug("async get: %s" % object_ref)
+            logger.debug("async get: %s" % refs)
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
@@ -310,35 +315,42 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     except Exception as e:
                         get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(e))
-
                     resp = ray_client_pb2.DataResponse(
                         get=get_resp, req_id=req_id)
                     resp.req_id = req_id
-
                     result_queue.put(resp)
 
-                object_ref._on_completed(send_get_response)
+                for ref in refs:
+                    ref._on_completed(send_get_response)
                 return None
+
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
 
-    def GetObject(self, request, context=None):
+    def GetObject(self, request: ray_client_pb2.GetRequest, context=None):
         return self._get_object(request, "", context)
 
-    def _get_object(self, request, client_id: str, context=None):
-        if request.id not in self.object_refs[client_id]:
-            return ray_client_pb2.GetResponse(valid=False)
-        objectref = self.object_refs[client_id][request.id]
-        logger.debug("get: %s" % objectref)
+    def _get_object(self,
+                    request: ray_client_pb2.GetRequest,
+                    client_id: str,
+                    context=None):
+        objectrefs = []
+        for rid in request.ids:
+            ref = self.object_refs[client_id].get(rid, None)
+            if ref:
+                objectrefs.append(ref)
+            else:
+                return ray_client_pb2.GetResponse(valid=False)
         try:
+            logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
-                item = ray.get(objectref, timeout=request.timeout)
+                items = ray.get(objectrefs, timeout=request.timeout)
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        item_ser = dumps_from_server(item, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=item_ser)
+        items_ser = dumps_from_server(items, client_id, self)
+        return ray_client_pb2.GetResponse(valid=True, data=items_ser)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
@@ -513,6 +525,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             working_dir = runtime_env.ensure_runtime_env_setup(uris)
             if working_dir:
                 os.chdir(working_dir)
+                # NOTE(edoakes): we need to insert into the sys.path here
+                # because the working_dir gets set up *after* we go through
+                # the usual worker setup process. We should unify these
+                # codepaths.
+                sys.path.insert(0, working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,

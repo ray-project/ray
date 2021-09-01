@@ -406,7 +406,10 @@ cdef execute_task(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns):
+        c_vector[shared_ptr[CRayObject]] *returns,
+        c_bool *is_application_level_error):
+
+    is_application_level_error[0] = False
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
@@ -579,6 +582,9 @@ cdef execute_task(
                 except KeyboardInterrupt as e:
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
+                except Exception as e:
+                    is_application_level_error[0] = True
+                    raise e
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
             # Check for a cancellation that was called when the function
@@ -656,7 +662,8 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
-        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
+        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
+        c_bool *is_application_level_error) nogil:
     with gil, disable_client_hook():
         try:
             try:
@@ -664,7 +671,8 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
-                             debugger_breakpoint, returns)
+                             debugger_breakpoint, returns,
+                             is_application_level_error)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -1318,6 +1326,7 @@ cdef class CoreWorker:
                     int num_returns,
                     resources,
                     int max_retries,
+                    c_bool retry_exceptions,
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
@@ -1354,7 +1363,7 @@ cdef class CoreWorker:
                     b"",
                     c_serialized_runtime_env,
                     c_override_environment_variables),
-                &return_ids, max_retries,
+                &return_ids, max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
                 placement_group_capture_child_tasks,
