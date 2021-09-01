@@ -124,7 +124,8 @@ class Trainer:
         """
         self._executor.start(initialization_hook)
 
-    def run_executable(self, train_cls: Optional[S], *args, **kwargs):
+    def run_executable(self, train_cls: Optional[S], *args, **kwargs) -> \
+        ClassTrainer:
         """
 
         Args:
@@ -132,6 +133,9 @@ class Trainer:
                 should be instantiated as.
             args, kwargs: The arguments to pass into ``train_cls.__init__``.
         """
+
+        return ClassTrainer(train_cls, *args, *8kwargs)
+
 
 
     def run(self,

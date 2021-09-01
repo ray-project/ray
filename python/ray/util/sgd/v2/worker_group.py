@@ -10,16 +10,24 @@ logger = logging.getLogger(__name__)
 
 
 class BaseWorker:
+    _executable_class = None
+
     """A class to execute arbitrary functions. Does not hold any state."""
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
+        If an executable_class is set, then pass it in as the first argument
+        to func.
+
         Args:
             func (Callable): The function to execute.
             args, kwargs: The arguments to pass into func.
         """
-        return func(*args, **kwargs)
+        if self._executable_class:
+            return func(self._executable_class, *args, **kwargs)
+        else:
+            return func(*args, **kwargs)
 
 
 class WorkerGroup:
