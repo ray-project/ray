@@ -125,6 +125,8 @@ class BackendExecutor:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+            if self._num_gpus_per_worker > 0:
+                self._setup_gpus()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
