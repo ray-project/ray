@@ -181,8 +181,8 @@ except Exception as e:
     error = e
 
 assert error is not None, "Connect did not fail!"
-assert "Init Failure From Server" in str(error), "Incorrect Error Message"
-assert "WEIRD_ERROR" in str(error), "Incorrect Error Message"
+assert "Initialization failure from server" in str(error), "Bad error msg"
+assert "WEIRD_ERROR" in str(error), "Bad error msg"
 """
 
 

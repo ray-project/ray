@@ -550,8 +550,10 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig):
     Args:
         job_config (JobConfig): The job config of driver.
     """
-    assert _internal_kv_initialized()
     pkg_uris = job_config.get_runtime_env_uris()
+    if len(pkg_uris) == 0:
+        return  # Return early to avoid internal kv check in this case.
+    assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
         if not package_exists(pkg_uri):
             file_path = _get_local_path(pkg_uri)

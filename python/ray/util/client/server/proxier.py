@@ -623,7 +623,9 @@ def serve_proxier(connection_str: str,
                   session_dir: Optional[str] = None):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
-    if redis_address is not None:
+    # NOTE(edoakes): redis_address and redis_password should only be None in
+    # tests.
+    if redis_address is not None and redis_password is not None:
         ip, port = redis_address.split(":")
         gcs_client = connect_to_gcs(ip, int(port), redis_password)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
