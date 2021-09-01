@@ -9,7 +9,8 @@ from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    DEFAULT_RESULTS_DIR, TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME
+    DEFAULT_RESULTS_DIR, TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
+    TUNE_ITERATION_KEY
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path
@@ -141,7 +142,7 @@ class CheckpointManager:
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
-    def write_checkpoint(self, checkpoint: Optional[Dict] = None):
+    def write_checkpoint(self, checkpoint: Dict):
         """Writes checkpoint to disk."""
         if self._checkpoint_strategy.num_to_keep == 0:
             # Checkpoints should not be persisted to disk.
@@ -206,13 +207,13 @@ class TuneCheckpointManager(CheckpointManager):
             # If the Tune trial is restarted, a new Trainer is instantiated.
             # However, we want the checkpoint_id to continue incrementing
             # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint["_current_iter"]
+            self._latest_checkpoint_id = loaded_checkpoint[TUNE_ITERATION_KEY]
         return loaded_checkpoint
 
-    def write_checkpoint(self, checkpoint: Optional[Dict] = None):
+    def write_checkpoint(self, checkpoint: Dict):
         # Store the checkpoint_id in the file so that the Tune trial can be
         # resumed after failure or cancellation.
-        checkpoint["_current_iter"] = self._latest_checkpoint_id
+        checkpoint[TUNE_ITERATION_KEY] = self._latest_checkpoint_id
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
                 checkpoint_dir:

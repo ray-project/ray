@@ -6,7 +6,7 @@ import torch
 import tensorflow as tf
 
 import ray
-from ray import tune
+from ray import tune, cloudpickle
 from ray.tune import TuneError
 
 import ray.util.sgd.v2 as sgd
@@ -141,8 +141,11 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    assert os.path.exists(
-        os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME))
+    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file) as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["hello"] == "world"
 
 
 def test_reuse_checkpoint(ray_start_2_cpus):
