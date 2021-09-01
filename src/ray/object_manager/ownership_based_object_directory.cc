@@ -279,7 +279,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
-      mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
+      mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
       rpc::WorkerObjectLocationsPubMessage location_info;
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
