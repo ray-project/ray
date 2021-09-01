@@ -742,10 +742,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 }
 
 void CoreWorker::Shutdown() {
-  io_service_.stop();
+  core_worker_server_->Shutdown();
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
   }
+  io_service_.stop();
   if (options_.on_worker_shutdown) {
     options_.on_worker_shutdown(GetWorkerID());
   }
