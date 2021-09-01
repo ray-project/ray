@@ -12,9 +12,10 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag)
+                              ReplicaTag, ReplicaName)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+from ray.serve.constants import (SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
+                                 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -62,13 +63,13 @@ class ActorReplicaWrapper:
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
         self._replica_tag = replica_tag
-        self._backend_tag = replica_tag.deployment_tag
+        self._backend_tag = backend_tag
 
         self._ready_obj_ref = None
         self._drain_obj_ref = None
@@ -295,13 +296,14 @@ class BackendReplica(VersionedReplica):
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, version: BackendVersion):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+                 version: BackendVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag.name, controller_name), detached,
-            controller_name, replica_tag)
+            format_actor_name(replica_tag, controller_name), detached,
+            controller_name, replica_tag, backend_tag)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
-        self._backend_tag = replica_tag.deployment_tag
+        self._backend_tag = backend_tag
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
@@ -325,11 +327,11 @@ class BackendReplica(VersionedReplica):
             self.stop()
 
     @property
-    def replica_tag(self) -> str:
-        return str(self._replica_tag)
+    def replica_tag(self) -> ReplicaTag:
+        return self._replica_tag
 
     @property
-    def backend_tag(self) -> str:
+    def backend_tag(self) -> BackendTag:
         return self._backend_tag
 
     @property
@@ -594,13 +596,14 @@ class BackendState:
 
     def __init__(self, name: str, controller_name: str, detached: bool,
                  long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
-                 _save_checkpoint: Callable):
+                 _save_checkpoint_func: Callable):
+
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._goal_manager: AsyncGoalManager = goal_manager
-        self._save_checkpoint = _save_checkpoint
+        self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new backend goal, we're trying to save new
         # BackendInfo and bring current deployment to meet new status.
@@ -636,10 +639,14 @@ class BackendState:
                 self.get_current_state_checkpoint_data())
 
     def recover_target_state_from_checkpoint(self, target_state_checkpoint):
+        logger.info("Recovering target state for deployment "
+                    f"{self._name} from checkpoint..")
         (self._target_info, self._target_replicas,
          self._target_version) = target_state_checkpoint
 
-    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
+    def recover_cur_state_from_checkpoint(self, current_state_checkpoint):
+        logger.info("Recovering current state for deployment "
+                    f"{self._name} from checkpoint..")
         (self._rollback_info, self._curr_goal, self._prev_startup_warning,
          self._replica_constructor_retry_counter,
          self._replicas) = current_state_checkpoint
@@ -647,10 +654,29 @@ class BackendState:
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
+    def recover_cur_state_from_replica_actor_names(
+            self, replica_actor_names: List[str]):
+        logger.info("Recovering current state for deployment "
+                    f"{self._name} from {len(replica_actor_names)} actors in "
+                    "current ray cluster..")
+        # All current states use default value, only attach running replicas.
+        for replica_actor_name in replica_actor_names:
+            replica_name: ReplicaName = ReplicaName.from_str(
+                replica_actor_name)
+            self._replicas.add(
+                ReplicaState.STARTING_OR_UPDATING,
+                BackendReplica(
+                    self._controller_name,
+                    self._detached,
+                    replica_name.replica_tag,
+                    replica_name.deployment_tag,
+                    self._target_version,
+                    state=ReplicaState.STARTING_OR_UPDATING))
+
     def recover_from_checkpoint_data(self, checkpoint_data):
         target_state_checkpoint, current_state_checkpoint = checkpoint_data
         self.recover_target_state_from_checkpoint(target_state_checkpoint)
-        self.recover_current_state_from_checkpoint(current_state_checkpoint)
+        self.recover_cur_state_from_checkpoint(current_state_checkpoint)
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
@@ -747,7 +773,7 @@ class BackendState:
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
-        self._save_checkpoint()
+        self._save_checkpoint_func()
         self._notify_backend_configs_changed()
 
         if existing_goal_id is not None:
@@ -760,7 +786,7 @@ class BackendState:
             self._target_info.backend_config.\
                 experimental_graceful_shutdown_timeout_s = 0
 
-        self._save_checkpoint()
+        self._save_checkpoint_func()
         self._notify_backend_configs_changed()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -897,13 +923,15 @@ class BackendState:
                             f"'{self._name}'. component=serve "
                             f"deployment={self._name}")
             for _ in range(to_add):
-                replica_tag = ReplicaTag(self._name, get_random_letters())
+                replica_name = ReplicaName(self._name, get_random_letters())
                 self._replicas.add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, self._target_version))
+                                   replica_name.replica_tag,
+                                   replica_name.deployment_tag,
+                                   self._target_version))
                 logger.debug(
-                    f"Adding SHOULD_START to replica_tag: {replica_tag}, "
+                    f"Adding SHOULD_START to replica_tag: {replica_name}, "
                     f"backend_tag: {self._name}")
 
         elif delta_replicas < 0:
@@ -1067,7 +1095,7 @@ class BackendState:
         transitioned = self._check_and_update_replicas()
         if transitioned:
             self._notify_replica_handles_changed()
-            self._save_checkpoint()
+            self._save_checkpoint_func()
 
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
@@ -1120,20 +1148,53 @@ class BackendStateManager:
         self._goal_manager = goal_manager
         self._create_backend_state: Callable = lambda name: BackendState(
             name, controller_name, detached,
-            long_poll_host, goal_manager, self._save_checkpoint)
+            long_poll_host, goal_manager, self._save_checkpoint_func)
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()
 
+        deployment_to_current_replicas = self._get_all_running_replicas()
+        self._recover_from_checkpoint(deployment_to_current_replicas)
+
+    def _get_all_running_replicas(self):
+        # This ray call should be mocked in all unit tests
+        all_actor_names = ray.util.list_named_actors()
+        all_replica_names = [
+            actor_name for actor_name in all_actor_names
+            if (SERVE_CONTROLLER_NAME not in actor_name
+                and SERVE_PROXY_NAME not in actor_name)
+        ]
+        deployment_to_current_replicas = defaultdict(list)
+        if len(all_replica_names) > 0:
+            # Each replica tag is formatted as "backend_tag#random_letter"
+            for replica_name in all_replica_names:
+                replica_tag = ReplicaTag.from_str(replica_name)
+                deployment_to_current_replicas[
+                    replica_tag.deployment_tag].append(replica_name)
+
+        return deployment_to_current_replicas
+
+    def _recover_from_checkpoint(self, deployment_to_current_replicas):
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (backend_state_info,
              self._deleted_backend_metadata) = cloudpickle.loads(checkpoint)
 
-            for backend_tag, checkpoint_data in backend_state_info.items():
-                backend_state = self._create_backend_state(backend_tag)
-                backend_state.recover_from_checkpoint_data(checkpoint_data)
-                self._backend_states[backend_tag] = backend_state
+            for deployment_tag, checkpoint_data in backend_state_info.items():
+                backend_state: BackendState = self._create_backend_state(
+                    deployment_tag)
+                (target_state_checkpoint,
+                 current_state_checkpoint) = checkpoint_data
+
+                backend_state.recover_target_state_from_checkpoint(
+                    target_state_checkpoint)
+                if len(deployment_to_current_replicas[deployment_tag]) > 0:
+                    backend_state.recover_cur_state_from_replica_actor_names(
+                        deployment_to_current_replicas[deployment_tag])
+                else:
+                    backend_state.recover_cur_state_from_checkpoint(
+                        current_state_checkpoint)
+                self._backend_states[deployment_tag] = backend_state
 
     def shutdown(self) -> List[GoalId]:
         """
@@ -1162,7 +1223,7 @@ class BackendStateManager:
         # from being created once shutdown signal is sent.
         return shutdown_goals
 
-    def _save_checkpoint(self) -> None:
+    def _save_checkpoint_func(self) -> None:
         backend_state_info = {
             backend_tag: backend_state.get_checkpoint_data()
             for backend_tag, backend_state in self._backend_states.items()
