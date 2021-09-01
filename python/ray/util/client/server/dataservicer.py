@@ -142,7 +142,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
                 yield resp
-            logger.info("Data Servicer shutting down gracefully.")
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
@@ -151,19 +150,23 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
             if not cleanup_requested:
+                logger.debug("Cleanup wasn't requested, delaying cleanup by"
+                             f"{WAIT_FOR_CLIENT_RECONNECT_SECONDS} seconds.")
                 # Delay cleanup, since client may attempt a reconnect
                 time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
+            else:
+                logger.debug("Cleanup was requested, cleaning up immediately.")
             with self.clients_lock:
                 if client_id not in self.client_last_seen:
+                    logger.debug("Connection already cleaned up.")
                     # Some other connection has already cleaned up this
                     # this client's session. This can happen if the client
-                    # reconnects and then gracefully shut's down.
+                    # reconnects and then gracefully shut's down immediately.
                     return
                 last_seen = self.client_last_seen[client_id]
                 if last_seen > start_time:
-                    # Client reconnected
+                    logger.debug("Client reconnected, skipping cleanup")
                     return
-                # Client didn't reconnect in time, clean up
                 self.basic_service.release_all(client_id)
                 del self.client_last_seen[client_id]
                 self.num_clients -= 1

@@ -5,11 +5,11 @@ import sys
 import logging
 import queue
 import threading
-import time
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import BackoffTracker
 
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
@@ -37,6 +37,7 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
+        backoff_tracker = BackoffTracker(initial_backoff=0)
         reconnecting = "False"
         while True:
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(
@@ -51,29 +52,23 @@ class LogstreamClient:
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
-                if (e.code() == grpc.StatusCode.CANCELLED
-                        and self.client_worker._in_shutdown):
-                    # The has been cancelled because the the worker is being
-                    # closed -- shutdown gracefully
-                    self._shutdown()
-                elif e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
-                    # Server has hit max number of clients
-                    self._shutdown()
-                elif e.code() == grpc.StatusCode.NOT_FOUND:
-                    # User took too long to reconnect.
-                    self._shutdown()
+                logger.exception("Got error from log channel:")
+                if (backoff_tracker.retries() >=
+                        self.client_worker._connection_retries):
+                    # Use +1 here since dataclient will attempt to reconnect
+                    # immediately
+                    logger.info(
+                        "Max retries reached for log channel reconnection, "
+                        "shutting down log channel.")
+                    return
+                if self.client_worker._can_reconnect(e):
+                    logger.info("Attempting to reconnect log channel.")
+                    reconnecting = "True"
+                    backoff_tracker.sleep()
+                    continue
                 else:
-                    # Some other, unhandled, gRPC error
-                    logger.exception(f"Got Error from logger channel: {e}")
-                    try:
-                        time.sleep(3)
-                        self.client_worker._connect_grpc_channel()
-                        reconnecting = "True"
-                        continue
-                    except ConnectionError:
-                        logger.info(
-                            "Reconnection failed, cancelling logs channel.")
-            return
+                    logger.info("Shutting down log channel")
+                    return
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.

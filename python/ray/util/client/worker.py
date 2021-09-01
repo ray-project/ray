@@ -38,6 +38,7 @@ from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.common import INT32_MAX
+from ray.util.client.common import BackoffTracker
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -47,9 +48,6 @@ if TYPE_CHECKING:
     from ray.remote_function import RemoteFunction
 
 logger = logging.getLogger(__name__)
-
-INITIAL_TIMEOUT_SEC = 5
-MAX_TIMEOUT_SEC = 30
 
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
@@ -71,13 +69,6 @@ DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = \
 
 DESIGN_PATTERN_LARGE_OBJECTS_LINK = \
     "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu" # noqa E501
-
-
-def backoff(timeout: int) -> int:
-    timeout = timeout + 5
-    if timeout > MAX_TIMEOUT_SEC:
-        timeout = MAX_TIMEOUT_SEC
-    return timeout
 
 
 class Worker:
@@ -133,33 +124,42 @@ class Worker:
         self._req_id_lock = threading.Lock()
         self._req_id = 0
 
-    def _call_stub(self, stub_name: str, *args, **kwargs):
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
+        if self._in_shutdown:
+            # Channel is being shutdown, don't try to reconnect
+            return False
+        if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED,
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        grpc.StatusCode.NOT_FOUND):
+            # Unrecoverable error -- These errors are specifically raised
+            # by the server's application logic
+            return False
+        # All other errors can be treated as recoverable
+        return True
+
+    def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
         """
         Calls the stub specified by stub_name, and retries on grpc internal
         errors
         """
+        backoff_tracker = BackoffTracker(initial_backoff=0)
         while True:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED
-                                or grpc.INVALID_ARGUMENT):
-                    # intentional shutdown
+                if backoff_tracker.retries() > self._connection_retries:
                     raise
-                elif (e.code() == grpc.StatusCode.CANCELLED
-                      and self._in_shutdown):
-                    # intentional shutdown
-                    raise
-                self._connect_grpc_channel()
-                if not self.is_connected():
-                    raise
+                if self._can_reconnect(e):
+                    backoff_tracker.sleep()
+                    continue
+                raise
 
     def _add_ids_to_request(self, request: Any):
         """
         Adds a unique req_id and the current thread's identifier to the
         request. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
-        must retry a request.
+        must retry a requsest.
         Args:
             request - A gRPC message to add the thread and request IDs to
         """
@@ -207,15 +207,15 @@ class Worker:
             # Retry the connection until the channel responds to something
             # looking like a gRPC connection, though it may be a proxy.
             conn_attempts = 0
-            timeout = INITIAL_TIMEOUT_SEC
             service_ready = False
+            backoff_tracker = BackoffTracker()
             while conn_attempts < max(self._connection_retries, 1):
                 conn_attempts += 1
                 try:
                     # Let gRPC wait for us to see if the channel becomes ready.
                     # If it throws, we couldn't connect.
                     grpc.channel_ready_future(
-                        self.channel).result(timeout=timeout)
+                        self.channel).result(timeout=backoff_tracker.timeout)
                     # The HTTP2 channel is ready. Wrap the channel with the
                     # RayletDriverStub, allowing for unary requests.
                     self.server = ray_client_pb2_grpc.RayletDriverStub(
@@ -224,23 +224,21 @@ class Worker:
                     if service_ready:
                         break
                     # Ray is not ready yet, wait a timeout
-                    time.sleep(timeout)
+                    backoff_tracker.sleep()
                 except grpc.FutureTimeoutError:
-                    logger.info(
-                        f"Couldn't connect channel in {timeout} seconds, "
-                        "retrying")
+                    logger.info("Couldn't connect channel in "
+                                f"{backoff_tracker.timeout} seconds, retrying")
                     # Note that channel_ready_future constitutes its own
                     # timeout, which is why we do not sleep here.
                 except grpc.RpcError as e:
                     logger.info("Ray client server unavailable, "
-                                f"retrying in {timeout}s...")
+                                f"retrying in {backoff_tracker.timeout}s...")
                     logger.debug(f"Received when checking init: {e.details()}")
                     # Ray is not ready yet, wait a timeout.
-                    time.sleep(timeout)
+                    backoff_tracker.sleep()
                 # Fallthrough, backoff, and retry at the top of the loop
                 logger.info("Waiting for Ray to become ready on the server, "
-                            f"retry in {timeout}s...")
-                timeout = backoff(timeout)
+                            f"retry in {backoff_tracker.timeout}s...")
 
             # If we made it through the loop without service_ready
             # it means we've used up our retries and
