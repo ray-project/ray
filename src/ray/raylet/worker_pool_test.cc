@@ -1304,8 +1304,9 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
       /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
 
-  bool flag1, flag2, flag3;
-  std::shared_ptr<WorkerInterface> worker1, worker2, worker3;
+  bool flag1 = false, flag2 = false, flag3 = false;
+  std::shared_ptr<WorkerInterface> worker1 = nullptr, worker2 = nullptr,
+                                   worker3 = nullptr;
   auto callback = [=](bool *flag, std::shared_ptr<WorkerInterface> *assigned_worker) {
     return [=](const std::shared_ptr<WorkerInterface> worker,
                PopWorkerStatus status) -> bool {
