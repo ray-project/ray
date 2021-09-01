@@ -1,3 +1,4 @@
+import datetime
 import inspect
 import logging
 import os
@@ -12,9 +13,11 @@ from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
-from ray.util.sgd.v2.constants import TUNE_INSTALLED
+from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR
 
 # Ray SGD should be usable even if Tune is not installed.
+from ray.util.sgd.v2.utils import construct_path
+
 if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import Trainable
@@ -71,6 +74,11 @@ class Trainer:
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
 
+        # Incremental unique run ID.
+        self._run_id = 0
+
+        self.logdir = self.create_logdir(logdir)
+
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
@@ -80,6 +88,24 @@ class Trainer:
 
         self._executor = BackendExecutor(backend_config, num_workers, 1,
                                          int(use_gpu), logdir)
+
+    def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
+        """Create logdir for the Trainer."""
+        # Create directory for logs.
+        log_dir = Path(log_dir) if log_dir else None
+        if not log_dir:
+            # Initialize timestamp for identifying this SGD training execution.
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            log_dir = Path(f"sgd_{timestr}")
+        log_dir = construct_path(log_dir, DEFAULT_RESULTS_DIR)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trainer logs will be logged in: {log_dir}")
+        return log_dir
+
+    def create_run_dir(self):
+        """Create rundir for the particular training run."""
+        self.latest_run_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
@@ -155,19 +181,27 @@ class Trainer:
             list corresponds to the output of the training function from
             each worker.
         """
+        # Create new log directory for this run.
+        self._run_id += 1
+        self.create_run_dir()
+
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.logdir)
+            callback.start_training(logdir=self.latest_run_dir)
+
+        train_func = self._get_train_func(train_func, config)
 
         try:
-            iterator = self.run_iterator(
+            iterator = SGDIterator(
+                backend_executor=self._executor,
                 train_func=train_func,
-                config=config,
                 checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy)
+                checkpoint_strategy=checkpoint_strategy,
+                run_dir=self.latest_run_dir,
+            )
             for intermediate_result in iterator:
                 for callback in callbacks:
                     callback.handle_result(intermediate_result)
@@ -227,13 +261,19 @@ class Trainer:
         Returns:
             An Iterator over the intermediate results from ``sgd.report()``.
         """
+        # Create new log directory for this run.
+        self._run_id += 1
+        self.create_run_dir()
+
         train_func = self._get_train_func(train_func, config)
 
         return SGDIterator(
             backend_executor=self._executor,
             train_func=train_func,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy)
+            checkpoint_strategy=checkpoint_strategy,
+            run_dir=self.latest_run_dir,
+        )
 
     def _get_train_func(
             self,
@@ -296,7 +336,7 @@ class Trainer:
     @property
     def logdir(self) -> Path:
         """Path to this Trainer's log directory."""
-        return self._executor.logdir
+        return self.logdir
 
     @property
     def latest_run_dir(self) -> Optional[Path]:
@@ -304,7 +344,11 @@ class Trainer:
 
         Returns ``None`` if ``run()`` has not been called.
         """
-        return self._executor.latest_run_dir
+        if self._run_id > 0:
+            run_dir = Path(f"run_{self._run_id:03d}")
+            return construct_path(run_dir, self.logdir)
+        else:
+            return None
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
@@ -373,13 +417,15 @@ class SGDIterator:
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             checkpoint: Optional[Union[Dict, str, Path]],
-            checkpoint_strategy: Optional[CheckpointStrategy]):
+            checkpoint_strategy: Optional[CheckpointStrategy], run_dir: Path):
         self._executor = backend_executor
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
                 checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy)
+                checkpoint_strategy=checkpoint_strategy,
+                run_dir=run_dir
+            )
         )
 
         self._final_results = None

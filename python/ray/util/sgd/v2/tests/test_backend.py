@@ -192,7 +192,7 @@ def test_checkpoint(ray_start_2_cpus):
     assert e.latest_checkpoint["epoch"] == 1
 
 
-def test_persisted_checkpoint(ray_start_2_cpus):
+def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     def train():
         for i in range(2):
             sgd.save_checkpoint(epoch=i)
@@ -200,10 +200,10 @@ def test_persisted_checkpoint(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config)
     e.start()
-    e.start_training(train)
+    e.start_training(train, run_dir=tmp_path)
     e.finish_training()
 
-    assert e._latest_checkpoint_id == 2
+    assert e.checkpoint_manager._latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
