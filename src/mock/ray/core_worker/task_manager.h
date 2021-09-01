@@ -40,6 +40,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (override));
   MOCK_METHOD(absl::optional<TaskSpecification>, GetTaskSpec, (const TaskID &task_id),
               (const, override));
+    MOCK_METHOD(bool, RetryTaskIfPossible, (const TaskID &task_id), (override));
 };
 
 }  // namespace core
