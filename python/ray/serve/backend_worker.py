@@ -17,7 +17,6 @@ from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
-from ray._private.utils import import_attr
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
@@ -41,13 +40,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config: BackendConfig,
-                           controller_name: str):
-            backend_def = cloudpickle.loads(serialized_backend_def)
-            if isinstance(backend_def, str):
-                backend = import_attr(backend_def)
-            else:
-                backend = backend_def
+                           backend_config: BackendConfig, controller_name: str,
+                           detached: bool):
+            backend = cloudpickle.loads(serialized_backend_def)
 
             if inspect.isfunction(backend):
                 is_function = True
@@ -80,7 +75,10 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
-            controller_handle = ray.get_actor(controller_name)
+            controller_namespace = ray.serve.api._get_controller_namespace(
+                detached)
+            controller_handle = ray.get_actor(
+                controller_name, namespace=controller_namespace)
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
 
@@ -131,7 +129,7 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, backend_config: BackendConfig,
                  is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
+        self.backend_tag = ray.serve.api.get_replica_context().deployment
         self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -141,11 +139,14 @@ class RayServeReplica:
         self.num_ongoing_requests = 0
 
         self.request_counter = metrics.Counter(
-            "serve_backend_request_counter",
+            "serve_deployment_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("backend", ))
-        self.request_counter.set_default_tags({"backend": self.backend_tag})
+            tag_keys=("deployment", "replica"))
+        self.request_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.loop = asyncio.get_event_loop()
         self.long_poll_client = LongPollClient(
@@ -158,38 +159,41 @@ class RayServeReplica:
         )
 
         self.error_counter = metrics.Counter(
-            "serve_backend_error_counter",
+            "serve_deployment_error_counter",
             description=("The number of exceptions that have "
-                         "occurred in the backend."),
-            tag_keys=("backend", ))
-        self.error_counter.set_default_tags({"backend": self.backend_tag})
+                         "occurred in this replica."),
+            tag_keys=("deployment", "replica"))
+        self.error_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.restart_counter = metrics.Counter(
-            "serve_backend_replica_starts",
+            "serve_deployment_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.restart_counter.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
-            "serve_backend_processing_latency_ms",
+            "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.processing_latency_tracker.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.num_processing_items.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
@@ -200,7 +204,7 @@ class RayServeReplica:
             handler.setFormatter(
                 logging.Formatter(
                     handler.formatter._fmt +
-                    f" component=serve backend={self.backend_tag} "
+                    f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
 
     def get_runner_method(self, request_item: Query) -> Callable:

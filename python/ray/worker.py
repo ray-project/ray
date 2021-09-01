@@ -12,13 +12,12 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Iterator
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
-import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
@@ -26,6 +25,7 @@ import ray._private.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
@@ -42,7 +42,7 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import profiling
+import ray._private.profiling as profiling
 
 from ray.exceptions import (
     RaySystemError,
@@ -433,7 +433,7 @@ class Worker:
         """
         pubsub_client = self.redis_client.pubsub(
             ignore_subscribe_messages=True)
-        pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+        pubsub_client.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -577,38 +577,37 @@ _global_node = None
 @PublicAPI
 @client_mode_hook
 def init(
-        address=None,
+        address: Optional[str] = None,
         *,
-        num_cpus=None,
-        num_gpus=None,
-        resources=None,
-        object_store_memory=None,
-        local_mode=False,
-        ignore_reinit_error=False,
-        include_dashboard=None,
-        dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
-        dashboard_port=None,
-        job_config=None,
-        configure_logging=True,
-        logging_level=logging.INFO,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        log_to_driver=True,
-        namespace=None,
-        runtime_env=None,
-        internal_config=None,
+        num_cpus: Optional[int] = None,
+        num_gpus: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        object_store_memory: Optional[int] = None,
+        local_mode: bool = False,
+        ignore_reinit_error: bool = False,
+        include_dashboard: Optional[bool] = None,
+        dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
+        dashboard_port: Optional[int] = None,
+        job_config: "ray.job_config.JobConfig" = None,
+        configure_logging: bool = True,
+        logging_level: int = logging.INFO,
+        logging_format: str = ray_constants.LOGGER_FORMAT,
+        log_to_driver: bool = True,
+        namespace: Optional[str] = None,
+        runtime_env: Dict[str, Any] = None,
         # The following are unstable parameters and their use is discouraged.
-        _enable_object_reconstruction=False,
-        _redis_max_memory=None,
-        _plasma_directory=None,
-        _node_ip_address=ray_constants.NODE_DEFAULT_IP,
-        _driver_object_store_memory=None,
-        _memory=None,
-        _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _temp_dir=None,
-        _lru_evict=False,
-        _metrics_export_port=None,
-        _system_config=None,
-        _tracing_startup_hook=None,
+        _enable_object_reconstruction: bool = False,
+        _redis_max_memory: Optional[int] = None,
+        _plasma_directory: Optional[str] = None,
+        _node_ip_address: str = ray_constants.NODE_DEFAULT_IP,
+        _driver_object_store_memory: Optional[int] = None,
+        _memory: Optional[int] = None,
+        _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
+        _temp_dir: Optional[str] = None,
+        _lru_evict: bool = False,
+        _metrics_export_port: Optional[int] = None,
+        _system_config: Optional[Dict[str, str]] = None,
+        _tracing_startup_hook: Optional[Callable] = None,
         **kwargs):
     """
     Connect to an existing Ray cluster or start one and connect to it.
@@ -617,18 +616,30 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray and all of the relevant processes, use this as follows:
+    To start Ray locally and all of the relevant processes, use this as
+    follows:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect to an existing Ray cluster, use this as follows (substituting
-    in the appropriate address):
+    To connect to an existing local cluster, use this as follows (substituting
+    in the appropriate port if needed).
 
     .. code-block:: python
 
-        ray.init(address="123.45.67.89:6379")
+        ray.init(address="localhost:6379")
+
+    To connect to an existing remote cluster, use this as follows (substituting
+    in the appropriate address). Note the addition of "ray://" at the beginning
+    of the address.
+
+    .. code-block:: python
+
+        ray.init(address="ray://123.45.67.89:10001")
+
+    More details for starting and connecting to a remote cluster can be found
+    here: https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -640,14 +651,14 @@ def init(
             a raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the the cluster, removing the need to
+            tells the driver to detect the cluster, removing the need to
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a protocol to connect using Ray
-            Client. For example, passing in the address
+            Addresses can be prefixed with a "ray://" to connect to a remote
+            cluster. For example, passing in the address
             "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address using the Ray client.
+            given address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -685,12 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job.
-        internal_config (dict): Dictionary mapping names of a unstable
-            parameters to values, e.g. {"redis_password": "1234"}. This is
-            only used for initializing a local client (ray.init(local://...)).
-            Values in this dictionary will be used to configure the local
-            cluster. Parameter names should exclude the underscore prefix.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -720,10 +728,11 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address included a protocol (e.g. "ray://1.2.3.4")
-        then a ClientContext is returned with information such as settings,
-        server versions for ray and python, and the dashboard_url.
-        Otherwise, returns address information about the started processes.
+        If the provided address includes a protocol, for example by prepending
+        "ray://" to the address to get "ray://1.2.3.4:10001", then a
+        ClientContext is returned with information such as settings, server
+        versions for ray and python, and the dashboard_url. Otherwise,
+        returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -768,11 +777,6 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
-
-    if internal_config is not None:
-        # Should only be used with local client
-        raise RuntimeError("`internal_config` should only be used with "
-                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
@@ -970,7 +974,7 @@ _post_init_hooks = []
 
 @PublicAPI
 @client_mode_hook
-def shutdown(_exiting_interpreter=False):
+def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1045,7 +1049,7 @@ def custom_excepthook(type, value, tb):
                                                      "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = ray.gcs_utils.DRIVER
+        worker_type = gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
         ray.state.state._check_connected()
@@ -1079,7 +1083,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
 
     # Print out autoscaler events only, ignoring other messages.
     for line in lines:
-        if ":event_summary:" in line:
+        if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
                        "autoscaling status. To disable autoscaler event "
@@ -1087,7 +1091,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
-            yield line.split(":event_summary:")[1]
+            yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
 
 
 def time_string() -> str:
@@ -1113,13 +1117,25 @@ def time_string() -> str:
     return output
 
 
+# When we enter a breakpoint, worker logs are automatically disabled via this.
+_worker_logs_enabled = True
+
+
 def print_worker_logs(data: Dict[str, str], print_file: Any):
+    if not _worker_logs_enabled:
+        return
+
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
             return ""
         else:
-            return "pid="
+            res = "pid="
+            if data["actor_name"]:
+                res = data["actor_name"] + " " + res
+            elif data["task_name"]:
+                res = data["task_name"] + " " + res
+            return res
 
     def color_for(data: Dict[str, str]) -> str:
         """The color for this log line."""
@@ -1172,7 +1188,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
     worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
@@ -1192,9 +1208,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = ray.gcs_utils.ErrorTableData.FromString(
-                pubsub_msg.data)
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1218,7 +1233,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
 @PublicAPI
 @client_mode_hook
-def is_initialized():
+def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
     Returns:
@@ -1327,10 +1342,14 @@ def connect(node,
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
+    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
-        driver_name = (main.__file__
-                       if hasattr(main, "__file__") else "INTERACTIVE MODE")
+        if hasattr(main, "__file__"):
+            driver_name = main.__file__
+        else:
+            interactive_mode = True
+            driver_name = "INTERACTIVE MODE"
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
@@ -1345,6 +1364,8 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
 
     if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
         # The namespace field of job config may have already been set in code
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
@@ -1354,6 +1375,9 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    else:
+        # Add hook to suppress worker logs during breakpoint.
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb._driver_set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 
@@ -1372,25 +1396,6 @@ def connect(node,
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
-    elif mode == WORKER_MODE:
-        # TODO(ekl) get rid of the env var hack and get runtime env from the
-        # task spec and/or job config only.
-        uris = []
-        global_job_config = worker.core_worker.get_job_config()
-        override_runtime_env = json.loads(runtime_env_json)
-
-        if os.environ.get("RAY_PACKAGING_URI"):
-            uris = [os.environ.get("RAY_PACKAGING_URI")]
-        if global_job_config.runtime_env.uris:
-            uris = global_job_config.runtime_env.uris
-        if override_runtime_env.get("uris"):
-            # TODO(simon): should we combine the uris from package and global
-            # job config if they are present?
-            uris = override_runtime_env["uris"]
-
-        working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
-        if working_dir is not None:
-            os.chdir(working_dir)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1431,11 +1436,13 @@ def connect(node,
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
         # are the same.
-        # In client mode, if we use runtime env, then it'll be taken care of
-        # automatically.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory))
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and len(
                 job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
@@ -1511,7 +1518,7 @@ def _changeproctitle(title, next_title):
 
 
 @DeveloperAPI
-def show_in_dashboard(message, key="", dtype="text"):
+def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1545,7 +1552,9 @@ blocking_get_inside_async_warned = False
 
 @PublicAPI
 @client_mode_hook
-def get(object_refs, *, timeout=None):
+def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
+        *,
+        timeout: Optional[float] = None) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ref is
@@ -1632,7 +1641,8 @@ def get(object_refs, *, timeout=None):
 
 @PublicAPI
 @client_mode_hook
-def put(value, *, _owner=None):
+def put(value: Any, *,
+        _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
@@ -1656,7 +1666,7 @@ def put(value, *, _owner=None):
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray.state.state.global_state_accessor` is not None
         ray.state.state._check_connected()
-        owner_address = ray.gcs_utils.ActorTableData.FromString(
+        owner_address = gcs_utils.ActorTableData.FromString(
             ray.state.state.global_state_accessor.get_actor_info(
                 _owner._actor_id)).address
         if len(owner_address.worker_id) == 0:
@@ -1685,7 +1695,12 @@ blocking_wait_inside_async_warned = False
 
 @PublicAPI
 @client_mode_hook
-def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
+def wait(object_refs: List[ray.ObjectRef],
+         *,
+         num_returns: int = 1,
+         timeout: Optional[float] = None,
+         fetch_local: bool = True
+         ) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1787,12 +1802,18 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name):
+def get_actor(name: str,
+              namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
+
+    Args:
+        name: The name of the actor.
+        namespace: The namespace of the actor, or None to specify the current
+            namespace.
 
     Returns:
         ActorHandle to the actor.
@@ -1802,21 +1823,18 @@ def get_actor(name):
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
+
+    if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
     worker = global_worker
     worker.check_connected()
-    split_names = name.split("/", maxsplit=1)
-    if len(split_names) <= 1:
-        name = split_names[0]
-        namespace = ""
-    else:
-        # must be length 2
-        namespace, name = split_names
-    return worker.core_worker.get_named_actor_handle(name, namespace)
+    return worker.core_worker.get_named_actor_handle(name, namespace or "")
 
 
 @PublicAPI
 @client_mode_hook
-def kill(actor, *, no_restart=True):
+def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1845,7 +1863,10 @@ def kill(actor, *, no_restart=True):
 
 @PublicAPI
 @client_mode_hook
-def cancel(object_ref, *, force=False, recursive=True):
+def cancel(object_ref: ray.ObjectRef,
+           *,
+           force: bool = False,
+           recursive: bool = True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1903,7 +1924,8 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
-                   worker=None):
+                   worker=None,
+                   retry_exceptions=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1932,11 +1954,18 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, runtime_env)
+                num_returns, max_calls, max_retries, retry_exceptions,
+                runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
                 raise TypeError("The keyword 'num_returns' is not "
+                                "allowed for actors.")
+            if max_retries is not None:
+                raise TypeError("The keyword 'max_retries' is not "
+                                "allowed for actors.")
+            if retry_exceptions is not None:
+                raise TypeError("The keyword 'retry_exceptions' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
@@ -2059,7 +2088,11 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
+        retry_exceptions (bool): Only for *remote functions*. This specifies
+            whether application-level errors should be retried
+            up to max_retries times.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
@@ -2080,7 +2113,7 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2113,6 +2146,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2127,4 +2161,5 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
-        worker=worker)
+        worker=worker,
+        retry_exceptions=retry_exceptions)

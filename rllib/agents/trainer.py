@@ -26,10 +26,12 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
+    PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
@@ -147,6 +149,16 @@ COMMON_CONFIG: TrainerConfigDict = {
     # is a dict plus the properties: num_workers, worker_index, vector_index,
     # and remote).
     "env_config": {},
+    # If using num_envs_per_worker > 1, whether to create those new envs in
+    # remote processes instead of in the same worker. This adds overheads, but
+    # can make sense if your envs can take much time to step / reset
+    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
+    "remote_worker_envs": False,
+    # Timeout that remote workers are waiting when polling environments.
+    # 0 (continue when at least one env is ready) is a reasonable default,
+    # but optimal value could be obtained by measuring your environment
+    # step / reset and model inference perf.
+    "remote_env_batch_wait_ms": 0,
     # A callable taking the last train results, the base env and the env
     # context as args and returning a new task to set the env to.
     # The env must be a `TaskSettableEnv` sub-class for this to work.
@@ -302,7 +314,8 @@ COMMON_CONFIG: TrainerConfigDict = {
         "device_count": {
             "CPU": 1
         },
-        "allow_soft_placement": True,  # required by PPO multi-gpu
+        # Required by multi-GPU (num_gpus > 1).
+        "allow_soft_placement": True,
     },
     # Override the following tf session args on the local worker
     "local_tf_session_args": {
@@ -311,23 +324,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         "intra_op_parallelism_threads": 8,
         "inter_op_parallelism_threads": 8,
     },
-    # Whether to LZ4 compress individual observations
+    # Whether to LZ4 compress individual observations.
     "compress_observations": False,
     # Wait for metric batches for at most this many seconds. Those that
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
-    # If using num_envs_per_worker > 1, whether to create those new envs in
-    # remote processes instead of in the same worker. This adds overheads, but
-    # can make sense if your envs can take much time to step / reset
-    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
-    "remote_worker_envs": False,
-    # Timeout that remote workers are waiting when polling environments.
-    # 0 (continue when at least one env is ready) is a reasonable default,
-    # but optimal value could be obtained by measuring your environment
-    # step / reset and model inference perf.
-    "remote_env_batch_wait_ms": 0,
     # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
@@ -554,6 +557,9 @@ class Trainer(Trainable):
         self._env_id = self._register_if_needed(
             env or config.get("env"), config)
 
+        # Placeholder for a local replay buffer instance.
+        self.local_replay_buffer = None
+
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             # Default logdir prefix containing the agent's name and the
@@ -607,7 +613,7 @@ class Trainer(Trainable):
             bundles=[{
                 # Driver.
                 "CPU": cf["num_cpus_for_driver"],
-                "GPU": cf["num_gpus"],
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.
@@ -832,11 +838,8 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
-    # TODO: (sven) Deprecate in favor of Trainer.evaluate().
-    @DeveloperAPI
+    @Deprecated(new="Trainer.evaluate", error=False)
     def _evaluate(self) -> dict:
-        deprecation_warning(
-            "Trainer._evaluate", "Trainer.evaluate", error=False)
         return self.evaluate()
 
     @PublicAPI
@@ -954,7 +957,7 @@ class Trainer(Trainable):
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
-        """Computes an action for the specified policy on the local Worker.
+        """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_single_action() on it
@@ -985,17 +988,31 @@ class Trainer(Trainable):
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
+
+        Raises:
+            KeyError: If the `policy_id` cannot be found in this Trainer's
+                local worker.
         """
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(
+                f"PolicyID '{policy_id}' not found in PolicyMap of the "
+                f"Trainer's local worker!")
+
+        local_worker = self.workers.local_worker()
+
         if state is None:
             state = []
+
         # Check the preprocessor and preprocess, if necessary.
-        pp = self.workers.local_worker().preprocessors[policy_id]
+        pp = local_worker.preprocessors[policy_id]
         if type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        filtered_observation = self.workers.local_worker().filters[policy_id](
+        filtered_observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        result = self.get_policy(policy_id).compute_single_action(
+        # Compute the action.
+        result = policy.compute_single_action(
             filtered_observation,
             state,
             prev_action,
@@ -1005,15 +1022,15 @@ class Trainer(Trainable):
             clip_actions=clip_actions,
             explore=explore)
 
+        # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
             return result
+        # Ensure backward compatibility.
         else:
-            return result[0]  # backwards compatibility
+            return result[0]
 
-    @PublicAPI
+    @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
-        if log_once("Trainer.compute_action"):
-            deprecation_warning("compute_action", "compute_single_action")
         return self.compute_single_action(*args, **kwargs)
 
     @PublicAPI
@@ -1198,7 +1215,6 @@ class Trainer(Trainable):
                 observation_space=observation_space,
                 action_space=action_space,
                 config=config,
-                policy_config=self.config,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
             )
@@ -1376,16 +1392,7 @@ class Trainer(Trainable):
             deprecation_warning(old="simple_optimizer", error=False)
 
         # Loop through all policy definitions in multi-agent policies.
-        multiagent_config = config["multiagent"]
-        policies = multiagent_config.get("policies")
-        if not policies:
-            policies = {DEFAULT_POLICY_ID}
-        if isinstance(policies, set):
-            policies = multiagent_config["policies"] = {
-                pid: PolicySpec()
-                for pid in policies
-            }
-        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
+        policies, is_multi_agent = check_multi_agent(config)
 
         for pid, policy_spec in policies.copy().items():
             # Policy IDs must be strings.
@@ -1414,7 +1421,7 @@ class Trainer(Trainable):
                     f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep if tf.
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
@@ -1422,23 +1429,25 @@ class Trainer(Trainable):
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider `simple_optimizer=False`.")
-            config["simple_optimizer"] = framework == "torch"
-        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+                    "Consider not setting `simple_optimizer` in your config.")
+            config["simple_optimizer"] = False
+        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
         # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
         # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            # Non-TF: Must use simple optimizer.
-            if framework != "tf":
+            # tf-eager: Must use simple optimizer.
+            if framework not in ["tf", "torch"]:
                 config["simple_optimizer"] = True
-            # TF + Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies).
-            elif is_multiagent:
+            # Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies or TorchPolicies).
+            elif is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)
-                if any((p[0] or default_policy_cls) is None or not issubclass(
-                        p[0] or default_policy_cls, DynamicTFPolicy)
+                if any((p[0] or default_policy_cls) is None
+                       or not issubclass(p[0] or default_policy_cls,
+                                         (DynamicTFPolicy, TorchPolicy))
                        for p in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:
@@ -1446,9 +1455,9 @@ class Trainer(Trainable):
             else:
                 config["simple_optimizer"] = False
 
-        # User manually set simple-optimizer to False -> Error if not tf.
+        # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2"]:
                 raise ValueError("`simple_optimizer=False` not supported for "
                                  "framework={}!".format(framework))
 
@@ -1595,6 +1604,12 @@ class Trainer(Trainable):
             state["worker"] = self.workers.local_worker().save()
         if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
             state["optimizer"] = self.optimizer.save()
+        # TODO: Experimental functionality: Store contents of replay buffer
+        #  to checkpoint, only if user has configured this.
+        if self.local_replay_buffer is not None and \
+                self.config.get("store_buffer_in_checkpoints"):
+            state["local_replay_buffer"] = \
+                self.local_replay_buffer.get_state()
         return state
 
     def __setstate__(self, state: dict):
@@ -1603,8 +1618,26 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+        # Restore optimizer data, if necessary.
         if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
+        # If necessary, restore replay data as well.
+        if self.local_replay_buffer is not None:
+            # TODO: Experimental functionality: Restore contents of replay
+            #  buffer from checkpoint, only if user has configured this.
+            if self.config.get("store_buffer_in_checkpoints"):
+                if "local_replay_buffer" in state:
+                    self.local_replay_buffer.set_state(
+                        state["local_replay_buffer"])
+                else:
+                    logger.warning(
+                        "`store_buffer_in_checkpoints` is True, but no replay "
+                        "data found in state!")
+            elif "local_replay_buffer" in state and \
+                    log_once("no_store_buffer_in_checkpoints_but_data_found"):
+                logger.warning(
+                    "`store_buffer_in_checkpoints` is False, but some replay "
+                    "data found in state!")
 
     @staticmethod
     def with_updates(**overrides) -> Type["Trainer"]:

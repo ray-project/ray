@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -52,6 +54,12 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+
+DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
+    "Not all Ray Dashboard dependencies were "
+    "found. To use the dashboard please "
+    "install Ray using `pip install "
+    "ray[default]`.")
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -218,6 +226,16 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
+
+
+def _log_dashboard_dependency_warning_once():
+    if log_once("dashboard_failed_import"
+                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
+        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
+        warning_message += " To disable this message, set " \
+                           "RAY_DISABLE_IMPORT_WARNING " \
+                           "env var to '1'."
+        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -415,7 +433,7 @@ def create_redis_client(redis_address, password=None):
             except Exception:
                 create_redis_client.instances.pop(redis_address)
 
-    redis_ip_address, redis_port = redis_address.split(":")
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
     create_redis_client.instances[redis_address] = redis.StrictRedis(
@@ -814,17 +832,6 @@ def start_redis(node_ip_address,
             addresses for the remaining shards, and the processes that were
             started.
     """
-
-    if len(redirect_files) != 1 + num_redis_shards:
-        raise ValueError("The number of redirect file pairs should be equal "
-                         "to the number of redis shards (including the "
-                         "primary shard) we will start.")
-    if redis_shard_ports is None:
-        redis_shard_ports = num_redis_shards * [None]
-    elif len(redis_shard_ports) != num_redis_shards:
-        raise RuntimeError("The number of Redis shard ports does not match "
-                           "the number of Redis shards.")
-
     processes = []
 
     if external_addresses is not None:
@@ -837,6 +844,17 @@ def start_redis(node_ip_address,
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
+        if len(redirect_files) != 1 + num_redis_shards:
+            raise ValueError(
+                "The number of redirect file pairs should be equal "
+                "to the number of redis shards (including the "
+                "primary shard) we will start.")
+        if redis_shard_ports is None:
+            redis_shard_ports = num_redis_shards * [None]
+        elif len(redis_shard_ports) != num_redis_shards:
+            raise RuntimeError(
+                "The number of Redis shard ports does not match "
+                "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -892,7 +910,7 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None and len(external_addresses) > 1:
+        if external_addresses is not None:
             shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
@@ -1172,22 +1190,13 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            # These checks have to come first because aiohttp looks
-            # for opencensus, too, and raises a different error otherwise.
-            import opencensus  # noqa: F401
-            import prometheus_client  # noqa: F401
-
-            import aiohttp  # noqa: F401
-            import aioredis  # noqa: F401
-            import aiohttp_cors  # noqa: F401
-            import grpc  # noqa: F401
+            import ray.new_dashboard.optional_deps  # noqa: F401
         except ImportError:
-            warning_message = (
-                "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+            if require_dashboard:
+                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
+            else:
+                _log_dashboard_dependency_warning_once()
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
@@ -1200,7 +1209,7 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
-        if redis_password:
+        if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
@@ -1265,6 +1274,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1276,6 +1286,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1299,6 +1310,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1338,6 +1350,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 dashboard_agent_listen_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1489,29 +1502,47 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Create agent command
-    agent_command = [
-        sys.executable,
-        "-u",
-        os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
-        f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
-        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
-        f"--log-dir={log_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+    # Check to see if we should start the dashboard agent or not based on the
+    # Ray installation version the user has installed (ray vs. ray[default]).
+    # Unfortunately there doesn't seem to be a cleaner way to detect this other
+    # than just blindly importing the relevant packages.
+    def check_should_start_agent():
+        try:
+            import ray.new_dashboard.optional_deps  # noqa: F401
 
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
+            return True
+        except ImportError:
+            _log_dashboard_dependency_warning_once()
+
+        return False
+
+    if not check_should_start_agent():
+        # An empty agent command will cause the raylet not to start it.
+        agent_command = []
+    else:
+        agent_command = [
+            sys.executable,
+            "-u",
+            os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+            f"--node-ip-address={node_ip_address}",
+            f"--redis-address={redis_address}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--dashboard-agent-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--runtime-env-dir={resource_dir}",
+            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
+
+        if redis_password is not None and len(redis_password) != 0:
+            agent_command.append("--redis-password={}".format(redis_password))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1532,6 +1563,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1651,14 +1683,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     command = [
         DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

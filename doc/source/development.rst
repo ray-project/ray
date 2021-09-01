@@ -69,7 +69,22 @@ For Ubuntu, run the following commands:
 
   pip install cython==0.29.0 pytest
 
+For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
+
+.. code-block:: bash
+
+  sudo yum groupinstall 'Development Tools'
+  sudo yum install psmisc
+
+  pip install cython==0.29.0 pytest
+
+Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
+
+
 For MacOS, run the following commands:
+
+.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with error as ``No such file or directory:``, try cleaning previous builds on your host by running commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
+
 
 .. code-block:: bash
 
@@ -111,7 +126,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- bazel 3.2 (https://github.com/bazelbuild/bazel/releases/tag/3.2.0)
+- bazel 3.4 (https://github.com/bazelbuild/bazel/releases/tag/3.4.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -134,7 +149,7 @@ The following links were correct during the writing of this section. In case the
 
 3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 3.2 installation. Go to bazel 3.2 release web page and download bazel-3.2.0-windows-x86_64.exe. Copy the exe into the directory of your choice. Define an environment variable BAZEL_PATH to full exe path (example: ``C:\bazel\bazel-3.2.0-windows-x86_64.exe``) 
+4. Bazel 3.4 installation. Go to bazel 3.4 release web page and download bazel-3.4.0-windows-x86_64.exe. Copy the exe into the directory of your choice. Define an environment variable BAZEL_PATH to full exe path (example: ``C:\bazel\bazel-3.4.0-windows-x86_64.exe``) 
 
 5. Install cython and pytest:
 

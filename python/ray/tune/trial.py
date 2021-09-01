@@ -1,17 +1,18 @@
-from typing import Callable, Dict, Sequence, Union
+from collections import deque
+import copy
 import json
+import logging
+from numbers import Number
+import os
+import platform
+import re
+import shutil
+import time
+from typing import Callable, Dict, Sequence, Union
+import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from collections import deque
-import copy
-import logging
-import platform
-import shutil
-import uuid
-import time
-import os
-from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -27,6 +28,7 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -49,6 +51,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -156,6 +159,7 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -652,7 +656,8 @@ class Trial:
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
-        return generated_dirname.replace("/", "_")
+        # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
+        return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
         self._state_valid = False

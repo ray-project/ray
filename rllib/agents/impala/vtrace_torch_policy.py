@@ -125,8 +125,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         output_hidden_shape = 1
 
     def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -145,8 +145,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
         mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
@@ -184,6 +185,14 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     # Store loss object only for multi-GPU tower 0.
     if model is policy.model_gpu_towers[0]:
         policy.loss = loss
+        values_batched = make_time_major(
+            policy,
+            train_batch.get(SampleBatch.SEQ_LENS),
+            values,
+            drop_last=policy.config["vtrace"])
+        policy._vf_explained_var = explained_variance(
+            torch.reshape(loss.value_targets, [-1]),
+            torch.reshape(values_batched, [-1])),
 
     return loss.total_loss
 
@@ -226,12 +235,6 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 def stats(policy, train_batch):
-    values_batched = make_time_major(
-        policy,
-        train_batch.get("seq_lens"),
-        policy.model_gpu_towers[0].value_function(),
-        drop_last=policy.config["vtrace"])
-
     return {
         "cur_lr": policy.cur_lr,
         "policy_loss": policy.loss.pi_loss,
@@ -239,9 +242,7 @@ def stats(policy, train_batch):
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
-        "vf_explained_var": explained_variance(
-            torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
+        "vf_explained_var": policy._vf_explained_var,
     }
 
 

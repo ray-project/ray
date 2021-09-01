@@ -42,12 +42,13 @@ def workflow_step_context(workflow_id, storage_url) -> None:
         storage_url: The storage the workflow is using.
     """
     global _context
+    original_context = _context
     assert workflow_id is not None
     try:
         _context = WorkflowStepContext(workflow_id, storage_url)
         yield
     finally:
-        _context = None
+        _context = original_context
 
 
 def get_workflow_step_context() -> Optional[WorkflowStepContext]:
@@ -83,13 +84,13 @@ def get_current_workflow_id() -> str:
     return _context.workflow_id
 
 
-def get_step_name() -> str:
+def get_name() -> str:
     return f"{get_current_workflow_id()}@{get_current_step_id()}"
 
 
-def get_step_status_info(status: WorkflowStatus) -> None:
+def get_step_status_info(status: WorkflowStatus) -> str:
     assert _context is not None
-    return f"Step status [{status}]\t[{get_step_name()}]"
+    return f"Step status [{status}]\t[{get_name()}]"
 
 
 def get_scope():

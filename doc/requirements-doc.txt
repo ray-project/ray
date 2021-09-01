@@ -25,7 +25,7 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-sphinx-book-theme
+sphinx-book-theme==0.0.42
 sphinxcontrib.yt
 starlette
 tabulate
@@ -34,4 +34,5 @@ werkzeug
 git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 git+git://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
+git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize

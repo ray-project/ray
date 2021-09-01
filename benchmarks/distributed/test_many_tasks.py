@@ -2,7 +2,7 @@ import click
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 import time
 import tqdm
 
@@ -35,7 +35,7 @@ def test_max_running_tasks(num_tasks):
     # There are some relevant magic numbers in this check. 10k tasks each
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.9
+    threshold = num_tasks * cpus_per_task * 0.75
     assert max_cpus - min_cpus_available > threshold, err_str
 
     for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):
@@ -61,7 +61,7 @@ def test(num_tasks):
 
     rate = num_tasks / (end_time - start_time - sleep_time)
 
-    print(f"Sucess! Started {num_tasks} tasks in {end_time - start_time}s. "
+    print(f"Success! Started {num_tasks} tasks in {end_time - start_time}s. "
           f"({rate} tasks/s)")
 
     if "TEST_OUTPUT_JSON" in os.environ:

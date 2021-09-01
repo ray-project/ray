@@ -144,6 +144,7 @@ DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
+EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
@@ -206,6 +207,13 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
     f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
+
+# Autoscaler events are denoted by the ":event_summary:" magic token.
+LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Actor names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_ACTOR_NAME = ":actor_name:"
+# Task names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_TASK_NAME = ":task_name:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the

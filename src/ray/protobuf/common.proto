@@ -86,6 +86,17 @@ message FunctionDescriptor {
   }
 }
 
+// Actor concurrency group is used to define a concurrent
+// unit to indicate how some methods are performed concurrently.
+message ConcurrencyGroup {
+  // The name of the method concurrency group.
+  string name = 1;
+  // The maximum concurrency of this group.
+  int32 max_concurrency = 2;
+  // Function descriptors of the actor methods that will run in this concurrency group.
+  repeated FunctionDescriptor function_descriptors = 3;
+}
+
 // This enum type is used as object's metadata to indicate the object's
 // creating task has failed because of a certain error.
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
@@ -200,6 +211,10 @@ message TaskSpec {
   bytes debugger_breakpoint = 23;
   // Serialized JSON string of the parsed runtime environment dict for this task.
   string serialized_runtime_env = 24;
+  // The concurrency group name in which this task will be performed.
+  string concurrency_group_name = 25;
+  // Whether application-level errors (exceptions) should be retried.
+  bool retry_exceptions = 26;
 }
 
 message Bundle {
@@ -275,7 +290,7 @@ message TaskArg {
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
-  repeated bytes nested_inlined_ids = 4;
+  repeated ObjectReference nested_inlined_refs = 4;
 }
 
 // Task spec of an actor creation task.
@@ -295,7 +310,7 @@ message ActorCreationTaskSpec {
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
   repeated string dynamic_worker_options = 5;
-  // The max number of concurrent calls for direct call actors.
+  // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;
   // Whether the actor is persistent.
   bool is_detached = 7;
@@ -309,6 +324,8 @@ message ActorCreationTaskSpec {
   string extension_data = 11;
   // Serialized bytes of the Handle to the actor that will be created by this task.
   bytes serialized_actor_handle = 12;
+  // The concurrency groups of this actor.
+  repeated ConcurrencyGroup concurrency_groups = 13;
 }
 
 // Task spec of an actor task.

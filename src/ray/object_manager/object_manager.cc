@@ -50,7 +50,7 @@ ObjectStoreRunner::~ObjectStoreRunner() {
 
 ObjectManager::ObjectManager(
     instrumented_io_context &main_service, const NodeID &self_node_id,
-    const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
+    const ObjectManagerConfig &config, IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
@@ -121,16 +121,10 @@ ObjectManager::ObjectManager(
   if (available_memory < 0) {
     available_memory = 0;
   }
-  pull_manager_.reset(new PullManager(
-      self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
-      restore_spilled_object_, get_time, config.pull_timeout_ms, available_memory,
-      [spill_objects_callback, object_store_full_callback]() {
-        // TODO(swang): This copies the out-of-memory handling in the
-        // CreateRequestQueue. It would be nice to unify these.
-        object_store_full_callback();
-        static_cast<void>(spill_objects_callback());
-      },
-      pin_object));
+  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
+                                      cancel_pull_request, restore_spilled_object_,
+                                      get_time, config.pull_timeout_ms, available_memory,
+                                      pin_object, get_spilled_object_url));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -172,8 +166,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
-  ray::Status status =
-      object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+  object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
   // Give the pull manager a chance to pin actively pulled objects.
   pull_manager_->PinNewObjectIfNeeded(object_id);
@@ -202,8 +195,7 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
-  ray::Status status =
-      object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
+  object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
   // it was needed by an active pull request.
@@ -300,36 +292,9 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &
                  << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
+    RAY_LOG(DEBUG) << "Failed to send a push request for an object " << object_id
+                   << " to " << node_id << ". Chunk index: " << chunk_index;
   }
-
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("transfer_send");
-  profile_event.set_start_time(start_time);
-  profile_event.set_end_time(end_time);
-  // Encode the object ID, node ID, chunk index, and status as a json list,
-  // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + ",\"" + status.ToString() +
-                               "\"]");
-
-  std::lock_guard<std::mutex> lock(profile_mutex_);
-  profile_events_.push_back(profile_event);
-}
-
-void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
-                                          const NodeID &node_id, uint64_t chunk_index,
-                                          double start_time, double end_time) {
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("transfer_receive");
-  profile_event.set_start_time(start_time);
-  profile_event.set_end_time(end_time);
-  // Encode the object ID, node ID, chunk index as a json list,
-  // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + "]");
-
-  std::lock_guard<std::mutex> lock(profile_mutex_);
-  profile_events_.push_back(profile_event);
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
@@ -741,7 +706,6 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
 
-  double start_time = absl::GetCurrentTimeNanos() / 1e9;
   bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
                                     metadata_size, chunk_index, data);
   num_chunks_received_total_++;
@@ -752,9 +716,7 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
                   << num_chunks_received_total_failed_ << "/"
                   << num_chunks_received_total_ << " failed";
   }
-  double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
-  HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -801,16 +763,6 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Received pull request from node " << node_id << " for object ["
                  << object_id << "].";
-
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("receive_pull_request");
-  profile_event.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
-  profile_event.set_end_time(profile_event.start_time());
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"]");
-  {
-    std::lock_guard<std::mutex> lock(profile_mutex_);
-    profile_events_.emplace_back(profile_event);
-  }
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
                       "ObjectManager.HandlePull");
@@ -889,22 +841,6 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   return it->second;
 }
 
-std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo() {
-  auto profile_info = std::make_shared<rpc::ProfileTableData>();
-  profile_info->set_component_type("object_manager");
-  profile_info->set_component_id(self_node_id_.Binary());
-
-  {
-    std::lock_guard<std::mutex> lock(profile_mutex_);
-    for (auto const &profile_event : profile_events_) {
-      profile_info->add_profile_events()->CopyFrom(profile_event);
-    }
-    profile_events_.clear();
-  }
-
-  return profile_info;
-}
-
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
@@ -912,7 +848,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
-  result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "
@@ -931,8 +866,7 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreFallbackMemory().Record(
-      // TODO(scv119): this is not thread safe.
-      plasma::PlasmaAllocator::GetInstance().FallbackAllocated());
+      plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
 }
@@ -941,11 +875,11 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   auto stats = reply->mutable_store_stats();
   stats->set_object_store_bytes_used(used_memory_);
   stats->set_object_store_bytes_fallback(
-      // TODO(scv119): this is not thread safe.
-      plasma::PlasmaAllocator::GetInstance().FallbackAllocated());
+      plasma::plasma_store_runner->GetFallbackAllocated());
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
+  stats->set_object_pulls_queued(pull_manager_->HasPullsQueued());
 }
 
 void ObjectManager::Tick(const boost::system::error_code &e) {

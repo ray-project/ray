@@ -5,7 +5,6 @@ import logging
 from typing import List, TYPE_CHECKING, Any, Tuple, Dict
 import uuid
 import weakref
-
 import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
@@ -106,7 +105,12 @@ class ActorMethod(ActorMethodBase):
              **options) -> "ObjectRef":
         actor = self._actor_ref()
         if actor is None:
-            raise RuntimeError("Lost reference to actor")
+            raise RuntimeError("Lost reference to actor. One common cause is "
+                               "doing 'workflow.get_actor(id).method.run()', "
+                               "in this case the actor instance is released "
+                               "by Python before calling the method. Try "
+                               "'actor = workflow.get_actor(id); "
+                               "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
                 self._method_name, args=args, kwargs=kwargs)
@@ -156,6 +160,46 @@ class VirtualActorMetadata:
             # don't support, there may not be much the user can do about it.
             self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound)
+
+        for method_name, method in actor_methods:
+
+            def step(method_name, method, *args, **kwargs):
+                readonly = getattr(method, "__virtual_actor_readonly__", False)
+                flattened_args = self.flatten_args(method_name, args, kwargs)
+                actor_id = workflow_context.get_current_workflow_id()
+                if not readonly:
+                    if method_name == "__init__":
+                        state_ref = None
+                    else:
+                        ws = WorkflowStorage(actor_id, get_global_storage())
+                        state_ref = WorkflowRef(ws.get_entrypoint_step_id())
+                    # This is a hack to insert a positional argument.
+                    flattened_args = [signature.DUMMY_TYPE, state_ref
+                                      ] + flattened_args
+                workflow_inputs = serialization_context.make_workflow_inputs(
+                    flattened_args)
+
+                if readonly:
+                    _actor_method = _wrap_readonly_actor_method(
+                        actor_id, self.cls, method_name)
+                    step_type = StepType.READONLY_ACTOR_METHOD
+                else:
+                    _actor_method = _wrap_actor_method(self.cls, method_name)
+                    step_type = StepType.ACTOR_METHOD
+                # TODO(suquark): Support actor options.
+                workflow_data = WorkflowData(
+                    func_body=_actor_method,
+                    step_type=step_type,
+                    inputs=workflow_inputs,
+                    max_retries=1,
+                    catch_exceptions=False,
+                    ray_options={},
+                    name=None,
+                )
+                wf = Workflow(workflow_data)
+                return wf
+
+            method.step = functools.partial(step, method_name, method)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""
@@ -263,6 +307,7 @@ class VirtualActorClass(VirtualActorClassBase):
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
         # Construct the base object.
+
         self = DerivedActorClass.__new__(DerivedActorClass)
 
         self._metadata = metadata
@@ -282,9 +327,9 @@ class VirtualActorClass(VirtualActorClassBase):
         class ActorOptionWrapper(VirtualActorClassBase):
             def get_or_create(self, actor_id: str, *args, **kwargs):
                 return actor_cls._get_or_create(
+                    actor_id,
                     args=args,
                     kwargs=kwargs,
-                    actor_id=actor_id,
                     storage=get_global_storage())
 
         return ActorOptionWrapper()
@@ -302,6 +347,9 @@ class VirtualActorClass(VirtualActorClassBase):
     def _construct(self, actor_id: str, storage: Storage) -> "VirtualActor":
         """Construct a blank virtual actor."""
         return VirtualActor(self._metadata, actor_id, storage)
+
+    def __reduce__(self):
+        return decorate_actor, (self._metadata.cls, )
 
 
 def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
@@ -325,6 +373,10 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
 
 
 def _wrap_actor_method(cls: type, method_name: str):
+    @ray.experimental.workflow.step
+    def deref(*args):
+        return args
+
     @functools.wraps(getattr(cls, method_name))
     def _actor_method(state, *args, **kwargs):
         instance = cls.__new__(cls)
@@ -332,6 +384,12 @@ def _wrap_actor_method(cls: type, method_name: str):
             instance.__setstate__(state)
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
+        if isinstance(output, Workflow):
+            if output.data.step_type == StepType.FUNCTION:
+                next_step = deref.step(instance.__getstate__(), output)
+                next_step.data.step_type = StepType.ACTOR_METHOD
+                return next_step, None
+            return instance.__getstate__(), output
         return instance.__getstate__(), output
 
     return _actor_method
@@ -345,11 +403,6 @@ class VirtualActor:
         self._metadata = metadata
         self._actor_id = actor_id
         self._storage = storage
-        for method_name in metadata.signatures:
-            # TODO(suquark): Maybe we should avoid overriding class fields.
-            # However, we did not do it in ActorHandle.
-            method = ActorMethod(self, method_name)
-            setattr(self, method_name, method)
 
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
         workflow_storage = WorkflowStorage(self._actor_id, self._storage)
@@ -365,7 +418,7 @@ class VirtualActor:
         return self._actor_id
 
     def ready(self) -> "ObjectRef":
-        """Return a future. If 'ray.get()' it successfully, then the actor
+        """Return a future. If 'ray.get()' runs successfully, then the actor
         is fully initialized."""
         # TODO(suquark): should ray.get(xxx.ready()) always be true?
         workflow_manager = get_or_create_management_actor()
@@ -382,39 +435,10 @@ class VirtualActor:
         method = getattr(cls, method_name, None)
         if method is None:
             raise AttributeError(f"Method '{method_name}' does not exist.")
-        readonly = getattr(method, "__virtual_actor_readonly__", False)
-
-        flattened_args = self._metadata.flatten_args(method_name, args, kwargs)
-        if not readonly:
-            if method_name == "__init__":
-                state_ref = None
-            else:
-                ws = WorkflowStorage(self._actor_id, self._storage)
-                state_ref = WorkflowRef(ws.get_entrypoint_step_id())
-            # This is a hack to insert a positional argument.
-            flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
-        workflow_inputs = serialization_context.make_workflow_inputs(
-            flattened_args)
-
-        if readonly:
-            _actor_method = _wrap_readonly_actor_method(
-                self._actor_id, cls, method_name)
-            step_type = StepType.READONLY_ACTOR_METHOD
-        else:
-            _actor_method = _wrap_actor_method(cls, method_name)
-            step_type = StepType.ACTOR_METHOD
-        # TODO(suquark): Support actor options.
-        workflow_data = WorkflowData(
-            func_body=_actor_method,
-            step_type=step_type,
-            inputs=workflow_inputs,
-            max_retries=1,
-            catch_exceptions=False,
-            ray_options={},
-        )
-        wf = Workflow(workflow_data)
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
+            wf = method.step(*args, **kwargs)
+            readonly = getattr(method, "__virtual_actor_readonly__", False)
             if readonly:
                 return execute_workflow(wf).volatile_output
             else:

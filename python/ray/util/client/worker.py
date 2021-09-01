@@ -52,7 +52,7 @@ MAX_TIMEOUT_SEC = 30
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
 # operations.
-MAX_BLOCKING_OPERATION_TIME_S = 2
+MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
@@ -190,51 +190,49 @@ class Worker:
     def register_callback(
             self, ref: ClientObjectRef,
             callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
-        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
+        req = ray_client_pb2.GetRequest(ids=[ref.id], asynchronous=True)
         self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
-        to_get = []
-        single = False
         if isinstance(vals, list):
+            if not vals:
+                return []
             to_get = vals
         elif isinstance(vals, ClientObjectRef):
             to_get = [vals]
-            single = True
         else:
             raise Exception("Can't get something that's not a "
                             "list of IDs or just an ID: %s" % type(vals))
+
         if timeout is None:
-            timeout = 0
             deadline = None
         else:
             deadline = time.monotonic() + timeout
-        out = []
-        for obj_ref in to_get:
-            res = None
-            # Implement non-blocking get with a short-polling loop. This allows
-            # cancellation of gets via Ctrl-C, since we never block for long.
-            while True:
-                try:
-                    if deadline:
-                        op_timeout = min(
-                            MAX_BLOCKING_OPERATION_TIME_S,
-                            max(deadline - time.monotonic(), 0.001))
-                    else:
-                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
-                    res = self._get(obj_ref, op_timeout)
-                    break
-                except GetTimeoutError:
-                    if deadline and time.monotonic() > deadline:
-                        raise
-                    logger.debug("Internal retry for get {}".format(obj_ref))
-            out.append(res)
-        if single:
-            out = out[0]
-        return out
 
-    def _get(self, ref: ClientObjectRef, timeout: float):
-        req = ray_client_pb2.GetRequest(id=ref.id, timeout=timeout)
+        while True:
+            if deadline:
+                op_timeout = min(MAX_BLOCKING_OPERATION_TIME_S,
+                                 max(deadline - time.monotonic(), 0.001))
+            else:
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+            try:
+                res = self._get(to_get, op_timeout)
+                break
+            except GetTimeoutError:
+                if deadline and time.monotonic() > deadline:
+                    raise
+                logger.debug("Internal retry for get {}".format(to_get))
+        if len(to_get) != len(res):
+            raise Exception(
+                "Mismatched number of items in request ({}) and response ({})"
+                .format(len(to_get), len(res)))
+        if isinstance(vals, ClientObjectRef):
+            res = res[0]
+        return res
+
+    def _get(self, ref: List[ClientObjectRef], timeout: float):
+        req = ray_client_pb2.GetRequest(
+            ids=[r.id for r in ref], timeout=timeout)
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
@@ -384,7 +382,7 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
-            logger.debug(f"Releasing {id}")
+            logger.debug(f"Releasing {id.hex()}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
@@ -401,10 +399,12 @@ class Worker:
         self.server = None
         self.closed = True
 
-    def get_actor(self, name: str) -> ClientActorHandle:
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> ClientActorHandle:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
+        task.namespace = namespace or ""
         ids = self._call_schedule_for_task(task)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
@@ -513,11 +513,16 @@ class Worker:
                 f"Init Failure From Server:\n{init_resp.msg}")
         return
 
-    def _server_init(self, job_config: JobConfig):
+    def _server_init(self,
+                     job_config: JobConfig,
+                     ray_init_kwargs: Optional[Dict[str, Any]] = None):
         """Initialize the server"""
+        if ray_init_kwargs is None:
+            ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest()
+                init_req = ray_client_pb2.InitRequest(
+                    ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
                 return
 
@@ -528,7 +533,8 @@ class Worker:
                 # Generate the uri for runtime env
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config))
+                    job_config=pickle.dumps(job_config),
+                    ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 runtime_env.PKG_DIR = old_dir

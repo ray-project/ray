@@ -15,12 +15,14 @@
 #include "ray/core_worker/task_manager.h"
 
 #include "ray/common/buffer.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
 
 #include "msgpack.hpp"
 
 namespace ray {
+namespace core {
 
 // Start throttling task failure logs once we hit this threshold.
 const int64_t kTaskFailureThrottlingThreshold = 50;
@@ -41,8 +43,9 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
       task_deps.push_back(spec.ArgId(i));
       RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         task_deps.push_back(inlined_id);
         RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
       }
@@ -108,9 +111,9 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (spec.ArgByRef(i)) {
       task_deps->push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
-        task_deps->push_back(inlined_id);
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
       }
     }
   }
@@ -188,6 +191,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
 
+    const auto nested_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
@@ -220,13 +225,21 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
+
       bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+          RayObject(data_buffer, metadata_buffer, nested_refs), object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
+    }
+
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+      std::vector<ObjectID> nested_ids;
+      for (const auto &nested_ref : nested_refs) {
+        nested_ids.emplace_back(ObjectRefToId(nested_ref));
+      }
+      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
   }
 
@@ -253,7 +266,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.pending = false;
     num_pending_tasks_--;
 
-    // A finished task can be only be re-executed if it has some number of
+    // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable = it->second.num_retries_left != 0 &&
@@ -271,6 +284,45 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
+bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
+  int num_retries_left = 0;
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to retry task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to retry task that was not pending " << task_id;
+    spec = it->second.spec;
+    num_retries_left = it->second.num_retries_left;
+    if (num_retries_left > 0) {
+      it->second.num_retries_left--;
+    } else {
+      RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
+    }
+  }
+
+  // We should not hold the lock during these calls because they may trigger
+  // callbacks in this or other classes.
+  if (num_retries_left != 0) {
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    std::ostringstream stream;
+    auto num_retries_left_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
+           << ", attempting to resubmit.";
+    RAY_CHECK_OK(
+        push_error_callback_(spec.JobId(), "retry_task", stream.str(), timestamp));
+    retry_task_callback_(spec, /*delay=*/true);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool TaskManager::PendingTaskFailed(
     const TaskID &task_id, rpc::ErrorType error_type, Status *status,
     const std::shared_ptr<rpc::RayException> &creation_task_exception,
@@ -279,9 +331,9 @@ bool TaskManager::PendingTaskFailed(
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  int num_retries_left = 0;
+  const bool will_retry = RetryTaskIfPossible(task_id);
+  const bool release_lineage = !will_retry;
   TaskSpecification spec;
-  bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -290,30 +342,13 @@ bool TaskManager::PendingTaskFailed(
     RAY_CHECK(it->second.pending)
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
-    if (num_retries_left == 0) {
+    if (!will_retry) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
-    } else if (num_retries_left == -1) {
-      release_lineage = false;
-    } else {
-      RAY_CHECK(num_retries_left > 0);
-      it->second.num_retries_left--;
-      release_lineage = false;
     }
   }
 
-  bool will_retry = false;
-  // We should not hold the lock during these calls because they may trigger
-  // callbacks in this or other classes.
-  if (num_retries_left != 0) {
-    auto retries_str =
-        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
-                  << ", attempting to resubmit.";
-    retry_task_callback_(spec, /*delay=*/true);
-    will_retry = true;
-  } else {
+  if (!will_retry) {
     // Throttled logging of task failure errors.
     {
       absl::MutexLock lock(&mu_);
@@ -382,9 +417,10 @@ void TaskManager::RemoveFinishedTaskReferences(
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
     }
   }
   if (spec.IsActorTask()) {
@@ -424,9 +460,10 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
       if (it->second.spec.ArgByRef(i)) {
         released_objects->push_back(it->second.spec.ArgId(i));
       } else {
-        const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
-        released_objects->insert(released_objects->end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
       }
     }
 
@@ -466,8 +503,8 @@ void TaskManager::MarkPendingTaskFailed(
       packer.pack_bin(pb_serialized_exception.size());
       packer.pack_bin_body(pb_serialized_exception.data(),
                            pb_serialized_exception.size());
-      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
-                                          kMessagePackOffset);
+      LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                     kMessagePackOffset);
       // copy msgpack-serialized bytes
       std::memcpy(final_buffer.Data() + kMessagePackOffset,
                   msgpack_serialized_exception.data(),
@@ -505,4 +542,5 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   return ret_vec;
 }
 
+}  // namespace core
 }  // namespace ray

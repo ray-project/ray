@@ -10,19 +10,6 @@ import json
 import time
 import traceback
 
-try:
-    import aiohttp
-    import aiohttp.web
-    import aiohttp_cors
-    from aiohttp import hdrs
-except ImportError:
-    print("Not all Ray Dashboard dependencies were found. "
-          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-          "only be usable via `pip install 'ray[default]'`. Please "
-          "update your install command.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
-
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -34,6 +21,12 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -62,6 +55,7 @@ class DashboardAgent(object):
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
+                 listen_port=0,
                  object_store_name=None,
                  raylet_name=None,
                  logging_params=None):
@@ -78,6 +72,7 @@ class DashboardAgent(object):
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.logging_params = logging_params
@@ -99,6 +94,8 @@ class DashboardAgent(object):
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
             f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -176,7 +173,7 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, self.ip, 0)
+        site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
         await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
@@ -248,6 +245,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="The socket name of the plasma store")
+    parser.add_argument(
+        "--listen-port",
+        required=False,
+        type=int,
+        default=0,
+        help="Port for HTTP server to listen on")
     parser.add_argument(
         "--raylet-name",
         required=True,
@@ -361,6 +364,7 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
+            listen_port=args.listen_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)

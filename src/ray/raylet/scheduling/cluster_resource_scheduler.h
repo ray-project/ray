@@ -49,7 +49,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources,
-      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr,
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -77,13 +78,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string) override;
-
-  /// Check whether a resource request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
-  /// \param shape The resource demand's shape.
-  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
 
   /// Check whether a resource request is feasible on a given node. A node is
   /// feasible if it has the total resources needed to eventually execute the
@@ -180,8 +174,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   //           resource request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &resource_request,
-      bool actor_creation, bool force_spillback, int64_t *violations,
-      bool *is_infeasible);
+      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -420,6 +414,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  double GetLocalAvailableCpus() const override;
+
   /// Serialize task resource instances to json string.
   ///
   /// \param task_allocation Allocated resource instances for a task.
@@ -465,6 +461,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
+  /// Function to get whether the pull manager is at capacity.
+  std::function<bool(void)> get_pull_manager_at_capacity_;
 
   // Specify predefine resources that consists of unit-size instances.
   std::unordered_set<int64_t> predefined_unit_instance_resources_{};

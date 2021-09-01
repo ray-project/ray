@@ -1,0 +1,58 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.serve;
+
+option java_package = "io.ray.serve.generated";
+
+option java_outer_classname = "ServeProtos";
+
+option java_multiple_files = true;
+
+// Configuration options for a backend, to be set by the user.
+message BackendConfig {
+  // The number of processes to start up that will handle requests to this backend.
+  // Defaults to 1.
+  int32 num_replicas = 1;
+
+  // The maximum number of queries that will be sent to a replica of this backend without
+  // receiving a response. Defaults to 100.
+  int32 max_concurrent_queries = 2;
+
+  // Arguments to pass to the reconfigure method of the backend. The reconfigure method is
+  // called if user_config is not None.
+  bytes user_config = 3;
+
+  // Duration that backend workers will wait until there is no more work to be done before
+  // shutting down. Defaults to 2s.
+  double experimental_graceful_shutdown_wait_loop_s = 4;
+
+  // Controller waits for this duration to forcefully kill the replica for shutdown.
+  // Defaults to 20s.
+  double experimental_graceful_shutdown_timeout_s = 5;
+
+  // Is the construction of backend is cross language?
+  bool is_cross_language = 6;
+
+  // The backend's programming language.
+  BackendLanguage backend_language = 7;
+}
+
+// Backend language.
+enum BackendLanguage {
+  PYTHON = 0;
+  JAVA = 1;
+}

@@ -26,21 +26,22 @@
 
 namespace ray {
 namespace rpc {
-
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER)                                   \
+/// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
+/// limit.
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS)                  \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
       new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
                                 HANDLER##Reply>(                                \
           service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
           &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                \
-          #SERVICE ".grpc_server." #HANDLER));                                  \
+          #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));                 \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(const rpc::METHOD##Request &request, \
-                              rpc::METHOD##Reply *reply,           \
-                              rpc::SendReplyCallback send_reply_callback) = 0;
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                   \
+  virtual void Handle##METHOD(const ::ray::rpc::METHOD##Request &request, \
+                              ::ray::rpc::METHOD##Reply *reply,           \
+                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
 
@@ -60,7 +61,8 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port, int num_threads = 1);
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1,
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -119,6 +121,10 @@ class GrpcServer {
   std::unique_ptr<grpc::Server> server_;
   /// The polling threads used to check the completion queues.
   std::vector<std::thread> polling_threads_;
+  /// The interval to send a new gRPC keepalive timeout from server -> client.
+  /// gRPC server cannot get the ping response within the time, it triggers
+  /// the watchdog timer fired error, which will close the connection.
+  const int64_t keepalive_time_ms_;
 };
 
 /// Base class that represents an abstract gRPC service.

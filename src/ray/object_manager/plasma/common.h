@@ -23,9 +23,12 @@
 #include <string>
 #include <unordered_map>
 
+#include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/macros.h"
 
 namespace plasma {
 
@@ -34,9 +37,6 @@ using ray::ObjectID;
 using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
-
-/// Size of object hash digests.
-constexpr int64_t kDigestSize = sizeof(uint64_t);
 
 enum class ObjectState : int {
   /// Object was created but not sealed in the local Plasma Store.
@@ -60,6 +60,13 @@ struct Allocation {
   /// the total size of this mapped memory.
   int64_t mmap_size;
 
+  // only allow moves.
+  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(Allocation &&) noexcept = default;
+  Allocation &operator=(Allocation &&) noexcept = default;
+
+ private:
+  // Only created by Allocator
   Allocation(void *address, int64_t size, MEMFD_TYPE fd, ptrdiff_t offset, int device_num,
              int64_t mmap_size)
       : address(address),
@@ -68,29 +75,54 @@ struct Allocation {
         offset(offset),
         device_num(device_num),
         mmap_size(mmap_size) {}
+
+  // Test only
+  Allocation()
+      : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
+
+  friend class PlasmaAllocator;
+  friend class DummyAllocator;
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
-struct ObjectTableEntry {
-  ObjectTableEntry(Allocation allocation);
+class LocalObject {
+ public:
+  LocalObject(Allocation allocation);
+
+  RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
+
+  int64_t GetObjectSize() const { return object_info.GetObjectSize(); }
+
+  bool Sealed() const { return state == ObjectState::PLASMA_SEALED; }
+
+  int32_t GetRefCount() const { return ref_count; }
+
+  const ray::ObjectInfo &GetObjectInfo() const { return object_info; }
+
+  const Allocation &GetAllocation() const { return allocation; }
+
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+
+ private:
+  friend class ObjectStore;
+  friend class ObjectLifecycleManager;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+  friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(EvictionPolicyTest, Test);
 
   /// Allocation Info;
   Allocation allocation;
-  /// Size of the object in bytes.
-  int64_t data_size;
-  /// Size of the object metadata in bytes.
-  int64_t metadata_size;
+  /// Ray object info;
+  ray::ObjectInfo object_info;
   /// Number of clients currently using this object.
-  int ref_count;
-  /// Owner's raylet ID.
-  NodeID owner_raylet_id;
-  /// Owner's IP address.
-  std::string owner_ip_address;
-  /// Owner's port.
-  int owner_port;
-  /// Owner's worker ID.
-  WorkerID owner_worker_id;
+  /// TODO: ref_count probably shouldn't belong to LocalObject.
+  mutable int32_t ref_count;
   /// Unix epoch of when this object was created.
   int64_t create_time;
   /// How long creation of this object took.
@@ -100,8 +132,4 @@ struct ObjectTableEntry {
   /// The source of the object. Used for debugging purposes.
   plasma::flatbuf::ObjectSource source;
 };
-
-/// Mapping from ObjectIDs to information about the object.
-typedef std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>> ObjectTable;
-
 }  // namespace plasma

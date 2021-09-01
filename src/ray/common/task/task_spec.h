@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <cstddef>
@@ -19,6 +33,17 @@ extern "C" {
 namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
+
+/// ConcurrencyGroup is a group of actor methods that shares
+/// a executing thread pool.
+struct ConcurrencyGroup {
+  // Name of this group.
+  std::string name;
+  // Max concurrency of this group.
+  uint32_t max_concurrency;
+  // Function descriptors of the actor methods in this group.
+  std::vector<ray::FunctionDescriptor> function_descriptors;
+};
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
     const ObjectID &object_id) {
@@ -101,8 +126,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
-  /// Return the ObjectIDs that were inlined in this task argument.
-  const std::vector<ObjectID> ArgInlinedIds(size_t arg_index) const;
+  /// Return the ObjectRefs that were inlined in this task argument.
+  const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
@@ -213,6 +238,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
+
+  // Concurrency groups of the actor.
+  std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
+
+  std::string ConcurrencyGroupName() const;
 
  private:
   void ComputeResources();

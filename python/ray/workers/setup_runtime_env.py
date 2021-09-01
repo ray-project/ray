@@ -142,18 +142,30 @@ def setup_worker(input_args):
     py_executable: str = sys.executable
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
+    if args.serialized_runtime_env_context:
+        runtime_env_context = RuntimeEnvContext.deserialize(
+            args.serialized_runtime_env_context)
 
     # Ray client server setups runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
         if not args.serialized_runtime_env_context:
             runtime_env_context = setup_runtime_env(runtime_env,
                                                     args.session_dir)
-        else:
-            runtime_env_context = RuntimeEnvContext.deserialize(
-                args.serialized_runtime_env_context)
 
-    # activate conda
-    if runtime_env_context and runtime_env_context.conda_env_name:
+    if runtime_env_context and runtime_env_context.working_dir is not None:
+        commands += [f"cd {runtime_env_context.working_dir}"]
+
+        # Insert the working_dir as the first entry in PYTHONPATH. This is
+        # compatible with users providing their own PYTHONPATH in env_vars.
+        env_vars = runtime_env.get("env_vars", None) or {}
+        python_path = runtime_env_context.working_dir
+        if "PYTHONPATH" in env_vars:
+            python_path += os.pathsep + runtime_env["PYTHONPATH"]
+        env_vars["PYTHONPATH"] = python_path
+        runtime_env["env_vars"] = env_vars
+
+    # Add a conda activate command prefix if using a conda env.
+    if runtime_env_context and runtime_env_context.conda_env_name is not None:
         py_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
@@ -174,8 +186,8 @@ def setup_worker(input_args):
             # connection to gcs.
             ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
     ]
-    command_separator = " && "
-    command_str = command_separator.join(commands)
+
+    command_str = " && ".join(commands)
 
     # update env vars
     if runtime_env.get("env_vars"):
@@ -231,9 +243,8 @@ def current_ray_pip_specifier() -> Optional[str]:
         built from source locally (likely if you are developing Ray).
 
     Examples:
-        Returns "ray[all]==1.4.0" if running the stable release
-        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[..].whl"
-            if running the nightly or a specific commit
+        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/[..].whl"
+            if running a stable release, a nightly or a specific commit
     """
     logger = get_hook_logger()
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
@@ -245,12 +256,12 @@ def current_ray_pip_specifier() -> Optional[str]:
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
-        logger.warning(
-            "Current Ray version could not be detected, most likely "
-            "because you are using a version of Ray "
-            "built from source.  If you wish to use runtime_env, "
-            "you can try building a wheel and including the wheel "
-            "explicitly as a pip dependency.")
+        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") != "1":
+            logger.warning(
+                "Current Ray version could not be detected, most likely "
+                "because you have manually built Ray from source.  To use "
+                "runtime_env in this case, set the environment variable "
+                "RAY_RUNTIME_ENV_LOCAL_DEV_MODE=1.")
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.

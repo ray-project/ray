@@ -2,49 +2,74 @@ import sys
 
 import ray
 
-import numpy as np
 import pytest
 
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.test_utils import (init_error_pubsub, get_error_message,
-                            run_string_as_driver)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     run_string_as_driver)
 
 
-def test_fill_object_store_exception(shutdown_only):
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _system_config={"automatic_object_spilling_enabled": False})
-
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        return  # No exception is raised.
-
+def test_retry_system_level_error(ray_start_regular):
     @ray.remote
-    def expensive_task():
-        return np.zeros((10**8) // 10, dtype=np.uint8)
+    class Counter:
+        def __init__(self):
+            self.value = 0
 
-    with pytest.raises(ray.exceptions.RayTaskError) as e:
-        ray.get([expensive_task.remote() for _ in range(20)])
-        with pytest.raises(ray.exceptions.ObjectStoreFullError):
-            raise e.as_instanceof_cause()
+        def increment(self):
+            self.value += 1
+            return self.value
 
-    @ray.remote
-    class LargeMemoryActor:
-        def some_expensive_task(self):
-            return np.zeros(10**8 + 2, dtype=np.uint8)
-
-        def test(self):
+    @ray.remote(max_retries=1)
+    def func(counter):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            import os
+            os._exit(0)
+        else:
             return 1
 
-    actor = LargeMemoryActor.remote()
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(actor.some_expensive_task.remote())
-    # Make sure actor does not die
-    ray.get(actor.test.remote())
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 1
 
-    with pytest.raises(ray.exceptions.ObjectStoreFullError):
-        ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(r2)
+
+
+def test_retry_application_level_error(ray_start_regular):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    @ray.remote(max_retries=1, retry_exceptions=True)
+    def func(counter):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError()
+        else:
+            return 2
+
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 2
+
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(ValueError):
+        ray.get(r2)
+
+    counter3 = Counter.remote()
+    r3 = func.options(retry_exceptions=False).remote(counter3)
+    with pytest.raises(ValueError):
+        ray.get(r3)
 
 
 def test_connect_with_disconnected_node(shutdown_only):

@@ -8,7 +8,7 @@
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
-    
+
 .. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
     :target: https://twitter.com/raydistributed
 
@@ -22,8 +22,9 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
-- `Ray Serve`_: Scalable and Programmable Serving
-- `Datasets`_: Distributed Arrow on Ray (preview)
+- `Serve`_: Scalable and Programmable Serving
+- `Datasets`_: Flexible Distributed Data Loading (beta)
+- `Workflows`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
@@ -32,11 +33,13 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
+.. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
+.. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
 
 
 Quick Start
@@ -230,36 +233,38 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 .. code-block:: python
 
-    from ray import serve
     import pickle
     import requests
+
     from sklearn.datasets import load_iris
     from sklearn.ensemble import GradientBoostingClassifier
 
-    # Train model
+    from ray import serve
+
+    serve.start()
+
+    # Train model.
     iris_dataset = load_iris()
     model = GradientBoostingClassifier()
     model.fit(iris_dataset["data"], iris_dataset["target"])
 
-    # Define Ray Serve model,
+    @serve.deployment(route_prefix="/iris")
     class BoostingModel:
-        def __init__(self):
+        def __init__(self, model):
             self.model = model
             self.label_list = iris_dataset["target_names"].tolist()
 
-        def __call__(self, flask_request):
-            payload = flask_request.json["vector"]
-            print("Worker: received flask request with data", payload)
+        async def __call__(self, request):
+            payload = await request.json()["vector"]
+            print(f"Received flask request with data {payload}")
 
             prediction = self.model.predict([payload])[0]
             human_name = self.label_list[prediction]
             return {"result": human_name}
 
 
-    # Deploy model
-    client = serve.start()
-    client.create_backend("iris:v1", BoostingModel)
-    client.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    # Deploy model.
+    BoostingModel.deploy(model)
 
     # Query it!
     sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
@@ -289,11 +294,9 @@ More Information
 
 - `Ray paper`_
 - `Ray HotOS paper`_
-- `Blog (old)`_
 
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
@@ -309,6 +312,7 @@ Getting Involved
 - `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Slack`_: Join our Slack channel.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
@@ -317,3 +321,5 @@ Getting Involved
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
+.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+

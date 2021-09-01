@@ -29,7 +29,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Create a dataset and then create a pipeline from it.
     base = ray.data.range(1000000)
     print(base)
-    # -> Dataset(num_rows=1000000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
     pipe = base.pipeline(parallelism=10)
     print(pipe)
     # -> DatasetPipeline(length=20, num_stages=1)
@@ -52,6 +52,23 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Stage 3:  35%|████████████████                         | 8/20 [00:02<00:02,  5.33it/s]
     print("Total num rows", num_rows)
     # -> Total num rows 1000000
+
+
+You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.pipeline`` using ``from_iterable``:
+
+.. code-block:: python
+
+    import ray
+    from ray.data.dataset_pipeline import DatasetPipeline
+
+    # Equivalent to ray.data.range(1000).repeat(times=4)
+    source = ray.data.range(1000)
+    pipe = DatasetPipeline.from_iterable(
+        [lambda: source, lambda: source, lambda: source, lambda: source])
+
+    # Equivalent to ray.data.range(1000).pipeline(parallelism=10)
+    splits = ray.data.range(1000, parallelism=200).split(20)
+    pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
 
 Example: Pipelined Batch Inference

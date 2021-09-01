@@ -384,6 +384,12 @@ def debug(address):
     help="the port to bind the dashboard server to--defaults to {}".format(
         ray_constants.DEFAULT_DASHBOARD_PORT))
 @click.option(
+    "--dashboard-agent-listen-port",
+    type=int,
+    hidden=True,
+    default=0,
+    help="the port for dashboard agents to listen for http on.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -488,10 +494,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
-          include_dashboard, dashboard_host, dashboard_port, block,
-          plasma_directory, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, system_config, lru_evict, enable_object_reconstruction,
+          include_dashboard, dashboard_host, dashboard_port,
+          dashboard_agent_listen_port, block, plasma_directory,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
           worker_setup_hook, runtime_env_setup_hook, ray_debugger_external,
           log_style, log_color, verbose):
@@ -547,6 +554,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
+        dashboard_agent_listen_port=dashboard_agent_listen_port,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -568,7 +576,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         num_redis_shards = None
         # Start Ray on the head node.
-        if redis_shard_ports is not None:
+        if redis_shard_ports is not None and address is None:
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
@@ -580,6 +588,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If the primary one is not reachable, we starts new one(s) "
                 "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
             external_addresses = address.split(",")
+            # We reuse primary redis as sharding when there's only one
+            # instance provided.
+            if len(external_addresses) == 1:
+                external_addresses.append(external_addresses[0])
             reachable = False
             try:
                 [primary_redis_ip, port] = external_addresses[0].split(":")
@@ -596,8 +608,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if reachable:
                 ray_params.update_if_absent(
                     external_addresses=external_addresses)
-                if len(external_addresses) > 1:
-                    num_redis_shards = len(external_addresses) - 1
+                num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if "
@@ -673,6 +684,20 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             c.magenta("="),
                             c.yellow("'" + redis_password + "'"))
                         if redis_password else "")
+            cli_logger.newline()
+            cli_logger.print("To connect to this Ray runtime from outside of "
+                             "the cluster, for example to")
+            cli_logger.print("connect to a remote cluster from your laptop "
+                             "directly, use the following")
+            cli_logger.print("Python code:")
+            with cli_logger.indented():
+                with cf.with_style("monokai") as c:
+                    cli_logger.print("{} ray", c.magenta("import"))
+                    cli_logger.print(
+                        "ray{}init(address{}{})", c.magenta("."),
+                        c.magenta("="),
+                        c.yellow("'ray://<head_node_ip_address>:"
+                                 f"{ray_client_server_port}'"))
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
@@ -1342,7 +1367,8 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         start=start,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
-        port_forward=port_forward)
+        port_forward=port_forward,
+        _allow_uninitialized_state=True)
 
 
 @cli.command()
@@ -1403,7 +1429,7 @@ done
 @cli.command()
 def microbenchmark():
     """Run a local Ray microbenchmark on the current machine."""
-    from ray.ray_perf import main
+    from ray._private.ray_perf import main
     main()
 
 
@@ -1754,6 +1780,8 @@ def healthcheck(address, redis_password, component):
 
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    else:
+        address = services.address_to_ip(address)
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
 
@@ -1911,7 +1939,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
         cli_logger.print(
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && bazel run //:example"))
+                " && sh run.sh"))
 
 
 def add_command_alias(command, name, hidden):

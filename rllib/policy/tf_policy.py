@@ -1,6 +1,7 @@
 import errno
 import gym
 import logging
+import math
 import numpy as np
 import os
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
@@ -14,7 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -148,21 +149,46 @@ class TFPolicy(Policy):
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        num_gpus = config["num_gpus"] if worker_idx == 0 \
-            else config["num_gpus_per_worker"]
+        if not config["_fake_gpus"] and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE:
+            num_gpus = 0
+        elif worker_idx == 0:
+            num_gpus = config["num_gpus"]
+        else:
+            num_gpus = config["num_gpus_per_worker"]
+        gpu_ids = get_gpu_devices()
 
-        # No GPU configured, fake GPUs, or none available.
-        if config["_fake_gpus"] or num_gpus == 0 or not get_gpu_devices():
+        # Place on one or more CPU(s) when either:
+        # - Fake GPU mode.
+        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - no GPUs available.
+        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TFPolicy (worker={}) running on {}.".format(
                 worker_idx
                 if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
                 if config["_fake_gpus"] else "CPU"))
-            self.devices = ["/cpu:0" for _ in range(num_gpus or 1)]
-        # One or more actual GPUs (no fake GPUs).
+            self.devices = [
+                "/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)
+            ]
+        # Place on one or more actual GPU(s), when:
+        # - num_gpus > 0 (set by user) AND
+        # - local_mode=False AND
+        # - actual GPUs available AND
+        # - non-fake GPU mode.
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))
-            gpu_ids = ray.get_gpu_ids()
+
+            # We are a remote worker (WORKER_MODE=1):
+            # GPUs should be assigned to us by ray.
+            if ray.worker._mode() == ray.worker.WORKER_MODE:
+                gpu_ids = ray.get_gpu_ids()
+
+            if len(gpu_ids) < num_gpus:
+                raise ValueError(
+                    "TFPolicy was not able to find enough GPU IDs! Found "
+                    f"{gpu_ids}, but num_gpus={num_gpus}.")
+
             self.devices = [
                 f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
             ]
@@ -321,16 +347,18 @@ class TFPolicy(Policy):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self.get_session(), self.variables())
 
-        # gather update ops for any batch norm layers
-        if not self._update_ops:
-            self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf1.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+        # Gather update ops for any batch norm layers.
+        if len(self.devices) <= 1:
+            if not self._update_ops:
+                self._update_ops = tf1.get_collection(
+                    tf1.GraphKeys.UPDATE_OPS,
+                    scope=tf1.get_variable_scope().name)
+            if self._update_ops:
+                logger.info("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+            with tf1.control_dependencies(self._update_ops):
+                self._apply_op = self.build_apply_op(self._optimizer,
+                                                     self._grads_and_vars)
 
         if log_once("loss_used"):
             logger.debug(
@@ -502,9 +530,8 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    # TODO: (sven) Deprecate this method.
+    @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        deprecation_warning("get_exploration_info", "get_exploration_state")
         return self.get_exploration_state()
 
     @override(Policy)
@@ -600,14 +627,12 @@ class TFPolicy(Policy):
                         graph=self.get_session().graph))
                 builder.save()
 
-    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
-        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:
@@ -795,7 +820,7 @@ class TFPolicy(Policy):
             tf1.saved_model.utils.build_tensor_info(self._obs_input)
 
         if self._seq_lens is not None:
-            input_signature["seq_lens"] = \
+            input_signature[SampleBatch.SEQ_LENS] = \
                 tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
@@ -1010,7 +1035,7 @@ class TFPolicy(Policy):
         for key in state_keys:
             feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = train_batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
 

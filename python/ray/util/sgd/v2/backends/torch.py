@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Optional
 
 import ray
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
 
@@ -47,10 +47,6 @@ class TorchConfig(BackendConfig):
                              "Please install torch to use this backend.")
 
     @property
-    def backend_name(self):
-        return "torch"
-
-    @property
     def backend_cls(self):
         return TorchBackend
 
@@ -88,12 +84,14 @@ def setup_torch_process_group(backend: str,
         timeout=timedelta(seconds=timeout_s))
 
 
-def shutdown_torch():
+def shutdown_torch(destroy_process_group=False):
+    if destroy_process_group:
+        dist.destroy_process_group()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
-class TorchBackend(BackendInterface):
+class TorchBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if len(worker_group) > 1 and dist.is_available():
             # Set the appropriate training backend.
@@ -141,6 +139,6 @@ class TorchBackend(BackendInterface):
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
-        if len(worker_group):
-            worker_group.execute(dist.destroy_process_group)
-        worker_group.execute(shutdown_torch)
+
+        worker_group.execute(
+            shutdown_torch, destroy_process_group=len(worker_group) > 1)

@@ -80,6 +80,7 @@ build:manylinux2010 --linkopt="-lrt"
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -DTHREAD_SANITIZER
+build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
@@ -93,8 +94,17 @@ build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
-# This LD_PRELOAD is set for Travis. You will need to change it for local debugging.
-test:asan --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.5 /usr/lib/gcc/x86_64-linux-gnu/9/libasan.so"
+
+build:asan-build --strip=never
+build:asan-build -c dbg
+build:asan-build --copt -fsanitize=address
+build:asan-build --copt -DADDRESS_SANITIZER
+build:asan-build --copt -O1
+build:asan-build --copt -g
+build:asan-build --copt -fno-omit-frame-pointer
+build:asan-build --copt -static-libasan
+build:asan-build --linkopt -fsanitize=address
+build:asan-build --linkopt -static-libasan
 # For example, for Ubuntu 18.04 libasan can be found here:
 # test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
 test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.5"
@@ -120,6 +130,13 @@ test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
+test:ci-debug -c dbg
+test:ci-debug --copt="-g"
+test:ci-debug --flaky_test_attempts=3
+test:ci-debug --nocache_test_results
+test:ci-debug --spawn_strategy=local
+test:ci-debug --test_output=errors
+test:ci-debug --test_verbose_timeout_warnings
 
 aquery:get-toolchain --include_commandline=false
 aquery:get-toolchain --noimplicit_deps
@@ -130,3 +147,16 @@ test:strace --run_under="bash -c 'if command -v strace >/dev/null && strace -qq 
 # [Linux] Uncomment this line (or use --config) to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
 #test:linux --config=segfault
 test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
+
+# Debug build:
+build:debug -c dbg
+build:debug --copt="-g"
+build:debug --strip="never"
+
+# Undefined Behavior Sanitizer
+build:ubsan --strip=never
+build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -fno-sanitize-recover=all
+build:ubsan --copt -g
+build:ubsan --linkopt -fsanitize=undefined
+build:ubsan --linkopt -fno-sanitize-recover=all
