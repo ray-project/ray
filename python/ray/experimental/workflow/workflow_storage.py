@@ -467,22 +467,22 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    def _put_object_ref(self, obj_ref: ObjectRef,
-                        upload_tasks: List[ObjectRef]) -> str:
+    def _reduce_objectref(self, obj_ref: ObjectRef,
+                        upload_tasks: List[ObjectRef]):
         @ray.remote
-        def put_helper(loc: str, obj: Any, wf_storage: WorkflowStorage) -> str:
-            asyncio.get_event_loop().run_until_complete(
-                wf_storage._put(loc, obj))
+        def put_helper(paths: List[str], obj: Any, wf_storage: WorkflowStorage) -> None:
+            return asyncio.get_event_loop().run_until_complete(
+                wf_storage._put(paths, obj))
 
         # TODO (Alex): Ideally we could parallelize these hash calculations,
         # but we need the result before we can return from this reducer.
         identifier = calculate_identifiers([obj_ref]).pop()
         paths = self._key_obj_id(identifier)
-        loc = self._storage.make_key(*paths)
         # TODO (Alex): We should dedupe these puts with the global coordinator.
-        task = put_helper.remote(loc, obj_ref, self)
+        task = put_helper.remote(paths, obj_ref, self)
         upload_tasks.append(task)
-        return _load_object_ref, (loc, self)
+        key = self._storage.make_key(*paths)
+        return _load_object_ref, (paths, self)
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
@@ -499,10 +499,9 @@ class WorkflowStorage:
                 # https://github.com/cloudpipe/cloudpickle/issues/437
                 class ObjectRefPickler(cloudpickle.CloudPickler):
                     _object_ref_reducer = {
-                        ray.ObjectRef: lambda ref: self._put_object_ref(
+                        ray.ObjectRef: lambda ref: self._reduce_objectref(
                             ref, upload_tasks)
                     }
-                    # _object_ref_reducer = {}
                     dispatch_table = ChainMap(
                         _object_ref_reducer,
                         cloudpickle.CloudPickler.dispatch_table)
@@ -536,8 +535,6 @@ class WorkflowStorage:
         err = None
         ret = None
         try:
-            key = self._storage.make_key(*paths)
-            ret = await self._storage.get(key, is_json=is_json)
             key = self._storage.make_key(*paths)
             unmarshaled = await self._storage.get(key, is_json=is_json)
             if is_json:
@@ -620,10 +617,10 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     return WorkflowStorage(workflow_id, store)
 
 
-def _load_object_ref(key: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
+def _load_object_ref(paths: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote
-    def load_ref(key: List[str], wf_storage: WorkflowStorage):
+    def load_ref(paths: List[str], wf_storage: WorkflowStorage):
         return asyncio.get_event_loop().run_until_complete(
-            wf_storage._get(key))
+            wf_storage._get(paths))
 
-    return load_ref.remote(key, wf_storage)
+    return load_ref.remote(paths, wf_storage)
