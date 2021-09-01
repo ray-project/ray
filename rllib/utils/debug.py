@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pprint
 import random
-from typing import Any, Dict, Mapping, Optional
+from typing import Mapping Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
