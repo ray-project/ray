@@ -92,8 +92,6 @@ class DataClient:
                 logger.exception("Got error from data channel:")
                 if (backoff_tracker.retries() >=
                         self.client_worker._connection_retries):
-                    # Use +1 here since dataclient will attempt to reconnect
-                    # immediately
                     logger.info(
                         "Max retries reached for data channel reconnection, "
                         "shutting down data channel.")

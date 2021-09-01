@@ -55,8 +55,6 @@ class LogstreamClient:
                 logger.exception("Got error from log channel:")
                 if (backoff_tracker.retries() >=
                         self.client_worker._connection_retries):
-                    # Use +1 here since dataclient will attempt to reconnect
-                    # immediately
                     logger.info(
                         "Max retries reached for log channel reconnection, "
                         "shutting down log channel.")

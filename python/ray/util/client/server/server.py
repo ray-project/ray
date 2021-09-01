@@ -47,18 +47,46 @@ TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
 def _use_replay_cache(func):
     @functools.wraps(func)
     def wrapper(self, request, context):
+        """
+        Wrapper for call stubs that modify state (puts, method schedules,
+        etc...). Assumes that these methods are blocking, i.e. a single
+        thread can't do a put until a response from a previous put
+        is received. Needed to prevent retried requests from being applied
+        multiple times on the server. The high level logic is:
+
+        1. Before making a call, check the cache for the current thread.
+        2. If present in the cache, check the request id of the cached
+           response.
+           a. If it matches the current request_id, then the request has been
+              received before and we shouldn't re-attempt the logic. Wait for
+              the response to become available in the cache, and then return it
+           b. If it doesn't match, then this is a new request and we can
+              proceed with calling the real stub. While the response is still
+              being generated, temporarily keep (req_id, None) in the cache.
+              Once the call is finished, update the cache entry with the
+              new (req_id, response) pair. Notify other threads that may
+              have been waiting for the response to be prepared.
+        """
         client_id = _get_client_id_from_context(context, logger)
         thread_id = request.thread_id
         req_id = request.req_id
-        with self.state_lock:
+        with self.state_cv:
             cache = self.replay_cache[client_id]
             if thread_id in cache:
                 cached_req_id, cached_resp = cache[thread_id]
                 if cached_req_id == req_id:
+                    while cached_resp is None:
+                        # The call was started, but the response hasn't yet
+                        # been added to the cache. Let go of the lock and
+                        # wait until the response is ready.
+                        self.state_cv.wait()
+                        cached_req_id, cached_resp = cache[thread_id]
                     return cached_resp
+            cache[thread_id] = (req_id, None)
         resp = func(self, request, context)
-        with self.state_lock:
+        with self.state_cv:
             cache[thread_id] = (req_id, resp)
+            self.state_cv.notify_all()
         return resp
 
     return wrapper
@@ -83,6 +111,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self.named_actors = set()
         self.state_lock = threading.Lock()
+        self.state_cv = threading.Condition(lock=self.state_lock)
         self.ray_connect_handler = ray_connect_handler
         # Maps a client_id to a dictionary. Each dictionary map's
         # a thread_id to a tuple consisting of the last response to a mutating
