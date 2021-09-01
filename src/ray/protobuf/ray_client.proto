@@ -363,7 +363,8 @@ message AsyncWaitingRequest {
   // Information about which async requests are awaiting responses. Useful
   // so server knows which async responses have gone through and can have
   // cache entries cleaned up
-  repeated bytes ids = 1;
+  bool keep = 1; // True to signal that IDs should be kept, False to remove
+  repeated bytes ids = 2;
 }
 
 message DataRequest {
@@ -380,6 +381,8 @@ message DataRequest {
     ConnectionCleanupRequest connection_cleanup = 8;
     AsyncWaitingRequest async_waiting = 9;
   }
+  // Thread that made this request
+  int64 thread_id = 10;
 }
 
 message DataResponse {
