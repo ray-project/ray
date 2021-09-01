@@ -367,6 +367,7 @@ class BackendReplica(VersionedReplica):
         Should handle the case where the replica is already stopped.
         """
         self._actor.graceful_stop()
+        self._graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
         self._shutdown_deadline = time.time() + graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:

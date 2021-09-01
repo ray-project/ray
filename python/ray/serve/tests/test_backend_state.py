@@ -394,9 +394,8 @@ class TestReplicaStateContainer:
         c.add(ReplicaState.STOPPING, r3)
         c.add(ReplicaState.STARTING_OR_UPDATING, r4)
         assert c.pop(
-            states=[ReplicaState.STOPPING, ReplicaState.STARTING_OR_UPDATING]) == [
-                r1, r3, r2, r4
-            ]
+            states=[ReplicaState.STOPPING, ReplicaState.STARTING_OR_UPDATING
+                    ]) == [r1, r3, r2, r4]
         assert not c.pop(
             states=[ReplicaState.STOPPING, ReplicaState.STARTING_OR_UPDATING])
         assert not c.pop(states=[ReplicaState.STOPPING])
@@ -437,9 +436,8 @@ class TestReplicaStateContainer:
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
             exclude_version=BackendVersion("1"),
-            states=[
-                ReplicaState.RUNNING, ReplicaState.STARTING_OR_UPDATING
-            ]) == [r3, r4, r2]
+            states=[ReplicaState.RUNNING,
+                    ReplicaState.STARTING_OR_UPDATING]) == [r3, r4, r2]
         assert c.pop(
             exclude_version=BackendVersion("nonsense"),
             states=[ReplicaState.STOPPING]) == [r1]
@@ -1692,9 +1690,6 @@ def _constructor_failure_loop_two_replica(backend_state, num_loops):
         # Now the replica should be marked SHOULD_STOP after failure.
         backend_state.update()
         check_counts(
-            backend_state, total=2, by_state=[(ReplicaState.SHOULD_STOP, 2)])
-        backend_state.update()
-        check_counts(
             backend_state, total=2, by_state=[(ReplicaState.STOPPING, 2)])
 
         # Once it's done stopping, replica should be removed.
@@ -1770,8 +1765,7 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
 
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
-    check_counts(
-        backend_state, total=2, by_state=[(ReplicaState.SHOULD_STOP, 1)])
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STOPPING, 1)])
 
     # Ensure failed to start replica is removed
     backend_state.update()
@@ -1806,8 +1800,7 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
     assert not goal_manager.check_complete(create_goal)
 
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
-    check_counts(
-        backend_state, total=2, by_state=[(ReplicaState.SHOULD_STOP, 1)])
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STOPPING, 1)])
 
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
