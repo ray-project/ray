@@ -547,13 +547,11 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 
   auto it = state.starting_worker_processes.find(shim_process);
   if (it != state.starting_worker_processes.end()) {
-    const auto &runtime_env_hash = it->second.runtime_env_hash;
+    const auto runtime_env_hash = it->second.runtime_env_hash;
     worker->SetRuntimeEnvHash(runtime_env_hash);
 
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
-      state.starting_worker_processes.erase(it);
-
       auto workers_it = state.starting_workers_by_env_hash.find(runtime_env_hash);
       if (workers_it != state.starting_workers_by_env_hash.end()) {
         workers_it->second.erase(shim_process);
@@ -562,6 +560,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
         }
       }
 
+      state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
     }
