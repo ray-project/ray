@@ -170,7 +170,7 @@ class RayTaskError(RayError):
                     # due to the dependency failure.
                     # Print out an user-friendly
                     # message to explain that..
-                    out.append("  Some of the input arguments for "
+                    out.append("  At least one of the input arguments for "
                                "this task could not be computed:")
                 if i + 1 < len(lines) and lines[i + 1].startswith("    "):
                     # If the next line is indented with 2 space,
@@ -279,8 +279,8 @@ class ObjectStoreFullError(RayError):
 
 
 class ObjectLostError(RayError):
-    """Generic error for unreachable objects. Indicates that an object has been
-    lost due to node failure or system error.
+    """Generic error for objects that are lost from distributed memory, due to
+    node failure or system error.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -290,7 +290,12 @@ class ObjectLostError(RayError):
         self.object_ref_hex = object_ref_hex
 
     def __str__(self):
-        return (f"Object {self.object_ref_hex} is lost due to node failure.")
+        return (f"All copies of {self.object_ref_hex} are lost "
+                "due to node failure.\n\n"
+                "If you did not receive a message about a worker node "
+                "dying, this is likely a system-level bug. "
+                "Please file an issue on GitHub at "
+                "https://github.com/ray-project/ray/issues/new/choose.")
 
 
 class ObjectReleasedError(ObjectLostError):

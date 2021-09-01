@@ -108,10 +108,13 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+        exc = str(exc_info.value)
+        assert "arguments" in exc
+        assert "ObjectLostError" in exc
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
 
 
 @pytest.mark.skipif(
@@ -160,10 +163,13 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+        exc = str(exc_info.value)
+        assert "arguments" in exc
+        assert "ObjectLostError" in exc
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
@@ -287,10 +293,13 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+        exc = str(exc_info.value)
+        assert "arguments" in exc
+        assert "ObjectLostError" in exc
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
 
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())
@@ -369,12 +378,13 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     if reconstruction_enabled:
         ray.get(a.dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayActorError) as e:
+        with pytest.raises(ray.exceptions.RayActorError) as exc_info:
             x = a.dependent_task.remote(obj)
             print(x)
             ray.get(x)
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.get_creation_task_error()
+        exc = str(exc_info.value)
+        assert "arguments" in exc
+        assert "ObjectLostError" in exc
 
 
 @pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
@@ -432,14 +442,14 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         for obj in downstream:
             ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayTaskError):
             for obj in downstream:
                 ray.get(
                     dependent_task.options(resources={
                         "node1": 1
                     }).remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
 
 
 @pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
@@ -488,10 +498,10 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
 
 
 @pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")

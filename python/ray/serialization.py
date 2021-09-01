@@ -222,16 +222,17 @@ class SerializationContext:
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+            # elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+            #     return ObjectLostError(object_ref.hex())
+            elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex())
             elif error_type == ErrorType.Value("OBJECT_RELEASED"):
                 return ObjectReleasedError(object_ref.hex())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:
-                assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
-                    "Tried to get object that has been promoted to plasma."
-                assert False, "Unrecognized error type " + str(error_type)
+                return RaySystemError("Unrecognized error type " +
+                                      str(error_type))
         elif data:
             raise ValueError("non-null object should always have metadata")
         else:
