@@ -1067,7 +1067,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     agent_manager_->CreateRuntimeEnv(
         task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
         [this, start_worker_process_fn, &state, task_spec, runtime_env_hash,
-         dynamic_options, allocated_instances_serialized_json, requires_dedicated_worker](
+         dynamic_options, allocated_instances_serialized_json](
             bool success, const std::string &serialized_runtime_env_context) {
           if (success) {
             start_worker_process_fn(task_spec, runtime_env_hash, state, dynamic_options,
