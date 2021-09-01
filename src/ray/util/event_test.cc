@@ -161,6 +161,7 @@ std::string GenerateLogDir() {
 TEST(EVENT_TEST, TEST_BASIC) {
   TestEventReporter::event_list.clear();
   EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
 
   RAY_EVENT(WARNING, "label") << "test for empty reporters";
 
@@ -209,6 +210,7 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -242,6 +244,7 @@ TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
   ray::RayEventContext::Instance().ResetEventContext();
   TestEventReporter::event_list.clear();
   ray::EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
   ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RAY_EVENT(INFO, "label 0") << "send message 0";
 
@@ -291,6 +294,7 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_GCS, log_dir));
@@ -338,6 +342,7 @@ TEST(EVENT_TEST, LOG_ROTATE) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -366,6 +371,7 @@ TEST(EVENT_TEST, WITH_FIELD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -405,6 +411,7 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   std::string log_dir = GenerateLogDir();
 
   ray::EventManager::Instance().ClearReporters();
+  ray::RayEvent::SetLevel("info");
   auto custom_fields = std::unordered_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
@@ -428,6 +435,81 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
 
   boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, TEST_LOG_LEVEL) {
+  TestEventReporter::event_list.clear();
+  EventManager::Instance().ClearReporters();
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
+  EXPECT_EQ(TestEventReporter::event_list.size(), 0);
+
+  // Test info level
+  ray::RayEvent::SetLevel("info");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+  EXPECT_EQ(result.size(), 4);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "INFO", "label", "test info");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "WARNING", "label",
+                   "test warning");
+  CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[3], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test warning level
+  ray::RayEvent::SetLevel("warning");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 3);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "WARNING", "label",
+                   "test warning");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test error level
+  ray::RayEvent::SetLevel("error");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 2);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test fatal level
+  ray::RayEvent::SetLevel("FATAL");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 1);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test set level from env
+  setenv("RAY_BACKEND_EVENT_LEVEL", "FATAL", true);
+  ray::RayEvent::SetLevel("info");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 1);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+  unsetenv("RAY_BACKEND_EVENT_LEVEL");
 }
 
 }  // namespace ray

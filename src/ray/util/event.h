@@ -37,7 +37,9 @@ using json = nlohmann::json;
 
 namespace ray {
 
-#define RAY_EVENT(event_type, label) \
+#define RAY_EVENT(event_type, label)                                \
+  if (ray::RayEvent::IsLevelEnabled(                                \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type)) \
   ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
 
 // interface of event reporter
@@ -206,6 +208,14 @@ class RayEvent {
   static void ReportEvent(const std::string &severity, const std::string &label,
                           const std::string &message);
 
+  /// Return whether or not the event level is enabled in current setting.
+  ///
+  /// \param event_level The input event level.
+  /// \return True if input event level is not lower than the threshold.
+  static bool IsLevelEnabled(rpc::Event_Severity event_level);
+
+  static void SetLevel(const std::string event_level);
+
   ~RayEvent();
 
  private:
@@ -218,6 +228,7 @@ class RayEvent {
   const RayEvent &operator=(const RayEvent &event) = delete;
 
  private:
+  static rpc::Event_Severity severity_threshold_;
   rpc::Event_Severity severity_;
   std::string label_;
   json custom_fields_;
@@ -226,6 +237,6 @@ class RayEvent {
 
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir);
+                  const std::string &log_dir, const std::string &event_level = "warning");
 
 }  // namespace ray

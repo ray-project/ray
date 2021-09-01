@@ -205,12 +205,42 @@ void RayEventContext::SetCustomFields(
 ///
 /// RayEvent
 ///
+rpc::Event_Severity RayEvent::severity_threshold_ =
+    rpc::Event_Severity::Event_Severity_WARNING;
+
 void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
                            const std::string &message) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
   RayEvent(severity_ele, label) << message;
+}
+
+bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
+  return event_level >= severity_threshold_;
+}
+
+void RayEvent::SetLevel(const std::string event_level) {
+  std::string level = event_level;
+  // The environment variable have a higher priority.
+  const char *var_value = getenv("RAY_BACKEND_EVENT_LEVEL");
+  if (var_value != nullptr) {
+    level = var_value;
+    RAY_LOG(INFO) << "Got event level from env RAY_BACKEND_EVENT_LEVEL=" << var_value;
+  }
+  std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+  if (level == "info") {
+    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+  } else if (level == "warning") {
+    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_WARNING;
+  } else if (level == "error") {
+    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_ERROR;
+  } else if (level == "fatal") {
+    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_FATAL;
+  } else {
+    RAY_LOG(WARNING) << "Unrecognized setting of event level " << var_value;
+  }
+  RAY_LOG(INFO) << "Set ray event level to " << level;
 }
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
@@ -253,11 +283,12 @@ void RayEvent::SendMessage(const std::string &message) {
 
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir) {
+                  const std::string &log_dir, const std::string &event_level) {
   RayEventContext::Instance().SetEventContext(source_type, custom_fields);
   auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
   ray::EventManager::Instance().AddReporter(
       std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+  ray::RayEvent::SetLevel(event_level);
   RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
 }
 
