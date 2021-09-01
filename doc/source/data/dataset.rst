@@ -68,7 +68,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ray.data.from_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ray.data.from_mars()``
      - (todo)
@@ -112,7 +112,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ds.to_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ds.to_mars()``
      - (todo)
