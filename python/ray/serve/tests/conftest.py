@@ -58,13 +58,12 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
             "ray.serve.backend_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
                 "time.time", new=timer.time), patch(
-                    "ray.serve.long_poll.LongPollHost"
-                ) as mock_long_poll:
+                    "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
-        backend_state = BackendState("name", True, kv_store,
-                                     mock_long_poll, goal_manager)
+        backend_state = BackendState("name", True, kv_store, mock_long_poll,
+                                     goal_manager)
 
         yield backend_state, timer, goal_manager
         # Clear checkpoint at the end of each test

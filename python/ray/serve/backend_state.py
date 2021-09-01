@@ -19,6 +19,7 @@ from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
+from ray.serve.deployment_replica import ReplicaTag
 
 CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 SLOW_STARTUP_WARNING_S = 30
@@ -273,15 +274,18 @@ class BackendReplica(VersionedReplica):
     This is basically a checkpointable lightweight state machine.
     """
 
-    def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+    def __init__(self,
+                 controller_name: str,
+                 detached: bool,
+                 replica_tag: ReplicaTag,
+                 backend_tag: BackendTag,
                  version: BackendVersion,
                  state: Optional[ReplicaState] = ReplicaState.SHOULD_START):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag, controller_name), detached,
             controller_name, replica_tag, backend_tag)
         self._controller_name = controller_name
-        self._replica_tag = replica_tag
+        self._replica_tag = str(replica_tag)
         self._backend_tag = backend_tag
         self._version = version
         self._start_time = None
@@ -572,10 +576,13 @@ class BackendState:
     called with a lock held.
     """
 
-    def __init__(self, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
+    def __init__(self,
+                 controller_name: str,
+                 detached: bool,
+                 kv_store: RayInternalKVStore,
+                 long_poll_host: LongPollHost,
                  goal_manager: AsyncGoalManager,
-                 all_replica_tags: Optional[List[str]] = None):
+                 current_replica_tags: Optional[List[str]] = None):
 
         self._controller_name = controller_name
         self._detached = detached
@@ -599,15 +606,15 @@ class BackendState:
 
         self._replica_constructor_retry_counter: Dict[BackendTag,
                                                       int] = defaultdict(int)
-
+        # Need to recover target states and backend metadata from checkpoint
+        # regardless of using current cluster replica tags or now.
         self._resume_from_checkpoint()
-        if all_replica_tags and len(all_replica_tags) > 0:
+        if current_replica_tags is not None:
             # There're running replicas in current cluster, explicitly passed
             # in with tags as primary means of in-place recovery
             # Reset current replicas
             self._replicas = dict()
-            self._resume_all_backend_from_replica_tags(all_replica_tags)
-
+            self._resume_all_backend_from_replica_tags(current_replica_tags)
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -655,18 +662,17 @@ class BackendState:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata,
-            self._backend_matadata_backup, self._deleted_backend_metadata,
-            self._target_replicas, self._target_versions,
-            self._backend_goals) = cloudpickle.loads(checkpoint)
+             self._backend_matadata_backup, self._deleted_backend_metadata,
+             self._target_replicas, self._target_versions,
+             self._backend_goals) = cloudpickle.loads(checkpoint)
 
             for goal_id in self._backend_goals.values():
                 self._goal_manager.create_goal(goal_id)
 
     def _resume_all_backend_from_replica_tags(self, all_replica_tags):
         """
-        Resume all backends from replica tags queried by single
-        list_named_actor() call, which queries all actors in current ray
-        cluster regradless of backend tag.
+        Resume all backends from replica tags queried from all actors in
+        current ray cluster regradless of backend tag.
         """
         backend_tag_to_replicas = defaultdict(list)
         # Each replica tag is formatted as "backend_tag#random_letter"
@@ -674,21 +680,15 @@ class BackendState:
             backend_tag = replica_tag.split("#")[0]
             backend_tag_to_replicas[backend_tag].append(replica_tag)
 
-        for backend_tag, _ in list(
-            self._target_replicas.items()
-        ):
+        for backend_tag, _ in list(self._target_replicas.items()):
             target_version = self._target_versions[backend_tag]
             self._replicas[backend_tag] = ReplicaStateContainer()
             self._resume_single_backend_from_replica_tags(
-                backend_tag,
-                target_version,
-                backend_tag_to_replicas[backend_tag]
-            )
+                backend_tag, target_version,
+                backend_tag_to_replicas[backend_tag])
 
     def _resume_single_backend_from_replica_tags(
-            self,
-            backend_tag: str,
-            target_version: BackendVersion,
+            self, backend_tag: str, target_version: BackendVersion,
             replica_tags: List[str]) -> None:
         """
         Resume cluster from running actor names within its own backend tag.
@@ -697,10 +697,14 @@ class BackendState:
         # ipdb.set_trace()
         for replica_tag in replica_tags:
             self._replicas[backend_tag].add(
-                    ReplicaState.STARTING_OR_UPDATING,
-                    BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag, target_version,
-                                   state=ReplicaState.STARTING_OR_UPDATING))
+                ReplicaState.STARTING_OR_UPDATING,
+                BackendReplica(
+                    self._controller_name,
+                    self._detached,
+                    replica_tag,
+                    backend_tag,
+                    target_version,
+                    state=ReplicaState.STARTING_OR_UPDATING))
 
     def _notify_backend_configs_changed(
             self, key: Optional[BackendTag] = None) -> None:
@@ -995,7 +999,7 @@ class BackendState:
                             f"'{backend_tag}'. component=serve "
                             f"deployment={backend_tag}")
             for _ in range(to_add):
-                replica_tag = "{}#{}".format(backend_tag, get_random_letters())
+                replica_tag = ReplicaTag(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
