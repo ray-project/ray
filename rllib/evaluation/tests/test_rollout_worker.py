@@ -157,13 +157,14 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            pg = PGTrainer(
+            # We expect this to fail already on Trainer init due
+            # to the env sanity check right after env creation (inside
+            # RolloutWorker).
+            self.assertRaises(Exception, lambda: PGTrainer(
                 env="fail", config={
-                    "num_workers": 1,
+                    "num_workers": 2,
                     "framework": fw,
-                })
-            self.assertRaises(Exception, lambda: pg.train())
-            pg.stop()
+                }))
 
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
