@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <signal.h>
 #include <chrono>
 #include <iterator>
 #include <mutex>
@@ -219,3 +220,6 @@ inline void SetThreadName(const std::string &thread_name) {
   pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
 }
+
+/// Block SIGINT and SIGTERM so they will be handled by the main thread.
+void BlockSignal();

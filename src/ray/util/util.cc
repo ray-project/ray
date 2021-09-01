@@ -376,3 +376,13 @@ std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::stri
   result->emplace(key_value_pair.first, key_value_pair.second);
   return result;
 }
+
+void BlockSignal() {
+#ifndef _WIN32
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
+}

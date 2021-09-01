@@ -169,8 +169,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     auto actor_notification_callback =
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, actor_notification_callback,
+    RAY_CHECK_OK(shared_actor_info_accessor_->AsyncSubscribe(
+        actor_id, worker_id_, actor_notification_callback,
         [this, actor_id, cached_actor_name](Status status) {
           if (status.ok() && !cached_actor_name.empty()) {
             {
