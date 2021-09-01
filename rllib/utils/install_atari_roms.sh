@@ -5,7 +5,12 @@ ROMDIR=$(mktemp -d)
 pushd "$ROMDIR"
 wget -q http://www.atarimania.com/roms/Roms.rar
 unrar x "Roms.rar" > /dev/null
-python -m atari_py.import_roms .
+# Importing from zipfiles with atari_py only works in Python >= 3.7
+# so we unzip manually here
+mkdir -p ./unzipped
+unzip "ROMS.zip" -d ./unzipped
+unzip "HC ROMS.zip" -d ./unzipped
+python -m atari_py.import_roms ./unzipped
 popd
-rm -rf "$ROMDIR"
+echo rm -rf "$ROMDIR"
 echo "Successfully installed Atari roms"
