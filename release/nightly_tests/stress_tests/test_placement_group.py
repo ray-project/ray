@@ -96,8 +96,8 @@ if __name__ == "__main__":
         if num_nodes >= NUM_NODES + 1:
             break
         time.sleep(5)
-    logger.info("Nodes have all joined. There are %s resources.",
-                ray.cluster_resources())
+    logger.error("Nodes have all joined. There are %s resources.",
+                 ray.cluster_resources())
 
     # Scenario 1: Create bunch of placement groups and measure how long
     # it takes.
@@ -114,7 +114,7 @@ if __name__ == "__main__":
             start = perf_counter()
             pgs.append(placement_group(BUNDLES, strategy="PACK"))
             end = perf_counter()
-            logger.info(f"append_group iteration {i}")
+            print(f"append_group iteration {i}")
             total_creating_time += (end - start)
 
         ray.get([pg.ready() for pg in pgs])
@@ -123,12 +123,13 @@ if __name__ == "__main__":
             start = perf_counter()
             remove_placement_group(pg)
             end = perf_counter()
-            logger.info(f"remove_group iteration {i}")
+            print(f"remove_group iteration {i}")
             total_removing_time += (end - start)
 
     # Validate the correctness.
     assert ray.cluster_resources()[
         "pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
+    assert ray.cluster_resources()["gpus"] == NUM_NODES * RESOURCE_QUANTITY
 
     # Scenario 2:
     # - Launch 30% of placement group in the driver and pass them.

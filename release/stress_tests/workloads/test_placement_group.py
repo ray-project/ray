@@ -15,7 +15,7 @@ from ray.util.placement_group import (placement_group, remove_placement_group)
 
 # TODO(sang): Increase the number in the actual stress test.
 # This number should be divisible by 3.
-resource_quantity = 666
+resource_quantity = 66
 num_nodes = 5
 custom_resources = {"pg_custom": resource_quantity}
 # Create pg that uses 1 resource of cpu & custom resource.
@@ -43,25 +43,43 @@ total_trial = repeat * num_pg
 bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
 
 # Create and remove placement groups.
+original = ray.cluster_resources()
+print(f"Original cluster resources: {original}")
 for _ in range(repeat):
     pgs = []
     for i in range(num_pg):
         start = perf_counter()
         pgs.append(placement_group(bundles, strategy="PACK"))
         end = perf_counter()
+        print(f"append_group iteration {i}")
         total_creating_time += (end - start)
 
     ray.get([pg.ready() for pg in pgs])
 
-    for pg in pgs:
-        start = perf_counter()
-        remove_placement_group(pg)
-        end = perf_counter()
-        total_removing_time += (end - start)
+    # for pg in pgs:
+    #     start = perf_counter()
+    #     remove_placement_group(pg)
+    #     end = perf_counter()
+    #     print(f"remove_group iteration {i}")
+    #     total_removing_time += (end - start)
 
 # Validate the correctness.
-assert ray.cluster_resources()["GPU"] == num_nodes * resource_quantity
-assert ray.cluster_resources()["pg_custom"] == num_nodes * resource_quantity
+t = [entry["state"] for entry in ray.util.placement_group_table().values()]
+print(t)
+
+print("Waiting for resources to be released")
+time.sleep(10)
+new = ray.cluster_resources()
+try:
+    assert original == new, new
+except:
+    print(original["GPU"])
+    print(new["GPU"])
+    # print(ray.available_resources["GPU"])
+    time.sleep(1000)
+print(ray.cluster_resources())
+assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
+assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
 
 
 # Scenario 2:
@@ -90,6 +108,7 @@ class MockActor:
 
 @ray.remote(num_cpus=0)
 def pg_launcher(pre_created_pgs, num_pgs_to_create):
+    print("Creating pgs")
     pgs = []
     pgs += pre_created_pgs
     for i in range(num_pgs_to_create):
@@ -98,6 +117,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     pgs_removed = []
     pgs_unremoved = []
     # Randomly choose placement groups to remove.
+    print("removing pgs")
     for pg in pgs:
         if random() < .5:
             pgs_removed.append(pg)
@@ -108,23 +128,34 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     max_actor_cnt = 5
     actor_cnt = 0
     actors = []
+    ids_removed = set([pg.id.hex() for pg in pgs_removed])
+    ids_unremoved = set([pg.id.hex() for pg in pgs_unremoved])
+    print(
+        f"pgs unremoved id - removed id {set(ids_removed).intersection(set(ids_unremoved))}"
+    )
     # Randomly schedule tasks or actors on placement groups that
     # are not removed.
     for pg in pgs_unremoved:
         # TODO(sang): Comment in this line causes GCS actor management
         # failure. We need to fix it.
-        if random() < .5:
-            tasks.append(mock_task.options(placement_group=pg).remote())
-        else:
-            if actor_cnt < max_actor_cnt:
-                actors.append(MockActor.options(placement_group=pg).remote())
-                actor_cnt += 1
+        # if random() < .5:
+        tasks.append(mock_task.options(placement_group=pg).remote())
+        # else:
+        #     if actor_cnt < max_actor_cnt:
+        #         actors.append(MockActor.options(placement_group=pg).remote())
+        #         actor_cnt += 1
 
     # Remove the rest of placement groups.
     for pg in pgs_removed:
         remove_placement_group(pg)
 
-    ray.get([pg.ready() for pg in pgs_unremoved])
+    unready = [pg.ready() for pg in pgs_unremoved]
+    while unready:
+        ready, unready = ray.wait(unready)
+        time.sleep(0.1)
+        if len(ready) < 1:
+            print(f"Nothing ready. Unready size: {len(unready)}")
+    print("pgs ready")
     ray.get(tasks)
     ray.get([actor.ping.remote() for actor in actors])
     # Since placement groups are scheduled, remove them.
@@ -133,6 +164,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
 
 
 pre_created_num_pgs = round(num_pg * 0.3)
+print(f"pre created num pgs: {pre_created_num_pgs}")
 num_pgs_to_create = num_pg - pre_created_num_pgs
 pg_launchers = []
 for i in range(3):
