@@ -20,8 +20,10 @@ from ray.serve.backend_state import (
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
+    CHECKPOINT_KEY,
 )
 from ray.serve.async_goal_manager import AsyncGoalManager
+from ray.serve.storage.kv_store import RayLocalKVStore
 from ray.serve.utils import get_random_letters
 
 
@@ -1893,18 +1895,15 @@ def mock_backend_state_manager() -> Tuple[BackendStateManager, Mock, Mock]:
             "ray.serve.backend_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
                 "time.time", new=timer.time), patch(
-                    "ray.serve.storage.kv_store.RayInternalKVStore"
-                ) as mock_kv_store, patch(
-                    "ray.serve.long_poll.LongPollHost"
-                ) as mock_long_poll, patch.object(
-                    BackendStateManager, "_checkpoint") as mock_checkpoint:
+                    "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
-        mock_kv_store.get = Mock(return_value=None)
+        kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
         backend_state_manager = BackendStateManager(
-            "name", True, mock_kv_store, mock_long_poll, goal_manager)
-        mock_checkpoint.return_value = None
+            "name", True, kv_store, mock_long_poll, goal_manager)
         yield backend_state_manager, timer, goal_manager
+        # Clear checkpoint at the end of each test
+        kv_store.delete(CHECKPOINT_KEY)
 
 
 def test_shutdown(mock_backend_state_manager):

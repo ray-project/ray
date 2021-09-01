@@ -583,13 +583,13 @@ class BackendState:
 
     def __init__(self, name: str, controller_name: str, detached: bool,
                  long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
-                 checkpoint_fn: Callable):
+                 _save_checkpoint: Callable):
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._goal_manager: AsyncGoalManager = goal_manager
-        self._checkpoint_fn = checkpoint_fn
+        self._save_checkpoint = _save_checkpoint
 
         # Each time we set a new backend goal, we're trying to save new
         # BackendInfo and bring current deployment to meet new status.
@@ -604,16 +604,42 @@ class BackendState:
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
 
-    def get_checkpoint_data(self):
-        return (self._target_info, self._rollback_info, self._target_replicas,
-                self._curr_goal, self._target_version,
+    def get_target_state_checkpoint_data(self):
+        """
+        Return deployment's target state submitted by user's deployment call.
+        Should be persisted and outlive current ray cluster.
+        """
+        return (self._target_info, self._target_replicas, self._target_version)
+
+    def get_current_state_checkpoint_data(self):
+        """
+        Return deployment's current state specific to the ray cluster it's
+        running in. Might be lost or re-constructed upon ray cluster failure.
+        """
+        return (self._rollback_info, self._curr_goal,
                 self._prev_startup_warning,
                 self._replica_constructor_retry_counter, self._replicas)
 
-    def recover_from_checkpoint_data(self, data):
-        (self._target_info, self._rollback_info, self._target_replicas,
-         self._curr_goal, self._target_version, self._prev_startup_warning,
-         self._replica_constructor_retry_counter, self._replicas) = data
+    def get_checkpoint_data(self):
+        return (self.get_target_state_checkpoint_data(),
+                self.get_current_state_checkpoint_data())
+
+    def recover_target_state_from_checkpoint(self, target_state_checkpoint):
+        (self._target_info, self._target_replicas,
+         self._target_version) = target_state_checkpoint
+
+    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
+        (self._rollback_info, self._curr_goal, self._prev_startup_warning,
+         self._replica_constructor_retry_counter,
+         self._replicas) = current_state_checkpoint
+
+        if self._curr_goal is not None:
+            self._goal_manager.create_goal(self._curr_goal)
+
+    def recover_from_checkpoint_data(self, checkpoint_data):
+        target_state_checkpoint, current_state_checkpoint = checkpoint_data
+        self.recover_target_state_from_checkpoint(target_state_checkpoint)
+        self.recover_current_state_from_checkpoint(current_state_checkpoint)
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
@@ -710,7 +736,7 @@ class BackendState:
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
-        self._checkpoint_fn()
+        self._save_checkpoint()
         self._notify_backend_configs_changed()
 
         if existing_goal_id is not None:
@@ -723,7 +749,7 @@ class BackendState:
             self._target_info.backend_config.\
                 experimental_graceful_shutdown_timeout_s = 0
 
-        self._checkpoint_fn()
+        self._save_checkpoint()
         self._notify_backend_configs_changed()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -1031,7 +1057,7 @@ class BackendState:
         transitioned = self._check_and_update_replicas()
         if transitioned:
             self._notify_replica_handles_changed()
-            self._checkpoint_fn()
+            self._save_checkpoint()
 
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
@@ -1084,7 +1110,7 @@ class BackendStateManager:
         self._goal_manager = goal_manager
         self._create_backend_state: Callable = lambda name: BackendState(
             name, controller_name, detached,
-            long_poll_host, goal_manager, self._checkpoint)
+            long_poll_host, goal_manager, self._save_checkpoint)
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()
@@ -1126,7 +1152,7 @@ class BackendStateManager:
         # from being created once shutdown signal is sent.
         return shutdown_goals
 
-    def _checkpoint(self) -> None:
+    def _save_checkpoint(self) -> None:
         backend_state_info = {
             backend_tag: backend_state.get_checkpoint_data()
             for backend_tag, backend_state in self._backend_states.items()
