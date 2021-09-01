@@ -1,3 +1,4 @@
+import abc
 import logging
 import os
 from collections import defaultdict
@@ -14,7 +15,8 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_ITERATION_KEY
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids
+from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
+    check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
@@ -189,6 +191,9 @@ class TuneCheckpointManager(CheckpointManager):
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
 
+class TrainingWorkerError(Exception):
+    """Raised if a worker fails during training."""
+
 
 class BackendExecutor:
     """Main execution class for training backends.
@@ -203,22 +208,41 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
-        log_dir (Optional[str|Path]): Path to the file directory where logs
-            should be persisted. If this is not specified, one will be
-            generated.
+        max_retries (int): Number of retries when Ray actors fail.
+            Defaults to 3. Set to -1 for unlimited retries.
+
+    Attributes:
+        logdir (Path): Path to the file directory where logs will be
+            persisted.
+        latest_run_dir (Optional[Path]): Path to the file directory for the
+            latest run. Configured through ``start_training``.
+        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
+            the checkpoints from the latest run. Configured through
+            ``start_training``.
+        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
+            checkpoint from the latest run.
+        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
+            checkpoint may not be saved to disk.
     """
 
-    def __init__(self,
-                 backend_config: BackendConfig,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0,
-                 log_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+            self,
+            backend_config: BackendConfig,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            max_retries: int = 3,
+    ):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
+        self._max_failures = max_retries
+        if self._max_failures < 0:
+            self._max_failures = float("inf")
+        self._num_failures = 0
+        self._initialization_hook = None
 
         if tune is not None and tune.is_session_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
@@ -234,13 +258,17 @@ class BackendExecutor:
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
-        if initialization_hook:
-            self.worker_group.execute(initialization_hook)
-
-        if self._num_gpus_per_worker > 0:
-            self._setup_gpus()
-
-        self._backend.on_start(self.worker_group, self._backend_config)
+        try:
+            if initialization_hook:
+                self._initialization_hook = initialization_hook
+                self.worker_group.execute(initialization_hook)
+            if self._num_gpus_per_worker > 0:
+                self._setup_gpus()
+            self._backend.on_start(self.worker_group, self._backend_config)
+        except RayActorError as exc:
+            logger.exception(str(exc))
+            self._increment_failures()
+            self._restart()
 
     def _setup_gpus(self):
         """Sets CUDA_VISIBLE_DEVICES on all workers.
@@ -353,7 +381,7 @@ class BackendExecutor:
                     train_func=train_func,
                     checkpoint=checkpoint_dict))
 
-        ray.get(futures)
+        self.get_with_failure_handling(futures)
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -516,37 +544,38 @@ class BackendExecutor:
                 self.checkpoint_manager._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
-        return self.get_with_failure_handling(futures)
+        results = self.get_with_failure_handling(futures)
+        return results
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
+
+        This method should be called instead of ``ray.get()`` directly in
+        order to handle worker failures.
+
+        If a worker failure is identified, backend specific failure handling
+        is executed and a ``TrainingWorkerError`` is raised.
 
         Args:
             remote_values (list): List of object refs representing functions
                 that may fail in the middle of execution. For example, running
                 a SGD training loop in multiple parallel actor calls.
-
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        unfinished = remote_values
-        try:
-            while len(unfinished) > 0:
-                finished, unfinished = ray.wait(unfinished)
-                # If a failure occurs the ObjectRef will be marked as finished.
-                # Calling ray.get will expose the failure as a RayActorError.
-                ray.get(finished)
-        except RayActorError as exc:
-            logger.exception(str(exc))
-            self.handle_failure()
-            return
-        return ray.get(remote_values)
-
-    def handle_failure(self):
-        # TODO: Fault-tolerance/elastic training here.
-        self.shutdown()
-        raise RuntimeError("Worker crashed during training. "
-                           "Training unsuccessful.")
+        success, failed_worker_indexes = check_for_failure(remote_values)
+        if success:
+            return ray.get(remote_values)
+        else:
+            self._increment_failures()
+            try:
+                self._backend.handle_failure(self.worker_group,
+                                             failed_worker_indexes,
+                                             self._backend_config)
+            except RayActorError as exc:
+                logger.exception(str(exc))
+                self._restart()
+            raise TrainingWorkerError
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
@@ -581,15 +610,46 @@ class BackendExecutor:
         """Latest checkpoint object."""
         return self.checkpoint_manager.latest_checkpoint
 
+    def _restart(self):
+        self.worker_group.shutdown()
+        if self._initialization_hook is not None:
+            initialization_hook = self._initialization_hook
+        else:
+            initialization_hook = None
+        self.start(initialization_hook=initialization_hook)
 
-class BackendInterface:
+    def _increment_failures(self):
+        self._num_failures += 1
+        if self._num_failures >= self._max_failures:
+            raise RuntimeError("Training has failed even after "
+                               f"{self._num_failures} "
+                               "attempts. You can change the number of max "
+                               "failure attempts by setting the "
+                               "`max_retries` arg in your `Trainer`.") \
+                from None
+
+
+class Backend(metaclass=abc.ABCMeta):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
-        raise NotImplementedError
+        """Logic for starting this backend."""
+        pass
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
-        raise NotImplementedError
+        """Logic for shutting down the backend."""
+        pass
+
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        """Logic for handling failures.
+
+        By default, restart all workers.
+        """
+        worker_group.shutdown()
+        worker_group.start()
+        self.on_start(worker_group, backend_config)
 
 
 class InactiveWorkerGroupError(Exception):

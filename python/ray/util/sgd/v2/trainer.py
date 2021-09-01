@@ -7,7 +7,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
     Type, Iterator
 
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError, SGDBackendError
+    InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 from ray.util.sgd.v2.backends.horovod import HorovodConfig
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
@@ -60,14 +60,19 @@ class Trainer:
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
+         max_retries (int): Number of retries when Ray actors fail.
+            Defaults to 3. Set to -1 for unlimited retries.
     """
 
-    def __init__(self,
-                 backend: Union[str, BackendConfig],
-                 num_workers: int = 1,
-                 use_gpu: bool = False,
-                 resources_per_worker: Optional[Dict[str, float]] = None,
-                 logdir: Optional[str] = None):
+    def __init__(
+            self,
+            backend: Union[str, BackendConfig],
+            num_workers: int = 1,
+            use_gpu: bool = False,
+            resources_per_worker: Optional[Dict[str, float]] = None,
+            logdir: Optional[str] = None,
+            max_retries: int = 3,
+    ):
 
         self._backend = backend
         self._num_workers = num_workers
@@ -87,7 +92,7 @@ class Trainer:
                                       "supported yet.")
 
         self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu), logdir)
+                                         int(use_gpu), logdir, max_retries)
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
@@ -419,14 +424,9 @@ class SGDIterator:
             checkpoint: Optional[Union[Dict, str, Path]],
             checkpoint_strategy: Optional[CheckpointStrategy], run_dir: Path):
         self._executor = backend_executor
-        self._run_with_error_handling(
-            lambda: self._executor.start_training(
-                train_func=train_func,
-                checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy,
-                run_dir=run_dir
-            )
-        )
+        self._train_func = train_func
+        self._checkpoint_strategy = checkpoint_strategy
+        self._start_training(train_func, checkpoint, checkpoint_strategy)
 
         self._final_results = None
         self._finished_training = False
@@ -434,9 +434,23 @@ class SGDIterator:
     def __iter__(self):
         return self
 
+    def _start_training(self, train_func, checkpoint, checkpoint_strategy):
+        self._run_with_error_handling(
+            lambda: self._executor.start_training(
+                train_func=train_func,
+                checkpoint=checkpoint,
+                checkpoint_strategy=checkpoint_strategy)
+        )
+
     def _run_with_error_handling(self, func: Callable):
         try:
             return func()
+        except TrainingWorkerError:
+            # Workers have already been restarted.
+            self._start_training(self._train_func,
+                                 self._executor.latest_checkpoint,
+                                 self._checkpoint_strategy)
+            return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown "
@@ -477,7 +491,6 @@ class SGDIterator:
         processed before obtaining the final results. Defaults to
         False.
         """
-
         if not self.is_finished():
             assert self._final_results is None
             if force:
