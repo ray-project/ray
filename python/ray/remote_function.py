@@ -107,6 +107,7 @@ class RemoteFunction:
             self._function)
 
         self._last_export_session_and_job = None
+        self._pickled_function = pickle.dumps(self._function)
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -227,17 +228,6 @@ class RemoteFunction:
         if not self._is_cross_language and \
                 self._last_export_session_and_job != \
                 worker.current_session_and_job:
-            # There is an interesting question here. If the remote function is
-            # used by a subsequent driver (in the same script), should the
-            # second driver pickle the function again? If yes, then the remote
-            # function definition can differ in the second driver (e.g., if
-            # variables in its closure have changed). We probably want the
-            # behavior of the remote function in the second driver to be
-            # independent of whether or not the function was invoked by the
-            # first driver. This is an argument for repickling the function,
-            # which we do here.
-            self._pickled_function = pickle.dumps(self._function)
-
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._pickled_function)
 

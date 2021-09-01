@@ -144,13 +144,15 @@ class FunctionActorManager:
                     module_name, function_name) is not None:
                 return
         function = remote_function._function
-        pickled_function = pickle.dumps(function)
+        pickled_function = remote_function._pickled_function
 
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
+        if self._worker.redis_client.exists(key) == 1:
+            return
         self._worker.redis_client.hset(
             key,
             mapping={
