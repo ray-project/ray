@@ -93,7 +93,10 @@ class VisionNetwork(TFModelV2):
             layer_sizes = post_fcnet_hiddens[:-1] + ([num_outputs]
                                                      if post_fcnet_hiddens else
                                                      [])
+            feature_out = last_layer
+
             for i, out_size in enumerate(layer_sizes):
+                feature_out = last_layer
                 last_layer = tf.keras.layers.Dense(
                     out_size,
                     name="post_fcnet_{}".format(i),
@@ -126,6 +129,7 @@ class VisionNetwork(TFModelV2):
                     # Add (optional) post-fc-stack after last Conv2D layer.
                     for i, out_size in enumerate(post_fcnet_hiddens[1:] +
                                                  [num_outputs]):
+                        feature_out = last_layer
                         last_layer = tf.keras.layers.Dense(
                             out_size,
                             name="post_fcnet_{}".format(i + 1),
@@ -134,6 +138,7 @@ class VisionNetwork(TFModelV2):
                             kernel_initializer=normc_initializer(1.0))(
                                 last_layer)
                 else:
+                    feature_out = last_layer
                     last_cnn = last_layer = tf.keras.layers.Conv2D(
                         num_outputs, [1, 1],
                         activation=None,
@@ -164,19 +169,20 @@ class VisionNetwork(TFModelV2):
                         name="post_fcnet_{}".format(i),
                         activation=post_fcnet_activation,
                         kernel_initializer=normc_initializer(1.0))(last_layer)
+                feature_out = last_layer
                 self.num_outputs = last_layer.shape[1]
         logits_out = last_layer
 
         # Build the value layers
         if vf_share_layers:
             if not self.last_layer_is_flattened:
-                last_layer = tf.keras.layers.Lambda(
-                    lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
+                feature_out = tf.keras.layers.Lambda(
+                    lambda x: tf.squeeze(x, axis=[1, 2]))(feature_out)
             value_out = tf.keras.layers.Dense(
                 1,
                 name="value_out",
                 activation=None,
-                kernel_initializer=normc_initializer(0.01))(last_layer)
+                kernel_initializer=normc_initializer(0.01))(feature_out)
         else:
             # build a parallel set of hidden layers for the value net
             last_layer = inputs

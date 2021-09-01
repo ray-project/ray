@@ -46,7 +46,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init(local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -107,7 +107,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO remove
+        for _ in framework_iterator(config, frameworks="torch"):  #TODO remove
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.view_requirements
@@ -345,7 +345,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         #config["create_env_on_driver"] = True
         config["env"] = "Pong-v0"
 
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config, frameworks="tf"):  #TODO
             config["model"]["framestack"] = DEPRECATED_VALUE
             trainer_w_new_framestacking = appo.APPOTrainer(config)
             rw_new = trainer_w_new_framestacking.workers.local_worker()
@@ -365,13 +365,15 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     sample_old[SampleBatch.NEXT_OBS] = np.transpose(
                         sample_old[SampleBatch.NEXT_OBS], [0, 3, 1, 2])
                 for k in [
-                    SampleBatch.OBS, SampleBatch.NEXT_OBS,
-                    SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                    #SampleBatch.VF_PREDS,
-                    #"value_targets",
-                    #"advantages",
-                    #SampleBatch.ACTION_LOGP,
-                    #SampleBatch.ACTION_DIST_INPUTS
+                        SampleBatch.OBS,
+                        SampleBatch.NEXT_OBS,
+                        SampleBatch.ACTIONS,
+                        SampleBatch.REWARDS,
+                        #SampleBatch.VF_PREDS,
+                        #"value_targets",
+                        #"advantages",
+                        #SampleBatch.ACTION_LOGP,
+                        #SampleBatch.ACTION_DIST_INPUTS
                 ]:
                     if k == SampleBatch.NEXT_OBS and k not in sample_old:
                         continue
@@ -379,10 +381,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             results_new = trainer_w_new_framestacking.train()
             results_old = trainer_w_old_framestacking.train()
-            check(results_new["info"]["learner"]["default_policy"][
-                      "learner_stats"],
-                  results_old["info"]["learner"]["default_policy"][
-                      "learner_stats"])
+            check(
+                results_new["info"]["learner"]["default_policy"][
+                    "learner_stats"], results_old["info"]["learner"][
+                        "default_policy"]["learner_stats"])
 
             trainer_w_new_framestacking.stop()
             trainer_w_old_framestacking.stop()

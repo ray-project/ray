@@ -774,10 +774,9 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
-            raise ValueError(
-                "RolloutWorker has no `input_reader` object! "
-                "Cannot call `sample()`. You can try setting "
-                "`create_env_on_driver` to True.")
+            raise ValueError("RolloutWorker has no `input_reader` object! "
+                             "Cannot call `sample()`. You can try setting "
+                             "`create_env_on_driver` to True.")
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
@@ -1502,7 +1501,7 @@ def _determine_spaces_for_multi_agent_dict(
                     f"{pid} and env does not have an observation space OR "
                     "no spaces received from other workers' env(s) OR no "
                     "`observation_space` specified in config!")
-            
+
             multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
                 observation_space=obs_space)
 

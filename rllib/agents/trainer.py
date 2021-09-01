@@ -752,8 +752,7 @@ class Trainer(Trainable):
                 extra_config["in_evaluation"] is True
             evaluation_config = merge_dicts(self.config, extra_config)
             # Validate evaluation config.
-            self._validate_config(
-                evaluation_config, trainer_obj_or_none=self)
+            self._validate_config(evaluation_config, trainer_obj_or_none=self)
             # Switch on complete_episode rollouts (evaluations are
             # always done on n complete episodes) and set the
             # `in_evaluation` flag.
@@ -761,8 +760,7 @@ class Trainer(Trainable):
                 "batch_mode": "complete_episodes",
                 "in_evaluation": True,
             })
-            logger.debug(
-                "using evaluation_config: {}".format(extra_config))
+            logger.debug("using evaluation_config: {}".format(extra_config))
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
