@@ -385,9 +385,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task =
-        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                                  std::placeholders::_2, std::placeholders::_3,
+                                  std::placeholders::_4, std::placeholders::_5);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task,
         [this] { return local_raylet_client_->TaskDone(); });
@@ -565,6 +565,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         },
         "CoreWorker.ReconstructObject");
   };
+  auto push_error_callback = [this](const JobID &job_id, const std::string &type,
+                                    const std::string &error_message, double timestamp) {
+    return PushError(job_id, type, error_message, timestamp);
+  };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
       /* retry_task_callback= */
@@ -589,7 +593,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback));
+      check_node_alive_fn, reconstruct_object_callback, push_error_callback));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -1643,7 +1647,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
-                            BundleID placement_options,
+                            bool retry_exceptions, BundleID placement_options,
                             bool placement_group_capture_child_tasks,
                             const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
@@ -1674,6 +1678,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       placement_options, placement_group_capture_child_tasks,
                       debugger_breakpoint, task_options.serialized_runtime_env,
                       override_environment_variables);
+  builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   if (options_.is_local_mode) {
@@ -2146,7 +2151,8 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+                               ReferenceCounter::ReferenceTableProto *borrowed_refs,
+                               bool *is_application_level_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2212,7 +2218,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
       return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
-      creation_task_exception_pb_bytes);
+      creation_task_exception_pb_bytes, is_application_level_error);
 
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we
@@ -2301,7 +2307,9 @@ void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs));
+  bool is_application_level_error;
+  RAY_UNUSED(ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs,
+                         &is_application_level_error));
   SetActorId(old_id);
 }
 
