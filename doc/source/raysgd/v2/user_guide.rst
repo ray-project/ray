@@ -240,6 +240,7 @@ You can plug all of these into RaySGD with the following interface:
 
 Logging Callbacks
 ~~~~~~~~~~~~~~~~~
+
 The following ``Callback``s are available and will write to a file within the
 :ref:`log directory <_sgd-logging>` of each training run.
 
