@@ -32,7 +32,7 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -74,46 +74,8 @@ def get_global_worker() -> "RolloutWorker":
     return _global_worker
 
 
-def _maybe_update_global_seed(policy_config: TrainerConfigDict, seed: int):
-    """Set Python random, numpy, env, and torch/tf seeds.
-
-    This is useful for debugging and testing purposes.
-    """
-    if not seed:
-        return
-
-    # Python random module.
-    random.seed(seed)
-    # Numpy.
-    np.random.seed(seed)
-
-    # Torch.
-    if torch and policy_config.get("framework") == "torch":
-        torch.manual_seed(seed)
-        # See https://github.com/pytorch/pytorch/issues/47672.
-        cuda_version = torch.version.cuda
-        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
-            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-        else:
-            from distutils.version import LooseVersion
-
-            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
-                # Not all Operations support this.
-                torch.use_deterministic_algorithms(True)
-            else:
-                torch.set_deterministic(True)
-        # This is only for Convolution no problem.
-        torch.backends.cudnn.deterministic = True
-    # Tf2.x.
-    elif tf and policy_config.get("framework") == "tf2":
-        tf.random.set_seed(seed)
-    # Tf-eager.
-    elif tf1 and policy_config.get("framework") == "tfe":
-        tf1.set_random_seed(seed)
-
-
-def _maybe_update_env_seed(env: EnvType, seed: int, worker_idx: int,
-                           vector_idx: int):
+def _update_env_seed_if_necessary(env: EnvType, seed: int, worker_idx: int,
+                                  vector_idx: int):
     """Set a deterministic random seed on environment.
 
     NOTE: this may not work with remote environments (issue #18154).
@@ -459,7 +421,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
-        _maybe_update_global_seed(policy_config, seed)
+        update_global_seed_if_necessary(
+            globals(), policy_config.get("framework"), seed)
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
@@ -551,7 +514,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # to create self.env, but wrap(env) and self.env has a cyclic
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
-            _maybe_update_env_seed(self.env, seed, worker_index, 0)
+            _update_env_seed_if_necessary(self.env, seed, worker_index, 0)
 
         def make_env(vector_index):
             env = wrap(
@@ -564,7 +527,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # during environment vectorization below.
             # So we make sure a deterministic random seed is set on
             # all the environments if specified.
-            _maybe_update_env_seed(env, seed, worker_index, vector_index)
+            _update_env_seed_if_necessary(
+                env, seed, worker_index, vector_index)
             return env
 
         self.make_env_fn = make_env
