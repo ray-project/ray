@@ -468,9 +468,10 @@ class WorkflowStorage:
                                      True))["step_id"]
 
     def _reduce_objectref(self, obj_ref: ObjectRef,
-                        upload_tasks: List[ObjectRef]):
+                          upload_tasks: List[ObjectRef]):
         @ray.remote
-        def put_helper(paths: List[str], obj: Any, wf_storage: WorkflowStorage) -> None:
+        def put_helper(paths: List[str], obj: Any,
+                       wf_storage: WorkflowStorage) -> None:
             return asyncio.get_event_loop().run_until_complete(
                 wf_storage._put(paths, obj))
 
@@ -481,7 +482,6 @@ class WorkflowStorage:
         # TODO (Alex): We should dedupe these puts with the global coordinator.
         task = put_helper.remote(paths, obj_ref, self)
         upload_tasks.append(task)
-        key = self._storage.make_key(*paths)
         return _load_object_ref, (paths, self)
 
     async def _put(self, paths: List[str], data: Any,
@@ -617,7 +617,8 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     return WorkflowStorage(workflow_id, store)
 
 
-def _load_object_ref(paths: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
+def _load_object_ref(paths: List[str],
+                     wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
         return asyncio.get_event_loop().run_until_complete(
