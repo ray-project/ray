@@ -600,13 +600,18 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
 
 def override_task_or_actor_runtime_env(
         runtime_env: Optional[Dict[str, Any]],
-        job_config: ray.job_config.JobConfig) -> Dict[str, Any]:
+        parent_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
     if runtime_env:
         if runtime_env.get("working_dir"):
             raise NotImplementedError(
                 "Overriding working_dir for actors is not supported. "
                 "Please use ray.init(runtime_env={'working_dir': ...}) "
                 "to configure per-job environment instead.")
+        # NOTE(edoakes): this is sort of hacky, but we manually add the right
+        # working_dir here so the relative path to a requirements.txt file
+        # works. The right solution would be to merge the runtime_env with the
+        # parent runtime env before validation.
+        runtime_env["working_dir"] = parent_runtime_env.get("working_dir")
         runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
     else:
         runtime_env_dict = {}
@@ -614,9 +619,6 @@ def override_task_or_actor_runtime_env(
     # If per-actor URIs aren't specified, override them with those in the
     # job config.
     if "uris" not in runtime_env_dict:
-        if job_config.runtime_env.uris:
-            runtime_env_dict["uris"] = [
-                str(uri) for uri in job_config.runtime_env.uris
-            ]
+        runtime_env_dict["uris"] = parent_runtime_env.get("uris")
 
     return runtime_env_dict
