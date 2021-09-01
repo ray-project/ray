@@ -278,9 +278,9 @@ class ObjectStoreFullError(RayError):
             "to list active objects in the cluster.")
 
 
-class ObjectLostError(RayError):
-    """Generic error for objects that are lost from distributed memory, due to
-    node failure or system error.
+class ObjectUnreachableError(RayError):
+    """Generic error for objects that are unreachable due to node failure or
+    system error.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -288,6 +288,15 @@ class ObjectLostError(RayError):
 
     def __init__(self, object_ref_hex):
         self.object_ref_hex = object_ref_hex
+
+
+class ObjectLostError(ObjectUnreachableError):
+    """Indicates that the object is lost from distributed memory, due to
+    node failure or system error.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
 
     def __str__(self):
         return (f"All copies of {self.object_ref_hex} are lost "
@@ -298,7 +307,7 @@ class ObjectLostError(RayError):
                 "https://github.com/ray-project/ray/issues/new/choose.")
 
 
-class ObjectReleasedError(ObjectLostError):
+class ObjectReleasedError(ObjectUnreachableError):
     """Indicates that an object has been released while there was still a
     reference to it.
 
@@ -321,6 +330,27 @@ class ObjectReleasedError(ObjectLostError):
             "If your application does not match this scenario, then this is "
             "likely a system-level bug in the distributed ref counting "
             "protocol. Please file an issue on GitHub at "
+            "https://github.com/ray-project/ray/issues/new/choose.")
+
+
+class OwnerDiedError(ObjectUnreachableError):
+    """Indicates that the owner of the object has died while there is still a
+    reference to the object.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            f"Object {self.object_ref_hex} cannot be retrieved because its "
+            "owner (the Python worker process that originally called "
+            "`.remote()` or `ray.put()` to create the ObjectRef) has exited. "
+            "This can happen because of node failure or "
+            "a system-level bug.\n\n"
+            "If you did not receive a message about a worker node "
+            "dying, this is likely a system-level bug. "
+            "Please file an issue on GitHub at "
             "https://github.com/ray-project/ray/issues/new/choose.")
 
 
@@ -358,6 +388,7 @@ RAY_EXCEPTION_TYPES = [
     ObjectStoreFullError,
     ObjectLostError,
     ObjectReleasedError,
+    OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,

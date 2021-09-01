@@ -91,12 +91,15 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    try:
+    if not failure:
         ray.get(tail_oid)
-        assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
-        assert failure
+    else:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
+        with pytest.raises(ray.exceptions.OwnerDiedError):
+            ray.get(tail_oid)
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -233,8 +236,11 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
         ray.get(outer_oid)
         _fill_object_store_and_get(inner_oid)
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     inner_oid_bytes = inner_oid.binary()

@@ -7,9 +7,17 @@ from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
-    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
-    TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ObjectReleasedError, RaySystemError, RuntimeEnvSetupError)
+    RayError,
+    PlasmaObjectNotAvailable,
+    RayTaskError,
+    RayActorError,
+    TaskCancelledError,
+    WorkerCrashedError,
+    ObjectLostError,
+    ObjectReleasedError,
+    OwnerDiedError,
+    RaySystemError,
+    RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -228,6 +236,8 @@ class SerializationContext:
                 return ObjectLostError(object_ref.hex())
             elif error_type == ErrorType.Value("OBJECT_RELEASED"):
                 return ObjectReleasedError(object_ref.hex())
+            elif error_type == ErrorType.Value("OWNER_DIED"):
+                return OwnerDiedError(object_ref.hex())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:

@@ -48,7 +48,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
   if (!status.ok()) {
     // The owner is unreachable. Store an error so that an exception will be
     // thrown immediately when the worker tries to get the value.
-    RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+    RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED),
                                      object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
     // The owner replied that the object has gone out of scope (this is an edge
