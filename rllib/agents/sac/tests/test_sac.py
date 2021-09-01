@@ -548,8 +548,9 @@ class TestSAC(unittest.TestCase):
         base_td_error = np.abs(q_t_selected - q_t_selected_target)
         td_error = base_td_error
         critic_loss = [
-            np.mean(train_batch["weights"] *
-                    huber_loss(q_t_selected_target - q_t_selected))
+            0.5 * np.square(
+                np.subtract(q_t_selected_target, q_t_selected)
+            ).mean()
         ]
         target_entropy = -np.prod((1, ))
         alpha_loss = -np.mean(log_alpha * (log_pis_t + target_entropy))
