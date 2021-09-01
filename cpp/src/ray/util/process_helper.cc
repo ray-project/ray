@@ -15,6 +15,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "process_helper.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -105,9 +106,7 @@ void ProcessHelper::StopRayNode() {
   return;
 }
 
-void ProcessHelper::RayStart(
-    CoreWorkerOptions::TaskExecutionCallback callback,
-    std::unique_ptr<ray::gcs::GlobalStateAccessor> *gcs_global_state_accessor) {
+void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
@@ -165,8 +164,6 @@ void ProcessHelper::RayStart(
     log_dir = session_dir + "/logs";
   }
 
-  *gcs_global_state_accessor = std::move(global_state_accessor);
-
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(redis_ip, ConfigInternal::Instance().redis_port,
                             ConfigInternal::Instance().redis_password);
@@ -196,7 +193,6 @@ void ProcessHelper::RayStart(
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
-  options.ref_counting_enabled = true;
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
