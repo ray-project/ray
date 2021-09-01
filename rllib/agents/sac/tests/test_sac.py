@@ -1,4 +1,3 @@
-import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
@@ -81,6 +80,8 @@ class TestSAC(unittest.TestCase):
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
         config["buffer_size"] = 40000
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -116,33 +117,23 @@ class TestSAC(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+
+                # Test, whether the replay buffer is saved along with
+                # a checkpoint (no point in doing it for all frameworks since
+                # this is framework agnostic).
+                if fw == "tf" and env == "CartPole-v0":
+                    checkpoint = trainer.save()
+                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer.restore(checkpoint)
+                    # Get some data from the buffer and compare.
+                    data = trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    check(data, new_data)
+                    new_trainer.stop()
+
                 trainer.stop()
-
-    def test_sac_fake_multi_gpu_learning(self):
-        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(sac.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        config["clip_actions"] = False
-        config["initial_alpha"] = 0.001
-        config["prioritized_replay"] = True
-        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
-        config["env_config"] = {"config": {"repeat_delay": 0}}
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = sac.SACTrainer(config=config, env=env)
-            num_iterations = 50
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(f"R={results['episode_reward_mean']}")
-                if results["episode_reward_mean"] > 30.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
-            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
