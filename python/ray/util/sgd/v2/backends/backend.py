@@ -58,8 +58,6 @@ class CheckpointManager:
     checkpoint_<checkpoint_id>
 
     Attributes:
-        logdir (Path): Path to the file directory where logs will be
-            persisted.
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
             ``start_training``.
@@ -71,7 +69,7 @@ class CheckpointManager:
             checkpoint may not be saved to disk.
     """
 
-    def on_init(self, log_dir: Optional[Union[str, Path]] = None):
+    def on_init(self):
         """Checkpoint code executed during BackendExecutor init."""
         self.latest_checkpoint = None
 
@@ -229,7 +227,7 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
 
-        self.checkpoint_manager.on_init(log_dir)
+        self.checkpoint_manager.on_init()
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
