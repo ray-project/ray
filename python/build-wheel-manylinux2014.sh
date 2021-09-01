@@ -88,8 +88,8 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # build ray-cpp wheel
-    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
-    RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    RAY_INSTALL_CPP=1 PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd
