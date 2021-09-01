@@ -6,6 +6,7 @@ from typing import Any, List, Optional
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
 
+import ray
 from ray import cloudpickle as cloudpickle
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_ROOT_URL_ENV_KEY)
@@ -152,6 +153,11 @@ class DeploymentMode(str, Enum):
     EveryNode = "EveryNode"
 
 
+@ray.remote
+def get_serve_root_url_env():
+    return os.environ.get(SERVE_ROOT_URL_ENV_KEY, None)
+
+
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
     host: Optional[str] = DEFAULT_HTTP_HOST
@@ -170,8 +176,9 @@ class HTTPOptions(pydantic.BaseModel):
     @validator("root_url", always=True)
     def fill_default_root_url(cls, v, values):
         if v == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            serve_root_url_env = ray.get(get_serve_root_url_env.remote())
+            if serve_root_url_env:
+                return serve_root_url_env
             else:
                 return f"http://{values['host']}:{values['port']}"
         return v
