@@ -463,7 +463,7 @@ class Worker:
     def internal_kv_exists(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVExistsRequest(key=key)
         resp = self.server.KVExists(req, metadata=self.metadata)
-        return resp.value
+        return resp.exists
 
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
