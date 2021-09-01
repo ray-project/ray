@@ -8,6 +8,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
+from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
@@ -43,6 +44,14 @@ def ray_start_2_cpus_2_gpus():
 @pytest.fixture
 def ray_start_8_cpus():
     address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2_cpus_2_gpus_2_extra():
+    address_info = ray.init(num_cpus=2, num_gpus=2, resources={"extra": 2})
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -827,6 +836,34 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     output = trainer.run(train)
     assert output == [1, 1]
+
+
+def test_resources(ray_start_2_cpus_2_gpus_2_extra):
+    config = TestConfig()
+    # resources_per_worker = {}
+    # trainer = Trainer(config, num_workers=2,
+    #                   resources_per_worker = resources_per_worker)
+    # trainer.start()
+
+    assert (ray.available_resources().get("CPU", 0) == 2)
+
+    resources_per_worker = {"CPU": 2}
+    trainer = Trainer(
+        config, num_workers=2, resources_per_worker=resources_per_worker)
+    trainer.start()
+
+    # run empty
+    trainer.run(lambda: None)
+    assert (ray.available_resources().get("CPU", 0) == 0)
+
+    trainer.shutdown()
+
+    assert (ray.available_resources().get("CPU", 0) == 2)
+
+    # trainer = Trainer(config, num_workers=8)
+    # trainer.start()
+
+    wait_for_condition(lambda: ray.available_resources().get("CPU", 0) == 0)
 
 
 if __name__ == "__main__":

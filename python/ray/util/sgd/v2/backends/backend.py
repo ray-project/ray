@@ -47,6 +47,10 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
+        additional_resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the extra resources that will be
+            requested for each worker in addition to ``num_cpus_per_worker``
+            and ``num_gpus_per_worker``.
         log_dir (Optional[str|Path]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
@@ -65,17 +69,20 @@ class BackendExecutor:
             checkpoint may not be saved to disk.
     """
 
-    def __init__(self,
-                 backend_config: BackendConfig,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0,
-                 log_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+            self,
+            backend_config: BackendConfig,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            additional_resources_per_worker: Optional[Dict[str, float]] = None,
+            log_dir: Optional[Union[str, Path]] = None):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
+        self._additional_resources_per_worker = additional_resources_per_worker
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
@@ -102,9 +109,9 @@ class BackendExecutor:
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
-        self.worker_group = WorkerGroup(self._num_workers,
-                                        self._num_cpus_per_worker,
-                                        self._num_gpus_per_worker)
+        self.worker_group = WorkerGroup(
+            self._num_workers, self._num_cpus_per_worker,
+            self._num_gpus_per_worker, self._additional_resources_per_worker)
         if initialization_hook:
             self.worker_group.execute(initialization_hook)
 
