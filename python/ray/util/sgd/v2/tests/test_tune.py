@@ -8,7 +8,7 @@ from ray import tune
 from ray.tune import TuneError
 
 from ray.util.sgd.v2 import Trainer
-from ray.util.sgd.v2.backends.backend import BackendInterface, BackendConfig
+from ray.util.sgd.v2.backends.backend import Backend, BackendConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
@@ -46,7 +46,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 

@@ -3,6 +3,7 @@ from traceback import format_exception
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+import ray.ray_constants as ray_constants
 import colorama
 import setproctitle
 
@@ -286,8 +287,22 @@ class ObjectUnreachableError(RayError):
         object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex):
+    def __init__(self, object_ref_hex, call_site):
         self.object_ref_hex = object_ref_hex
+        self.call_site = call_site.replace(
+            ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
+
+    def __str__(self):
+        msg = f"Object {self.object_ref_hex} cannot be retrieved. "
+        if self.call_site:
+            msg += (f"The ObjectRef was created at: {self.call_site}")
+        else:
+            msg += (
+                "To see information about where this ObjectRef was created "
+                "in Python, set the environment variable "
+                "RAY_record_ref_creation_sites=1 during `ray start` and "
+                "`ray.init()`.")
+        return msg
 
 
 class ObjectLostError(ObjectUnreachableError):
@@ -299,7 +314,8 @@ class ObjectLostError(ObjectUnreachableError):
     """
 
     def __str__(self):
-        return (f"All copies of {self.object_ref_hex} are lost "
+        return super().__str__() + "\n\n" + (
+                f"All copies of {self.object_ref_hex} are lost "
                 "due to node failure.\n\n"
                 "If you did not receive a message about a worker node "
                 "dying, this is likely a system-level bug. "
@@ -316,9 +332,8 @@ class ObjectReleasedError(ObjectUnreachableError):
     """
 
     def __str__(self):
-        return (
-            f"Object {self.object_ref_hex} cannot be retrieved because it "
-            "has already been released.\n\n"
+        return super().__str__() + "\n\n" + (
+            f"Object {self.object_ref_hex} has already been released.\n\n"
             "This is likely due to a corner case in the distributed "
             "reference counting protocol that can occur when a worker passes "
             "an ObjectRef, then exits before the ref count at the "
@@ -342,10 +357,10 @@ class OwnerDiedError(ObjectUnreachableError):
     """
 
     def __str__(self):
-        return (
-            f"Object {self.object_ref_hex} cannot be retrieved because its "
-            "owner (the Python worker process that originally called "
-            "`.remote()` or `ray.put()` to create the ObjectRef) has exited. "
+        return super().__str__() + "\n\n" + (
+            f"Object {self.object_ref_hex} cannot be retrieved because "
+            "the Python worker that first created the ObjectRef (via "
+            "`.remote()` or `ray.put()`) has exited. "
             "This can happen because of node failure or "
             "a system-level bug.\n\n"
             "If you did not receive a message about a worker node "
