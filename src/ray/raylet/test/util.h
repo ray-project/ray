@@ -110,6 +110,7 @@ class MockWorker : public WorkerInterface {
     return JobID::Nil();
   }
   int GetRuntimeEnvHash() const { return runtime_env_hash_; }
+  void SetRuntimeEnvHash(int runtime_env_hash) { runtime_env_hash_ = runtime_env_hash; }
   void AssignActorId(const ActorID &actor_id) { RAY_CHECK(false) << "Method unused"; }
   const ActorID &GetActorId() const {
     RAY_CHECK(false) << "Method unused";

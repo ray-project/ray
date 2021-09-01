@@ -141,7 +141,8 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  if (!HasRuntimeEnv()) {
+  const auto &override_env_vars = OverrideEnvironmentVariables();
+  if (!HasRuntimeEnv() && override_env_vars.empty()) {
     return 0;
   }
 
@@ -149,8 +150,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
-                        required_resource};
+  WorkerCacheKey env = {override_env_vars, SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
