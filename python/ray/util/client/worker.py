@@ -98,10 +98,59 @@ class Worker:
         self._converted: Dict[str, ClientStub] = {}
         self._session_ended = False
 
-        self._secure = secure
-        self._conn_str = conn_str
+        if secure:
+            credentials = grpc.ssl_channel_credentials()
+            self.channel = grpc.secure_channel(
+                conn_str, credentials, options=GRPC_OPTIONS)
+        else:
+            self.channel = grpc.insecure_channel(
+                conn_str, options=GRPC_OPTIONS)
+
+        self.channel.subscribe(self._on_channel_state_change)
         self._connection_retries = connection_retries
-        self._connect_grpc_channel()
+
+        # Retry the connection until the channel responds to something
+        # looking like a gRPC connection, though it may be a proxy.
+        conn_attempts = 0
+        backoff_tracker = BackoffTracker()
+        service_ready = False
+        while conn_attempts < max(connection_retries, 1):
+            conn_attempts += 1
+            try:
+                # Let gRPC wait for us to see if the channel becomes ready.
+                # If it throws, we couldn't connect.
+                grpc.channel_ready_future(
+                    self.channel).result(timeout=backoff_tracker.timeout)
+                # The HTTP2 channel is ready. Wrap the channel with the
+                # RayletDriverStub, allowing for unary requests.
+                self.server = ray_client_pb2_grpc.RayletDriverStub(
+                    self.channel)
+                service_ready = bool(self.ping_server())
+                if service_ready:
+                    break
+                # Ray is not ready yet, wait a timeout
+                backoff_tracker.sleep()
+            except grpc.FutureTimeoutError:
+                logger.info("Couldn't connect channel in "
+                            f"{backoff_tracker.timeout} seconds, retrying")
+                # Note that channel_ready_future constitutes its own
+                # timeout, which is why we do not sleep here.
+            except grpc.RpcError as e:
+                logger.info("Ray client server unavailable, "
+                            f"retrying in {backoff_tracker.timeout}s...")
+                logger.debug(f"Received when checking init: {e.details()}")
+                # Ray is not ready yet, wait a timeout.
+                backoff_tracker.sleep()
+            # Fallthrough, backoff, and retry at the top of the loop
+            logger.info("Waiting for Ray to become ready on the server, "
+                        f"retry in {backoff_tracker.timeout}s...")
+
+        # If we made it through the loop without service_ready
+        # it means we've used up our retries and
+        # should error back to the user.
+        if not service_ready:
+            self._session_ended = True
+            raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self, self._client_id, self.metadata)
@@ -169,85 +218,6 @@ class Worker:
             if self._req_id > INT32_MAX:
                 self._req_id = 0
             request.req_id = self._req_id
-
-    def _connect_grpc_channel(self):
-        if self._session_ended:
-            # Reconnect has already failed, give up early
-            return
-        if self._conn_state == grpc.ChannelConnectivity.READY:
-            # connection already fixed, return early
-            return
-
-        acquired = self.channel_lock.acquire(False)
-        if not acquired:
-            # Some other thread is already reconnecting the channel
-            while (not self._session_ended
-                   and self._conn_state != grpc.ChannelConnectivity.READY):
-                # Spin until either the connection is ready, or the session
-                # has ended
-                time.sleep(1)
-            if self._session_ended:
-                raise ConnectionError("ray client connection timeout")
-            return
-        try:
-            if self.channel:
-                # Clean up old channel
-                self.channel.close()
-
-            if self._secure:
-                credentials = grpc.ssl_channel_credentials()
-                self.channel = grpc.secure_channel(
-                    self._conn_str, credentials, options=GRPC_OPTIONS)
-            else:
-                self.channel = grpc.insecure_channel(
-                    self._conn_str, options=GRPC_OPTIONS)
-
-            self.channel.subscribe(self._on_channel_state_change)
-
-            # Retry the connection until the channel responds to something
-            # looking like a gRPC connection, though it may be a proxy.
-            conn_attempts = 0
-            service_ready = False
-            backoff_tracker = BackoffTracker()
-            while conn_attempts < max(self._connection_retries, 1):
-                conn_attempts += 1
-                try:
-                    # Let gRPC wait for us to see if the channel becomes ready.
-                    # If it throws, we couldn't connect.
-                    grpc.channel_ready_future(
-                        self.channel).result(timeout=backoff_tracker.timeout)
-                    # The HTTP2 channel is ready. Wrap the channel with the
-                    # RayletDriverStub, allowing for unary requests.
-                    self.server = ray_client_pb2_grpc.RayletDriverStub(
-                        self.channel)
-                    service_ready = bool(self.ping_server())
-                    if service_ready:
-                        break
-                    # Ray is not ready yet, wait a timeout
-                    backoff_tracker.sleep()
-                except grpc.FutureTimeoutError:
-                    logger.info("Couldn't connect channel in "
-                                f"{backoff_tracker.timeout} seconds, retrying")
-                    # Note that channel_ready_future constitutes its own
-                    # timeout, which is why we do not sleep here.
-                except grpc.RpcError as e:
-                    logger.info("Ray client server unavailable, "
-                                f"retrying in {backoff_tracker.timeout}s...")
-                    logger.debug(f"Received when checking init: {e.details()}")
-                    # Ray is not ready yet, wait a timeout.
-                    backoff_tracker.sleep()
-                # Fallthrough, backoff, and retry at the top of the loop
-                logger.info("Waiting for Ray to become ready on the server, "
-                            f"retry in {backoff_tracker.timeout}s...")
-
-            # If we made it through the loop without service_ready
-            # it means we've used up our retries and
-            # should error back to the user.
-            if not service_ready:
-                self._session_ended = True
-                raise ConnectionError("ray client connection timeout")
-        finally:
-            self.channel_lock.release()
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
