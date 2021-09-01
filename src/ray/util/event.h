@@ -214,6 +214,13 @@ class RayEvent {
   /// \return True if input event level is not lower than the threshold.
   static bool IsLevelEnabled(rpc::Event_Severity event_level);
 
+  /// Set the event severity level.
+  ///
+  /// \param event_level The input event level. It should be one of "info", "warning",
+  /// "error" and "fatal". You can also use capital letters for the options above. And if
+  /// the enviroment variable "RAY_BACKEND_EVENT_LEVEL" has been set, event_level will be
+  /// ignored. 
+  /// \return void.
   static void SetLevel(const std::string event_level);
 
   ~RayEvent();
