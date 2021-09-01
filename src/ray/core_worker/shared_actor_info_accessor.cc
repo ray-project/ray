@@ -25,23 +25,24 @@ Status SharedActorInfoAccessor::AsyncSubscribe(
     const gcs::SubscribeCallback<ActorID, rpc::ActorTableData>
         &actor_notification_callback,
     const gcs::StatusCallback &done) {
-  auto lock = std::make_unique<absl::ReleasableMutexLock>(&mutex_);
-
-  auto done_it = ids_gcs_done_callback_invoked_.find(actor_id);
-  if (done_it != ids_gcs_done_callback_invoked_.end()) {
-    RAY_CHECK(id_to_done_callbacks_.find(actor_id) == id_to_done_callbacks_.end());
-    // Invoke the done callback immediately
-    lock->Release();
-    done(done_it->second);
-    lock = std::make_unique<absl::ReleasableMutexLock>(&mutex_);
-  } else {
-    id_to_done_callbacks_[actor_id].emplace(worker_id, done);
+  {
+    absl::ReleasableMutexLock lock(&mutex_);
+    auto done_it = ids_gcs_done_callback_invoked_.find(actor_id);
+    if (done_it != ids_gcs_done_callback_invoked_.end()) {
+      RAY_CHECK(id_to_done_callbacks_.find(actor_id) == id_to_done_callbacks_.end());
+      // Invoke the done callback immediately
+      lock.Release();
+      done(done_it->second);
+    } else {
+      id_to_done_callbacks_[actor_id].emplace(worker_id, done);
+    }
   }
 
+  absl::ReleasableMutexLock lock(&mutex_);
   auto &notification_callbacks = id_to_notification_callbacks_[actor_id];
   if (notification_callbacks.empty()) {
     notification_callbacks.emplace(worker_id, actor_notification_callback);
-    lock->Release();
+    lock.Release();
     auto gcs_notification_callback = [this](const ActorID &actor_id,
                                             const rpc::ActorTableData &actor_data) {
       std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
@@ -86,7 +87,7 @@ Status SharedActorInfoAccessor::AsyncSubscribe(
     if (it != actor_infos_.end()) {
       // Copy the actor info before releasing the lock.
       auto actor_info = it->second;
-      lock->Release();
+      lock.Release();
       actor_notification_callback(actor_id, actor_info);
     }
     return Status::OK();
