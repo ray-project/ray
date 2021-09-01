@@ -278,7 +278,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
+  std::unordered_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;

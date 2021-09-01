@@ -821,6 +821,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -988,6 +989,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":object_manager",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
