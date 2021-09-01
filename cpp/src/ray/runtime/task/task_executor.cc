@@ -126,7 +126,8 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<ObjectID> &arg_reference_ids,
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
-    std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+    std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+    bool *is_application_level_error) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();

@@ -213,6 +213,8 @@ message TaskSpec {
   string serialized_runtime_env = 24;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 25;
+  // Whether application-level errors (exceptions) should be retried.
+  bool retry_exceptions = 26;
 }
 
 message Bundle {
