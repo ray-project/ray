@@ -21,7 +21,6 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 from ray.util.queue import Queue, _QueueActor, Empty
-import requests
 from ray.scripts.scripts import main as ray_main
 from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
                                                get_hook_logger)
@@ -585,6 +584,9 @@ def object_memory_usage() -> bool:
 
 
 def fetch_prometheus(prom_addresses):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
     components_dict = {}
     metric_names = set()
     metric_samples = []

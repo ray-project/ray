@@ -651,7 +651,7 @@ def init(
             a raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the the cluster, removing the need to
+            tells the driver to detect the cluster, removing the need to
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
@@ -1117,7 +1117,14 @@ def time_string() -> str:
     return output
 
 
+# When we enter a breakpoint, worker logs are automatically disabled via this.
+_worker_logs_enabled = True
+
+
 def print_worker_logs(data: Dict[str, str], print_file: Any):
+    if not _worker_logs_enabled:
+        return
+
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
@@ -1368,6 +1375,9 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    else:
+        # Add hook to suppress worker logs during breakpoint.
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb._driver_set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 
@@ -1386,25 +1396,6 @@ def connect(node,
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
-    elif mode == WORKER_MODE:
-        # TODO(ekl) get rid of the env var hack and get runtime env from the
-        # task spec and/or job config only.
-        uris = []
-        global_job_config = worker.core_worker.get_job_config()
-        override_runtime_env = json.loads(runtime_env_json)
-
-        if os.environ.get("RAY_PACKAGING_URI"):
-            uris = [os.environ.get("RAY_PACKAGING_URI")]
-        if global_job_config.runtime_env.uris:
-            uris = global_job_config.runtime_env.uris
-        if override_runtime_env.get("uris"):
-            # TODO(simon): should we combine the uris from package and global
-            # job config if they are present?
-            uris = override_runtime_env["uris"]
-
-        working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
-        if working_dir is not None:
-            os.chdir(working_dir)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1933,7 +1924,8 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
-                   worker=None):
+                   worker=None,
+                   retry_exceptions=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1962,11 +1954,18 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, runtime_env)
+                num_returns, max_calls, max_retries, retry_exceptions,
+                runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
                 raise TypeError("The keyword 'num_returns' is not "
+                                "allowed for actors.")
+            if max_retries is not None:
+                raise TypeError("The keyword 'max_retries' is not "
+                                "allowed for actors.")
+            if retry_exceptions is not None:
+                raise TypeError("The keyword 'retry_exceptions' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
@@ -2091,6 +2090,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
+        retry_exceptions (bool): Only for *remote functions*. This specifies
+            whether application-level errors should be retried
+            up to max_retries times.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
@@ -2111,7 +2113,7 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2144,6 +2146,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2158,4 +2161,5 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
-        worker=worker)
+        worker=worker,
+        retry_exceptions=retry_exceptions)

@@ -79,7 +79,8 @@ class TaskExecutor {
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
-      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+      bool *is_application_level_error);
 
   virtual ~TaskExecutor(){};
 

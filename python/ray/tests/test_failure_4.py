@@ -10,6 +10,68 @@ from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      run_string_as_driver)
 
 
+def test_retry_system_level_error(ray_start_regular):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    @ray.remote(max_retries=1)
+    def func(counter):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            import os
+            os._exit(0)
+        else:
+            return 1
+
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 1
+
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(r2)
+
+
+def test_retry_application_level_error(ray_start_regular):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    @ray.remote(max_retries=1, retry_exceptions=True)
+    def func(counter):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError()
+        else:
+            return 2
+
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 2
+
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(ValueError):
+        ray.get(r2)
+
+    counter3 = Counter.remote()
+    r3 = func.options(retry_exceptions=False).remote(counter3)
+    with pytest.raises(ValueError):
+        ray.get(r3)
+
+
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,

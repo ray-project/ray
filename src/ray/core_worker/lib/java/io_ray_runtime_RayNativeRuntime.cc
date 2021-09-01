@@ -100,7 +100,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<rpc::ObjectReference> &arg_refs,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
-         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb) {
+         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
+         bool *is_application_level_error) {
+        // TODO(jjyao): Support retrying application-level errors for Java
+        *is_application_level_error = false;
+
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 

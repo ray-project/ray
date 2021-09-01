@@ -124,6 +124,8 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
+  // Whether the result contains an application-level error (exception).
+  bool is_application_level_error = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

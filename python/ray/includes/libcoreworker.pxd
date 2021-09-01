@@ -105,6 +105,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
             int max_retries,
+            c_bool retry_exceptions,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string debugger_breakpoint)
@@ -280,7 +281,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns,
             shared_ptr[LocalMemoryBuffer]
-            &creation_task_exception_pb_bytes) nogil
+            &creation_task_exception_pb_bytes,
+            c_bool *is_application_level_error) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
