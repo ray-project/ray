@@ -1,7 +1,6 @@
 cloud_id: cld_41THJUKS3PBYvwIynRggIb
-region: us-west-2
 
-min_workers: 1000
+region: us-west-2
 
 aws:
     BlockDeviceMappings:
@@ -15,11 +14,10 @@ head_node_type:
     resources:
       cpu: 64
 
-worker_node_typesnn:
+worker_node_types:
    - name: worker_node
      instance_type: m4.large
-     min_workers: 1000
-     max_workers: 1000
+     max_workers: 500
      use_spot: false
      resources:
       cpu: 2

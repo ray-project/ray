@@ -320,8 +320,9 @@
 - name: scability_test
   cluster:
     app_config: scability_test/app_config.yaml
-    compute_config: scability_test/compute_config.yaml
+    compute_template: scability_test/compute_config.yaml
+
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 1000 5400
-    script: python scability_test/scability_test.py --cpus-per-actor=0.1 --total-actors=20000
+    prepare: python wait_cluster.py 500 5400
+    script: python scability_test/scability_test.py --cpus-per-actor=0.1 --total-actors=10000
