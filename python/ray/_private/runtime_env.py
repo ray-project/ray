@@ -611,7 +611,8 @@ def override_task_or_actor_runtime_env(
         # working_dir here so the relative path to a requirements.txt file
         # works. The right solution would be to merge the runtime_env with the
         # parent runtime env before validation.
-        runtime_env["working_dir"] = parent_runtime_env.get("working_dir")
+        if "working_dir" in parent_runtime_env:
+            runtime_env["working_dir"] = parent_runtime_env["working_dir"]
         runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
     else:
         runtime_env_dict = {}
