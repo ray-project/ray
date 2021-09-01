@@ -426,7 +426,8 @@ class SGDIterator:
         self._executor = backend_executor
         self._train_func = train_func
         self._checkpoint_strategy = checkpoint_strategy
-        self._start_training(train_func, checkpoint, checkpoint_strategy)
+        self._start_training(train_func, checkpoint, checkpoint_strategy,
+                             run_dir=run_dir)
 
         self._final_results = None
         self._finished_training = False
@@ -434,12 +435,15 @@ class SGDIterator:
     def __iter__(self):
         return self
 
-    def _start_training(self, train_func, checkpoint, checkpoint_strategy):
+    def _start_training(self, train_func, checkpoint, checkpoint_strategy,
+                        run_dir, checkpoint_id=None):
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
                 checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy)
+                checkpoint_strategy=checkpoint_strategy,
+                run_dir=run_dir
+            )
         )
 
     def _run_with_error_handling(self, func: Callable):
@@ -449,7 +453,8 @@ class SGDIterator:
             # Workers have already been restarted.
             self._start_training(self._train_func,
                                  self._executor.latest_checkpoint,
-                                 self._checkpoint_strategy)
+                                 self._checkpoint_strategy,
+                                 checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(

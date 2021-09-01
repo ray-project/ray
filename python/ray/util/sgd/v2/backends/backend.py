@@ -80,10 +80,12 @@ class CheckpointManager:
 
     def on_start_training(self,
                           checkpoint_strategy: Optional[CheckpointStrategy],
-                          run_dir: Path):
+                          run_dir: Path,
+                          checkpoint_id: Optional[int] = None,
+                          ):
         """Checkpoint code executed during BackendExecutor start_training."""
         # Restart checkpointing.
-        self._checkpoint_id = 0
+        self._checkpoint_id = checkpoint_id if checkpoint_id else 0
         self._checkpoint_strategy = CheckpointStrategy() if \
             checkpoint_strategy is None else checkpoint_strategy
         self.latest_run_dir = run_dir
@@ -328,6 +330,7 @@ class BackendExecutor:
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None,
             run_dir: Optional[Path] = None,
+            checkpoint_id: Optional[int] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -346,9 +349,11 @@ class BackendExecutor:
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
             run_dir (Optional[Path]): The directory to use for this run.
+            checkpoint_id (Optional[int]): The checkpoint id to start with.
         """
         self.checkpoint_manager.on_start_training(
-            checkpoint_strategy=checkpoint_strategy, run_dir=run_dir)
+            checkpoint_strategy=checkpoint_strategy, run_dir=run_dir,
+            checkpoint_id=checkpoint_id)
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
@@ -604,6 +609,10 @@ class BackendExecutor:
     def latest_checkpoint_path(self) -> Optional[Path]:
         """Path to the latest persisted checkpoint."""
         return self.checkpoint_manager.latest_checkpoint_path
+
+    @property
+    def latest_checkpoint_id(self):
+        return self.checkpoint_manager._latest_checkpoint_id
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:

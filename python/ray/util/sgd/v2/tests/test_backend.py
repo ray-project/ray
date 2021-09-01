@@ -202,7 +202,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e.start_training(train, run_dir=tmp_path)
     e.finish_training()
 
-    assert e.checkpoint_manager._latest_checkpoint_id == 2
+    assert e.latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
