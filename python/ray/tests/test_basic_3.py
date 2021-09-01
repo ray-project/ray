@@ -1,4 +1,5 @@
 # coding: utf-8
+import gc
 import logging
 import os
 import sys
@@ -158,8 +159,10 @@ def test_background_tasks_with_max_calls(shutdown_only):
     nested = ray.get([f.remote() for _ in range(10)])
     while nested:
         pid, g_id = nested.pop(0)
-        ray.get(g_id)
+        assert ray.get(g_id) == 0
         del g_id
+        # Necessary to dereference the object via GC, so the worker can exit.
+        gc.collect()
         wait_for_pid_to_exit(pid)
 
 

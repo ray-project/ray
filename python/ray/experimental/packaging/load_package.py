@@ -67,7 +67,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "_packaging_uri" not in runtime_env:
+    if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
             working_dir=base_dir, py_modules=[], excludes=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
@@ -91,7 +91,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["_packaging_uri"] = pkg_uri
+        runtime_env["uris"] = [pkg_uri]
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
