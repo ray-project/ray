@@ -510,7 +510,8 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     array_oid = put_object(
         np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     s = Submitter.remote()
-    child_return_id = ray.get(s.launch_pending_task.remote([array_oid], signal))
+    child_return_id = ray.get(
+        s.launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()

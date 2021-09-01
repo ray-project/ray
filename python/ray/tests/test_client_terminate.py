@@ -8,14 +8,14 @@ from ray._private.test_utils import wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.exceptions import RayTaskError
 from ray.exceptions import WorkerCrashedError
-from ray.exceptions import ObjectLostError
+from ray.exceptions import ObjectUnreachableError
 from ray.exceptions import GetTimeoutError
 
 
 def valid_exceptions(use_force):
     if use_force:
         return (RayTaskError, TaskCancelledError, WorkerCrashedError,
-                ObjectLostError)
+                ObjectUnreachableError)
     else:
         return (RayTaskError, TaskCancelledError)
 

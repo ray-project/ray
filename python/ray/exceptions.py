@@ -279,6 +279,8 @@ class ObjectStoreFullError(RayError):
             "to list active objects in the cluster.")
 
 
+# TODO(XXX): Replace with ObjectLostError for backwards compatibility once all
+# Python tests pass.
 class ObjectUnreachableError(RayError):
     """Generic error for objects that are unreachable due to node failure or
     system error.
@@ -315,12 +317,12 @@ class ObjectLostError(ObjectUnreachableError):
 
     def __str__(self):
         return super().__str__() + "\n\n" + (
-                f"All copies of {self.object_ref_hex} are lost "
-                "due to node failure.\n\n"
-                "If you did not receive a message about a worker node "
-                "dying, this is likely a system-level bug. "
-                "Please file an issue on GitHub at "
-                "https://github.com/ray-project/ray/issues/new/choose.")
+            f"All copies of {self.object_ref_hex} are lost "
+            "due to node failure.\n\n"
+            "If you did not receive a message about a worker node "
+            "dying, this is likely a system-level bug. "
+            "Please file an issue on GitHub at "
+            "https://github.com/ray-project/ray/issues/new/choose.")
 
 
 class ObjectReleasedError(ObjectUnreachableError):
