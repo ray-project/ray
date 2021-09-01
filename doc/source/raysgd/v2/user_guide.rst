@@ -181,7 +181,7 @@ In addition to user defined metrics, a few fields are automatically populated:
 * ``_training_iteration``
 
 For debugging purposes, a more extensive set of metrics can be included in
-any run by setting the ``ENABLE_DETAILED_AUTOFILLED_METRICS_ENV`` environment
+any run by setting the ``SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS`` environment
 variable to ``1``.
 
 * ``_date``
