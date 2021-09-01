@@ -1,5 +1,3 @@
-import random
-import numpy as np
 import gym
 import logging
 import platform
@@ -421,8 +419,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
-        update_global_seed_if_necessary(
-            globals(), policy_config.get("framework"), seed)
+        update_global_seed_if_necessary(globals(),
+                                        policy_config.get("framework"), seed)
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
@@ -527,8 +525,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # during environment vectorization below.
             # So we make sure a deterministic random seed is set on
             # all the environments if specified.
-            _update_env_seed_if_necessary(
-                env, seed, worker_index, vector_index)
+            _update_env_seed_if_necessary(env, seed, worker_index,
+                                          vector_index)
             return env
 
         self.make_env_fn = make_env

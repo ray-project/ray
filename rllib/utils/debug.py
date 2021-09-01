@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pprint
 from typing import Any, Dict, Mapping
 
@@ -66,8 +67,8 @@ class _StringValue:
         return self.value
 
 
-def update_global_seed_if_necessary(
-    globals: Dict[str, Any], framework: str, seed: int):
+def update_global_seed_if_necessary(globals: Dict[str, Any], framework: str,
+                                    seed: int):
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.
