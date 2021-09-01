@@ -128,7 +128,6 @@ class MockReplicaActorWrapper:
         self._actor_name = actor_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
-        self._state = ReplicaState.SHOULD_START
 
         # Will be set when `start()` is called.
         self.started = False
@@ -292,9 +291,6 @@ class TestReplicaStateContainer:
             states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.STOPPING])
         assert c.count(states=[ReplicaState.STARTING_OR_UPDATING]) == 2
         assert c.count(states=[ReplicaState.STOPPING]) == 1
-        assert c.count(states=[ReplicaState.SHOULD_START]) == 0
-        assert c.count(
-            states=[ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP]) == 0
 
         # Test filtering by version.
         assert c.count(version=BackendVersion("1")) == 1
@@ -338,8 +334,6 @@ class TestReplicaStateContainer:
             [ReplicaState.STARTING_OR_UPDATING, ReplicaState.STOPPING])
         assert c.get([ReplicaState.STARTING_OR_UPDATING]) == [r1, r2]
         assert c.get([ReplicaState.STOPPING]) == [r3]
-        assert not c.get([ReplicaState.SHOULD_START])
-        assert not c.get([ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
 
     def test_pop_basic(self):
         c = ReplicaStateContainer()
@@ -387,28 +381,25 @@ class TestReplicaStateContainer:
         # Check popping single state.
         c.add(ReplicaState.STOPPING, r1)
         c.add(ReplicaState.STARTING_OR_UPDATING, r2)
-        c.add(ReplicaState.SHOULD_STOP, r3)
-        c.add(ReplicaState.SHOULD_STOP, r4)
+        c.add(ReplicaState.STOPPING, r3)
         assert c.pop(states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
         assert not c.pop(states=[ReplicaState.STARTING_OR_UPDATING])
-        assert c.pop(states=[ReplicaState.STOPPING]) == [r1]
+        assert c.pop(states=[ReplicaState.STOPPING]) == [r1, r3]
         assert not c.pop(states=[ReplicaState.STOPPING])
-        assert c.pop(states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
-        assert not c.pop(states=[ReplicaState.SHOULD_STOP])
 
         # Check popping multiple states. Ordering of states should be
         # preserved.
         c.add(ReplicaState.STOPPING, r1)
         c.add(ReplicaState.STARTING_OR_UPDATING, r2)
-        c.add(ReplicaState.SHOULD_STOP, r3)
-        c.add(ReplicaState.SHOULD_STOP, r4)
+        c.add(ReplicaState.STOPPING, r3)
+        c.add(ReplicaState.STARTING_OR_UPDATING, r4)
         assert c.pop(
-            states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING]) == [
-                r3, r4, r1
+            states=[ReplicaState.STOPPING, ReplicaState.STARTING_OR_UPDATING]) == [
+                r1, r3, r2, r4
             ]
         assert not c.pop(
-            states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
-        assert c.pop(states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
+            states=[ReplicaState.STOPPING, ReplicaState.STARTING_OR_UPDATING])
+        assert not c.pop(states=[ReplicaState.STOPPING])
         assert not c.pop(states=[ReplicaState.STARTING_OR_UPDATING])
         assert not c.pop()
 
@@ -420,34 +411,34 @@ class TestReplicaStateContainer:
 
         c.add(ReplicaState.STOPPING, r1)
         c.add(ReplicaState.STARTING_OR_UPDATING, r2)
-        c.add(ReplicaState.SHOULD_STOP, r3)
-        c.add(ReplicaState.SHOULD_STOP, r4)
+        c.add(ReplicaState.RUNNING, r3)
+        c.add(ReplicaState.RUNNING, r4)
         assert not c.pop(
             exclude_version=BackendVersion("1"),
             states=[ReplicaState.STOPPING])
         assert c.pop(
             exclude_version=BackendVersion("1"),
-            states=[ReplicaState.SHOULD_STOP],
+            states=[ReplicaState.RUNNING],
             max_replicas=1) == [r3]
         assert c.pop(
             exclude_version=BackendVersion("1"),
-            states=[ReplicaState.SHOULD_STOP],
+            states=[ReplicaState.RUNNING],
             max_replicas=1) == [r4]
-        c.add(ReplicaState.SHOULD_STOP, r3)
-        c.add(ReplicaState.SHOULD_STOP, r4)
+        c.add(ReplicaState.RUNNING, r3)
+        c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
             exclude_version=BackendVersion("1"),
-            states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
+            states=[ReplicaState.RUNNING]) == [r3, r4]
         assert c.pop(
             exclude_version=BackendVersion("1"),
             states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
         c.add(ReplicaState.STARTING_OR_UPDATING, r2)
-        c.add(ReplicaState.SHOULD_STOP, r3)
-        c.add(ReplicaState.SHOULD_STOP, r4)
+        c.add(ReplicaState.RUNNING, r3)
+        c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
             exclude_version=BackendVersion("1"),
             states=[
-                ReplicaState.SHOULD_STOP, ReplicaState.STARTING_OR_UPDATING
+                ReplicaState.RUNNING, ReplicaState.STARTING_OR_UPDATING
             ]) == [r3, r4, r2]
         assert c.pop(
             exclude_version=BackendVersion("nonsense"),
