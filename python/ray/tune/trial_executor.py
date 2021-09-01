@@ -73,6 +73,18 @@ def _get_insufficient_resources_warning_msg() -> str:
                 f"resources.")
 
 
+# A beefed up version when Tune Error is raised.
+def _get_insufficient_resources_error_msg(trial_resources: Resources) -> str:
+    return (f"You ask for {trial_resources.cpu} cpu and {trial_resources.gpu} "
+            f"gpu per trial, but the cluster only has "
+            f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
+            f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu."
+            f"The cluster does not have enough resources available to "
+            f"start the next trial. Please stop the tuning job and readjust "
+            f"resources_per_trial argument passed into tune.run() "
+            f"and/or start a cluster with more resources.")
+
+
 @DeveloperAPI
 class TrialExecutor(metaclass=ABCMeta):
     """Module for interacting with remote trainables.
@@ -279,14 +291,15 @@ class TrialExecutor(metaclass=ABCMeta):
                 if not is_ray_cluster():  # autoscaler not enabled
                     # If any of the pending trial cannot be fulfilled,
                     # that's a good enough hint of trial resources not enough.
-                    if any(trial.status == Trial.PENDING
-                           and not _can_fulfill_no_autoscaler(trial)
-                           for trial in all_trials):
-                        raise TuneError(
-                            _get_insufficient_resources_warning_msg())
-                # TODO(xwjiang): Output a more helpful msg for autoscaler case.
-                # https://github.com/ray-project/ray/issues/17799
-                logger.warning(_get_insufficient_resources_warning_msg())
+                    for trial in all_trials:
+                        if not _can_fulfill_no_autoscaler(trial):
+                            raise TuneError(
+                                _get_insufficient_resources_error_msg(
+                                    trial.resources))
+                else:
+                    # TODO(xwjiang): Output a more helpful msg for autoscaler.
+                    # https://github.com/ray-project/ray/issues/17799
+                    logger.warning(_get_insufficient_resources_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
