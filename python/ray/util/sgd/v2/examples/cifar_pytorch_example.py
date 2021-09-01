@@ -69,7 +69,7 @@ def load_image(item, transform):
 train_dataset = train_dataset.map(lambda item: load_image(item,
                                                           train_transform)).repeat(3).random_shuffle()
 val_dataset = val_dataset.map(lambda item: load_image(item,
-                                                      val_transform)).repeat(3).random_shuffle
+                                                      val_transform)).repeat(3).random_shuffle()
 
 data_transforms = {
     'train': transforms.Compose([

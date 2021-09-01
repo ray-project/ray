@@ -387,8 +387,9 @@ class SGDIterator:
         self._executor = backend_executor
         self._train_func = train_func
         self._checkpoint_strategy = checkpoint_strategy
-        self._start_training(train_func, dataset, checkpoint,
-                             checkpoint_strategy)
+        self._start_training(train_func=train_func, dataset=dataset,
+                             checkpoint=checkpoint,
+                             checkpoint_strategy=checkpoint_strategy)
 
         self._final_results = None
         self._finished_training = False

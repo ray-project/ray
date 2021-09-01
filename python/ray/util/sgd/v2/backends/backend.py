@@ -564,7 +564,7 @@ class BackendExecutor:
         split_indices = [per_worker_size*(i+1) for i in range(len(
             self.worker_group))]
         datasets = dataset.split_at_indices(split_indices)
-        assert [ds.count() == datasets[0].count() for ds in datasets]
+        #assert [ds.count() == datasets[0].count() for ds in datasets]
         return datasets
 
     def _restart(self):
