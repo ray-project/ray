@@ -82,6 +82,14 @@ cc_grpc_library(
     deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
 )
 
+# gcs_service gRPC lib.
+cc_grpc_library(
+    name = "test_service_cc_grpc",
+    srcs = ["//src/ray/protobuf:test_service_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:test_service_cc_proto"],
+)
+
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
@@ -1300,12 +1308,8 @@ cc_test(
         "src/ray/rpc/test/grpc_server_test.cc",
     ],
     deps = [
-        ":gcs_service_cc_grpc",
+        ":test_service_cc_grpc",
         ":grpc_common_lib",
-        ":pubsub_lib",
-        ":ray_common",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
