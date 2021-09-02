@@ -12,10 +12,12 @@ from ray.rllib.utils import check, check_compute_single_action, fc, \
 
 
 class TestPG(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_pg_compilation(self):
