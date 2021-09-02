@@ -631,6 +631,7 @@ def test_warning_task_waiting_on_actor(shutdown_only):
 
     a = Actor.remote()  # noqa
     ray.get(a.hello.remote())
+
     @ray.remote(num_cpus=1)
     def f():
         print("f running")
