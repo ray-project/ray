@@ -62,6 +62,8 @@ class BuildType(Enum):
     DEFAULT = 1
     DEBUG = 2
     ASAN = 3
+    TSAN = 4
+    UBSAN = 5
 
 
 class SetupSpec:
@@ -75,6 +77,10 @@ class SetupSpec:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
+        elif build_type == BuildType.UBSAN:
+            self.version: str = f"{version}+ubsan"
         else:
             self.version = version
         self.description: str = description
@@ -95,6 +101,10 @@ if build_type == "debug":
     BUILD_TYPE = BuildType.DEBUG
 elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
+elif build_type == "tsan":
+    BUILD_TYPE = BuildType.TSAN
+elif build_type == "ubsan":
+    BUILD_TYPE = BuildType.UBSAN
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -379,6 +389,10 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
         bazel_flags.extend(["--config=asan-build"])
+    if setup_spec.build_type == BuildType.TSAN:
+        bazel_flags.extend(["--config", "tsan"])
+    if setup_spec.build_type == BuildType.UBSAN:
+        bazel_flags.extend(["--config", "ubsan"])
 
     return bazel_invoke(
         subprocess.check_call,
