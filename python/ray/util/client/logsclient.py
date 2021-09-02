@@ -32,6 +32,7 @@ class LogstreamClient:
         self.request_queue = queue.Queue()
         self.log_thread = self._start_logthread()
         self.log_thread.start()
+        self.last_req = None
 
     def _start_logthread(self) -> threading.Thread:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
@@ -51,20 +52,22 @@ class LogstreamClient:
                 continue
             try:
                 for record in log_stream:
+                    print("here")
                     if record.level < 0:
                         self.stdstream(level=record.level, msg=record.msg)
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
-                logger.info("Got error from log channel.")
-                # TODO: unhardcode
                 if self.client_worker._can_reconnect(e):
                     logger.info("Attempting to reconnect log channel.")
                     reconnecting = "True"
                     time.sleep(.5)
+                    self.request_queue = queue.Queue()
+                    if self.last_req:
+                        self.request_queue.put(self.last_req)
                     continue
                 else:
-                    logger.info("Shutting down log channel")
+                    print("Shutting down log channel")
                     return
 
     def log(self, level: int, msg: str):
@@ -94,6 +97,7 @@ class LogstreamClient:
         req.enabled = True
         req.loglevel = level
         self.request_queue.put(req)
+        self.last_req = req
 
     def close(self) -> None:
         self.request_queue.put(None)
@@ -104,3 +108,4 @@ class LogstreamClient:
         req = ray_client_pb2.LogSettingsRequest()
         req.enabled = False
         self.request_queue.put(req)
+        self.last_req = req

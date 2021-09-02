@@ -539,7 +539,10 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             time.sleep(LOGSTREAM_RETRY_INTERVAL_SEC)
 
         if channel is None:
-            context.set_code(grpc.StatusCode.UNAVAILABLE)
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_details(
+                "Logstream proxy failed to connect. Channel for client "
+                f"{client_id} not found.")
             return None
 
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
