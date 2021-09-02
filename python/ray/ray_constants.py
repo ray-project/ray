@@ -272,3 +272,7 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "

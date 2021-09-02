@@ -111,6 +111,27 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_get_list(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f():
+            return "OK"
+
+        assert ray.get([]) == []
+        assert ray.get([f.remote()]) == ["OK"]
+
+        refs = [f.remote() for _ in range(100)]
+        with ray.worker.data_client.lock:
+            req_id_before = ray.worker.data_client._req_id
+        assert ray.get(refs) == ["OK" for _ in range(100)]
+        # Only 1 RPC should be sent.
+        with ray.worker.data_client.lock:
+            assert ray.worker.data_client._req_id == req_id_before + 1, \
+                ray.worker.data_client._req_id
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -387,9 +408,11 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert ray.get(x) == "Foo"
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
-        assert len(logs_with_id) >= 2
-        assert any((msg.find("get") >= 0 for msg in logs_with_id))
-        assert any((msg.find("put") >= 0 for msg in logs_with_id))
+        assert len(logs_with_id) >= 2, logs_with_id
+        assert any(
+            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any(
+            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

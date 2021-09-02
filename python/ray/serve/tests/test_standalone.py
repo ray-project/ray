@@ -435,6 +435,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
         client._controller_name, namespace=controller_namespace)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 

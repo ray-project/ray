@@ -487,8 +487,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects,
-                                reply->mutable_borrowed_refs());
+    bool is_application_level_error = false;
+    auto status =
+        task_handler_(task_spec, resource_ids, &return_objects,
+                      reply->mutable_borrowed_refs(), &is_application_level_error);
+    reply->set_is_application_level_error(is_application_level_error);
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
