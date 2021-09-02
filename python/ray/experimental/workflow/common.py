@@ -3,7 +3,6 @@ from collections import deque
 import re
 from typing import Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
-import uuid
 
 from dataclasses import dataclass
 
@@ -22,6 +21,10 @@ def get_module(f):
 def get_qualname(f):
     return f.__qualname__ if hasattr(f,
                                      "__qualname__") else "__anonymous_func__"
+
+
+def ensure_ray_initialized():
+    ray.worker.global_worker.check_connected()
 
 
 @dataclass
@@ -91,6 +94,8 @@ class WorkflowData:
     catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
+    # name of the step
+    name: str
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
@@ -98,7 +103,7 @@ class WorkflowData:
             "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
-            "workflows": [w.id for w in self.inputs.workflows],
+            "workflows": [w.step_id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
@@ -143,14 +148,25 @@ def slugify(value: str, allow_unicode=False) -> str:
 
 
 class Workflow:
-    def __init__(self, workflow_data: WorkflowData):
+    def __init__(self,
+                 workflow_data: WorkflowData,
+                 prepare_inputs: Optional[Callable] = None):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
             raise ValueError("Workflow should have one return value.")
-        self._data = workflow_data
+        self._data: WorkflowData = workflow_data
+        self._prepare_inputs: Callable = prepare_inputs
+        if self._data.inputs is None:
+            assert prepare_inputs is not None
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
-        qual_name = get_qualname(self._data.func_body)
-        self._step_id: StepID = slugify(qual_name) + "." + uuid.uuid4().hex
+        # step id will be generated during runtime
+        self._step_id: StepID = None
+
+    @property
+    def _workflow_id(self):
+        from ray.experimental.workflow.workflow_context import \
+            get_current_workflow_id
+        return get_current_workflow_id()
 
     @property
     def executed(self) -> bool:
@@ -163,7 +179,24 @@ class Workflow:
         return self._result
 
     @property
-    def id(self) -> StepID:
+    def _name(self) -> str:
+        if self.data.name:
+            name = self.data.name
+        else:
+            f = self._data.func_body
+            name = f"{get_module(f)}.{slugify(get_qualname(f))}"
+        return name
+
+    @property
+    def step_id(self) -> StepID:
+        if self._step_id is not None:
+            return self._step_id
+
+        from ray.experimental.workflow.workflow_access import \
+            get_or_create_management_actor
+        mgr = get_or_create_management_actor()
+        self._step_id = ray.get(
+            mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
     def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
@@ -175,7 +208,7 @@ class Workflow:
         q = deque([self])
         while q:  # deque's pythonic way to check emptyness
             w: Workflow = q.popleft()
-            for p in w._data.inputs.workflows:
+            for p in w.data.inputs.workflows:
                 if p not in visited_workflows:
                     visited_workflows.add(p)
                     q.append(p)
@@ -184,6 +217,9 @@ class Workflow:
     @property
     def data(self) -> WorkflowData:
         """Get the workflow data."""
+        if self._data.inputs is None:
+            self._data.inputs = self._prepare_inputs()
+            del self._prepare_inputs
         return self._data
 
     def __reduce__(self):
@@ -249,4 +285,5 @@ class Workflow:
         """
         # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run
+        self._step_id = None
         return run(self, workflow_id)

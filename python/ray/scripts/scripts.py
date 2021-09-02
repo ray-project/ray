@@ -576,7 +576,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         num_redis_shards = None
         # Start Ray on the head node.
-        if redis_shard_ports is not None:
+        if redis_shard_ports is not None and address is None:
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
@@ -588,6 +588,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If the primary one is not reachable, we starts new one(s) "
                 "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
             external_addresses = address.split(",")
+            # We reuse primary redis as sharding when there's only one
+            # instance provided.
+            if len(external_addresses) == 1:
+                external_addresses.append(external_addresses[0])
             reachable = False
             try:
                 [primary_redis_ip, port] = external_addresses[0].split(":")
@@ -604,8 +608,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if reachable:
                 ray_params.update_if_absent(
                     external_addresses=external_addresses)
-                if len(external_addresses) > 1:
-                    num_redis_shards = len(external_addresses) - 1
+                num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if "
@@ -1426,7 +1429,7 @@ done
 @cli.command()
 def microbenchmark():
     """Run a local Ray microbenchmark on the current machine."""
-    from ray.ray_perf import main
+    from ray._private.ray_perf import main
     main()
 
 

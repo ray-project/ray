@@ -142,7 +142,6 @@ test_python() {
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
-      -python/ray/serve:test_backend_worker # memory error
       -python/ray/serve:test_controller_crashes # timeout
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
@@ -162,6 +161,7 @@ test_python() {
       -python/ray/tests:test_failure
       -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
+      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -454,6 +454,12 @@ _lint() {
 
     # lint copyright
     lint_copyright
+
+    # lint test script
+    pushd "${WORKSPACE_DIR}"
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+    popd
   fi
 }
 

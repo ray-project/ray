@@ -1,5 +1,3 @@
-import random
-import numpy as np
 import gym
 import logging
 import platform
@@ -32,7 +30,7 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -72,6 +70,32 @@ def get_global_worker() -> "RolloutWorker":
 
     global _global_worker
     return _global_worker
+
+
+def _update_env_seed_if_necessary(env: EnvType, seed: int, worker_idx: int,
+                                  vector_idx: int):
+    """Set a deterministic random seed on environment.
+
+    NOTE: this may not work with remote environments (issue #18154).
+    """
+    if not seed:
+        return
+
+    # A single RL job is unlikely to have more than 10K
+    # rollout workers.
+    max_num_envs_per_workers: int = 1000
+    assert worker_idx < max_num_envs_per_workers, \
+        "Too many envs per worker. Random seeds may collide."
+    computed_seed: int = (
+        worker_idx * max_num_envs_per_workers + vector_idx + seed)
+
+    # Gym.env.
+    # This will silently fail for most OpenAI gyms
+    # (they do nothing and return None per default)
+    if not hasattr(env, "seed"):
+        logger.info("Env doesn't support env.seed(): {}".format(env))
+    else:
+        env.seed(computed_seed)
 
 
 @DeveloperAPI
@@ -306,6 +330,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
 
@@ -394,6 +419,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
+        update_global_seed_if_necessary(policy_config.get("framework"), seed)
+
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
@@ -480,14 +507,26 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
+            # Ideally, we would use the same make_env() function below
+            # to create self.env, but wrap(env) and self.env has a cyclic
+            # dependency on each other right now, so we would settle on
+            # duplicating the random seed setting logic for now.
+            _update_env_seed_if_necessary(self.env, seed, worker_index, 0)
 
         def make_env(vector_index):
-            return wrap(
+            env = wrap(
                 env_creator(
                     env_context.copy_with_overrides(
                         worker_index=worker_index,
                         vector_index=vector_index,
                         remote=remote_worker_envs)))
+            # make_env() is used to created additional environments
+            # during environment vectorization below.
+            # So we make sure a deterministic random seed is set on
+            # all the environments if specified.
+            _update_env_seed_if_necessary(env, seed, worker_index,
+                                          vector_index)
+            return env
 
         self.make_env_fn = make_env
         self.spaces = spaces
@@ -506,46 +545,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
-
-        # Set Python random, numpy, env, and torch/tf seeds.
-        if seed is not None:
-            # Python random module.
-            random.seed(seed)
-            # Numpy.
-            np.random.seed(seed)
-            # Gym.env.
-            # This will silently fail for most OpenAI gyms
-            # (they do nothing and return None per default)
-            if not hasattr(self.env, "seed"):
-                logger.info("Env doesn't support env.seed(): {}".format(
-                    self.env))
-            else:
-                self.env.seed(seed)
-
-            # Torch.
-            if torch and policy_config.get("framework") == "torch":
-                torch.manual_seed(seed)
-                # See https://github.com/pytorch/pytorch/issues/47672.
-                cuda_version = torch.version.cuda
-                if cuda_version is not None and float(
-                        torch.version.cuda) >= 10.2:
-                    os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-                else:
-                    from distutils.version import LooseVersion
-                    if LooseVersion(
-                            torch.__version__) >= LooseVersion("1.8.0"):
-                        # Not all Operations support this.
-                        torch.use_deterministic_algorithms(True)
-                    else:
-                        torch.set_deterministic(True)
-                # This is only for Convolution no problem.
-                torch.backends.cudnn.deterministic = True
-            # Tf2.x.
-            elif tf and policy_config.get("framework") == "tf2":
-                tf.random.set_seed(seed)
-            # Tf-eager.
-            elif tf1 and policy_config.get("framework") == "tfe":
-                tf1.set_random_seed(seed)
 
         # Check available number of GPUs.
         num_gpus = policy_config.get("num_gpus", 0) if \

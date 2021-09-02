@@ -1,3 +1,5 @@
+from pathlib import Path
+
 # Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
@@ -25,3 +27,6 @@ RESULT_FETCH_TIMEOUT = 0.2
 
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
+
+# Default directory where all SGD logs, checkpoints, etc. will be stored.
+DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()

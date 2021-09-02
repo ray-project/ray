@@ -11,9 +11,8 @@ import sys
 import tempfile
 import datetime
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import wait_for_condition
-from ray.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
 
 import ray

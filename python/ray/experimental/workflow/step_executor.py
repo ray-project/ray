@@ -8,7 +8,6 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import DataLoadError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
@@ -74,14 +73,14 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except DataLoadError:
+            except Exception:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
                                f"Current step: '{current_step_id}'")
                 step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id,
-                    storage_url).persisted_output
+                    workflow_id, workflow_ref.step_id, storage_url,
+                    None).persisted_output
                 output, _ = _resolve_object_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
@@ -136,7 +135,7 @@ def execute_workflow(
 
     To fully explain what we are doing, we need to introduce some syntax first.
     The syntax for dependencies between workflow steps
-    "A.step(B.step())" is "A - B"; the syntax for nested workflow steps
+    "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
     "def A(): return B.step()" is "A / B".
 
     In a chain/DAG of step dependencies, the "output step" is the step of last
@@ -162,21 +161,21 @@ def execute_workflow(
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-
-    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.id, WorkflowStatus.RUNNING)
-
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.id,
+            workflow_context.get_workflow_step_context(), workflow.step_id,
             baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
             workflow_data.max_retries, last_step_of_workflow)
 
     if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
+
+    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -187,6 +186,7 @@ def execute_workflow(
 def commit_step(store: workflow_storage.WorkflowStorage,
                 step_id: "StepID",
                 ret: Union["Workflow", Any],
+                exception: Optional[Exception],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
     Args:
@@ -200,7 +200,7 @@ def commit_step(store: workflow_storage.WorkflowStorage,
     from ray.experimental.workflow.common import Workflow
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
-    store.save_step_output(step_id, ret, outer_most_step_id)
+    store.save_step_output(step_id, ret, exception, outer_most_step_id)
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
@@ -250,13 +250,20 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             else:
                 retry_msg = "The step will be retried."
             logger.error(
-                f"{workflow_context.get_step_name()} failed with error message"
+                f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")
             exception = e
 
     if catch_exceptions:
         if step_type == StepType.FUNCTION:
-            persisted_output, volatile_output = (result, exception), None
+            if isinstance(result, Workflow):
+                # When it returns a nested workflow, catch_exception
+                # should be passed recursively.
+                assert exception is None
+                result.data.catch_exceptions = True
+                persisted_output, volatile_output = result, None
+            else:
+                persisted_output, volatile_output = (result, exception), None
         elif step_type == StepType.ACTOR_METHOD:
             # virtual actors do not persist exception
             persisted_output, volatile_output = result[0], (result[1],
@@ -280,13 +287,6 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             persisted_output, volatile_output = None, result
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
-
-    is_nested = isinstance(persisted_output, Workflow)
-    if step_type != StepType.FUNCTION and is_nested:
-        # TODO(suquark): Support returning a workflow inside
-        # a virtual actor.
-        raise TypeError("Only a workflow step function "
-                        "can return a workflow.")
 
     return persisted_output, volatile_output
 
@@ -319,15 +319,23 @@ def _workflow_step_executor(
     """
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
-    persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
-                                                  catch_exceptions,
-                                                  max_retries, *args, **kwargs)
-
-    if step_type != StepType.READONLY_ACTOR_METHOD:
+    store = workflow_storage.get_workflow_storage()
+    try:
+        persisted_output, volatile_output = _wrap_run(
+            func, step_type, step_id, catch_exceptions, max_retries, *args,
+            **kwargs)
+    except Exception as e:
+        commit_step(store, step_id, None, e, outer_most_step_id)
+        raise e
+    if step_type == StepType.READONLY_ACTOR_METHOD:
+        if isinstance(volatile_output, Workflow):
+            raise TypeError(
+                "Returning a Workflow from a readonly virtual actor "
+                "is not allowed.")
+        assert not isinstance(persisted_output, Workflow)
+    else:
         store = workflow_storage.get_workflow_storage()
-        # Save workflow output
-        commit_step(store, step_id, persisted_output, outer_most_step_id)
-        # We MUST execute the workflow after saving the output.
+        commit_step(store, step_id, persisted_output, None, outer_most_step_id)
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
@@ -338,20 +346,25 @@ def _workflow_step_executor(
                     # current step is the outer most step for the inner nested
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
-                # execute sub-workflow
-                persisted_output = execute_workflow(
-                    persisted_output, outer_most_step_id,
-                    last_step_of_workflow).persisted_output
-            else:
-                # TODO(suquark): Support returning a workflow inside
-                # a virtual actor.
-                raise TypeError("Only a workflow step function "
-                                "can return a workflow.")
+            assert volatile_output is None
+            # execute sub-workflow
+            result = execute_workflow(persisted_output, outer_most_step_id,
+                                      last_step_of_workflow)
+            # When virtual actor returns a workflow in the method,
+            # the volatile_output and persisted_output will be put together
+            persisted_output = result.persisted_output
+            volatile_output = result.volatile_output
         elif last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
+    if isinstance(volatile_output, Workflow):
+        # This is the case where a step method is called in the virtual actor.
+        # We need to run the method to get the final result.
+        assert step_type == StepType.ACTOR_METHOD
+        volatile_output = volatile_output.run_async(
+            workflow_context.get_current_workflow_id())
     return persisted_output, volatile_output
 
 
@@ -378,9 +391,11 @@ class _BakedWorkflowInputs:
                                       self.object_refs, self.workflow_refs)
 
 
-def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
+def _record_step_status(step_id: "StepID",
+                        status: "WorkflowStatus",
+                        outputs: List["ObjectRef"] = []) -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = get_management_actor()
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
-                                                   status))
+                                                   status, outputs))

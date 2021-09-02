@@ -32,7 +32,7 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
 
 ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                                         const ActorCreationOptions &options) {
-  /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
+  /// TODO(Guyang Song): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.

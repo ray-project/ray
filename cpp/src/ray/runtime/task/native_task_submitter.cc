@@ -36,14 +36,18 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskOptions options{};
   options.name = call_options.name;
   options.resources = call_options.resources;
-  std::vector<ObjectID> return_ids;
+  std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
-    core_worker.SubmitActorTask(invocation.actor_id, BuildRayFunction(invocation),
-                                invocation.args, options, &return_ids);
+    return_refs = core_worker.SubmitActorTask(
+        invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
   } else {
-    core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, options,
-                           &return_ids, 1, std::make_pair(PlacementGroupID::Nil(), -1),
-                           true, "");
+    return_refs = core_worker.SubmitTask(
+        BuildRayFunction(invocation), invocation.args, options, 1, false,
+        std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+  }
+  std::vector<ObjectID> return_ids;
+  for (const auto &ref : return_refs) {
+    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   return return_ids[0];
 }
