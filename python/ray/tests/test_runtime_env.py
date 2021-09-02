@@ -122,13 +122,12 @@ from test_module.test import one
 
 
 def start_client_server(cluster, client_mode):
+    from ray._private.runtime_env.working_dir import PKG_DIR
     if not client_mode:
-        return (cluster.address, {}, working_dir_pkg.PKG_DIR)
+        return (cluster.address, {}, PKG_DIR)
     ray.worker._global_node._ray_params.ray_client_server_port = "10003"
     ray.worker._global_node.start_ray_client_server()
-    return ("localhost:10003", {
-        "USE_RAY_CLIENT": "1"
-    }, working_dir_pkg.PKG_DIR)
+    return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
