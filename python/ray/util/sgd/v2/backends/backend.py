@@ -601,7 +601,7 @@ class BackendExecutor:
         return self.checkpoint_manager.latest_checkpoint_path
 
     @property
-    def latest_checkpoint_id(self) -> int:
+    def current_checkpoint_id(self) -> int:
         return self.checkpoint_manager._latest_checkpoint_id
 
     @property

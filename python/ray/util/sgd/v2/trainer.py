@@ -434,6 +434,7 @@ class SGDIterator:
         self._executor = backend_executor
         self._train_func = train_func
         self._checkpoint_strategy = checkpoint_strategy
+        self._run_dir = run_dir
         self._start_training(
             train_func, checkpoint, checkpoint_strategy, run_dir=run_dir)
 
@@ -454,7 +455,8 @@ class SGDIterator:
                 train_func=train_func,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
-                run_dir=run_dir
+                run_dir=run_dir,
+                checkpoint_id=checkpoint_id
             )
         )
 
@@ -467,7 +469,8 @@ class SGDIterator:
                 self._train_func,
                 self._executor.latest_checkpoint,
                 self._checkpoint_strategy,
-                checkpoint_id=self._executor.latest_checkpoint_id)
+                run_dir=self._run_dir,
+                checkpoint_id=self._executor.current_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
