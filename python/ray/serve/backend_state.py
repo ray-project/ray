@@ -603,6 +603,9 @@ class BackendState:
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
+        self._notify_backend_configs_changed()
+        self._notify_replica_handles_changed()
+
     def recover_cur_state_from_replica_actor_names(
             self, replica_actor_names: List[str]):
         logger.info("Recovering current state for deployment "
@@ -614,20 +617,10 @@ class BackendState:
                 replica_actor_name)
             self._replicas.add(
                 ReplicaState.STARTING_OR_UPDATING,
-                BackendReplica(
-                    self._controller_name,
-                    self._detached,
-                    replica_name.replica_tag,
-                    replica_name.deployment_tag,
-                    self._target_version,
-                    state=ReplicaState.STARTING_OR_UPDATING))
-
-    def recover_from_checkpoint_data(self, checkpoint_data):
-        target_state_checkpoint, current_state_checkpoint = checkpoint_data
-        self.recover_target_state_from_checkpoint(target_state_checkpoint)
-        self.recover_cur_state_from_checkpoint(current_state_checkpoint)
-        if self._curr_goal is not None:
-            self._goal_manager.create_goal(self._curr_goal)
+                BackendReplica(self._controller_name, self._detached,
+                               replica_name.replica_tag,
+                               replica_name.deployment_tag,
+                               self._target_version))
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -1079,9 +1072,7 @@ class BackendStateManager:
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()
-
-        deployment_to_current_replicas = self._get_all_running_replicas()
-        self._recover_from_checkpoint(deployment_to_current_replicas)
+        self._recover_from_checkpoint()
 
     def _get_all_running_replicas(self):
         # This ray call should be mocked in all unit tests
@@ -1095,13 +1086,14 @@ class BackendStateManager:
         if len(all_replica_names) > 0:
             # Each replica tag is formatted as "backend_tag#random_letter"
             for replica_name in all_replica_names:
-                replica_tag = ReplicaTag.from_str(replica_name)
+                replica_tag = ReplicaName.from_str(replica_name)
                 deployment_to_current_replicas[
                     replica_tag.deployment_tag].append(replica_name)
 
         return deployment_to_current_replicas
 
-    def _recover_from_checkpoint(self, deployment_to_current_replicas):
+    def _recover_from_checkpoint(self):
+        deployment_to_current_replicas = self._get_all_running_replicas()
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (backend_state_info,

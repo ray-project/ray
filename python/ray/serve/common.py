@@ -66,5 +66,7 @@ class ReplicaName:
         self.replica_suffix = parsed[1]
         self.replica_tag = replica_name
 
+        return self
+
     def __str__(self):
         return self.replica_tag

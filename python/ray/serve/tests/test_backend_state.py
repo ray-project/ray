@@ -174,7 +174,6 @@ class MockReplicaActorWrapper:
         self.started = True
 
     def check_ready(self) -> ReplicaStartupStatus:
-        assert self.started
         ready = self.ready
         self.ready = ReplicaStartupStatus.PENDING
         return ready
@@ -1949,6 +1948,59 @@ def test_shutdown(mock_backend_state_manager):
     assert replica._actor.cleaned_up
 
     assert len(backend_state_manager._backend_states) == 0
+
+
+def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
+    backend_state_manager, timer, goal_manager = mock_backend_state_manager
+
+    tag = "test"
+
+    # Step 1: Create some backend info with actors in running state
+    b_info_1, b_version_1 = backend_info()
+    create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
+
+    backend_state = backend_state_manager._backend_states[tag]
+
+    # Single replica should be created.
+    backend_state_manager.update()
+    check_counts(
+        backend_state,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+    backend_state._replicas.get()[0]._actor.set_ready()
+
+    # Now the replica should be marked running.
+    backend_state_manager.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+
+    mocked_replica = backend_state._replicas.get(
+        states=[ReplicaState.RUNNING])[0]
+
+    # Step 2: Delete _replicas from backend_state
+    backend_state._replicas = ReplicaStateContainer()
+    # Step 3: Create new backend_state by resuming from passed in replica tags
+    with patch(
+            "ray.util.list_named_actors",
+            return_value=[mocked_replica.replica_tag]):
+        backend_state_manager._recover_from_checkpoint()
+
+    # Step 4: Ensure new backend_state is correct
+    backend_state_manager.update()
+    # backend state behind "test" is re-created in recovery flow
+    backend_state = backend_state_manager._backend_states[tag]
+    check_counts(
+        backend_state,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+
+    backend_state._replicas.get()[0]._actor.set_ready()
+
+    # Now the replica should be marked running.
+    backend_state_manager.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    # Ensure same replica name is used
+    assert backend_state._replicas.get()[
+        0].replica_tag == mocked_replica.replica_tag
 
 
 if __name__ == "__main__":
