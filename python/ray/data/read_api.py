@@ -487,6 +487,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
     blocks, metadata = zip(*res)
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
+
 @PublicAPI(stability="beta")
 def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
                *,
@@ -504,6 +505,7 @@ def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)))
+
 
 @PublicAPI(stability="beta")
 def from_spark(df: "pyspark.sql.DataFrame", *,
