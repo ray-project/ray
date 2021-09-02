@@ -1,3 +1,5 @@
+from concurrent.futures import Future
+
 import pytest
 from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
@@ -22,16 +24,28 @@ def test_client_object_ref_basics(ray_start_regular):
         with pytest.raises(Exception):
             ClientObjectRef(b"\0")
 
-        # Test __eq__()
-        id = b"\0" * 28
-        assert ClientObjectRef(id) == ClientObjectRef(id)
-        assert ClientObjectRef(id) != ref
-        assert ClientObjectRef(id) != ObjectRef(id)
+        obj_id = b"\0" * 28
+        fut = Future()
+        fut.set_result(obj_id)
+        server_ref = ObjectRef(obj_id)
+        for client_ref in [ClientObjectRef(obj_id), ClientObjectRef(fut)]:
+            client_members = set(client_ref.__dir__())
+            server_members = set(server_ref.__dir__())
+            assert client_members.difference(server_members) == {"id"}
+            assert server_members.difference(client_members) == set()
 
-        assert ClientObjectRef(id).__repr__() == f"ClientObjectRef({id.hex()})"
-        assert ClientObjectRef(id).binary() == id
-        assert ClientObjectRef(id).hex() == id.hex()
-        assert not ClientObjectRef(id).is_nil()
+            # Test __eq__()
+            assert client_ref == ClientObjectRef(obj_id)
+            assert client_ref != ref
+            assert client_ref != server_ref
+
+            # Test other methods
+            assert client_ref.__repr__() == f"ClientObjectRef({obj_id.hex()})"
+            assert client_ref.binary() == obj_id
+            assert client_ref.hex() == obj_id.hex()
+            assert not client_ref.is_nil()
+            assert client_ref.task_id() == server_ref.task_id()
+            assert client_ref.job_id() == server_ref.job_id()
 
 
 def test_client_actor_ref_basics(ray_start_regular):
@@ -60,16 +74,26 @@ def test_client_actor_ref_basics(ray_start_regular):
         with pytest.raises(Exception):
             ClientActorRef(b"\0")
 
-        # Test __eq__()
-        id = b"\0" * 16
-        assert ClientActorRef(id) == ClientActorRef(id)
-        assert ClientActorRef(id) != ref
-        assert ClientActorRef(id) != ActorID(id)
+        actor_id = b"\0" * 16
+        fut = Future()
+        fut.set_result(actor_id)
+        server_ref = ActorID(actor_id)
+        for client_ref in [ClientActorRef(actor_id), ClientActorRef(fut)]:
+            client_members = set(client_ref.__dir__())
+            server_members = set(server_ref.__dir__())
+            assert client_members.difference(server_members) == {"id"}
+            assert server_members.difference(client_members) == set()
 
-        assert ClientActorRef(id).__repr__() == f"ClientActorRef({id.hex()})"
-        assert ClientActorRef(id).binary() == id
-        assert ClientActorRef(id).hex() == id.hex()
-        assert not ClientActorRef(id).is_nil()
+            # Test __eq__()
+            assert client_ref == ClientActorRef(actor_id)
+            assert client_ref != ref
+            assert client_ref != server_ref
+
+            # Test other methods
+            assert client_ref.__repr__() == f"ClientActorRef({actor_id.hex()})"
+            assert client_ref.binary() == actor_id
+            assert client_ref.hex() == actor_id.hex()
+            assert not client_ref.is_nil()
 
 
 def server_object_ref_count(server, n):

@@ -6,7 +6,7 @@ import queue
 import threading
 import grpc
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 # number of simultaneous in-flight requests.
 INT32_MAX = (2**31) - 1
 
-ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
+ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]],
+                            None]
 
 
 class DataClient:
@@ -34,7 +35,11 @@ class DataClient:
         self.request_queue = queue.Queue()
         self.data_thread = self._start_datathread()
         self.ready_data: Dict[int, Any] = {}
+
+        # Waiting for response or shutdown.
         self.cv = threading.Condition()
+        # Serialize access to self.request_queue, self.asyncio_waiting_data and
+        # self._req_id
         self.lock = threading.RLock()
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
@@ -47,14 +52,13 @@ class DataClient:
         self.data_thread.start()
 
     def _next_id(self) -> int:
-        with self.lock:
-            self._req_id += 1
-            if self._req_id > INT32_MAX:
-                self._req_id = 1
-            # Responses that aren't tracked (like opportunistic releases)
-            # have req_id=0, so make sure we never mint such an id.
-            assert self._req_id != 0
-            return self._req_id
+        self._req_id += 1
+        if self._req_id > INT32_MAX:
+            self._req_id = 1
+        # Responses that aren't tracked (like opportunistic releases)
+        # have req_id=0, so make sure we never mint such an id.
+        assert self._req_id != 0
+        return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
@@ -82,9 +86,6 @@ class DataClient:
                         self.ready_data[response.req_id] = response
                         self.cv.notify_all()
         except grpc.RpcError as e:
-            with self.cv:
-                self._in_shutdown = True
-                self.cv.notify_all()
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
@@ -100,37 +101,47 @@ class DataClient:
                 logger.exception(
                     "Got Error from data channel -- shutting down:")
 
+            # This data thread needs to call disconnect() below, and it
+            # cannot join itself. It is exiting anyway so setting it to None.
+            self.data_thread = None
+            from ray.util import disconnect
+            disconnect()
+
+            with self.cv:
+                with self.lock:
+                    self._in_shutdown = True
+                    # Abort async requests with the error.
+                    err = ConnectionError(
+                        "Request failed because of cancellation, "
+                        "disconnection or failure of this or a previous "
+                        f"request. Exception: {e}")
+                    for callback in self.asyncio_waiting_data.values():
+                        callback(err)
+                    self.asyncio_waiting_data = {}
+                    # Since self._in_shutdown is set to True, no new item
+                    # will be added to self.asyncio_waiting_data
+
+                self.cv.notify_all()
+
     def close(self) -> None:
         if self.request_queue is not None:
             self.request_queue.put(None)
+        # Normally, data_thread is None because close() is called from
+        # data_thread.
         if self.data_thread is not None:
             self.data_thread.join()
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:
-        if self._in_shutdown:
-            from ray.util import disconnect
-            disconnect()
-            raise ConnectionError(
-                "Request can't be sent because the data channel is "
-                "terminated. This is likely because the data channel "
-                "disconnected at some point before this request was "
-                "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        self.request_queue.put(req)
-        data = None
+        with self.lock:
+            self._check_shutdown()
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.request_queue.put(req)
         with self.cv:
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
-            if self._in_shutdown:
-                from ray.util import disconnect
-                disconnect()
-                raise ConnectionError(
-                    "Sending request failed because the data channel "
-                    "terminated. This is usually due to an error "
-                    f"in handling the most recent request: {req}. Ray Client "
-                    "has been disconnected.")
+            self._check_shutdown()
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
@@ -138,19 +149,23 @@ class DataClient:
     def _async_send(self,
                     req: ray_client_pb2.DataRequest,
                     callback: Optional[ResponseCallable] = None) -> None:
-        if self._in_shutdown:
-            from ray.util import disconnect
-            disconnect()
-            raise ConnectionError(
-                "Request can't be sent because the data channel is "
-                "terminated. This is likely because the data channel "
-                "disconnected at some point before this request was "
-                "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        if callback:
-            self.asyncio_waiting_data[req_id] = callback
-        self.request_queue.put(req)
+        with self.lock:
+            self._check_shutdown()
+            req_id = self._next_id()
+            req.req_id = req_id
+            if callback:
+                self.asyncio_waiting_data[req_id] = callback
+            self.request_queue.put(req)
+
+    def _check_shutdown(self):
+        if not self._in_shutdown:
+            return
+
+        raise ConnectionError(
+            "Request can't be sent because the data channel is "
+            "terminated. This is likely because the data channel "
+            "disconnected at some point before this request was "
+            "prepared. Ray Client has been disconnected.")
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:

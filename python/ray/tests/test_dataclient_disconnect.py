@@ -40,9 +40,17 @@ def test_dataclient_disconnect_before_request():
         ray.worker.data_client.request_queue.put(Mock())
 
         # The next remote call should error since the data channel has shut
-        # down, which should also disconnect the client.
-        with pytest.raises(ConnectionError):
+        # down, which should also disconnect the client. Two cases are checked
+        # separately:
+        # (1) Client errors and disconnects after `f.remote()`, raising a
+        #     ConnectionError.
+        # (2) Client errors and disconnects before `f.remote()`, raising an
+        #     Exception for "Ray Client is not connected".
+        with pytest.raises(Exception) as exc_info:
             ray.get(f.remote())
+            assert exc_info.type is ConnectionError or exc_info.match(
+                "Ray Client is not connected. Please connect "
+                "by calling `ray.connect`."), exc_info
 
         # Client should be disconnected
         assert not ray.is_connected()

@@ -316,7 +316,7 @@ cdef class ClientActorRef(ActorID):
         elif isinstance(id, Future):
             self._id_future = id
         else:
-            raise ValueError("Unable to handle id {}".format(id))
+            raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
         if client is None or client.ray is None:

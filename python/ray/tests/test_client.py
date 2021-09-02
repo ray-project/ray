@@ -454,7 +454,7 @@ def test_serializing_exceptions(ray_start_regular_shared):
         with pytest.raises(
                 ValueError, match="Failed to look up actor with name 'abc'"):
             a = ray.get_actor("abc")
-            # Exception is only raised when underlying ActorID is resolved.
+            # Reading underlying ActorID to raise the Exception from server.
             print(a.id)
 
 

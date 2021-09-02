@@ -11,7 +11,8 @@ import warnings
 from collections import defaultdict
 from concurrent.futures import Future
 import tempfile
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import (Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING,
+                    Union)
 
 import grpc
 
@@ -330,7 +331,13 @@ class Worker:
 
         id_futures = [Future() for _ in range(num_returns)]
 
-        def populate_ids(resp: ray_client_pb2.DataResponse) -> None:
+        def populate_ids(
+                resp: Union[ray_client_pb2.DataResponse, Exception]) -> None:
+            if isinstance(resp, Exception):
+                for future in id_futures:
+                    future.set_exception(resp)
+                return
+
             ticket = resp.task_ticket
             if not ticket.valid:
                 try:
@@ -343,7 +350,7 @@ class Worker:
             assert len(ticket.return_ids) == num_returns, \
                 f"expected {num_returns} returns, actual {ticket.return_ids}"
             for future, raw_id in zip(id_futures, ticket.return_ids):
-                future.set_result(result=raw_id)
+                future.set_result(raw_id)
 
         self.data_client.Schedule(task, populate_ids)
 

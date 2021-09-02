@@ -130,14 +130,14 @@ cdef class ObjectRef(BaseID):
                            "asyncio.wrap_future(ref.future()).")
         return asyncio.wrap_future(self.future())
 
-    def _on_completed(self, py_callback: Callable[[Any], None]):
+    def _on_completed(self, set_future: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.
         If the ObjectRef is already ready, the callback will be called soon.
         The callback should take the result as the only argument. The result
         can be an exception object in case of task error.
         """
         core_worker = ray.worker.global_worker.core_worker
-        core_worker.set_get_async_callback(self, py_callback)
+        core_worker.set_get_async_callback(self, set_future)
         return self
 
 
@@ -150,7 +150,7 @@ cdef class ClientObjectRef(ObjectRef):
         elif isinstance(id, concurrent.futures.Future):
             self._id_future = id
         else:
-            raise ValueError("Unable to handle id {}".format(id))
+            raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -194,7 +194,7 @@ cdef class ClientObjectRef(ObjectRef):
     def future(self) -> concurrent.futures.Future:
         fut = concurrent.futures.Future()
 
-        def set_value(data: Any) -> None:
+        def set_future(data: Any) -> None:
             """Schedules a callback to set the exception or result
             in the Future."""
 
@@ -203,13 +203,13 @@ cdef class ClientObjectRef(ObjectRef):
             else:
                 fut.set_result(data)
 
-        self._on_completed(set_value)
+        self._on_completed(set_future)
 
         # Prevent this object ref from being released.
         fut.object_ref = self
         return fut
 
-    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+    def _on_completed(self, set_future: Callable[[Any], None]) -> None:
         """Register a callback that will be called after Object is ready.
         If the ObjectRef is already ready, the callback will be called soon.
         The callback should take the result as the only argument. The result
@@ -217,16 +217,19 @@ cdef class ClientObjectRef(ObjectRef):
         """
         from ray.util.client.client_pickler import loads_from_server
 
-        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
-            """Converts from a GetResponse proto to a python object."""
-            obj = resp.get
-            data = None
-            if not obj.valid:
-                data = loads_from_server(resp.get.error)
+        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
+                                        Exception]) -> None:
+            if isinstance(resp, Exception):
+                data = resp
             else:
-                data = loads_from_server(resp.get.data)
+                obj = resp.get
+                data = None
+                if not obj.valid:
+                    data = loads_from_server(resp.get.error)
+                else:
+                    data = loads_from_server(resp.get.data)
 
-            py_callback(data)
+            set_future(data)
 
         client.ray._register_callback(self, deserialize_obj)
 
