@@ -21,6 +21,9 @@ export RAY_BACKEND_LOG_LEVEL=debug
 pushd /ray || true
 bash ./ci/travis/install-bazel.sh --system
 
+ll -al /sys/fs/cgroup
+mkdir /sys/fs/cgroup/cpu/ray-aIBs5jS9
+
 # shellcheck disable=SC2046
 bazel test --test_timeout 60 --config=ci $(./scripts/bazel_export_options) \
 --test_tag_filters=-kubernetes,-jenkins_only,privilege_test,-flaky \
