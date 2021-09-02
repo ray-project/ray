@@ -1,8 +1,8 @@
 # coding: utf-8
-import os
 import sys
 
-import cgroupspy.trees, cgroupspy.controllers
+import cgroupspy.trees
+import cgroupspy.controllers
 import pytest
 
 import ray
@@ -58,14 +58,14 @@ def test_resource_limit_without_container(shutdown_only):
                                        runtime_env={"env_vars": {
                                            "a": "b",
                                        }}).remote())
-    assert memory_cgroup_name.startswith('/ray-')
+    assert memory_cgroup_name.startswith("/ray-")
 
     cpu_cgroup_name = ray.get(
         get_cpu_cgroup_name.options(num_cpus=1,
                                     runtime_env={"env_vars": {
                                         "a": "b",
                                     }}).remote())
-    assert cpu_cgroup_name.startswith('/ray-')
+    assert cpu_cgroup_name.startswith("/ray-")
 
     memory_value = ray.get(
         get_memory_cgroup_value.options(memory=100 * 1024 * 1024,
@@ -113,7 +113,7 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
                                        runtime_env={"env_vars": {
                                            "a": "b",
                                        }}).remote())
-    assert cpuset_cgroup_name.startswith('/ray-')
+    assert cpuset_cgroup_name.startswith("/ray-")
 
     cpuset_value = ray.get(
         get_cpuset_cgroup_value.options(num_cpus=1,
