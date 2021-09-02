@@ -442,7 +442,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 
 /// If enabled, workers started in containers will add
-/// resource limit. The raylet process need permission to create cgroup.
+/// resource limits. This requires the raylet process to have permissions to create cgroups.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
