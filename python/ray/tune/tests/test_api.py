@@ -714,7 +714,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 else:
                     return [0, 1, True, {}]
 
-        try:
+        with self.assertRaises(Exception):
             tune.run(
                 "PPO",
                 config={
@@ -722,8 +722,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     "framework": "torch"
                 },
                 stop={"training_iteration": 1})
-        except Exception:
-            pass
         trials = tune.run(
             "PPO",
             config={
