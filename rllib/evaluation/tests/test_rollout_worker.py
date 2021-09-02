@@ -157,13 +157,14 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            pg = PGTrainer(
+            # We expect this to fail already on Trainer init due
+            # to the env sanity check right after env creation (inside
+            # RolloutWorker).
+            self.assertRaises(Exception, lambda: PGTrainer(
                 env="fail", config={
-                    "num_workers": 1,
+                    "num_workers": 2,
                     "framework": fw,
-                })
-            self.assertRaises(Exception, lambda: pg.train())
-            pg.stop()
+                }))
 
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -668,6 +669,17 @@ class TestRolloutWorker(unittest.TestCase):
             policy_spec=MockPolicy,
             seed=1)
         assert not hasattr(ev.env, "seed")
+        ev.stop()
+
+    def test_multi_env_seed(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: MockEnv2(100),
+            num_envs=3,
+            policy_spec=MockPolicy,
+            seed=1)
+        seeds = ev.foreach_env(lambda env: env.rng_seed)
+        # Make sure all environments get a different deterministic seed.
+        self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
 
     def sample_and_flush(self, ev):
