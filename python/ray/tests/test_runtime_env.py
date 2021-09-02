@@ -52,8 +52,8 @@ except ValueError:
 except TypeError:
     print("TypeError")
     sys.exit(0)
-except:
-    print("ERROR")
+except Exception as e:
+    print("ERROR:", str(e))
     sys.exit(0)
 
 
@@ -214,7 +214,7 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
         execute_statement = "sys.exit(0)"
         script = driver_script.format(**locals())
         out = run_string_as_driver(script, env)
-        assert out != "ERROR"
+        assert not out.startswith("ERROR:")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

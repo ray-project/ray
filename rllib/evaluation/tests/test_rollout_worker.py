@@ -679,7 +679,7 @@ class TestRolloutWorker(unittest.TestCase):
             seed=1)
         seeds = ev.foreach_env(lambda env: env.rng_seed)
         # Make sure all environments get a different deterministic seed.
-        assert seeds == [1, 2, 3]
+        self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
 
     def sample_and_flush(self, ev):
