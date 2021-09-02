@@ -55,6 +55,9 @@ TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
              60 * 1000);
 }
 
+TEST_P(StreamingExactlySameTest, Hold) {
+}
+
 INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 
 INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
