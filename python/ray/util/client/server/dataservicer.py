@@ -13,7 +13,7 @@ import time
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
-from ray.util.client.common import ReplayCache, AsyncReplayCache
+from ray.util.client.common import ReplayCache
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
@@ -35,6 +35,18 @@ def _get_reconnecting_from_context(context: Any) -> bool:
     val = metadata.get("reconnecting") or "False"
     assert val in ("True", "False")
     return val == "True"
+
+
+def _is_async(req: ray_client_pb2.DataRequest) -> bool:
+    """
+    Returns True if the datarequest is asynchronous, false otherwise
+    """
+    req_type = req.WhichOneof("type")
+    if req_type == "get":
+        return req.get.asynchronous
+    if req_type == "release":
+        return True
+    return False
 
 
 def fill_queue(
@@ -65,8 +77,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.client_last_seen: Dict[str, float] = {
         }  # guarded by self.clients_lock
         self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
-        self.async_caches: Dict[str, AsyncReplayCache] = defaultdict(
-            AsyncReplayCache)
 
     def Datapath(self, request_iterator, context):
         cleanup_requested = False
@@ -79,7 +89,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         logger.debug(f"New data connection from client {client_id}: ")
         accepted_connection = self._init(client_id, context, start_time)
         replay_cache = self.replay_caches[client_id]
-        async_cache: AsyncReplayCache = self.async_caches[client_id]
         if not accepted_connection:
             return
         try:
@@ -103,9 +112,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 req_id = req.req_id
                 thread_id = req.thread_id
 
-                cached_result = replay_cache.check_cache(thread_id, req_id)
-                if cached_result is not None:
-                    yield cached_result
+                if not _is_async(req):
+                    cached_result = replay_cache.check_cache(thread_id, req_id)
+                    if cached_result is not None:
+                        yield cached_result
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
                 resp = None
@@ -116,10 +126,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 elif req_type == "get":
                     get_resp = None
                     if req.get.asynchronous:
-                        async_cache_result = async_cache.check_cache(req_id)
-                        if async_cache_result is not None:
-                            yield async_cache_result
-                            continue
                         get_resp = self.basic_service._async_get_object(
                             req.get, client_id, req.req_id, request_queue)
                         if get_resp is None:
@@ -129,10 +135,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             # ready.
                             continue
                         else:
-                            # Add response to request_queue to reuse caching
-                            # logic
-                            request_queue.put(get_resp)
-                            continue
+                            yield get_resp
                     else:
                         get_resp = self.basic_service._get_object(
                             req.get, client_id)
@@ -142,21 +145,12 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         req.put, client_id)
                     resp = ray_client_pb2.DataResponse(put=put_resp)
                 elif req_type == "release":
-                    # NOTE: release is asynchronous
-                    async_cache_result = async_cache.check_cache(req_id)
-                    if async_cache_result is not None:
-                        yield async_cache_result
-                        continue
                     released = []
                     for rel_id in req.release.ids:
                         rel = self.basic_service.release(client_id, rel_id)
                         released.append(rel)
                     resp = ray_client_pb2.DataResponse(
                         release=ray_client_pb2.ReleaseResponse(ok=released))
-                    resp.req_id = req.req_id
-                    async_cache.update_cache(req_id, resp)
-                    yield resp
-                    continue
                 elif req_type == "connection_info":
                     resp = ray_client_pb2.DataResponse(
                         connection_info=self._build_connection_response())
@@ -175,7 +169,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-                replay_cache.update_cache(thread_id, req_id, resp)
+
+                if not _is_async(req):
+                    replay_cache.update_cache(thread_id, req_id, resp)
 
                 yield resp
         finally:
@@ -205,7 +201,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     return
                 self.basic_service.release_all(client_id)
                 del self.client_last_seen[client_id]
-                del self.replay_caches[client_id]
+                if client_id in self.replay_caches:
+                    del self.replay_caches[client_id]
                 self.num_clients -= 1
                 logger.debug(f"Removed clients. {self.num_clients}")
 
