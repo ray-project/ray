@@ -13,12 +13,12 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.conda import get_conda_activate_commands
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.runtime_env.conda import setup_conda_or_pip
+from ray._private.runtime_env.conda_utils import get_conda_activate_commands
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
