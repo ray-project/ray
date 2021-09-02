@@ -196,7 +196,7 @@ class Worker:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if backoff_tracker.retries() > self._connection_retries:
+                if backoff_tracker.retries() >= 10:
                     raise
                 if self._can_reconnect(e):
                     backoff_tracker.sleep()

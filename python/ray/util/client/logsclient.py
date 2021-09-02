@@ -53,8 +53,8 @@ class LogstreamClient:
                 return
             except grpc.RpcError as e:
                 logger.info("Got error from log channel.")
-                if (backoff_tracker.retries() >=
-                        self.client_worker._connection_retries):
+                # TODO: unhardcode
+                if (backoff_tracker.retries() >= 10):
                     logger.info(
                         "Max retries reached for log channel reconnection, "
                         "shutting down log channel.")

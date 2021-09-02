@@ -90,8 +90,7 @@ class DataClient:
                 return
             except grpc.RpcError as e:
                 logger.info("Got error from data channel.")
-                if (backoff_tracker.retries() >=
-                        self.client_worker._connection_retries):
+                if (backoff_tracker.retries() >= 10):
                     logger.info(
                         "Max retries reached for data channel reconnection, "
                         "shutting down data channel.")
