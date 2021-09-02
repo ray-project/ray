@@ -133,15 +133,16 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # == Atari ==
     # Which framestacking size to use for Atari envs.
     # "auto": Use a value of 4, but only if the env is an Atari env.
-    # > 1: Use the trajectory view API in the default VisionNets to request the
+    # > 1: Use the trajectory view API via the default VisionNets to request
     #      last n observations (single, grayscaled 84x84 image frames) as
     #      inputs. The time axis in the so provided observation tensors
     #      will come right after the batch axis (channels first format),
     #      e.g. BxTx84x84, where T=num_framestacks.
     # 0 or 1: No framestacking used.
-    # Use the deprecated `framestack=True`, to disable the above behavor and to
-    # enable legacy stacking behavior (w/o trajectory view API) instead.
-    "num_framestacks": "auto",
+    # Use the (deprecated) `framestack=True`, to disable the above behavior
+    # and to enable legacy stacking behavior (w/o using trajectory view API)
+    # instead.
+    "num_framestacks": 0,
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
