@@ -38,36 +38,39 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
-        reconnecting = "False"
+        reconnecting = False
         while not self.client_worker._in_shutdown:
+            if reconnecting:
+                # Refresh queue and retry last request
+                self.request_queue = queue.Queue()
+                if self.last_req:
+                    self.request_queue.put(self.last_req)
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(
                 self.client_worker.channel)
-            metadata = self._metadata + [("reconnecting", reconnecting)]
             try:
                 log_stream = stub.Logstream(
-                    iter(self.request_queue.get, None), metadata=metadata)
+                    iter(self.request_queue.get, None),
+                    metadata=self._metadata)
             except ValueError:
                 # Initiated stub when dataclient tried to reset channel
                 time.sleep(.5)
                 continue
             try:
                 for record in log_stream:
-                    print("here")
                     if record.level < 0:
                         self.stdstream(level=record.level, msg=record.msg)
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
                 if self.client_worker._can_reconnect(e):
-                    logger.info("Attempting to reconnect log channel.")
-                    reconnecting = "True"
+                    logger.info("Log channel dropped, retrying.")
+                    reconnecting = True
                     time.sleep(.5)
-                    self.request_queue = queue.Queue()
-                    if self.last_req:
-                        self.request_queue.put(self.last_req)
                     continue
                 else:
-                    print("Shutting down log channel")
+                    logger.info("Shutting down log channel.")
+                    if not self.client_worker._in_shutdown:
+                        logger.exception("Unexpected exception:")
                     return
 
     def log(self, level: int, msg: str):

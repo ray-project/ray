@@ -13,7 +13,6 @@ import inspect
 from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
-import time
 from typing import Any
 from typing import List
 from typing import Dict
@@ -418,37 +417,6 @@ def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
         logger.error("Client connecting with no client_id")
         context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
     return client_id
-
-
-MAX_TIMEOUT_SEC = 30
-BACKOFF_RESET_INTERVAL = 60
-
-
-class BackoffTracker:
-    def __init__(self, initial_backoff=5):
-        self.last_backoff = 0
-        self._retries = 0
-        self._intial_backoff = initial_backoff
-        self.timeout = self._intial_backoff
-
-    def sleep(self):
-        self._reset_if_needed()
-        self.last_backoff = time.time()
-        time.sleep(self.timeout)
-        self.timeout += min(MAX_TIMEOUT_SEC, self.timeout + 5)
-        self._retries += 1
-
-    def retries(self):
-        self._reset_if_needed()
-        return self._retries
-
-    def _reset_if_needed(self):
-        # Reset the number of retries and timeout if more than
-        # BACKOFF_RESET_INTERVAL seconds have passed since last attempt
-        now = time.time()
-        if now - self.last_backoff > BACKOFF_RESET_INTERVAL:
-            self._retries = 0
-            self.timeout = self._intial_backoff
 
 
 class ReplayCache:
