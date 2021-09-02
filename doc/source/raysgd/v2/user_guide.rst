@@ -18,6 +18,8 @@ In this guide, we cover examples for the following use cases:
 Quick Start
 -----------
 
+.. TODO: make this runnable :)
+
 RaySGD abstracts away the complexity of setting up a distributed training system. Let's take this simple example function:
 
 .. code-block:: python
@@ -40,26 +42,21 @@ RaySGD abstracts away the complexity of setting up a distributed training system
             results = model(x)
         return results
 
-To convert this to RaySGD, we add a ``config`` parameter to ``train_func()``:
-
-.. code-block:: diff
-
-    -def train_func():
-    +def train_func(config):
-
-Then, we can construct the trainer function:
+We can simply construct the trainer function:
 
 .. code-block:: python
 
-    from ray.util.sgd import Trainer
+    from ray.util.sgd.v2 import Trainer
 
-    trainer = Trainer(num_workers=2)
+    trainer = Trainer(backend = "torch", num_workers=2)
 
 Then, we can pass the function to the trainer. This will cause the trainer to start the necessary processes and execute the training function:
 
 .. code-block:: python
 
-    results = trainer.run(train_func, config=None)
+
+    trainer.start()
+    results = trainer.run(train_func)
     print(results)
 
 Now, let's leverage Pytorch's Distributed Data Parallel. With RaySGD, you
@@ -110,6 +107,16 @@ Running this with RaySGD is as simple as the following:
     all_results = trainer.run(train_simple)
 
 
+Backends
+----------------------
+
+RaySGD provides a thin API around different backend frameworks for
+distributed deep learning. At the moment, RaySGD allows you to perform
+training with:
+
+* **Pytorch:** RaySGD initializes your distributed process group, allowing you to run your `DataDistributedParallel` training script.
+* **Tensorflow:**  RaySGD configures `TF_CONFIG` for you, allowing you to run your `MultiWorkerMirroredStrategy` training script.
+* **Horovod:** RaySGD configures the Horovod environment and Rendezvous server for you, allowing you to run your `DistributedOptimizer` training script.
 
 Porting code to RaySGD
 ----------------------
@@ -127,6 +134,56 @@ Porting code to RaySGD
     .. group-tab:: horovod
 
         TODO. Write about how to convert code to use horovod.
+
+.. To make existing code from the previous SGD API, see :ref:`Backwards
+Compatibility <_sgd-backwards-compatibility>`.
+
+Configurations
+--------------
+
+With RaySGD, you can execute a training function (``train_func``) in a
+distributed manner by calling ``trainer.run(train_func)``. To pass arguments
+into the training function, you can expose a single ``config`` parameter:
+
+.. code-block:: diff
+
+    -def train_func():
+    +def train_func(config):
+
+Then, you can pass in the config dictionary as an argument to ``Trainer.run``:
+
+.. code-block:: diff
+
+    -trainer.run(train_func)
+    +config = {} # This should be populated.
+    +trainer.run(train_func, config=config)
+
+Putting this all together, you can run your training function with different
+configurations. As an example:
+
+.. code-block:: python
+
+    from ray.util.sgd.v2 import Trainer
+
+    def train_func(config):
+        results = []
+        for i in range(config["num_epochs"]):
+            results.append(i)
+        return results
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    print(trainer.run(train_func, config={"num_epochs": 2}))
+    # [[0, 1], [0, 1]]
+    print(trainer.run(train_func, config={"num_epochs": 5}))
+    # [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
+    trainer.shutdown()
+
+A primary use-case for ``config`` is to try different hyperparameters. To
+perform hyperparameter tuning with RaySGD, please refer to the
+:ref:`Ray Tune integration <_tune-sgd>`.
+
+.. TODO add support for with_parameters
 
 .. _sgd-logging:
 
@@ -157,9 +214,9 @@ Logs will be written by:
 2. :ref:`Checkpoints <_sgd-checkpointing>`
 
 
-
 Reporting
 ---------
+
 RaySGD provides an ``sgd.report(**kwargs)`` API for reporting intermediate
 results from the training function up to the ``Trainer``.
 
@@ -407,8 +464,8 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
 
 .. _tune-sgd:
 
-Hyperparameter tuning
----------------------
+Hyperparameter tuning (Ray Tune)
+--------------------------------
 
 Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifically, you can take an existing training function and follow these steps:
 
@@ -500,3 +557,26 @@ Here is an example:
     # [tensor(0.3000), tensor(0.3000)]
     trainer.shutdown()
 
+..
+    Advanced APIs
+    -------------
+
+    TODO
+
+    Training Run Iterator API
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    TODO
+
+    Stateful Class API
+    ~~~~~~~~~~~~~~~~~~
+
+    TODO
+
+.. _sgd-backwards-compatibility:
+
+..
+    Backwards Compatibility
+    -------------
+
+    TODO
