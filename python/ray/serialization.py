@@ -9,7 +9,9 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ObjectReleasedError, OwnerDiedError, RaySystemError, RuntimeEnvSetupError)
+    ObjectReleasedError, OwnerDiedError,
+    ObjectReconstructionFailedError,
+    RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -222,9 +224,6 @@ class SerializationContext:
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
-            # elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-            #     return ObjectLostError(object_ref.hex(),
-            #                          object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex(),
                                        object_ref.call_site())
@@ -233,6 +232,9 @@ class SerializationContext:
                                            object_ref.call_site())
             elif error_type == ErrorType.Value("OWNER_DIED"):
                 return OwnerDiedError(object_ref.hex(), object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+                return ObjectReconstructionFailedError(object_ref.hex(),
+                                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:

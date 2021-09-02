@@ -371,6 +371,26 @@ class OwnerDiedError(ObjectUnreachableError):
             "https://github.com/ray-project/ray/issues/new/choose.")
 
 
+class ObjectReconstructionFailedError(ObjectUnreachableError):
+    """Indicates that the owner of the object has died while there is still a
+    reference to the object.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return super().__str__() + "\n\n" + (
+            f"Attempted lineage reconstruction to recover object {self.object_ref_hex}, "
+            "but recovery failed. This can happen if the task that creates this "
+            "object, or an object that this object depends on, "
+            "has already been executed up to its maximum number of "
+            "retries (3 for normal tasks, 0 fo actor tasks).\n\n"
+            "Lineage reconstruction is under active development. "
+            "If you see this error, please file an issue at "
+            "https://github.com/ray-project/ray/issues/new/choose.")
+
+
 class GetTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
     pass
@@ -405,6 +425,7 @@ RAY_EXCEPTION_TYPES = [
     ObjectStoreFullError,
     ObjectLostError,
     ObjectReleasedError,
+    ObjectReconstructionFailedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
