@@ -307,13 +307,16 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
     task_servicer = proxier.RayletServicerProxy(None, pm)
 
     def make_internal_kv_calls():
+        # Note: we need to assign different req_id's to the put requests,
+        # otherwise the SpecificServer will attempt to use the cached
+        # response frokm previous calls
         response = task_servicer.KVPut(
-            ray_client_pb2.KVPutRequest(key=b"key", value=b"val"))
+            ray_client_pb2.KVPutRequest(req_id=0, key=b"key", value=b"val"))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert not response.already_exists
 
         response = task_servicer.KVPut(
-            ray_client_pb2.KVPutRequest(key=b"key", value=b"val2"))
+            ray_client_pb2.KVPutRequest(req_id=1, key=b"key", value=b"val2"))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert response.already_exists
 
@@ -323,7 +326,7 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 
         response = task_servicer.KVPut(
             ray_client_pb2.KVPutRequest(
-                key=b"key", value=b"val2", overwrite=True))
+                req_id=2, key=b"key", value=b"val2", overwrite=True))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert response.already_exists
 

@@ -485,7 +485,7 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
     modified_init_req = ray_client_pb2.InitRequest(
         job_config=pickle.dumps(new_job_config),
         ray_init_kwargs=init_request.init.ray_init_kwargs,
-        reconnect_grace_period=init_request.reconnect_grace_period)
+        reconnect_grace_period=init_request.init.reconnect_grace_period)
 
     init_request.init.CopyFrom(modified_init_req)
     return (init_request, new_job_config)
@@ -549,7 +549,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 init_req = next(request_iterator)
                 with self.clients_lock:
                     self.reconnect_grace_periods[client_id] = \
-                        init_req.reconnect_grace_period
+                        init_req.init.reconnect_grace_period
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(
                         init_req)

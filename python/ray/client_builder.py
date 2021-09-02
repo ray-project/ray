@@ -87,9 +87,7 @@ class ClientBuilder:
         # Whether to allow connections to multiple clusters"
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
-        # Server will wait 30 seconds after unexpected client disconnection
-        # for the client to return
-        self._reconnect_grace_period = 30
+        self._reconnect_grace_period = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """

@@ -422,7 +422,17 @@ def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
 class ReplayCache:
     """
     Cache for blocking method calls. Needed to prevent retried requests from
-    being applied multiple times on the server. The high level logic is:
+    being applied multiple times on the server, for example when the client
+    disconnects.
+
+    Note that no clean up logic is used, the last response for each thread
+    will always be remembered, so at most the cache will hold N entries,
+    where N is the number of threads on the client side. This relies on the
+    assumption that a thread will not make a new blocking request until it has
+    received a response for a previous one, at which point it's safe to
+    overwrite the old response.
+
+    The high level logic is:
 
     1. Before making a call, check the cache for the current thread.
     2. If present in the cache, check the request id of the cached
@@ -436,10 +446,6 @@ class ReplayCache:
             Once the call is finished, update the cache entry with the
             new (req_id, response) pair. Notify other threads that may
             have been waiting for the response to be prepared.
-
-    Note that no clean up logic is used, the last response for each thread
-    will always be remembered, so at most the cache will hold N entries,
-    where N is the number of threads on the client side.
     """
 
     def __init__(self):

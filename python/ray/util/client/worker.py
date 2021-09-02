@@ -623,8 +623,8 @@ class Worker:
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,
-                    ray_init_kwargs=json.dumps(ray_init_kwargs),
-                    reconnect_grace_period=self._reconnect_grace_period))
+                    reconnect_grace_period=self._reconnect_grace_period,
+                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
             if not response.ok:
                 raise ConnectionAbortedError(
                     f"Initialization failure from server:\n{response.msg}")
