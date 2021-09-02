@@ -405,9 +405,17 @@ class Trial:
         return bool(self.placement_group_factory)
 
     def reset(self):
+        # If there is `default_resource_request` associated with the trainable,
+        # clear `resources` and `placement_group_factory`.
+        # This is mainly relevant for RLlib tuning jobs, where we save users
+        # of the trouble to specify the resources themselves by having some
+        # default resources for popular RLlib algorithms.
         trainable_cls = self.get_trainable_cls()
         clear_resources = (trainable_cls and
                            trainable_cls.default_resource_request(self.config))
+        resources = self.resources if not clear_resources else None
+        placement_group_factory = (self.placement_group_factory
+                                   if not clear_resources else None)
 
         return Trial(
             self.trainable_name,
@@ -416,9 +424,8 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=self.resources if not clear_resources else None,
-            placement_group_factory=self.placement_group_factory
-            if not clear_resources else None,
+            resources=resources,
+            placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
