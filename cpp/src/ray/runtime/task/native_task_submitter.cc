@@ -86,12 +86,8 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
-std::string NativeTaskSubmitter::GetFullName(bool global, const std::string &name) const {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
+std::string NativeTaskSubmitter::GetGetCurrentJobID() const {
+  return CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex();
 }
 
 ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name) const {

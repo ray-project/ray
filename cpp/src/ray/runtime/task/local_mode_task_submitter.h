@@ -42,7 +42,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
  private:
   ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
-  std::string GetFullName(bool global, const std::string &name) const;
+  std::string GetGetCurrentJobID() const;
 
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 

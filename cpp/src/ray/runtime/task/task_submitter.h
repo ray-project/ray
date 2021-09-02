@@ -41,7 +41,13 @@ class TaskSubmitter {
   virtual ActorID GetActor(bool global, const std::string &actor_name) const = 0;
 
  protected:
-  virtual std::string GetFullName(bool global, const std::string &name) const = 0;
+  std::string GetFullName(bool global, const std::string &name) const {
+    if (name.empty()) {
+      return "";
+    }
+    return global ? name : GetGetCurrentJobID() + "-" + name;
+  }
+  virtual std::string GetGetCurrentJobID() const = 0;
 };
 }  // namespace internal
 }  // namespace ray
