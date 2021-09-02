@@ -113,9 +113,8 @@ def setup_conda_or_pip(runtime_env: dict,
             conda_path = os.path.join(conda_dir, conda_env_name)
             _inject_ray_to_conda_site(conda_path, logger)
 
-        context.conda_env_name = conda_env_name
-        logger.info(
-            f"Finished setting up runtime environment at {conda_env_name}")
+    context.conda_env_name = conda_env_name
+    logger.info(f"Finished setting up runtime environment at {conda_env_name}")
 
 
 def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
