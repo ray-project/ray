@@ -8,10 +8,12 @@ from typing import Dict
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
+from ray.experimental.internal_kv import (_initialize_internal_kv,
+                                          _internal_kv_initialized)
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
-import ray._private.runtime_env as runtime_env
+import ray._private.runtime_env as runtime_env_pkg
 from ray._private.utils import import_attr
 from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
                                                using_thread_local_logger)
@@ -43,13 +45,17 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
-        runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
+        runtime_env_pkg.PKG_DIR = dashboard_agent.runtime_env_dir
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
+
+        # Initialize internal KV to be used by the working_dir setup code.
+        _initialize_internal_kv(self._dashboard_agent.gcs_client)
+        assert _internal_kv_initialized()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -72,6 +78,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # setup hooks ran for arbitrary job in arbitrary threads.
                 with using_thread_local_logger(per_job_logger):
                     env_context = self._setup(runtime_env, session_dir)
+                    if "uris" in runtime_env:
+                        working_dir = runtime_env_pkg.ensure_runtime_env_setup(
+                            runtime_env["uris"])
+                        env_context.working_dir = working_dir
+
                 return env_context
 
             loop = asyncio.get_event_loop()
@@ -103,17 +114,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         error_message=error_message)
 
             logger.info(f"Creating runtime env: {serialized_env}")
-            runtime_env_dict = json.loads(serialized_env or "{}")
-            uris = runtime_env_dict.get("uris")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    if uris:
-                        # TODO(guyang.sgy): Try ensure_runtime_env_setup(uris)
-                        # to download packages.
-                        # But we don't initailize internal kv in agent now.
-                        pass
                     runtime_env_context = await _setup_runtime_env(
                         serialized_env, self._session_dir)
                     break

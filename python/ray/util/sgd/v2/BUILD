@@ -57,7 +57,7 @@ py_test(
 
 py_test(
     name = "test_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]

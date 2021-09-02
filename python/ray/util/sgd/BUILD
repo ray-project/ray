@@ -19,14 +19,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ptl",
-    size = "large",
-    srcs = ["tests/test_ptl.py"],
-    tags = ["team:ml", "exclusive", "pytorch-lightning", "pytorch"],
-    deps = [":sgd_lib"],
-)
-
-py_test(
     name = "test_tensorflow",
     size = "small",
     srcs = ["tests/test_tensorflow.py"],
@@ -286,15 +278,6 @@ py_test(
     tags = ["team:ml", "exclusive", "pytorch"],
     deps = [":sgd_lib"],
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
-)
-
-py_test(
-    name = "mnist-ptl",
-    size = "small",
-    srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-    tags = ["team:ml", "exclusive", "pytorch", "pytorch-lightning"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test"]
 )
 
 # --------------------------------------------------------------------
