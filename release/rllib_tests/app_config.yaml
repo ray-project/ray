@@ -15,7 +15,6 @@ python:
     - atari_py
     # PyBullet support.
     - pybullet
-    - pybullet_envs
     # Pin this to 2.4.3 so it'll work with CUDA=11.0.
     - tensorflow==2.4.3
   conda_packages: []
