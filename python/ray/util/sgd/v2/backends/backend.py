@@ -76,7 +76,7 @@ class CheckpointManager:
             self,
             checkpoint_strategy: Optional[CheckpointStrategy],
             run_dir: Path,
-            checkpoint_id: Optional[int] = None,
+            latest_checkpoint_id: Optional[int] = None,
     ):
         """Checkpoint code executed during BackendExecutor start_training."""
         # Restart checkpointing.
