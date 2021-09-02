@@ -41,10 +41,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-
+    work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
     thread_io_service_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*io_service_));
       io_service_->run();
     }));
 
@@ -67,15 +65,18 @@ class GlobalStateAccessorTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    gcs_client_->Disconnect();
-    gcs_server_->Stop();
-    io_service_->stop();
-    thread_io_service_->join();
-    gcs_server_.reset();
-
     global_state_->Disconnect();
     global_state_.reset();
+
+    gcs_client_->Disconnect();
+    gcs_client_.reset();
+
+    gcs_server_->Stop();
+    gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
+
+    io_service_->stop();
+    thread_io_service_->join();
   }
 
   // GCS server.
@@ -91,6 +92,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
+  std::unique_ptr<boost::asio::io_service::work> work_;
 };
 
 TEST_F(GlobalStateAccessorTest, TestJobTable) {
