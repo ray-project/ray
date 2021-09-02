@@ -9,20 +9,23 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
+import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
+from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
-import ray.experimental.internal_kv as kv
-from time import sleep
+
 driver_script = """
-from time import sleep
-import sys
 import logging
+import os
+import sys
+import time
+
 sys.path.insert(0, "{working_dir}")
+
 import ray
 import ray.util
-import os
 
 try:
     import test_module
@@ -84,7 +87,7 @@ if os.environ.get("USE_RAY_CLIENT"):
     ray.util.disconnect()
 else:
     ray.shutdown()
-sleep(10)
+time.sleep(10)
 """
 
 
@@ -119,12 +122,13 @@ from test_module.test import one
 
 
 def start_client_server(cluster, client_mode):
-    from ray._private.runtime_env import PKG_DIR
     if not client_mode:
-        return (cluster.address, {}, PKG_DIR)
+        return (cluster.address, {}, working_dir_pkg.PKG_DIR)
     ray.worker._global_node._ray_params.ray_client_server_port = "10003"
     ray.worker._global_node.start_ray_client_server()
-    return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
+    return ("localhost:10003", {
+        "USE_RAY_CLIENT": "1"
+    }, working_dir_pkg.PKG_DIR)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -174,7 +178,7 @@ def test_travel():
                 item_num += 1
 
         construct(root)
-        exclude_spec = ray._private.runtime_env._get_excludes(root, excludes)
+        exclude_spec = working_dir_pkg._get_excludes(root, excludes)
         visited_dir_paths = set()
         visited_file_paths = set()
 
@@ -185,7 +189,7 @@ def test_travel():
                 with open(path) as f:
                     visited_file_paths.add((str(path), f.read()))
 
-        ray._private.runtime_env._dir_travel(root, [exclude_spec], handler)
+        working_dir_pkg._dir_travel(root, [exclude_spec], handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
 
@@ -264,6 +268,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
+    print(out)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
@@ -461,13 +466,13 @@ print(ray.get_runtime_context().runtime_env["working_dir"])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
-    import ray._private.runtime_env as runtime_env
-    import tempfile
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = runtime_env.get_project_package_name(working_dir, [], [])
-        pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
-        runtime_env.create_project_package(working_dir, [], [], tmp_file.name)
-        runtime_env.push_package(pkg_uri, tmp_file.name)
+        pkg_name = working_dir_pkg.get_project_package_name(
+            working_dir, [], [])
+        pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
+        working_dir_pkg.create_project_package(working_dir, [], [],
+                                               tmp_file.name)
+        working_dir_pkg.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "uris": ["{pkg_uri}"] }}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
@@ -521,8 +526,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)
-    from time import sleep
-    sleep(5)
+    time.sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
@@ -536,13 +540,13 @@ def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
     runtime_env = None
     # To make the first one hanging there
     execute_statement = """
-sleep(600)
+time.sleep(600)
 """
     script = driver_script.format(**locals())
     # Have one running with job config = None
     proc = run_string_as_driver_nonblocking(script, env)
     # waiting it to be up
-    sleep(5)
+    time.sleep(5)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the second one which should work because Ray Client servers.
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
@@ -562,11 +566,11 @@ def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     # To make the first one hanging there
     execute_statement = """
-sleep(600)
+time.sleep(600)
 """
     script = driver_script.format(**locals())
     proc = run_string_as_driver_nonblocking(script, env)
-    sleep(5)
+    time.sleep(5)
     runtime_env = None
     # Execute the following in the second one which should
     # succeed
@@ -587,11 +591,11 @@ def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     # To make the first one hanging ther
     execute_statement = """
-sleep(600)
+time.sleep(600)
 """
     script = driver_script.format(**locals())
     proc = run_string_as_driver_nonblocking(script, env)
-    sleep(5)
+    time.sleep(5)
     runtime_env = f"""
 {{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
     # Execute the following cmd in the second one and ensure that
@@ -904,7 +908,7 @@ def test_large_file_boundary(shutdown_only):
         os.chdir(tmp_dir)
 
         # Check that packages just under the max size work as expected.
-        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE - 1024 * 1024
+        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
 
@@ -929,7 +933,7 @@ def test_large_file_error(shutdown_only):
 
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
-        size = ray._private.runtime_env.GCS_STORAGE_MAX_SIZE // 2 + 1
+        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE // 2 + 1
         with open("test_file_1", "wb") as f:
             f.write(os.urandom(size))
 

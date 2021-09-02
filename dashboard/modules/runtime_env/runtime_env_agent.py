@@ -13,10 +13,9 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
-import ray._private.runtime_env as runtime_env_pkg
-from ray._private.utils import import_attr
-from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
-                                               using_thread_local_logger)
+from ray._private.runtime_env.conda import setup_conda_or_pip
+from ray._private.runtime_env.working_dir import setup_working_dir
+from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +41,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         super().__init__(dashboard_agent)
         self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
-        self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
-        runtime_env_pkg.PKG_DIR = dashboard_agent.runtime_env_dir
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -72,18 +69,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-                per_job_logger = self.get_or_create_logger(request.job_id)
-                # Here we set the logger context for the setup hook execution.
-                # The logger needs to be thread local because there can be
-                # setup hooks ran for arbitrary job in arbitrary threads.
-                with using_thread_local_logger(per_job_logger):
-                    env_context = self._setup(runtime_env, session_dir)
-                    if "uris" in runtime_env:
-                        working_dir = runtime_env_pkg.ensure_runtime_env_setup(
-                            runtime_env["uris"])
-                        env_context.working_dir = working_dir
 
-                return env_context
+                # Use a separate logger for each job.
+                per_job_logger = self.get_or_create_logger(request.job_id)
+                context = RuntimeEnvContext(session_dir)
+                setup_conda_or_pip(runtime_env, context, logger=per_job_logger)
+                setup_working_dir(runtime_env, context, logger=per_job_logger)
+                return context
 
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, run_setup_with_logger)

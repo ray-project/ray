@@ -1,8 +1,7 @@
 import os
 import sys
-import argparse
-import json
 import logging
+import yaml
 import hashlib
 import subprocess
 import runpy
@@ -13,29 +12,11 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.conda import get_conda_activate_commands
+from ray._private.conda import get_or_create_conda_env
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.runtime_env.conda import setup_conda_or_pip
-
-logger = logging.getLogger(__name__)
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    help="the serialized parsed runtime env dict")
-
-parser.add_argument(
-    "--serialized-runtime-env-context",
-    type=str,
-    help="the serialized runtime env context")
-
-# The worker is not set up yet, so we can't get session_dir from the worker.
-parser.add_argument(
-    "--session-dir", type=str, help="the directory for the current session")
 
 
 def _resolve_current_ray_path():
@@ -84,67 +65,57 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
-def setup_worker(input_args):
-    # remaining_args contains the arguments to the original worker command,
-    # minus the python executable, e.g. default_worker.py --node-ip-address=...
-    args, remaining_args = parser.parse_known_args(args=input_args)
+def setup_conda_or_pip(runtime_env: dict,
+                       context: RuntimeEnvContext,
+                       logger: Optional[logging.Logger] = None):
+    if logger is None:
+        logger = logging.getLogger(__name__)
 
-    commands = []
-    py_executable: str = sys.executable
-    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-    runtime_env_context: RuntimeEnvContext = None
-    if args.serialized_runtime_env_context:
-        runtime_env_context = RuntimeEnvContext.deserialize(
-            args.serialized_runtime_env_context)
+    if not runtime_env.get("conda") and not runtime_env.get("pip"):
+        return
 
-    # Ray client server setups runtime env by itself instead of agent.
-    if runtime_env.get("conda") or runtime_env.get("pip"):
-        if not args.serialized_runtime_env_context:
-            runtime_env_context = RuntimeEnvContext(args.session_dir)
-            setup_conda_or_pip(runtime_env, runtime_env_context, logger=logger)
+    logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
+    conda_dict = get_conda_dict(runtime_env, context.session_dir)
+    if isinstance(runtime_env.get("conda"), str):
+        conda_env_name = runtime_env["conda"]
+    else:
+        assert conda_dict is not None
+        ray_pip = current_ray_pip_specifier(logger)
+        if ray_pip:
+            extra_pip_dependencies = [ray_pip, "ray[default]"]
+        elif runtime_env.get("_inject_current_ray"):
+            extra_pip_dependencies = (
+                _resolve_install_from_source_ray_dependencies())
+        else:
+            extra_pip_dependencies = []
+        conda_dict = inject_dependencies(conda_dict, _current_py_version(),
+                                         extra_pip_dependencies)
+        logger.info(f"Setting up conda environment with {runtime_env}")
+        # It is not safe for multiple processes to install conda envs
+        # concurrently, even if the envs are different, so use a global
+        # lock for all conda installs.
+        # See https://github.com/ray-project/ray/issues/17086
+        file_lock_name = "ray-conda-install.lock"
+        with FileLock(os.path.join(context.session_dir, file_lock_name)):
+            conda_dir = os.path.join(context.session_dir, "runtime_resources",
+                                     "conda")
+            try_to_create_directory(conda_dir)
+            conda_yaml_path = os.path.join(conda_dir, "environment.yml")
+            with open(conda_yaml_path, "w") as file:
+                # Sort keys because we hash based on the file contents,
+                # and we don't want the hash to depend on the order
+                # of the dependencies.
+                yaml.dump(conda_dict, file, sort_keys=True)
+            conda_env_name = get_or_create_conda_env(
+                conda_yaml_path, conda_dir, logger=logger)
 
-    if runtime_env_context and runtime_env_context.working_dir is not None:
-        commands += [f"cd {runtime_env_context.working_dir}"]
+        if runtime_env.get("_inject_current_ray"):
+            conda_path = os.path.join(conda_dir, conda_env_name)
+            _inject_ray_to_conda_site(conda_path, logger)
 
-        # Insert the working_dir as the first entry in PYTHONPATH. This is
-        # compatible with users providing their own PYTHONPATH in env_vars.
-        env_vars = runtime_env.get("env_vars", None) or {}
-        python_path = runtime_env_context.working_dir
-        if "PYTHONPATH" in env_vars:
-            python_path += os.pathsep + runtime_env["PYTHONPATH"]
-        env_vars["PYTHONPATH"] = python_path
-        runtime_env["env_vars"] = env_vars
-
-    # Add a conda activate command prefix if using a conda env.
-    if runtime_env_context and runtime_env_context.conda_env_name is not None:
-        py_executable = "python"
-        conda_activate_commands = get_conda_activate_commands(
-            runtime_env_context.conda_env_name)
-        if (conda_activate_commands):
-            commands += conda_activate_commands
-    elif runtime_env.get("conda"):
-        logger.warning(
-            "Conda env name is not found in context, "
-            "but conda exists in runtime env. The runtime env %s, "
-            "the context %s.", args.serialized_runtime_env,
-            args.serialized_runtime_env_context)
-
-    commands += [
-        " ".join(
-            [f"exec {py_executable}"] + remaining_args +
-            # Pass the runtime for working_dir setup.
-            # We can't do it in shim process here because it requires
-            # connection to gcs.
-            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
-    ]
-
-    command_str = " && ".join(commands)
-
-    # update env vars
-    if runtime_env.get("env_vars"):
-        env_vars = runtime_env["env_vars"]
-        os.environ.update(env_vars)
-    os.execvp("bash", ["bash", "-c", command_str])
+        context.conda_env_name = conda_env_name
+        logger.info(
+            f"Finished setting up runtime environment at {conda_env_name}")
 
 
 def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
@@ -271,7 +242,3 @@ def inject_dependencies(
         deps.append({"pip": pip_dependencies})
 
     return conda_dict
-
-
-if __name__ == "__main__":
-    setup_worker(sys.argv[1:])
