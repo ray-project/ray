@@ -133,7 +133,7 @@
 - name: shuffle_1tb_5000_partitions
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_large_scale.yaml
+    compute_template: shuffle/shuffle_compute_stress.yaml
 
   run:
     timeout: 9000
