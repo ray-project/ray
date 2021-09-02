@@ -119,7 +119,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
-        >>> # be converted to a NumPy ndarray.
+        >>> # be converted to an ndarray.
         >>> type(tensor.to_numpy())
         numpy.ndarray
 
@@ -401,7 +401,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
-        >>> # be converted to a NumPy ndarray.
+        >>> # be converted to an ndarray.
         >>> type(tensor.to_numpy())
         numpy.ndarray
 
@@ -1103,6 +1103,7 @@ TensorArray._add_logical_ops()
 # -----------------------------------------------------------------------------
 
 
+@PublicAPI(stability="beta")
 class ArrowTensorType(pa.PyExtensionType):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
@@ -1155,6 +1156,7 @@ class ArrowTensorType(pa.PyExtensionType):
         return ArrowTensorArray
 
 
+@PublicAPI(stability="beta")
 class ArrowTensorArray(pa.ExtensionArray):
     """
     An array of fixed-shape, homogeneous-typed tensors.

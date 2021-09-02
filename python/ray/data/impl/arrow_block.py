@@ -48,6 +48,7 @@ class ArrowRow:
         else:
             item = col[0]
             if isinstance(item, np.ndarray):
+                # Tensor columns have ndarrays as row values.
                 return item
             else:
                 # Assuming that this is a pyarrow.Scalar value.

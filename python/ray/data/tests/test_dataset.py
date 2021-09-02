@@ -322,14 +322,30 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
 
-    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    # Manually deserialize the tensor pickle bytes and cast to our tensor
+    # extension type.
     def deser_mapper(batch: pd.DataFrame):
+        # batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
+        batch["two"] = [pickle.loads(a) for a in batch["two"]]
+        batch["two"] = batch["two"].astype(TensorDtype())
+        return batch
+
+    casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
+
+    values = [[s["one"], s["two"]] for s in casted_ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+    # Manually deserialize the pickle tensor bytes and directly cast it to a
+    # TensorArray.
+    def deser_mapper_direct(batch: pd.DataFrame):
         batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
         return batch
 
-    ds = ds.map_batches(deser_mapper, batch_format="pandas")
+    casted_ds = ds.map_batches(deser_mapper_direct, batch_format="pandas")
 
-    values = [[s["one"], s["two"]] for s in ds.take()]
+    values = [[s["one"], s["two"]] for s in casted_ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
