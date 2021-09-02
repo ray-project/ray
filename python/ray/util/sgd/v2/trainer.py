@@ -445,7 +445,7 @@ class SGDIterator:
                         checkpoint,
                         checkpoint_strategy,
                         run_dir,
-                        checkpoint_id=None):
+                        latest_checkpoint_id=None):
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
