@@ -3,7 +3,8 @@ import os
 import random
 import string
 
-import cgroupspy.trees, cgroupspy.controllers
+import cgroupspy.trees
+import cgroupspy.controllers
 
 
 def create_cgroup_for_worker(resource_json):
