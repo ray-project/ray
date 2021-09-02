@@ -135,8 +135,7 @@ Porting code to RaySGD
 
         TODO. Write about how to convert code to use horovod.
 
-.. To make existing code from the previous SGD API, see :ref:`Backwards
-Compatibility <_sgd-backwards-compatibility>`.
+.. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <_sgd-backwards-compatibility>`.
 
 Configurations
 --------------
