@@ -128,7 +128,8 @@ def test_partial(workflow_start_regular_shared):
     from functools import partial
 
     f1 = workflow.step(partial(add, 10)).step(10)
-    assert "__anonymous_func__" in f1._step_id
+
+    assert "__anonymous_func__" in f1._name
     assert f1.run() == 20
 
     fs = [partial(add, y=y) for y in ys]
@@ -254,6 +255,31 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     assert ret is None
     assert err is not None
     assert (tmp_path / "test").read_text() == "4"
+
+
+def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
+    @workflow.step
+    def f2():
+        return 10
+
+    @workflow.step
+    def f1():
+        return f2.step()
+
+    assert (10, None) == f1.options(catch_exceptions=True).step().run()
+
+
+def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
+    @workflow.step
+    def f1(n):
+        if n == 0:
+            raise ValueError()
+        else:
+            return f1.step(n - 1)
+
+    ret, err = f1.options(catch_exceptions=True).step(5).run()
+    assert ret is None
+    assert isinstance(err, ValueError)
 
 
 if __name__ == "__main__":

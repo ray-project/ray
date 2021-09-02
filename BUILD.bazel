@@ -379,6 +379,16 @@ flatbuffer_cc_library(
 # === End of plasma definitions ===
 
 cc_library(
+    name = "ray_mock",
+    hdrs = glob(
+        ["src/mock/**/*.h"],
+    ),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "ray_common",
     srcs = glob(
         [
@@ -969,6 +979,20 @@ cc_test(
 )
 
 cc_test(
+    name = "ownership_based_object_directory_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/ownership_based_object_directory_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "push_manager_test",
     size = "small",
     srcs = [
@@ -1040,6 +1064,19 @@ cc_test(
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "eviction_policy_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/eviction_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1374,26 +1411,10 @@ cc_test(
 )
 
 cc_test(
-    name = "raylet_based_actor_scheduler_test",
+    name = "gcs_actor_scheduler_test",
     size = "small",
     srcs = [
-        "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_based_actor_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_based_actor_scheduler_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],

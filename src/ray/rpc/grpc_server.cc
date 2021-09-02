@@ -35,8 +35,13 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
-    : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
+GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+                       int64_t keepalive_time_ms)
+    : name_(std::move(name)),
+      port_(port),
+      is_closed_(true),
+      num_threads_(num_threads),
+      keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
 }
 
@@ -52,8 +57,7 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
-  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
-                             RayConfig::instance().grpc_keepalive_time_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);

@@ -213,6 +213,8 @@ message TaskSpec {
   string serialized_runtime_env = 24;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 25;
+  // Whether application-level errors (exceptions) should be retried.
+  bool retry_exceptions = 26;
 }
 
 message Bundle {
@@ -252,6 +254,10 @@ message ObjectReference {
   bytes object_id = 1;
   // The address of the object's owner.
   Address owner_address = 2;
+  // Language call site of the object reference (i.e., file and line number).
+  // Used to print debugging information if there is an error retrieving the
+  // object.
+  string call_site = 3;
 }
 
 message ObjectReferenceCount {
@@ -288,7 +294,7 @@ message TaskArg {
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
-  repeated bytes nested_inlined_ids = 4;
+  repeated ObjectReference nested_inlined_refs = 4;
 }
 
 // Task spec of an actor creation task.

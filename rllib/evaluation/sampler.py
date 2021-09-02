@@ -24,6 +24,7 @@ from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -833,19 +834,20 @@ def _process_observations(
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
-                    "t": episode.length - 1,
-                    "env_id": env_id,
-                    "agent_index": episode._agent_index(agent_id),
+                    SampleBatch.T: episode.length - 1,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
-                    "actions": episode.last_action_for(agent_id),
+                    SampleBatch.ACTIONS: episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
-                    "rewards": rewards[env_id].get(agent_id, 0.0),
+                    SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    "dones": (False if (no_done_at_end
-                                        or (hit_horizon and soft_horizon)) else
-                              agent_done),
+                    SampleBatch.DONES: (False
+                                        if (no_done_at_end
+                                            or (hit_horizon and soft_horizon))
+                                        else agent_done),
                     # Next observation.
-                    "new_obs": filtered_obs,
+                    SampleBatch.NEXT_OBS: filtered_obs,
                 }
                 # Add extra-action-fetches to collectors.
                 pol = worker.policy_map[policy_id]
@@ -878,6 +880,7 @@ def _process_observations(
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
+                policies=worker.policy_map,
                 episode=episode,
                 env_index=env_id)
 

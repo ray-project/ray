@@ -37,6 +37,8 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,  # parallelism
+        # Make sure every environment gets a fixed seed.
+        "num_envs_per_worker": 2,
         "framework": args.framework,
         "seed": args.seed,
 

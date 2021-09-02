@@ -4,7 +4,9 @@
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 900
+    use_connect: True
+    autosuspend_mins: 10
+    timeout: 600
     script: python workloads/dask_xgboost_test.py
 
 - name: modin_xgboost_test
@@ -14,7 +16,8 @@
 
   run:
     use_connect: True
-    timeout: 1800
+    autosuspend_mins: 10
+    timeout: 600
     script: python workloads/modin_xgboost_test.py
 
 - name: torch_tune_serve_test
@@ -28,6 +31,7 @@
 
   run:
     use_connect: True
-    timeout: 2700
+    autosuspend_mins: 10
+    timeout: 600
     script: python workloads/torch_tune_serve_test.py
 

@@ -13,6 +13,7 @@ def projection(x, _):
     return x
 
 
+@pytest.mark.skip(reason="Variable mutable is not supported right now.")
 def test_variable_mutable(workflow_start_regular):
     x = []
     a = identity.step(x)

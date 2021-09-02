@@ -1,12 +1,22 @@
+import abc
 import logging
-from typing import Callable, TypeVar, List, Optional, Dict
+import os
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, TypeVar, List, Optional, Dict, Union
 
 import ray
+from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
+from ray.util.sgd.v2.checkpoint import CheckpointStrategy
+from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
+    DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
+    check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -26,12 +36,16 @@ class SGDBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
 
+class TrainingWorkerError(Exception):
+    """Raised if a worker fails during training."""
+
+
 class BackendExecutor:
     """Main execution class for training backends.
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``sgd.report()``.
+    from ``sgd.report()`` and ``sgd.checkpoint()``.
 
     Args:
         backend_config (BackendConfig): The configurations for this
@@ -39,44 +53,169 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
+        log_dir (Optional[str|Path]): Path to the file directory where logs
+            should be persisted. If this is not specified, one will be
+            generated.
+        max_retries (int): Number of retries when Ray actors fail.
+            Defaults to 3. Set to -1 for unlimited retries.
+
+    Attributes:
+        logdir (Path): Path to the file directory where logs will be
+            persisted.
+        latest_run_dir (Optional[Path]): Path to the file directory for the
+            latest run. Configured through ``start_training``.
+        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
+            the checkpoints from the latest run. Configured through
+            ``start_training``.
+        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
+            checkpoint from the latest run.
+        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
+            checkpoint may not be saved to disk.
     """
 
-    def __init__(self,
-                 backend_config: BackendConfig,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0):
+    def __init__(
+            self,
+            backend_config: BackendConfig,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            log_dir: Optional[Union[str, Path]] = None,
+            max_retries: int = 3,
+    ):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
+        self._max_failures = max_retries
+        if self._max_failures < 0:
+            self._max_failures = float("inf")
+        self._num_failures = 0
+        self._initialization_hook = None
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
+
+        # Create directory for logs.
+        log_dir = Path(log_dir) if log_dir else None
+        self.logdir = self._construct_logdir(log_dir)
+        self.logdir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trainer logs will be logged in: {self.logdir}")
+
+        # Incremental unique run ID of this Trainer.
+        self._run_id = 0
+        # Incremental unique checkpoint ID of this run.
+        self._latest_checkpoint_id = 0
+
+    def _construct_logdir(self, logdir: Optional[Path]) -> Path:
+        """Path to the log directory."""
+        if not logdir:
+            # Initialize timestamp for identifying this SGD training execution.
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir = Path(f"sgd_{timestr}")
+
+        return construct_path(logdir, DEFAULT_RESULTS_DIR)
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
-        if initialization_hook:
-            self.worker_group.execute(initialization_hook)
-        self._backend.on_start(self.worker_group, self._backend_config)
+        try:
+            if initialization_hook:
+                self._initialization_hook = initialization_hook
+                self.worker_group.execute(initialization_hook)
+            if self._num_gpus_per_worker > 0:
+                self._setup_gpus()
+            self._backend.on_start(self.worker_group, self._backend_config)
+        except RayActorError as exc:
+            logger.exception(str(exc))
+            self._increment_failures()
+            self._restart()
 
-    def start_training(self,
-                       train_func: Callable[[], T],
-                       checkpoint: Optional[Dict] = None) -> None:
+    def _setup_gpus(self):
+        """Sets CUDA_VISIBLE_DEVICES on all workers.
+
+        For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
+        visible to all workers on that worker's node.
+
+        This allows GPU workers on the same node to communicate with one
+        another.
+
+        Example:
+
+            Setup:
+            - Node1:
+                - Worker1: {0, 1}
+                - Worker2: {2, 3}
+            - Node2:
+                - Worker3: {0, 1}
+
+            CUDA_VISIBLE_DEVICES:
+            - Worker1: "0,1,2,3"
+            - Worker2: "0,1,2,3"
+            - Worker2: "0,1"
+
+        """
+
+        def get_node_id_and_gpu():
+            node_id = get_node_id()
+            gpu_ids = get_gpu_ids()
+            return node_id, gpu_ids
+
+        node_ids_and_gpu_ids = self.worker_group.execute(get_node_id_and_gpu)
+
+        node_id_to_worker_id = defaultdict(set)
+        node_id_to_gpu_ids = defaultdict(set)
+
+        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+            node_id_to_worker_id[node_id].add(worker_id)
+            node_id_to_gpu_ids[node_id].update(gpu_ids)
+
+        futures = []
+        for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
+
+            def set_gpu_ids():
+                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+
+            for worker_id in node_id_to_worker_id[node_id]:
+                futures.append(
+                    self.worker_group.execute_single_async(
+                        worker_id, set_gpu_ids))
+        ray.get(futures)
+
+    def start_training(
+            self,
+            train_func: Callable[[], T],
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
+            checkpoint_strategy: Optional[CheckpointStrategy] = None) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
+            run_dir (Optional[str|Path]): The absolute path or path relative
+                to ``Trainer.logdir`` for this run's logs.
+            checkpoint (Optional[Dict|str|Path]): The checkpoint data that
+                should be loaded onto each worker and accessed by the
+                training function via ``sgd.load_checkpoint()``. If this is a
+                ``str`` or ``Path`` then the value is expected to be a path
+                to a file that contains a serialized checkpoint dict. If this
+                is ``None`` then no checkpoint will be loaded.
+            checkpoint_strategy (Optional[CheckpointStrategy]): The
+                configurations for saving checkpoints.
         """
+        # Create new log directory for this run.
+        self._run_id += 1
+        self.latest_run_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Run results will be logged in: {self.latest_run_dir}")
+
+        # Restart checkpointing.
+        self._checkpoint_id = 0
+        self._checkpoint_strategy = CheckpointStrategy() if \
+            checkpoint_strategy is None else checkpoint_strategy
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
@@ -97,6 +236,8 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
+        checkpoint_dict = self._load_checkpoint(checkpoint)
+
         futures = []
         for world_rank in range(len(self.worker_group)):
             futures.append(
@@ -105,9 +246,9 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=world_rank,
                     train_func=train_func,
-                    checkpoint=checkpoint))
+                    checkpoint=checkpoint_dict))
 
-        ray.get(futures)
+        self.get_with_failure_handling(futures)
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -176,9 +317,45 @@ class BackendExecutor:
                                "worker.")
         return results
 
-    def _process_checkpoint(self, results):
-        # Process checkpoint
-        self.latest_checkpoint = results[0].data
+    def _process_checkpoint(self,
+                            checkpoint_results: List[TrainingResult]) -> None:
+        """ Perform all processing for a checkpoint. """
+
+        # Get checkpoint from first worker.
+        checkpoint = checkpoint_results[0].data
+        # Store checkpoint in memory.
+        self.latest_checkpoint = checkpoint
+        # Increment checkpoint id.
+        self._latest_checkpoint_id += 1
+        if self._checkpoint_strategy.num_to_keep == 0:
+            # Checkpoints should not be persisted to disk.
+            return
+
+        # TODO(matt): Implement additional checkpoint strategy functionality.
+        # Get or create checkpoint dir.
+        self.latest_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        # Write checkpoint to disk.
+        with self.latest_checkpoint_path.open("wb") as f:
+            cloudpickle.dump(checkpoint, f)
+            logger.debug(f"Checkpoint successfully written to: "
+                         f"{self.latest_checkpoint_path}")
+
+    def _load_checkpoint(self,
+                         checkpoint_to_load: Optional[Union[Dict, str, Path]]
+                         ) -> Optional[Dict]:
+        """Load the checkpoint dictionary from the input dict or path."""
+        if checkpoint_to_load is None:
+            return None
+        if isinstance(checkpoint_to_load, Dict):
+            return checkpoint_to_load
+        else:
+            # Load checkpoint from path.
+            checkpoint_path = Path(checkpoint_to_load).expanduser()
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint path {checkpoint_path} "
+                                 f"does not exist.")
+            with checkpoint_path.open("rb") as f:
+                return cloudpickle.load(f)
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -274,40 +451,38 @@ class BackendExecutor:
                 self._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
-        return self.get_with_failure_handling(futures)
+        results = self.get_with_failure_handling(futures)
+        return results
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
+
+        This method should be called instead of ``ray.get()`` directly in
+        order to handle worker failures.
+
+        If a worker failure is identified, backend specific failure handling
+        is executed and a ``TrainingWorkerError`` is raised.
 
         Args:
             remote_values (list): List of object refs representing functions
                 that may fail in the middle of execution. For example, running
                 a SGD training loop in multiple parallel actor calls.
-
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        unfinished = remote_values
-        try:
-            while len(unfinished) > 0:
-                finished, unfinished = ray.wait(unfinished)
-                # If a failure occurs the ObjectRef will be marked as finished.
-                # Calling ray.get will expose the failure as a RayActorError.
-                ray.get(finished)
-        except RayActorError as exc:
-            logger.exception(str(exc))
-            self.handle_failure()
-            return
-        return ray.get(remote_values)
-
-    def handle_failure(self):
-        # TODO: Fault-tolerance/elastic training here.
-        self.shutdown()
-        raise RuntimeError("Worker crashed during training. "
-                           "Training unsuccessful.")
-
-    def get_latest_checkpoint(self) -> Optional[Dict]:
-        return self.latest_checkpoint
+        success, failed_worker_indexes = check_for_failure(remote_values)
+        if success:
+            return ray.get(remote_values)
+        else:
+            self._increment_failures()
+            try:
+                self._backend.handle_failure(self.worker_group,
+                                             failed_worker_indexes,
+                                             self._backend_config)
+            except RayActorError as exc:
+                logger.exception(str(exc))
+                self._restart()
+            raise TrainingWorkerError
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
@@ -319,15 +494,74 @@ class BackendExecutor:
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
 
+    @property
+    def is_started(self):
+        return not isinstance(self.worker_group, InactiveWorkerGroup)
 
-class BackendInterface:
+    @property
+    def latest_run_dir(self) -> Optional[Path]:
+        """Path to the latest run directory."""
+        if self._run_id > 0:
+            run_dir = Path(f"run_{self._run_id:03d}")
+            return construct_path(run_dir, self.logdir)
+        else:
+            return None
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        """Path to the latest checkpoint directory."""
+        checkpoint_dir = Path("checkpoints")
+        return construct_path(checkpoint_dir, self.latest_run_dir)
+
+    @property
+    def latest_checkpoint_path(self) -> Optional[Path]:
+        """Path to the latest persisted checkpoint."""
+        if self._latest_checkpoint_id > 0:
+            checkpoint_file = f"checkpoint_{self._latest_checkpoint_id:06d}"
+            return self.latest_checkpoint_dir.joinpath(checkpoint_file)
+        else:
+            return None
+
+    def _restart(self):
+        self.worker_group.shutdown()
+        if self._initialization_hook is not None:
+            initialization_hook = self._initialization_hook
+        else:
+            initialization_hook = None
+        self.start(initialization_hook=initialization_hook)
+
+    def _increment_failures(self):
+        self._num_failures += 1
+        if self._num_failures >= self._max_failures:
+            raise RuntimeError("Training has failed even after "
+                               f"{self._num_failures} "
+                               "attempts. You can change the number of max "
+                               "failure attempts by setting the "
+                               "`max_retries` arg in your `Trainer`.") \
+                from None
+
+
+class Backend(metaclass=abc.ABCMeta):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
-        raise NotImplementedError
+        """Logic for starting this backend."""
+        pass
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
-        raise NotImplementedError
+        """Logic for shutting down the backend."""
+        pass
+
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        """Logic for handling failures.
+
+        By default, restart all workers.
+        """
+        worker_group.shutdown()
+        worker_group.start()
+        self.on_start(worker_group, backend_config)
 
 
 class InactiveWorkerGroupError(Exception):
@@ -336,7 +570,16 @@ class InactiveWorkerGroupError(Exception):
 
 class InactiveWorkerGroup():
     # TODO: fix inheritence. perhaps create WorkerGroupInterface.
-    def __getattribute__(self, *args, **kwargs):
+
+    # Need to define getstate and setstate so that getattr does not screwup
+    # pickling. See https://stackoverflow.com/a/50888571/11249691
+    def __getstate__(self):
+        return vars(self)
+
+    def __setstate__(self, state):
+        vars(self).update(state)
+
+    def __getattr__(self, name):
         raise InactiveWorkerGroupError()
 
     def __len__(self):
