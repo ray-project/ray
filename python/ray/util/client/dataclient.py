@@ -80,9 +80,12 @@ class DataClient:
                         callback = self.asyncio_waiting_data.pop(
                             response.req_id)
                         try:
-                            callback(response)
+                            if callback:
+                                callback(response)
                         except Exception:
                             logger.exception("Callback error:")
+                        if response.req_id in self.outstanding_requests:
+                            del self.outstanding_requests[response.req_id]
                     else:
                         with self.cv:
                             self.ready_data[response.req_id] = response
@@ -102,7 +105,7 @@ class DataClient:
                     try:
                         ping_succeeded = self.client_worker.ping_server(
                             timeout=5)
-                    except grpc.RPCError:
+                    except grpc.RpcError:
                         ping_succeeded = False
                     if not ping_succeeded:
                         self.client_worker._reconnect_channel()
@@ -180,8 +183,9 @@ class DataClient:
         req_id = self._next_id()
         req.thread_id = threading.get_ident()
         req.req_id = req_id
-        if callback:
-            self.asyncio_waiting_data[req_id] = callback
+        self.asyncio_waiting_data[req_id] = callback
+        with self.outstanding_requests_lock:
+            self.outstanding_requests[req_id] = req
         self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
