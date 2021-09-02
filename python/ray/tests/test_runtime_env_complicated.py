@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from typing import List
-import unittest
+from unittest import mock, skipIf
 import yaml
 
 import ray
@@ -203,7 +203,7 @@ def test_get_conda_env_dir(tmp_path):
     # Simulate starting in an env named tf1.
     d = tmp_path / "envs" / "tf1"
     Path.mkdir(d, parents=True)
-    with unittest.mock.patch.dict(os.environ, {
+    with mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(d),
             "CONDA_DEFAULT_ENV": "tf1"
     }):
@@ -216,7 +216,7 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
     # Simulate starting in (base) conda env.
-    with unittest.mock.patch.dict(os.environ, {
+    with mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(tmp_path),
             "CONDA_DEFAULT_ENV": "base"
     }):
@@ -471,7 +471,7 @@ def test_conda_input_filepath(use_working_dir, tmp_path):
     assert output_conda_dict == conda_dict
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
@@ -483,7 +483,7 @@ def test_experimental_package(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_lazy(shutdown_only):
     pkg = ray.experimental.load_package(
         os.path.join(
@@ -495,7 +495,7 @@ def test_experimental_package_lazy(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
