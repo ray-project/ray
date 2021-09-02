@@ -97,6 +97,8 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.SHUTDOWN
         self._converted: Dict[str, ClientStub] = {}
         self._session_ended = False
+        self._secure = secure
+        self._conn_str = conn_str
 
         if secure:
             credentials = grpc.ssl_channel_credentials()
@@ -179,12 +181,68 @@ class Worker:
             return False
         if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED,
                         grpc.StatusCode.INVALID_ARGUMENT,
-                        grpc.StatusCode.NOT_FOUND):
+                        grpc.StatusCode.NOT_FOUND,
+                        grpc.StatusCode.FAILED_PRECONDITION):
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False
         # All other errors can be treated as recoverable
         return True
+
+    def _reconnect_channel(self):
+        if self.channel:
+            self.channel.close()
+
+        if self._secure:
+            credentials = grpc.ssl_channel_credentials()
+            self.channel = grpc.secure_channel(
+                self._conn_str, credentials, options=GRPC_OPTIONS)
+        else:
+            self.channel = grpc.insecure_channel(
+                self._conn_str, options=GRPC_OPTIONS)
+
+        self.channel.subscribe(self._on_channel_state_change)
+
+        conn_attempts = 0
+        backoff_tracker = BackoffTracker()
+        service_ready = False
+        while conn_attempts < max(self._connection_retries, 1):
+            conn_attempts += 1
+            try:
+                # Let gRPC wait for us to see if the channel becomes ready.
+                # If it throws, we couldn't connect.
+                grpc.channel_ready_future(
+                    self.channel).result(timeout=backoff_tracker.timeout)
+                # The HTTP2 channel is ready. Wrap the channel with the
+                # RayletDriverStub, allowing for unary requests.
+                self.server = ray_client_pb2_grpc.RayletDriverStub(
+                    self.channel)
+                service_ready = bool(self.ping_server())
+                if service_ready:
+                    break
+                # Ray is not ready yet, wait a timeout
+                backoff_tracker.sleep()
+            except grpc.FutureTimeoutError:
+                logger.info("Couldn't connect channel in "
+                            f"{backoff_tracker.timeout} seconds, retrying")
+                # Note that channel_ready_future constitutes its own
+                # timeout, which is why we do not sleep here.
+            except grpc.RpcError as e:
+                logger.info("Ray client server unavailable, "
+                            f"retrying in {backoff_tracker.timeout}s...")
+                logger.debug(f"Received when checking init: {e.details()}")
+                # Ray is not ready yet, wait a timeout.
+                backoff_tracker.sleep()
+            # Fallthrough, backoff, and retry at the top of the loop
+            logger.info("Waiting for Ray to become ready on the server, "
+                        f"retry in {backoff_tracker.timeout}s...")
+
+        # If we made it through the loop without service_ready
+        # it means we've used up our retries and
+        # should error back to the user.
+        if not service_ready:
+            self._session_ended = True
+            raise ConnectionError("ray client connection timeout")
 
     def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
         """
@@ -202,6 +260,9 @@ class Worker:
                     backoff_tracker.sleep()
                     continue
                 raise
+            except ValueError:
+                # Attempted to use stub while channel is being recreated
+                backoff_tracker.sleep()
 
     def _add_ids_to_request(self, request: Any):
         """
@@ -495,10 +556,13 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e)
 
-    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
+    def get_cluster_info(self,
+                         type: ray_client_pb2.ClusterInfoType.TypeEnum,
+                         timeout=None):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self._call_stub("ClusterInfo", req, metadata=self.metadata)
+        resp = self.server.ClusterInfo(
+            req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
@@ -548,7 +612,7 @@ class Worker:
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
 
-    def ping_server(self) -> bool:
+    def ping_server(self, timeout=None) -> bool:
         """Simple health check.
 
         Piggybacks the IS_INITIALIZED call to check if the server provides
@@ -556,7 +620,8 @@ class Worker:
         """
         if self.server is not None:
             logger.debug("Pinging server.")
-            result = self.get_cluster_info(ray_client_pb2.ClusterInfoType.PING)
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.PING, timeout=timeout)
             return result is not None
         return False
 

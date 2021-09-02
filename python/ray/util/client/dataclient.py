@@ -99,6 +99,13 @@ class DataClient:
                 if self.client_worker._can_reconnect(e):
                     logger.info("Attempting to reconnect data channel.")
                     reconnecting = "True"
+                    try:
+                        ping_succeeded = self.client_worker.ping_server(
+                            timeout=5)
+                    except grpc.RPCError:
+                        ping_succeeded = False
+                    if not ping_succeeded:
+                        self.client_worker._reconnect_channel()
                     with self.outstanding_requests_lock:
                         for request in self.outstanding_requests.values():
                             # Resend outstanding requests

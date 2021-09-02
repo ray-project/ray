@@ -37,14 +37,19 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
-        backoff_tracker = BackoffTracker(initial_backoff=0)
+        backoff_tracker = BackoffTracker()
         reconnecting = "False"
         while True:
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(
                 self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
-            log_stream = stub.Logstream(
-                iter(self.request_queue.get, None), metadata=metadata)
+            try:
+                log_stream = stub.Logstream(
+                    iter(self.request_queue.get, None), metadata=metadata)
+            except ValueError:
+                # Initiated stub when dataclient tried to reset channel
+                backoff_tracker.sleep()
+                continue
             try:
                 for record in log_stream:
                     if record.level < 0:
