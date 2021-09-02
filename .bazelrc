@@ -8,7 +8,7 @@ build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 build:linux --cxxopt="-std=c++14"
-build:linux --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"
+build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"
 build:macos --cxxopt="-std=c++14"
 build:clang-cl --cxxopt="-std=c++14"
 build:msvc --cxxopt="/std:c++14"
