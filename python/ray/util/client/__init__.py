@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-08-16"
+CURRENT_PROTOCOL_VERSION = "2021-09-02"
 
 
 class _ClientContext:
@@ -30,7 +30,7 @@ class _ClientContext:
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
                 namespace: str = None,
-                reconnect_grace_period=30,
+                reconnect_grace_period=None,
                 *,
                 ignore_version: bool = False,
                 ray_init_kwargs: Optional[Dict[str, Any]] = None

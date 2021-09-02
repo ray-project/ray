@@ -62,6 +62,9 @@ CLIENT_SERVER_MAX_THREADS = float(
 ClientObjectRef = raylet.ClientObjectRef
 ClientActorRef = raylet.ClientActorRef
 
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = int(
+    os.environ.get("RAY_CLIENT_RECONNECT_GRACE_PERIOD", "30"))
+
 
 class ClientStub:
     pass

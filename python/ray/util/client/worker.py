@@ -36,6 +36,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.common import INT32_MAX
 from ray.util.client.common import BackoffTracker
@@ -77,7 +78,7 @@ class Worker:
                  secure: bool = False,
                  metadata: List[Tuple[str, str]] = None,
                  connection_retries: int = 3,
-                 reconnect_grace_period=30):
+                 reconnect_grace_period=None):
         """Initializes the worker side grpc client.
 
         Args:
@@ -100,6 +101,9 @@ class Worker:
         self._session_ended = False
         self._secure = secure
         self._conn_str = conn_str
+        if reconnect_grace_period is None:
+            self._reconnect_grace_period = \
+                DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
         self._reconnect_grace_period = reconnect_grace_period
 
         # Set to True when close() is called
