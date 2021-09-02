@@ -114,7 +114,8 @@ class Worker:
         if reconnect_grace_period is None:
             self._reconnect_grace_period = \
                 DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
-        self._reconnect_grace_period = reconnect_grace_period
+        else:
+            self._reconnect_grace_period = reconnect_grace_period
 
         # Set to True when close() is called
         self._in_shutdown = False
