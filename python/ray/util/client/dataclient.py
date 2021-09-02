@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import BackoffTracker, INT32_MAX
+from ray.util.client.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -61,45 +61,40 @@ class DataClient:
 
     def _data_main(self) -> None:
         reconnecting = "False"
-        backoff_tracker = BackoffTracker(initial_backoff=0)
-        while True:
-            stub = ray_client_pb2_grpc.RayletDataStreamerStub(
-                self.client_worker.channel)
-            metadata = self._metadata + [("reconnecting", reconnecting)]
-            resp_stream = stub.Datapath(
-                iter(self.request_queue.get, None),
-                metadata=metadata,
-                wait_for_ready=True)
-            try:
-                for response in resp_stream:
-                    if response.req_id == 0:
-                        # This is not being waited for.
-                        logger.debug(f"Got unawaited response {response}")
-                        continue
-                    if response.req_id in self.asyncio_waiting_data:
-                        callback = self.asyncio_waiting_data.pop(
-                            response.req_id)
-                        try:
-                            if callback:
-                                callback(response)
-                        except Exception:
-                            logger.exception("Callback error:")
-                        if response.req_id in self.outstanding_requests:
-                            del self.outstanding_requests[response.req_id]
-                    else:
-                        with self.cv:
-                            self.ready_data[response.req_id] = response
-                            self.cv.notify_all()
-                return
-            except grpc.RpcError as e:
-                logger.info("Got error from data channel.")
-                if (backoff_tracker.retries() >= 10):
-                    logger.info(
-                        "Max retries reached for data channel reconnection, "
-                        "shutting down data channel.")
-                    self._shutdown()
+        try:
+            while True:
+                stub = ray_client_pb2_grpc.RayletDataStreamerStub(
+                    self.client_worker.channel)
+                metadata = self._metadata + [("reconnecting", reconnecting)]
+                resp_stream = stub.Datapath(
+                    iter(self.request_queue.get, None),
+                    metadata=metadata,
+                    wait_for_ready=True)
+                try:
+                    for response in resp_stream:
+                        if response.req_id == 0:
+                            # This is not being waited for.
+                            logger.debug(f"Got unawaited response {response}")
+                            continue
+                        if response.req_id in self.asyncio_waiting_data:
+                            callback = self.asyncio_waiting_data.pop(
+                                response.req_id)
+                            try:
+                                if callback:
+                                    callback(response)
+                            except Exception:
+                                logger.exception("Callback error:")
+                            if response.req_id in self.outstanding_requests:
+                                del self.outstanding_requests[response.req_id]
+                        else:
+                            with self.cv:
+                                self.ready_data[response.req_id] = response
+                                self.cv.notify_all()
                     return
-                if self.client_worker._can_reconnect(e):
+                except grpc.RpcError as e:
+                    logger.info("Got error from data channel.")
+                    if not self.client_worker._can_reconnect(e):
+                        return
                     logger.info("Attempting to reconnect data channel.")
                     reconnecting = "True"
                     try:
@@ -108,18 +103,21 @@ class DataClient:
                     except grpc.RpcError:
                         ping_succeeded = False
                     if not ping_succeeded:
-                        self.client_worker._reconnect_channel()
+                        try:
+                            self.client_worker._reconnect_channel()
+                        except ConnectionError:
+                            logger.warning(
+                                "Failed to reconnect the data channel")
+                            return
                     self.request_queue = queue.Queue()
                     with self.outstanding_requests_lock:
                         for request in self.outstanding_requests.values():
                             # Resend outstanding requests
                             self.request_queue.put(request)
-                    backoff_tracker.sleep()
                     continue
-                else:
-                    logger.info("Shutting down data channel")
-                    self._shutdown()
-                    return
+        finally:
+            logger.info("Shutting down data channel")
+            self._shutdown()
 
     def _shutdown(self):
         with self.cv:

@@ -100,6 +100,9 @@ class Worker:
         self._secure = secure
         self._conn_str = conn_str
 
+        # Set to True when close() is called
+        self._in_shutdown = False
+
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
@@ -168,9 +171,6 @@ class Worker:
         self.total_num_tasks_scheduled = 0
         self.total_outbound_message_size_bytes = 0
 
-        # Set to True when close() is called
-        self._in_shutdown = False
-
         # Used to create unique IDs for RPCs to the RayletServicer
         self._req_id_lock = threading.Lock()
         self._req_id = 0
@@ -191,6 +191,7 @@ class Worker:
 
     def _reconnect_channel(self):
         if self.channel:
+            self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
         if self._secure:
@@ -249,20 +250,19 @@ class Worker:
         Calls the stub specified by stub_name, and retries on grpc internal
         errors
         """
-        backoff_tracker = BackoffTracker(initial_backoff=0)
-        while True:
+        while not self._in_shutdown:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if backoff_tracker.retries() >= 10:
-                    raise
                 if self._can_reconnect(e):
-                    backoff_tracker.sleep()
+                    time.sleep(.5)
                     continue
                 raise
             except ValueError:
                 # Attempted to use stub while channel is being recreated
-                backoff_tracker.sleep()
+                time.sleep(.5)
+                continue
+        raise ConnectionError("Client is shutting down.")
 
     def _add_ids_to_request(self, request: Any):
         """

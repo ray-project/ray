@@ -5,11 +5,11 @@ import sys
 import logging
 import queue
 import threading
+import time
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import BackoffTracker
 
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
@@ -37,9 +37,8 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
-        backoff_tracker = BackoffTracker()
         reconnecting = "False"
-        while True:
+        while not self.client_worker._in_shutdown:
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(
                 self.client_worker.channel)
             metadata = self._metadata + [("reconnecting", reconnecting)]
@@ -48,7 +47,7 @@ class LogstreamClient:
                     iter(self.request_queue.get, None), metadata=metadata)
             except ValueError:
                 # Initiated stub when dataclient tried to reset channel
-                backoff_tracker.sleep()
+                time.sleep(.5)
                 continue
             try:
                 for record in log_stream:
@@ -59,15 +58,10 @@ class LogstreamClient:
             except grpc.RpcError as e:
                 logger.info("Got error from log channel.")
                 # TODO: unhardcode
-                if (backoff_tracker.retries() >= 10):
-                    logger.info(
-                        "Max retries reached for log channel reconnection, "
-                        "shutting down log channel.")
-                    return
                 if self.client_worker._can_reconnect(e):
                     logger.info("Attempting to reconnect log channel.")
                     reconnecting = "True"
-                    backoff_tracker.sleep()
+                    time.sleep(.5)
                     continue
                 else:
                     logger.info("Shutting down log channel")
