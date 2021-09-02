@@ -178,15 +178,7 @@ def setup_worker(input_args):
             "the context %s.", args.serialized_runtime_env,
             args.serialized_runtime_env_context)
 
-    commands += [
-        " ".join(
-            [f"exec {py_executable}"] + remaining_args +
-            # Pass the runtime for working_dir setup.
-            # We can't do it in shim process here because it requires
-            # connection to gcs.
-            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
-    ]
-
+    commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_str = " && ".join(commands)
 
     # update env vars

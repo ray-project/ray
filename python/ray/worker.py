@@ -1251,7 +1251,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            runtime_env_json="{}",
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
