@@ -92,10 +92,9 @@ class DataClient:
                                 self.cv.notify_all()
                     return
                 except grpc.RpcError as e:
-                    logger.info("Got error from data channel", e)
                     if not self.client_worker._can_reconnect(e):
+                        logger.info("Unrecoverable error in data channel.")
                         return
-                    logger.warning("Attempting to reconnect data channel.")
                     reconnecting = "True"
                     try:
                         ping_succeeded = self.client_worker.ping_server(
@@ -103,6 +102,9 @@ class DataClient:
                     except grpc.RpcError:
                         ping_succeeded = False
                     if not ping_succeeded:
+                        logger.exception(
+                            "The data channel has failed with the following "
+                            "exception. Attempting to reconnect.")
                         try:
                             self.client_worker._connect_channel(
                                 reconnecting=True)

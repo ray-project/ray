@@ -128,7 +128,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         self.reconnect_grace_periods[client_id] = \
                             req.init.reconnect_grace_period
                 elif req_type == "get":
-                    get_resp = None
                     if req.get.asynchronous:
                         get_resp = self.basic_service._async_get_object(
                             req.get, client_id, req.req_id, request_queue)

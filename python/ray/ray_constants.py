@@ -208,6 +208,13 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
+# Autoscaler events are denoted by the ":event_summary:" magic token.
+LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Actor names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_ACTOR_NAME = ":actor_name:"
+# Task names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_TASK_NAME = ":task_name:"
+
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
 # type of the object (see types below) or an integer, which is interpreted
@@ -265,3 +272,7 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "

@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
+from typing import Any, Callable, Dict, List, Iterator, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
@@ -460,7 +460,7 @@ def _env_runner(
         observation_fn: "ObservationFunction",
         sample_collector: Optional[SampleCollector] = None,
         render: bool = None,
-) -> Iterable[SampleBatchType]:
+) -> Iterator[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
@@ -880,6 +880,7 @@ def _process_observations(
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
+                policies=worker.policy_map,
                 episode=episode,
                 env_index=env_id)
 

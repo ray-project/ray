@@ -5,7 +5,7 @@ from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
-    warn_replay_buffer_size
+    warn_replay_capacity
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.utils.typing import SampleBatchType
@@ -136,7 +136,7 @@ class SimpleReplayBuffer:
         self.replay_index = 0
 
     def add_batch(self, sample_batch: SampleBatchType) -> None:
-        warn_replay_buffer_size(item=sample_batch, num_items=self.num_slots)
+        warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
             if len(self.replay_batches) < self.num_slots:
                 self.replay_batches.append(sample_batch)
