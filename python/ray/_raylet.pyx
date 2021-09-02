@@ -401,7 +401,6 @@ cdef raise_if_dependency_failed(arg):
     failures.
     """
     if isinstance(arg, RayError):
-        print(arg)
         raise arg
 
 
