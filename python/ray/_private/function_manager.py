@@ -76,6 +76,7 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
         self.execution_infos = {}
 
     def increase_task_counter(self, function_descriptor):
@@ -492,7 +493,15 @@ class FunctionActorManager:
         # up in an infinite loop here, but we should push an error to
         # the driver if too much time is spent here.
         while key not in self.imported_actor_classes:
-            time.sleep(0.001)
+            try:
+                # If we're in the process of deserializing an ActorHandle
+                # and we hold the function_manager lock, we may be blocking
+                # the import_thread from loading the actor class. Use cv.wait
+                # to temporarily yield control to the import thread.
+                self.cv.wait()
+            except RuntimeError:
+                # We don't hold the function_manager lock, just sleep regularly
+                time.sleep(0.001)
 
         # Fetch raw data from GCS.
         (job_id_str, class_name, module, pickled_class,
