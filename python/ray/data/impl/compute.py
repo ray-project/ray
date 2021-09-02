@@ -37,7 +37,7 @@ class TaskPool(ComputeStrategy):
               blocks: BlockList[Any]) -> BlockList[Any]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        kwargs = remote_args.copy()
+        kwargs = {**{"retry_exceptions": True}, **remote_args}
         kwargs["num_returns"] = 2
 
         map_block = cached_remote_fn(_map_block)

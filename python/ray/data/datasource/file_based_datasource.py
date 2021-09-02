@@ -119,7 +119,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         _write_block_to_file = self._write_block
 
-        @ray.remote
+        @ray.remote(retry_exceptions=True)
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
             fs = filesystem
