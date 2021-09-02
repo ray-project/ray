@@ -331,7 +331,8 @@ py_test_module_list(
     "test_runtime_env_resource_limit.py"
   ],
   size = "large",
-  extra_srcs = SRCS,
+  extra_srcs = glob([
+               "**/conftest.py"]),
   tags = ["exclusive", "privilege_test", "team:serve"],
   # Now we run this test in a container which has installed ray
   deps = [],

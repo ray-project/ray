@@ -124,6 +124,4 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))
