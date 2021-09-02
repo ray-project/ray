@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from enum import Enum
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from pydantic.typing import NoneType
 
 import ray
 from ray import cloudpickle
@@ -67,6 +68,9 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached)
+
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
@@ -101,7 +105,8 @@ class ActorReplicaWrapper:
 
     @property
     def actor_handle(self) -> ActorHandle:
-        return ray.get_actor(self._actor_name)
+        return ray.get_actor(
+            self._actor_name, namespace=self._controller_namespace)
 
     def start_or_update(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
@@ -124,7 +129,8 @@ class ActorReplicaWrapper:
                     name=self._placement_group_name)
 
         try:
-            self._actor_handle = ray.get_actor(self._actor_name)
+            self._actor_handle = ray.get_actor(
+                self._actor_name, namespace=self._controller_namespace)
         except ValueError:
             logger.debug("Starting replica '{}' for deployment '{}'.".format(
                 self.replica_tag, self.backend_tag) +
@@ -133,6 +139,7 @@ class ActorReplicaWrapper:
 
             self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
+                namespace=self._controller_namespace,
                 lifetime="detached" if self._detached else None,
                 placement_group=self._placement_group,
                 placement_group_capture_child_tasks=False,
@@ -298,8 +305,8 @@ class BackendReplica(VersionedReplica):
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
                  version: BackendVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag, controller_name), detached,
-            controller_name, replica_tag, backend_tag)
+            format_actor_name(replica_tag), detached, controller_name,
+            replica_tag, backend_tag)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
@@ -593,7 +600,7 @@ class BackendState:
         (self._target_info, self._target_replicas,
          self._target_version) = target_state_checkpoint
 
-    def recover_cur_state_from_checkpoint(self, current_state_checkpoint):
+    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
         logger.info("Recovering current state for deployment "
                     f"{self._name} from checkpoint..")
         (self._rollback_info, self._curr_goal, self._prev_startup_warning,
@@ -608,6 +615,12 @@ class BackendState:
 
     def recover_cur_state_from_replica_actor_names(
             self, replica_actor_names: List[str]):
+        assert (
+            self._target_info is not None and self._target_replicas != -1
+            and self._target_version is not None), (
+                "Target state should be recovered successfully first before "
+                "recovering current state from replica actor names.")
+
         logger.info("Recovering current state for deployment "
                     f"{self._name} from {len(replica_actor_names)} actors in "
                     "current ray cluster..")
@@ -615,12 +628,14 @@ class BackendState:
         for replica_actor_name in replica_actor_names:
             replica_name: ReplicaName = ReplicaName.from_str(
                 replica_actor_name)
-            self._replicas.add(
-                ReplicaState.STARTING_OR_UPDATING,
-                BackendReplica(self._controller_name, self._detached,
-                               replica_name.replica_tag,
-                               replica_name.deployment_tag,
-                               self._target_version))
+            new_backend_replica = BackendReplica(
+                self._controller_name, self._detached,
+                replica_name.replica_tag, replica_name.deployment_tag,
+                self._target_version)
+            new_backend_replica.start_or_update(self._target_info,
+                                                self._target_version)
+            self._replicas.add(ReplicaState.STARTING_OR_UPDATING,
+                               new_backend_replica)
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -1111,7 +1126,7 @@ class BackendStateManager:
                     backend_state.recover_cur_state_from_replica_actor_names(
                         deployment_to_current_replicas[deployment_tag])
                 else:
-                    backend_state.recover_cur_state_from_checkpoint(
+                    backend_state.recover_current_state_from_checkpoint(
                         current_state_checkpoint)
                 self._backend_states[deployment_tag] = backend_state
 
