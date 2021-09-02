@@ -466,7 +466,7 @@ class SGDIterator:
                 self._executor.latest_checkpoint,
                 self._checkpoint_strategy,
                 run_dir=self._run_dir,
-                checkpoint_id=self._executor.latest_checkpoint_id)
+                latest_checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
