@@ -833,29 +833,12 @@ def test_invalid_conda_env(shutdown_only):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "_system_config": {
-            "event_stats_print_interval_ms": 100,
-            "debug_dump_period_milliseconds": 100,
-            "event_stats": True
-        }
-    }],
-    indirect=True)
-def test_no_spurious_worker_startup(ray_start_cluster):
+def test_no_spurious_worker_startup(shutdown_only):
     """Test that no extra workers start up during a long env installation."""
 
-    cluster = ray_start_cluster
-
-    # This hook sleeps for 15 seconds to simulate creating a runtime env.
-    cluster.add_node(
-        num_cpus=1,
-        runtime_env_setup_hook=(
-            "ray._private.test_utils.sleep_setup_runtime_env"))
-
-    # Set a nonempty runtime env so that the runtime env setup hook is called.
-    runtime_env = {"env_vars": {"a": "b"}}
-    ray.init(address=cluster.address)
+    # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
+    os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
+    ray.init(num_cpus=1)
 
     @ray.remote
     class Counter(object):
@@ -864,6 +847,9 @@ def test_no_spurious_worker_startup(ray_start_cluster):
 
         def get(self):
             return self.value
+
+    # Set a nonempty runtime env so that the runtime env setup hook is called.
+    runtime_env = {"env_vars": {"a": "b"}}
 
     # Instantiate an actor that requires the long runtime env installation.
     a = Counter.options(runtime_env=runtime_env).remote()

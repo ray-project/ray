@@ -2,7 +2,8 @@ import asyncio
 from dataclasses import dataclass
 import json
 import logging
-from ray._private.ray_logging import setup_component_logger
+import os
+import time
 from typing import Dict
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -13,11 +14,16 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
+from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import setup_conda_or_pip
 from ray._private.runtime_env.working_dir import setup_working_dir
 from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
+
+# TODO(edoakes): this is used for unit tests. We should replace it with a
+# better pluggability mechanism once available.
+SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
 
 @dataclass
@@ -39,7 +45,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
-        self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
@@ -65,14 +70,14 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env, session_dir):
+        async def _setup_runtime_env(serialized_runtime_env):
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
-                context = RuntimeEnvContext(session_dir)
+                context = RuntimeEnvContext(self._runtime_env_dir)
                 setup_conda_or_pip(runtime_env, context, logger=per_job_logger)
                 setup_working_dir(runtime_env, context, logger=per_job_logger)
                 return context
@@ -105,13 +110,17 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message)
 
+            if SLEEP_FOR_TESTING_S:
+                logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
+                time.sleep(int(SLEEP_FOR_TESTING_S))
+
             logger.info(f"Creating runtime env: {serialized_env}")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env, self._session_dir)
+                        serialized_env)
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
