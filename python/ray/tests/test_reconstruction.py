@@ -312,7 +312,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_lineage_disabled(ray_start_cluster,
-                                         reconstruction_enabled):
+                                                     reconstruction_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
@@ -337,10 +337,7 @@ def test_basic_reconstruction_actor_lineage_disabled(ray_start_cluster,
     cluster.wait_for_nodes()
 
     # Actor can be restarted but its outputs cannot be reconstructed.
-    @ray.remote(
-        max_restarts=-1,
-        resources={"node1": 1},
-        num_cpus=0)
+    @ray.remote(max_restarts=-1, resources={"node1": 1}, num_cpus=0)
     class Actor:
         def __init__(self):
             pass

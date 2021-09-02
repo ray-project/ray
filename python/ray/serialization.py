@@ -9,8 +9,7 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ObjectReleasedError, OwnerDiedError,
-    ObjectReconstructionFailedError,
+    ObjectReleasedError, OwnerDiedError, ObjectReconstructionFailedError,
     RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
@@ -234,7 +233,7 @@ class SerializationContext:
                 return OwnerDiedError(object_ref.hex(), object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return ObjectReconstructionFailedError(object_ref.hex(),
-                                     object_ref.call_site())
+                                                       object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:
