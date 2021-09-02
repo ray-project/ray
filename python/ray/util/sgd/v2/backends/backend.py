@@ -80,7 +80,7 @@ class CheckpointManager:
     ):
         """Checkpoint code executed during BackendExecutor start_training."""
         # Restart checkpointing.
-        self._latest_checkpoint_id = checkpoint_id if checkpoint_id else 0
+        self._latest_checkpoint_id = latest_checkpoint_id if latest_checkpoint_id else 0
         self._checkpoint_strategy = CheckpointStrategy() if \
             checkpoint_strategy is None else checkpoint_strategy
         self.run_dir = run_dir
