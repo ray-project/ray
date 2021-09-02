@@ -80,7 +80,7 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner, node_ip):
+def checkpoint_deleter(trial_id, runner, trial):
     """Returns a checkpoint deleter callback for a runner."""
     if not runner:
         return lambda checkpoint: None
@@ -96,7 +96,7 @@ def checkpoint_deleter(trial_id, runner, node_ip):
                          checkpoint.value)
             checkpoint_path = checkpoint.value
 
-            if ray.get(runner.get_current_ip.remote()) != node_ip:
+            if ray.get(runner.get_current_ip.remote()) != trial.node_ip:
                 # Delete local copy, if any exists.
                 if os.path.exists(checkpoint_path):
                     try:
@@ -314,7 +314,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner, self.node_ip))
+            checkpoint_deleter(self._trainable_name(), self.runner, self))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -465,7 +465,7 @@ class Trial:
     def set_runner(self, runner):
         self.runner = runner
         self.checkpoint_manager.delete = checkpoint_deleter(
-            self._trainable_name(), runner)
+            self._trainable_name(), runner, self)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
