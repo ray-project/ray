@@ -108,7 +108,7 @@ Running this with RaySGD is as simple as the following:
 
 
 Backends
-----------------------
+--------
 
 RaySGD provides a thin API around different backend frameworks for
 distributed deep learning. At the moment, RaySGD allows you to perform
