@@ -96,16 +96,14 @@ def checkpoint_deleter(trial_id, runner, runner_ip, trial):
                          checkpoint.value)
             checkpoint_path = checkpoint.value
 
-            if runner_ip != trial.node_ip:
-                # Delete local copy, if any exists.
-                if os.path.exists(checkpoint_path):
-                    try:
-                        checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                            checkpoint_path)
-                        shutil.rmtree(checkpoint_dir)
-                    except FileNotFoundError:
-                        logger.warning(
-                            "Checkpoint dir not found during deletion.")
+            # Delete local copy, if any exists.
+            if runner_ip != trial.node_ip and os.path.exists(checkpoint_path):
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                        checkpoint_path)
+                    shutil.rmtree(checkpoint_dir)
+                except FileNotFoundError:
+                    logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
