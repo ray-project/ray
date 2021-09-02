@@ -38,10 +38,10 @@ class TaskSubmitter {
   virtual ObjectID SubmitActorTask(InvocationSpec &invocation,
                                    const CallOptions &call_options) = 0;
 
-  virtual ActorID GetActor(bool global, const std::string &actor_name) = 0;
+  virtual ActorID GetActor(bool global, const std::string &actor_name) const = 0;
 
  protected:
-  virtual std::string GetFullName(bool global, const std::string &name) = 0;
+  virtual std::string GetFullName(bool global, const std::string &name) const = 0;
 };
 }  // namespace internal
 }  // namespace ray
