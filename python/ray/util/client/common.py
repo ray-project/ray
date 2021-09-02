@@ -6,6 +6,7 @@ from ray.util.client.options import validate_options
 from ray._private.signature import get_signature, extract_signature
 from ray._private.utils import check_oversized_function
 
+import concurrent
 from dataclasses import dataclass
 import grpc
 import os
@@ -181,9 +182,6 @@ class ClientActorClass(ClientStub):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
-        self._init_signature = inspect.Signature(
-            parameters=extract_signature(
-                actor_cls.__init__, ignore_first=True))
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
@@ -209,9 +207,9 @@ class ClientActorClass(ClientStub):
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         self._init_signature.bind(*args, **kwargs)
         # Actually instantiate the actor
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
+        return ClientActorHandle(ClientActorRef(futures[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -239,10 +237,6 @@ class ClientActorClass(ClientStub):
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
         return task
-
-    @staticmethod
-    def _num_returns() -> int:
-        return 1
 
 
 class ClientActorHandle(ClientStub):
@@ -397,13 +391,13 @@ class OptionWrapper:
 class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
         self._remote_stub._init_signature.bind(*args, **kwargs)
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
         actor_class = None
         if isinstance(self._remote_stub, ClientActorClass):
             actor_class = self._remote_stub
         return ClientActorHandle(
-            ClientActorRef(ref_ids[0]), actor_class=actor_class)
+            ClientActorRef(futures[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
@@ -423,13 +417,13 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     getattr(task, field).json_options = options_str
 
 
-def return_refs(ids: List[bytes]
+def return_refs(futures: List[concurrent.futures.Future]
                 ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
-    if len(ids) == 1:
-        return ClientObjectRef(ids[0])
-    if len(ids) == 0:
+    if not futures:
         return None
-    return [ClientObjectRef(id) for id in ids]
+    if len(futures) == 1:
+        return ClientObjectRef(futures[0])
+    return [ClientObjectRef(fut) for fut in futures]
 
 
 class InProgressSentinel:

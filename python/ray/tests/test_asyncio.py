@@ -8,7 +8,7 @@ import time
 import pytest
 
 import ray
-from ray._private.test_utils import (SignalActor,
+from ray._private.test_utils import (client_test_enabled, SignalActor,
                                      kill_actor_and_wait_for_failure,
                                      wait_for_condition, wait_for_pid_to_exit)
 
@@ -304,7 +304,13 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     ray.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
     del x1
-    wait_for_condition(lambda: num_exceptions == 1)
+    if client_test_enabled():
+        # In client mode, x1 may not have received the underlying exception
+        # when deleted, so no exception is raised.
+        prev_num_exceptions = num_exceptions
+    else:
+        wait_for_condition(lambda: num_exceptions == 1)
+        prev_num_exceptions = 1
 
     # Test we don't report handled exceptions.
     x1 = f.remote()
@@ -312,7 +318,9 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
         await x1
     del x1
     await asyncio.sleep(1)
-    assert num_exceptions == 1, num_exceptions
+    assert num_exceptions == prev_num_exceptions, (
+        "Expected to not receive "
+        f"exceptions. Actual: now={num_exceptions} prev={prev_num_exceptions}")
 
 
 # This case tests that the asyncio actor shouldn't create thread
