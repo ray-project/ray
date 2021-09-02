@@ -9,6 +9,7 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
+from concurrent.futures import Future
 import tempfile
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -50,7 +51,7 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # If the number of tasks scheduled on the client side since the connection
 # began exceeds this value, a warning should be raised
-TASK_WARNING_THRESHOLD = 1000
+TASK_WARNING_THRESHOLD = 10000
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -313,31 +314,39 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
+    def call_remote(self, instance, *args, **kwargs) -> List[Future]:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
         for k, v in kwargs.items():
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
-        return self._call_schedule_for_task(task)
+        return self._call_schedule_for_task(task, instance._num_returns())
 
-    def _call_schedule_for_task(
-            self, task: ray_client_pb2.ClientTask) -> List[bytes]:
+    def _call_schedule_for_task(self, task: ray_client_pb2.ClientTask,
+                                num_returns: int) -> List[Future]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
-        try:
-            ticket = self.server.Schedule(task, metadata=self.metadata)
-        except grpc.RpcError as e:
-            raise decode_exception(e.details())
 
-        if not ticket.valid:
-            try:
-                raise cloudpickle.loads(ticket.error)
-            except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(
-                    ticket.error))
-                raise
+        id_futures = [Future() for _ in range(num_returns)]
+
+        def populate_ids(resp: ray_client_pb2.DataResponse) -> None:
+            ticket = resp.task_ticket
+            if not ticket.valid:
+                try:
+                    ex = cloudpickle.loads(ticket.error)
+                except (pickle.UnpicklingError, TypeError) as e_new:
+                    ex = e_new
+                for future in id_futures:
+                    future.set_exception(ex)
+                return
+            assert len(ticket.return_ids) == num_returns, \
+                f"expected {num_returns} returns, actual {ticket.return_ids}"
+            for future, raw_id in zip(id_futures, ticket.return_ids):
+                future.set_result(result=raw_id)
+
+        self.data_client.Schedule(task, populate_ids)
+
         self.total_num_tasks_scheduled += 1
         self.total_outbound_message_size_bytes += task.ByteSize()
         if self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD and \
@@ -367,7 +376,7 @@ class Worker:
                 "unserializable object\" section of the Ray Design Patterns "
                 "document, available here: "
                 f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
-        return ticket.return_ids
+        return id_futures
 
     def call_release(self, id: bytes) -> None:
         if self.closed:
@@ -402,9 +411,15 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
-        ids = self._call_schedule_for_task(task)
-        assert len(ids) == 1
-        return ClientActorHandle(ClientActorRef(ids[0]))
+        futures = self._call_schedule_for_task(task, 1)
+        assert len(futures) == 1
+        handle = ClientActorHandle(ClientActorRef(futures[0]))
+        # `actor_ref.is_nil()` waits until the underlying ID is resolved.
+        # This is needed because `get_actor` is often used to check the
+        # existence of an actor.
+        if handle.actor_ref.is_nil():
+            raise ValueError(f"ActorID for {name} is empty")
+        return handle
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:

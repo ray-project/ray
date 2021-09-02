@@ -4,6 +4,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
+import concurrent
 from dataclasses import dataclass
 import grpc
 import os
@@ -124,6 +125,11 @@ class ClientRemoteFunc(ClientStub):
         set_task_options(task, self._options, "baseline_options")
         return task
 
+    def _num_returns(self) -> int:
+        if not self._options:
+            return 1
+        return self._options.get("num_returns", 1)
+
 
 class ClientActorClass(ClientStub):
     """A stub created on the Ray Client to represent an actor class.
@@ -160,9 +166,9 @@ class ClientActorClass(ClientStub):
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
+        return ClientActorHandle(ClientActorRef(futures[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -191,6 +197,10 @@ class ClientActorClass(ClientStub):
         set_task_options(task, self._options, "baseline_options")
         return task
 
+    @staticmethod
+    def _num_returns() -> int:
+        return 1
+
 
 class ClientActorHandle(ClientStub):
     """Client-side stub for instantiated actor.
@@ -210,31 +220,20 @@ class ClientActorHandle(ClientStub):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
         if actor_class is not None:
-            self._dir = list(
-                dict(
-                    inspect.getmembers(actor_class.actor_cls,
-                                       is_function_or_method)).keys())
-
-    def __del__(self) -> None:
-        if ray is None:
-            # The ray API stub might be set to None when the script exits.
-            # Should be safe to skip call_release in this case, since the
-            # client should have already disconnected at this point.
-            return
-        if ray.is_connected():
-            ray.call_release(self.actor_ref.id)
+            self._method_num_returns = {}
+            for method_name, method_obj in inspect.getmembers(
+                    actor_class.actor_cls, is_function_or_method):
+                self._method_num_returns[method_name] = getattr(
+                    method_obj, "__ray_num_returns__", 1)
+        else:
+            self._method_num_returns = None
 
     def __dir__(self) -> List[str]:
-        if self._dir is not None:
-            return self._dir
+        if self._method_num_returns is not None:
+            return self._method_num_returns.keys()
         if ray.is_connected():
-
-            @ray.remote(num_cpus=0)
-            def get_dir(x):
-                return dir(x)
-
-            self._dir = ray.get(get_dir.remote(self))
-            return self._dir
+            self._init_class_info()
+            return self._method_num_returns.keys()
         return super().__dir__()
 
     @property
@@ -242,16 +241,26 @@ class ClientActorHandle(ClientStub):
         return self.actor_ref.id
 
     def __getattr__(self, key):
-        return ClientRemoteMethod(self, key)
+        if self._method_num_returns is None:
+            self._init_class_info()
+        return ClientRemoteMethod(self, key,
+                                  self._method_num_returns.get(key, 1))
 
     def __repr__(self):
         return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())
+
+    def _init_class_info(self):
+        @ray.remote(num_cpus=0)
+        def get_class_info(x):
+            return x._ray_method_num_returns
+
+        self._method_num_returns = ray.get(get_class_info.remote(self))
 
 
 class ClientRemoteMethod(ClientStub):
     """A stub for a method on a remote actor.
 
-    Can be annotated with exection options.
+    Can be annotated with execution options.
 
     Args:
         actor_handle: A reference to the ClientActorHandle that generated
@@ -259,9 +268,13 @@ class ClientRemoteMethod(ClientStub):
         method_name: The name of this method
     """
 
-    def __init__(self, actor_handle: ClientActorHandle, method_name: str):
+    def __init__(self,
+                 actor_handle: ClientActorHandle,
+                 method_name: str,
+                 num_returns: int = 1):
         self._actor_handle = actor_handle
         self._method_name = method_name
+        self._method_num_returns = num_returns
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
@@ -272,8 +285,8 @@ class ClientRemoteMethod(ClientStub):
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
-                                               self._actor_handle)
+        return "ClientRemoteMethod(%s, %s, %s)" % (
+            self._method_name, self._actor_handle, self._method_num_returns)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -292,6 +305,9 @@ class ClientRemoteMethod(ClientStub):
         task.payload_id = self._actor_handle.actor_ref.id
         return task
 
+    def _num_returns(self) -> int:
+        return self._method_num_returns
+
 
 class OptionWrapper:
     def __init__(self, stub: ClientStub, options: Optional[Dict[str, Any]]):
@@ -309,16 +325,23 @@ class OptionWrapper:
         set_task_options(task, self.options)
         return task
 
+    def _num_returns(self) -> int:
+        if self.options:
+            num = self.options.get("num_returns")
+            if num:
+                return num
+        return self.remote_stub._num_returns()
+
 
 class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
         actor_class = None
         if isinstance(self.remote_stub, ClientActorClass):
             actor_class = self.remote_stub
         return ClientActorHandle(
-            ClientActorRef(ref_ids[0]), actor_class=actor_class)
+            ClientActorRef(futures[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
@@ -338,13 +361,13 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     getattr(task, field).json_options = options_str
 
 
-def return_refs(ids: List[bytes]
+def return_refs(futures: List[concurrent.futures.Future]
                 ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
-    if len(ids) == 1:
-        return ClientObjectRef(ids[0])
-    if len(ids) == 0:
+    if not futures:
         return None
-    return [ClientObjectRef(id) for id in ids]
+    if len(futures) == 1:
+        return ClientObjectRef(futures[0])
+    return [ClientObjectRef(fut) for fut in futures]
 
 
 class InProgressSentinel:

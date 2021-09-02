@@ -317,15 +317,26 @@ def test_basic_actor(ray_start_regular_shared):
 
             def say_hello(self, whom):
                 self.count += 1
-                return ("Hello " + whom, self.count)
+                return "Hello " + whom, self.count
+
+            @ray.method(num_returns=2)
+            def say_hi(self, whom):
+                self.count += 1
+                return "Hi " + whom, self.count
 
         actor = HelloActor.remote()
         s, count = ray.get(actor.say_hello.remote("you"))
         assert s == "Hello you"
         assert count == 1
-        s, count = ray.get(actor.say_hello.remote("world"))
+
+        ref = actor.say_hello.remote("world")
+        s, count = ray.get(ref)
         assert s == "Hello world"
         assert count == 2
+
+        r1, r2 = actor.say_hi.remote("ray")
+        assert ray.get(r1) == "Hi ray"
+        assert ray.get(r2) == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -440,8 +451,11 @@ def test_stdout_log_stream(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-        with pytest.raises(ValueError):
-            ray.get_actor("abc")
+        with pytest.raises(
+                ValueError, match="Failed to look up actor with name 'abc'"):
+            a = ray.get_actor("abc")
+            # Exception is only raised when underlying ActorID is resolved.
+            print(a.id)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -486,6 +500,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             def get(self):
                 return self.x
 
+            @ray.method(num_returns=2)
+            def half(self):
+                return self.x / 2, self.x / 2
+
         # Create the actor
         actor = Accumulator.options(name="test_acc").remote()
 
@@ -509,6 +527,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
+
+        h1, h2 = ray.get(detatched_actor.half.remote())
+        assert h1 == 3
+        assert h2 == 3
 
 
 def test_error_serialization(ray_start_regular_shared):

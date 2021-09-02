@@ -196,3 +196,8 @@ class DataClient:
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
         self._async_send(datareq)
+
+    def Schedule(self, request: ray_client_pb2.ClientTask,
+                 callback: ResponseCallable):
+        datareq = ray_client_pb2.DataRequest(task=request)
+        self._async_send(datareq, callback)

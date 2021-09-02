@@ -6,6 +6,8 @@ See https://github.com/ray-project/ray/issues/3721.
 
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
+
+from concurrent.futures import Future
 import os
 
 from ray.includes.unique_ids cimport (
@@ -267,9 +269,6 @@ cdef class ActorID(BaseID):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
 
-    cdef CActorID native(self):
-        return <CActorID>self.data
-
     @classmethod
     def of(cls, job_id, parent_task_id, parent_task_counter):
         assert isinstance(job_id, JobID)
@@ -290,14 +289,14 @@ cdef class ActorID(BaseID):
     def size(cls):
         return CActorID.Size()
 
+    def size(self):
+        return CActorID.Size()
+
     def binary(self):
         return self.data.Binary()
 
     def hex(self):
         return decode(self.data.Hex())
-
-    def size(self):
-        return CActorID.Size()
 
     def is_nil(self):
         return self.data.IsNil()
@@ -305,13 +304,19 @@ cdef class ActorID(BaseID):
     cdef size_t hash(self):
         return self.data.Hash()
 
+    cdef CActorID native(self):
+        return <CActorID>self.data
+
 
 cdef class ClientActorRef(ActorID):
 
-    def __init__(self, id: bytes):
-        check_id(id, CActorID.Size())
-        self.data = CActorID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
+    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
+        if isinstance(id, bytes):
+            self._set_id(id)
+        elif isinstance(id, Future):
+            self._id_future = id
+        else:
+            raise ValueError("Unable to handle id {}".format(id))
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -323,9 +328,39 @@ cdef class ClientActorRef(ActorID):
         if client.ray.is_connected() and not self.data.IsNil():
             client.ray.call_release(self.id)
 
+    def binary(self):
+        self._wait_for_id()
+        return self.data.Binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        self._wait_for_id()
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        self._wait_for_id()
+        return self.data.Hash()
+
+    cdef CActorID native(self):
+        self._wait_for_id()
+        return <CActorID>self.data
+
     @property
     def id(self):
         return self.binary()
+
+    cdef _set_id(self, id):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+
+    cdef _wait_for_id(self):
+        if self._id_future:
+            self._set_id(self._id_future.result())
+            self._id_future = None
 
 
 cdef class FunctionID(UniqueID):

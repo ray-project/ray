@@ -416,7 +416,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+    def Schedule(self, task: ray_client_pb2.ClientTask,
+                 context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s" % (task.name,
                                  ray_client_pb2.ClientTask.RemoteExecType.Name(

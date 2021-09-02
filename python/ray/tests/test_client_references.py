@@ -261,7 +261,8 @@ def test_named_actor_refcount(ray_start_regular):
         def connect_api():
             api = _ClientContext()
             api.connect("localhost:50051", namespace="default_test_namespace")
-            api.get_actor("actor")
+            # Make a call to resolve the underlying ActorID.
+            api.get_actor("actor").check.remote()
             return api
 
         def check_owners(size):

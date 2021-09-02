@@ -65,10 +65,7 @@ cdef class ObjectRef(BaseID):
                 pass
 
     cdef CObjectID native(self):
-        return <CObjectID>self.data
-
-    def size(self):
-        return CObjectID.Size()
+        return self.data
 
     def binary(self):
         return self.data.Binary()
@@ -79,6 +76,9 @@ cdef class ObjectRef(BaseID):
     def is_nil(self):
         return self.data.IsNil()
 
+    cdef size_t hash(self):
+        return self.data.Hash()
+
     def task_id(self):
         return TaskID(self.data.TaskId().Binary())
 
@@ -88,8 +88,8 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
-    cdef size_t hash(self):
-        return self.data.Hash()
+    def size(self):
+        return CObjectID.Size()
 
     @classmethod
     def nil(cls):
@@ -143,11 +143,14 @@ cdef class ObjectRef(BaseID):
 
 cdef class ClientObjectRef(ObjectRef):
 
-    def __init__(self, id: bytes):
-        check_id(id)
-        self.data = CObjectID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
+    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self.in_core_worker = False
+        if isinstance(id, bytes):
+            self._set_id(id)
+        elif isinstance(id, concurrent.futures.Future):
+            self._id_future = id
+        else:
+            raise ValueError("Unable to handle id {}".format(id))
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -159,6 +162,30 @@ cdef class ClientObjectRef(ObjectRef):
             return
         if client.ray.is_connected() and not self.data.IsNil():
             client.ray.call_release(self.id)
+
+    cdef CObjectID native(self):
+        self._wait_for_id()
+        return self.data
+
+    def binary(self):
+        self._wait_for_id()
+        return self.data.Binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        self._wait_for_id()
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        self._wait_for_id()
+        return self.data.Hash()
+
+    def task_id(self):
+        self._wait_for_id()
+        return TaskID(self.data.TaskId().Binary())
 
     @property
     def id(self):
@@ -202,3 +229,13 @@ cdef class ClientObjectRef(ObjectRef):
             py_callback(data)
 
         client.ray._register_callback(self, deserialize_obj)
+
+    cdef _set_id(self, id):
+        check_id(id)
+        self.data = CObjectID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+
+    cdef inline _wait_for_id(self):
+        if self._id_future:
+            self._set_id(self._id_future.result())
+            self._id_future = None
