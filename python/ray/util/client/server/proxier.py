@@ -7,7 +7,7 @@ from itertools import chain
 import json
 import socket
 import sys
-from threading import Lock, Thread, RLock
+from threading import Event, Lock, Thread, RLock
 import time
 import traceback
 from typing import Callable, Dict, List, Optional, Tuple
@@ -396,6 +396,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.reconnect_grace_periods: Dict[str, float] = {}
         self.clients_lock = Lock()
         self.proxy_manager = proxy_manager
+        self.stopped = Event()
 
     def modify_connection_info_resp(self,
                                     init_resp: ray_client_pb2.DataResponse
@@ -493,7 +494,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             cleanup_delay = self.reconnect_grace_periods.get(client_id)
             if not cleanup_requested and cleanup_delay is not None:
                 # Delay cleanup, since client may attempt a reconnect
-                time.sleep(cleanup_delay)
+                # Wait on stopped event in case the server closes and we
+                # can clean up earlier
+                self.stopped.wait(timeout=cleanup_delay)
             with self.clients_lock:
                 if client_id not in self.clients_last_seen:
                     logger.info(f"{client_id} not found. Skipping clean up.")

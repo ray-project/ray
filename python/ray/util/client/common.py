@@ -397,6 +397,10 @@ class ClientServerHandle:
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
     grpc_server: grpc.Server
 
+    def stop(self, grace):
+        self.grpc_server.stop(grace)
+        self.data_servicer.stopped.set()
+
     # Add a hook for all the cases that previously
     # expected simply a gRPC server
     def __getattr__(self, attr):

@@ -77,6 +77,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         }  # guarded by self.clients_lock
         self.reconnect_grace_periods: Dict[str, float] = {}
         self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
+        self.stopped = threading.Event()
 
     def Datapath(self, request_iterator, context):
         cleanup_requested = False
@@ -189,7 +190,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.debug("Cleanup wasn't requested, delaying cleanup by"
                              f"{cleanup_delay} seconds.")
                 # Delay cleanup, since client may attempt a reconnect
-                time.sleep(cleanup_delay)
+                # Wait on the "stopped" event in case the grpc server is
+                # stopped and we can clean up earlier.
+                self.stopped.wait(timeout=cleanup_delay)
             else:
                 logger.debug("Cleanup was requested, cleaning up immediately.")
             with self.clients_lock:
