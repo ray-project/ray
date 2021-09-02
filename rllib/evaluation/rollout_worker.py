@@ -179,7 +179,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_envs: int = 1,
             observation_fn: "ObservationFunction" = None,
             observation_filter: str = "NoFilter",
-            clip_rewards: bool = None,
+            clip_rewards: Optional[Union[bool, float]] = None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             env_config: EnvConfigDict = None,
@@ -268,9 +268,10 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn (ObservationFunction): Optional multi-agent
                 observation function.
             observation_filter (str): Name of observation filter to use.
-            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
-                experience postprocessing. Setting to None means clip for Atari
-                only.
+            clip_rewards (Optional[Union[bool, float]]): Whether to clip
+                rewards to [-1.0, 1.0] prior to experience postprocessing.
+                None: Clip for Atari only.
+                float: Clip to [-clip_rewards; +clip_rewards].
             normalize_actions (bool): Whether to normalize actions to the
                 action space's bounds.
             clip_actions (bool): Whether to clip action values to the range
