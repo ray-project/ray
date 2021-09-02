@@ -467,7 +467,8 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.runner_ip = ray.get(runner.get_current_ip.remote())
+        self.runner_ip = ray.get(
+            runner.get_current_ip.remote()) if runner else None
         self.checkpoint_manager.delete = checkpoint_deleter(
             self._trainable_name(), runner, self.runner_ip, self)
         # No need to invalidate state cache: runner is not stored in json
