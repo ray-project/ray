@@ -584,6 +584,11 @@ cdef execute_task(
                             core_worker.get_current_task_id())
                 except Exception as e:
                     is_application_level_error[0] = True
+                    if core_worker.get_current_task_retry_exceptions():
+                        logger.info("Task failed with retryable exception:"
+                                    " {}.".format(
+                                        core_worker.get_current_task_id()),
+                                    exc_info=True)
                     raise e
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
@@ -1016,6 +1021,10 @@ cdef class CoreWorker:
     def run_task_loop(self):
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
+
+    def get_current_task_retry_exceptions(self):
+        return CCoreWorkerProcess.GetCoreWorker(
+            ).GetCurrentTaskRetryExceptions()
 
     def get_current_task_id(self):
         return TaskID(
