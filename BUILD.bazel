@@ -1302,10 +1302,10 @@ cc_library(
 )
 
 cc_test(
-    name = "grpc_server_test",
+    name = "grpc_server_client_test",
     size = "small",
     srcs = [
-        "src/ray/rpc/test/grpc_server_test.cc",
+        "src/ray/rpc/test/grpc_server_client_test.cc",
     ],
     deps = [
         ":test_service_cc_grpc",
