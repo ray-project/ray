@@ -104,7 +104,8 @@ def checkpoint_deleter(trial_id, runner, runner_ip, trial):
                             checkpoint_path)
                         shutil.rmtree(checkpoint_dir)
                     except FileNotFoundError:
-                        logger.warning("Checkpoint dir not found during deletion.")
+                        logger.warning(
+                            "Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
@@ -315,7 +316,8 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner, self.runner_ip, self))
+            checkpoint_deleter(self._trainable_name(), self.runner,
+                               self.runner_ip, self))
 
         # Restoration fields
         self.restore_path = restore_path
