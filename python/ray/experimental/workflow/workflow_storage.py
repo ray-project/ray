@@ -211,6 +211,10 @@ class WorkflowStorage:
                 workflows, object_refs, workflow_refs):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
+            # dereference arguments like Ray remote functions
+            flattened_args = [
+                ray.get(a) if isinstance(a, ray.ObjectRef) else a for a in flattened_args
+            ]
             return signature.recover_args(flattened_args)
 
     def save_object_ref(self, obj_ref: ray.ObjectRef) -> None:
@@ -236,7 +240,8 @@ class WorkflowStorage:
 
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
-            ref = ray.put(data)
+            # ref = ray.put(data)
+            ref = _put_obj_ref.remote((data,))
             return ref
 
         return asyncio_run(_load_obj_ref())
@@ -625,3 +630,10 @@ def _load_object_ref(paths: List[str],
             wf_storage._get(paths))
 
     return load_ref.remote(paths, wf_storage)
+
+@ray.remote
+def _put_obj_ref(ref: Tuple[ObjectRef]):
+    """
+    Return an ref to an object ref. (This can't be done with `ray.put(obj_ref)`).
+    """
+    return ref[0]

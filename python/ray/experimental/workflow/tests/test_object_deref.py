@@ -31,7 +31,7 @@ def deref_check(u: int, v: "ObjectRef[int]",
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
                 and x == "nested" and y[0] == "nested"
-                and z[0]["output"] == "nested")
+                and z[0]["output"] == "nested"), f"{u}, {v}, {w}, {x}, {y}, {z}"
     except Exception:
         return False
 
@@ -69,13 +69,13 @@ def receive_data(data: np.ndarray):
     return data
 
 
-@pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
 def test_objectref_inputs(workflow_start_regular_shared):
-    assert deref_check.step(
+    output, s = deref_check.step(
         ray.put(42), nested_ref.remote(), [nested_ref.remote()],
         nested_workflow.step(10), [nested_workflow.step(9)], [{
             "output": nested_workflow.step(7)
         }]).run()
+    assert output == True, s
 
 
 def test_object_deref(workflow_start_regular_shared):
