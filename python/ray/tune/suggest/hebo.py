@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -217,7 +216,7 @@ class HEBOSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)

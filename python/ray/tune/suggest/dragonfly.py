@@ -6,7 +6,6 @@ import inspect
 import logging
 from typing import Dict, List, Optional, Union
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
@@ -279,7 +278,7 @@ class DragonflySearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)

@@ -4,7 +4,6 @@ import pickle
 import json
 from typing import Dict, List, Optional, Tuple, Any
 
-from ray.tune.experiment import Experiment
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
@@ -207,7 +206,7 @@ class BayesOptSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)

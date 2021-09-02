@@ -6,7 +6,6 @@ import logging
 from functools import partial
 import pickle
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
@@ -241,7 +240,7 @@ class HyperOptSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)

@@ -1,6 +1,6 @@
 # coding: utf-8
 from freezegun import freeze_time
-from mock import patch
+from unittest.mock import patch
 import os
 import unittest
 

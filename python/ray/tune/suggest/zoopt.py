@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
@@ -218,7 +217,7 @@ class ZOOptSearch(Searcher):
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Dict]) -> bool:
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)

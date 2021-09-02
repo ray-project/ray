@@ -4,7 +4,6 @@ import logging
 import os
 from typing import Dict, Optional, List
 
-from ray.tune.experiment import Experiment
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
 
@@ -116,7 +115,7 @@ class Searcher:
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -128,10 +127,8 @@ class Searcher:
         Args:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
-            config (dict): Tune config dict. This should ideally be used for
-            passing algorithm-specific parameters.
-            experiment (Optional[Experiment]): This is used for passing
-            algorithm-agnostic parameters. User should not need to touch this.
+            config (dict): Tune config dict.
+            experiment (Dict): Experiment settings. See Experiment.PUBLIC_KEYS.
         """
         return False
 
@@ -458,11 +455,8 @@ class ConcurrencyLimiter(Searcher):
     def on_unpause(self, trial_id: str):
         self.searcher.on_unpause(trial_id)
 
-    def set_search_properties(self,
-                              metric: Optional[str],
-                              mode: Optional[str],
-                              config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, experiment: Dict) -> bool:
         return set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config,
             experiment)

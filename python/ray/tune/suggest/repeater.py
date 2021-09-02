@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ray.tune.experiment import Experiment
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 
@@ -185,7 +184,7 @@ class Repeater(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Dict = None) -> bool:
         return set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config,
             experiment)

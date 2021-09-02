@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 from typing import Dict, List, Optional, Tuple, Union, Any
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     LogUniform
@@ -224,7 +223,7 @@ class SkOptSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)

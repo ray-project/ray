@@ -1,7 +1,6 @@
 import copy
 from typing import Dict, List, Optional, Union
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -235,7 +234,7 @@ class AxSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None):
+                              experiment: Optional[Dict] = None):
         if self._ax:
             return False
         space = self.convert_search_space(config)

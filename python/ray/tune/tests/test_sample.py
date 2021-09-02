@@ -7,7 +7,6 @@ change your pytest running directory to ray/python/ray/tune/tests/
 from collections import defaultdict
 from unittest.mock import patch
 
-from mock import patch
 import numpy as np
 import unittest
 

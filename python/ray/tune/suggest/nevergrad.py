@@ -3,7 +3,6 @@ import logging
 import pickle
 from typing import Dict, Optional, Type, Union, List, Sequence
 
-from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
@@ -218,7 +217,7 @@ class NevergradSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment] = None) -> bool:
+                              experiment: Optional[Dict] = None) -> bool:
         if self._nevergrad_opt or self._space:
             return False
         space = self.convert_search_space(config)

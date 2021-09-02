@@ -1,17 +1,15 @@
 import logging
 from typing import Dict, Optional
 
-from ray.tune.experiment import Experiment
-
 logger = logging.getLogger(__name__)
 
 
 def set_search_properties_backwards_compatible(
         set_search_properties_func, metric: Optional[str], mode: Optional[str],
-        config: Dict, experiment: Optional[Experiment]) -> bool:
+        config: Dict, experiment: Dict) -> bool:
     """Wraps around set_search_properties() so that it is backward compatible.
 
-    Also outputs a warning to urge customm searchers to be updated.
+    Also outputs a warning to encourage customm searchers to be updated.
     """
     try:
         return set_search_properties_func(metric, mode, config, experiment)
