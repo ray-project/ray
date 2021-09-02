@@ -142,6 +142,7 @@ TEST_F(TestGrpcServerFixture, TestBasic) {
 }
 
 // This test aims to test ServerCall leaking when client died before server's reply.
+// Check https://github.com/ray-project/ray/pull/17863 for more context
 TEST_F(TestGrpcServerFixture, TestClientDiedBeforeReply) {
   // Reinit ClientCallManager with short timeout, so that call won't block.
   grpc_client_.reset();
