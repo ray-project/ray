@@ -135,7 +135,7 @@ Porting code to RaySGD
 
         TODO. Write about how to convert code to use horovod.
 
-.. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <_sgd-backwards-compatibility>`.
+.. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <sgd-backwards-compatibility>`.
 
 Configurations
 --------------
@@ -180,7 +180,7 @@ configurations. As an example:
 
 A primary use-case for ``config`` is to try different hyperparameters. To
 perform hyperparameter tuning with RaySGD, please refer to the
-:ref:`Ray Tune integration <_tune-sgd>`.
+:ref:`Ray Tune integration <tune-sgd>`.
 
 .. TODO add support for with_parameters
 
@@ -209,8 +209,8 @@ Log directories are exposed through the following attributes:
 
 Logs will be written by:
 
-1. :ref:`Logging Callbacks <_sgd-logging-callbacks>`
-2. :ref:`Checkpoints <_sgd-checkpointing>`
+1. :ref:`Logging Callbacks <sgd-logging-callbacks>`
+2. :ref:`Checkpoints <sgd-checkpointing>`
 
 
 Reporting
@@ -220,7 +220,7 @@ RaySGD provides an ``sgd.report(**kwargs)`` API for reporting intermediate
 results from the training function up to the ``Trainer``.
 
 Using ``Trainer.run``, these results can be processed  through :ref:`Callbacks
-<_sgd-callbacks>` with a ``handle_result`` method defined.
+<sgd-callbacks>` with a ``handle_result`` method defined.
 
 For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
 ``SGDIterator`` which will iterate over the reported results.
@@ -298,7 +298,7 @@ Logging Callbacks
 ~~~~~~~~~~~~~~~~~
 
 The following ``Callback``\s are available and will write to a file within the
-:ref:`log directory <_sgd-logging>` of each training run.
+:ref:`log directory <sgd-logging>` of each training run.
 
 1. ``JsonLoggerCallback``
 2. ``TBXLoggerCallback``
@@ -343,7 +343,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
     # {'epoch': 4, 'model': 10}
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
-directory <_sgd-logging>` of each run.
+directory <sgd-logging>` of each run.
 
 .. code-block:: python
 
@@ -473,12 +473,12 @@ Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifica
 A couple caveats:
 
 * Tune will ignore the return value of ``training_func``. To save your best
-trained model, you will need to use the ``sgd.save_checkpoint`` API.
+  trained model, you will need to use the ``sgd.save_checkpoint`` API.
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
-training function. Functional parity is achieved through ``sgd.report``,
-``sgd.save_checkpoint``, and ``sgd.load_checkpoint``. This allows you to go
-from RaySGD to RaySGD+RayTune without changing any code in the training
-function.
+  training function. Functional parity is achieved through ``sgd.report``,
+  ``sgd.save_checkpoint``, and ``sgd.load_checkpoint``. This allows you to go
+  from RaySGD to RaySGD+RayTune without changing any code in the training
+  function.
 
 
 .. code-block:: python
