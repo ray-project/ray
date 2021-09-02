@@ -80,7 +80,7 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner):
+def checkpoint_deleter(trial_id, runner, node_ip):
     """Returns a checkpoint deleter callback for a runner."""
     if not runner:
         return lambda checkpoint: None
@@ -95,14 +95,16 @@ def checkpoint_deleter(trial_id, runner):
             logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
                          checkpoint.value)
             checkpoint_path = checkpoint.value
-            # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                        checkpoint_path)
-                    shutil.rmtree(checkpoint_dir)
-                except FileNotFoundError:
-                    logger.warning("Checkpoint dir not found during deletion.")
+
+            if ray.get(runner.get_current_ip()) != node_ip:
+                # Delete local copy, if any exists.
+                if os.path.exists(checkpoint_path):
+                    try:
+                        checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                            checkpoint_path)
+                        shutil.rmtree(checkpoint_dir)
+                    except FileNotFoundError:
+                        logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
@@ -312,7 +314,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner))
+            checkpoint_deleter(self._trainable_name(), self.runner, self.node_ip))
 
         # Restoration fields
         self.restore_path = restore_path
