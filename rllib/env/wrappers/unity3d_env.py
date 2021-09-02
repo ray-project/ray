@@ -112,7 +112,6 @@ class Unity3DEnv(MultiAgentEnv):
         # Keep track of how many times we have called `step` so far.
         self.episode_timesteps = 0
 
-    @override(MultiAgentEnv)
     def step(
             self, action_dict: MultiAgentDict
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
@@ -181,7 +180,6 @@ class Unity3DEnv(MultiAgentEnv):
 
         return obs, rewards, dones, infos
 
-    @override(MultiAgentEnv)
     def reset(self) -> MultiAgentDict:
         """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
