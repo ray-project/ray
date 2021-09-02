@@ -349,7 +349,7 @@ class BackendExecutor:
         self.checkpoint_manager.on_start_training(
             checkpoint_strategy=checkpoint_strategy,
             run_dir=run_dir,
-            checkpoint_id=latest_checkpoint_id)
+            latest_checkpoint_id=latest_checkpoint_id)
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
