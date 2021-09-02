@@ -271,6 +271,7 @@ message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
   string ray_init_kwargs = 2;
+  int32 reconnect_grace_period = 3;
 }
 
 message InitResponse {

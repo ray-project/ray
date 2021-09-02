@@ -553,7 +553,10 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
     server = ray_client_server.serve("localhost:50051")
     # Data channel will attempt to reconnect, reduce retries to 0
-    ray_client.connect("localhost:50051", connection_retries=0)
+    # Set the reconnect grace period to 0 to prevent lingering datapath
+    # stub from interfering with other tests
+    ray_client.connect(
+        "localhost:50051", connection_retries=0, reconnect_grace_period=0)
     thread = threading.Thread(target=stop_server, args=(server, ))
     thread.start()
     x = f.remote(2)

@@ -19,8 +19,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
-from ray.util.client.server.dataservicer import (
-    WAIT_FOR_CLIENT_RECONNECT_SECONDS, _get_reconnecting_from_context)
+from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 from ray.util.client.common import _get_client_id_from_context
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
@@ -383,7 +382,8 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
     new_job_config = ray_client_server_env_prep(job_config)
     modified_init_req = ray_client_pb2.InitRequest(
         job_config=pickle.dumps(new_job_config),
-        ray_init_kwargs=init_request.init.ray_init_kwargs)
+        ray_init_kwargs=init_request.init.ray_init_kwargs,
+        reconnect_grace_period=init_request.reconnect_grace_period)
 
     init_request.init.CopyFrom(modified_init_req)
     return (init_request, new_job_config)
@@ -393,6 +393,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
         self.num_clients = 0
         self.clients_last_seen: Dict[str, float] = {}
+        self.reconnect_grace_periods: Dict[str, float] = {}
         self.clients_lock = Lock()
         self.proxy_manager = proxy_manager
 
@@ -443,6 +444,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             if not reconnecting:
                 logger.info(f"New data connection from client {client_id}: ")
                 init_req = next(request_iterator)
+                with self.clients_lock:
+                    self.reconnect_grace_periods[client_id] = \
+                        init_req.reconnect_grace_period
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(
                         init_req)
@@ -486,9 +490,10 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         except Exception:
             logger.exception("Proxying Datapath failed!")
         finally:
-            if not cleanup_requested:
+            cleanup_delay = self.reconnect_grace_periods.get(client_id)
+            if not cleanup_requested and cleanup_delay is not None:
                 # Delay cleanup, since client may attempt a reconnect
-                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS + 5)
+                time.sleep(cleanup_delay)
             with self.clients_lock:
                 if client_id not in self.clients_last_seen:
                     logger.info(f"{client_id} not found. Skipping clean up.")
@@ -505,6 +510,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.debug(f"Client detached: {client_id}")
                 self.num_clients -= 1
                 del self.clients_last_seen[client_id]
+                if client_id in self.reconnect_grace_periods:
+                    del self.reconnect_grace_periods[client_id]
                 server.set_result(None)
 
 

@@ -30,6 +30,7 @@ class _ClientContext:
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
                 namespace: str = None,
+                reconnect_grace_period=30,
                 *,
                 ignore_version: bool = False,
                 ray_init_kwargs: Optional[Dict[str, Any]] = None
@@ -74,7 +75,8 @@ class _ClientContext:
                 conn_str,
                 secure=secure,
                 metadata=metadata,
-                connection_retries=connection_retries)
+                connection_retries=connection_retries,
+                reconnect_grace_period=reconnect_grace_period)
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()

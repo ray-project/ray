@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 QUEUE_JOIN_SECONDS = 5
-WAIT_FOR_CLIENT_RECONNECT_SECONDS = 60 * 5  # TODO: Set this to a sane value
 
 
 def _get_reconnecting_from_context(context: Any) -> bool:
@@ -76,6 +75,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.num_clients = 0  # guarded by self.clients_lock
         self.client_last_seen: Dict[str, float] = {
         }  # guarded by self.clients_lock
+        self.reconnect_grace_periods: Dict[str, float] = {}
         self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
 
     def Datapath(self, request_iterator, context):
@@ -123,6 +123,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if req_type == "init":
                     resp_init = self.basic_service.Init(req.init)
                     resp = ray_client_pb2.DataResponse(init=resp_init, )
+                    with self.clients_lock:
+                        self.reconnect_grace_periods[client_id] = \
+                            req.init.reconnect_grace_period
                 elif req_type == "get":
                     get_resp = None
                     if req.get.asynchronous:
@@ -181,11 +184,12 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.error(
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
-            if not cleanup_requested:
+            cleanup_delay = self.reconnect_grace_periods.get(client_id)
+            if not cleanup_requested and cleanup_delay is not None:
                 logger.debug("Cleanup wasn't requested, delaying cleanup by"
-                             f"{WAIT_FOR_CLIENT_RECONNECT_SECONDS} seconds.")
+                             f"{cleanup_delay} seconds.")
                 # Delay cleanup, since client may attempt a reconnect
-                time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
+                time.sleep(cleanup_delay)
             else:
                 logger.debug("Cleanup was requested, cleaning up immediately.")
             with self.clients_lock:
@@ -201,6 +205,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     return
                 self.basic_service.release_all(client_id)
                 del self.client_last_seen[client_id]
+                if client_id in self.reconnect_grace_periods:
+                    del self.reconnect_grace_periods[client_id]
                 if client_id in self.replay_caches:
                     del self.replay_caches[client_id]
                 self.num_clients -= 1

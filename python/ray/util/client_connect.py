@@ -13,6 +13,7 @@ def connect(
         connection_retries: int = 3,
         job_config: JobConfig = None,
         namespace: str = None,
+        reconnect_grace_period: int = 30,
         *,
         ignore_version: bool = False,
         ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -34,6 +35,7 @@ def connect(
         metadata=metadata,
         connection_retries=connection_retries,
         namespace=namespace,
+        reconnect_grace_period=reconnect_grace_period,
         ignore_version=ignore_version,
         ray_init_kwargs=ray_init_kwargs)
     return conn

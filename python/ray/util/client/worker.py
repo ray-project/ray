@@ -76,7 +76,8 @@ class Worker:
                  conn_str: str = "",
                  secure: bool = False,
                  metadata: List[Tuple[str, str]] = None,
-                 connection_retries: int = 3):
+                 connection_retries: int = 3,
+                 reconnect_grace_period=30):
         """Initializes the worker side grpc client.
 
         Args:
@@ -99,6 +100,7 @@ class Worker:
         self._session_ended = False
         self._secure = secure
         self._conn_str = conn_str
+        self._reconnect_grace_period = reconnect_grace_period
 
         # Set to True when close() is called
         self._in_shutdown = False
@@ -644,7 +646,8 @@ class Worker:
         try:
             if job_config is None:
                 init_req = ray_client_pb2.InitRequest(
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
+                    ray_init_kwargs=json.dumps(ray_init_kwargs),
+                    reconnect_grace_period=self._reconnect_grace_period)
                 self._call_init(init_req)
                 return
 
@@ -656,7 +659,8 @@ class Worker:
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config),
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
+                    ray_init_kwargs=json.dumps(ray_init_kwargs),
+                    reconnect_grace_period=self._reconnect_grace_period)
                 self._call_init(init_req)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 runtime_env.PKG_DIR = old_dir
