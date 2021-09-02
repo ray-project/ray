@@ -241,7 +241,6 @@ class WorkflowStorage:
 
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
-            # ref = ray.put(data)
             ref = _put_obj_ref.remote((data, ))
             return ref
 
