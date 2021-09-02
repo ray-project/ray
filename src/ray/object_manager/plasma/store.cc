@@ -453,6 +453,7 @@ void PlasmaStore::DoAccept() {
 }
 
 void PlasmaStore::ProcessCreateRequests() {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   // Only try to process requests if the timer is not set. If the timer is set,
   // that means that the first request is currently not serviceable because
   // there is not enough memory. In that case, we should wait for the timer to
