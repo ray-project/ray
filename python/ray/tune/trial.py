@@ -96,7 +96,7 @@ def checkpoint_deleter(trial_id, runner, node_ip):
                          checkpoint.value)
             checkpoint_path = checkpoint.value
 
-            if ray.get(runner.get_current_ip()) != node_ip:
+            if ray.get(runner.get_current_ip.remote()) != node_ip:
                 # Delete local copy, if any exists.
                 if os.path.exists(checkpoint_path):
                     try:
