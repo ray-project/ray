@@ -326,7 +326,7 @@ class BackendExecutor:
             run_dir: Path,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None,
-            checkpoint_id: Optional[int] = None,
+            latest_checkpoint_id: Optional[int] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -343,12 +343,13 @@ class BackendExecutor:
                 is ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
-            checkpoint_id (Optional[int]): The checkpoint id to start with.
+            latest_checkpoint_id (Optional[int]): The checkpoint id of the
+                most recently saved checkpoint.
         """
         self.checkpoint_manager.on_start_training(
             checkpoint_strategy=checkpoint_strategy,
             run_dir=run_dir,
-            checkpoint_id=checkpoint_id)
+            checkpoint_id=latest_checkpoint_id)
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
@@ -602,8 +603,16 @@ class BackendExecutor:
         return self.checkpoint_manager.latest_checkpoint_path
 
     @property
-    def current_checkpoint_id(self) -> int:
-        return self.checkpoint_manager._latest_checkpoint_id
+    def latest_checkpoint_id(self) -> Optional[int]:
+        """The checkpoint id of most recently saved checkpoint.
+
+        If no checkpoint has been saved yet, then return None.
+        """
+        checkpoint_id = self.checkpoint_manager._latest_checkpoint_id
+        if checkpoint_id == 0:
+            return None
+        else:
+            return checkpoint_id
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:

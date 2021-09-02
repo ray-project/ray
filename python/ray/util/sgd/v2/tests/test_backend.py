@@ -202,7 +202,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e.start_training(train, run_dir=tmp_path)
     e.finish_training()
 
-    assert e.current_checkpoint_id == 2
+    assert e.latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
@@ -229,10 +229,10 @@ def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
     config = TestConfig()
     e = BackendExecutor(config)
     e.start()
-    e.start_training(train, run_dir=tmp_path, checkpoint_id=100)
+    e.start_training(train, run_dir=tmp_path, latest_checkpoint_id=100)
     e.finish_training()
 
-    assert e.current_checkpoint_id == 102
+    assert e.latest_checkpoint_id == 102
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
@@ -288,7 +288,7 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method, tmp_path):
         return torch.distributed.is_initialized(
         ) and torch.distributed.get_world_size() == 2
 
-    e.start_training(check_process_group)
+    e.start_training(check_process_group, run_dir=tmp_path)
     assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)

@@ -348,11 +348,6 @@ class Trainer:
         raise NotImplementedError
 
     @property
-    def logdir(self) -> Path:
-        """Path to this Trainer's log directory."""
-        return self.logdir
-
-    @property
     def latest_run_dir(self) -> Optional[Path]:
         """Path to the log directory for the latest call to ``run()``.
 
@@ -457,7 +452,7 @@ class SGDIterator:
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=run_dir,
-                checkpoint_id=checkpoint_id
+                latest_checkpoint_id=checkpoint_id
             )
         )
 
@@ -471,7 +466,7 @@ class SGDIterator:
                 self._executor.latest_checkpoint,
                 self._checkpoint_strategy,
                 run_dir=self._run_dir,
-                checkpoint_id=self._executor.current_checkpoint_id)
+                checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
