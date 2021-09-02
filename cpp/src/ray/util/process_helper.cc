@@ -15,7 +15,6 @@
 #include <boost/algorithm/string.hpp>
 
 #include "process_helper.h"
-#include "ray/gcs/gcs_client/global_state_accessor.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -38,7 +37,7 @@ using ray::core::WorkerType;
 /// \param address The IP address and port of any known live service on the network
 /// you care about.
 /// \return The IP address by which the local node can be reached from the address.
-static std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53") {
+std::string GetNodeIpAddress(const std::string &address) {
   std::vector<std::string> parts;
   boost::split(parts, address, boost::is_any_of(":"));
   RAY_CHECK(parts.size() == 2);
@@ -106,6 +105,15 @@ void ProcessHelper::StopRayNode() {
   return;
 }
 
+std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
+    const std::string &redis_address, const std::string &redis_password) {
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
+  global_state_accessor.reset(
+      new ray::gcs::GlobalStateAccessor(redis_address, redis_password));
+  RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+  return global_state_accessor;
+}
+
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
@@ -132,9 +140,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-    global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
-        redis_address, ConfigInternal::Instance().redis_password));
-    RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+    global_state_accessor = CreateGlobalStateAccessor(
+        redis_address, ConfigInternal::Instance().redis_password);
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);

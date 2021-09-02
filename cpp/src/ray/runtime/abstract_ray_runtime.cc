@@ -52,10 +52,19 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
   } else {
-    global_state_accessor_ = nullptr;
-    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask,
-                                          &global_state_accessor_);
+    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
+    if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
+      auto redis_ip = ConfigInternal::Instance().redis_ip;
+      if (redis_ip.empty()) {
+        redis_ip = GetNodeIpAddress();
+      }
+      std::string redis_address =
+          redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
+      global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
+          redis_address, ConfigInternal::Instance().redis_password);
+    }
+
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
       // Load functions from code search path.

@@ -17,6 +17,7 @@
 
 #include "../config_internal.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
 namespace ray {
 namespace internal {
@@ -37,11 +38,16 @@ class ProcessHelper {
     return processHelper;
   }
 
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
+      const std::string &redis_address, const std::string &redis_password);
+
   ProcessHelper(ProcessHelper const &) = delete;
   void operator=(ProcessHelper const &) = delete;
 
  private:
   ProcessHelper(){};
 };
+
+std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53");
 }  // namespace internal
 }  // namespace ray
