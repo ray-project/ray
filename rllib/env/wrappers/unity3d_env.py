@@ -6,7 +6,6 @@ import time
 from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
