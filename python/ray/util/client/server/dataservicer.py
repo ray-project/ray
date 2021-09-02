@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 QUEUE_JOIN_SECONDS = 5
-WAIT_FOR_CLIENT_RECONNECT_SECONDS = 3600  # TODO: Set this to a sane value
+WAIT_FOR_CLIENT_RECONNECT_SECONDS = 60 * 5  # TODO: Set this to a sane value
 
 
 def _get_reconnecting_from_context(context: Any) -> bool:
