@@ -371,10 +371,9 @@ message DataRequest {
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
     ConnectionCleanupRequest connection_cleanup = 8;
-    AsyncWaitingRequest async_waiting = 9;
   }
   // Thread that made this request
-  int64 thread_id = 10;
+  int64 thread_id = 9;
 }
 
 message DataResponse {
