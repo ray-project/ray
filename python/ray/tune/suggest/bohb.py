@@ -171,7 +171,7 @@ class TuneBOHB(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Dict] = None) -> bool:
+                              **spec) -> bool:
         if self._space:
             return False
         space = self.convert_search_space(config)

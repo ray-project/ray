@@ -184,7 +184,7 @@ class Repeater(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Dict = None) -> bool:
+                              **spec) -> bool:
         return set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config,
-            experiment)
+            **spec)

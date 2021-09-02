@@ -6,13 +6,13 @@ logger = logging.getLogger(__name__)
 
 def set_search_properties_backwards_compatible(
         set_search_properties_func, metric: Optional[str], mode: Optional[str],
-        config: Dict, experiment: Dict) -> bool:
+        config: Dict, **spec) -> bool:
     """Wraps around set_search_properties() so that it is backward compatible.
 
     Also outputs a warning to encourage customm searchers to be updated.
     """
     try:
-        return set_search_properties_func(metric, mode, config, experiment)
+        return set_search_properties_func(metric, mode, config, **spec)
     except TypeError as e:
         if str(e).startswith("set_search_properties() takes"):
             logger.warning(

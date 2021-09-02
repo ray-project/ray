@@ -27,7 +27,7 @@ class SearchAlgorithm:
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Dict] = None) -> bool:
+                              **spec) -> bool:
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms
@@ -41,7 +41,8 @@ class SearchAlgorithm:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (Dict): Tune config dict.
-            experiment (Dict): Experiment settings. See Experiment.PUBLIC_KEYS.
+            spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:
             return False

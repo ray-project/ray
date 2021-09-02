@@ -234,7 +234,7 @@ class AxSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Dict] = None):
+                              **spec):
         if self._ax:
             return False
         space = self.convert_search_space(config)

@@ -217,7 +217,7 @@ class NevergradSearch(Searcher):
                               metric: Optional[str],
                               mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Dict] = None) -> bool:
+                              **spec) -> bool:
         if self._nevergrad_opt or self._space:
             return False
         space = self.convert_search_space(config)
