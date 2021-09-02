@@ -353,8 +353,7 @@ directory <_sgd-logging>` of each run.
     # /home/ray_results/sgd_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000005
 
 
-.. note:: Persisting checkpoints to durable storage (e.g. S3) is not yet
-supported.
+.. note:: Persisting checkpoints to durable storage (e.g. S3) is not yet supported.
 
 
 Loading checkpoints
