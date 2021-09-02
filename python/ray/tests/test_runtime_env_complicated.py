@@ -1,29 +1,27 @@
 import json
 import os
 from contextlib import contextmanager
-from typing import List
-from ray.workers.setup_runtime_env import inject_dependencies
-import pytest
-import sys
-import unittest
-import tempfile
-import yaml
-import time
-
-import subprocess
-
 from pathlib import Path
-from unittest import mock
+import pytest
+import subprocess
+import sys
+import tempfile
+import time
+from typing import List
+import unittest
+import yaml
+
 import ray
-from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray._private.runtime_env import RuntimeEnvDict
 from ray._private.runtime_env.conda import (
+    inject_dependencies,
     _inject_ray_to_conda_site,
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
 )
 from ray._private.test_utils import (run_string_as_driver,
                                      run_string_as_driver_nonblocking)
+from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -193,7 +191,6 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
 
 
 def test_get_conda_env_dir(tmp_path):
-    from pathlib import Path
     """
     Typical output of `conda env list`, for context:
 
@@ -206,7 +203,7 @@ def test_get_conda_env_dir(tmp_path):
     # Simulate starting in an env named tf1.
     d = tmp_path / "envs" / "tf1"
     Path.mkdir(d, parents=True)
-    with mock.patch.dict(os.environ, {
+    with unittest.mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(d),
             "CONDA_DEFAULT_ENV": "tf1"
     }):
@@ -219,7 +216,7 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
     # Simulate starting in (base) conda env.
-    with mock.patch.dict(os.environ, {
+    with unittest.mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(tmp_path),
             "CONDA_DEFAULT_ENV": "base"
     }):
