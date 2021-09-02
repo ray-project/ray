@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import platform
 import random
-from typing import List, Dict
+from typing import Any, Dict, List, Optional
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -14,9 +14,11 @@ from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.util.iter import ParallelIteratorWorker
 from ray.util.debug import log_once
+from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
@@ -27,9 +29,9 @@ _ALL_POLICIES = "__all__"
 logger = logging.getLogger(__name__)
 
 
-def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
-    """Warn if the configured replay buffer size is too large."""
-    if log_once("replay_buffer_size"):
+def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer capacity is too large."""
+    if log_once("replay_capacity"):
         item_size = item.size_bytes()
         psutil_mem = psutil.virtual_memory()
         total_gb = psutil_mem.total / 1e9
@@ -46,20 +48,42 @@ def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
             logger.info(msg)
 
 
+@Deprecated(new="warn_replay_capacity", error=False)
+def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
+    return warn_replay_capacity(item=item, num_items=num_items)
+
+
 @DeveloperAPI
 class ReplayBuffer:
     @DeveloperAPI
-    def __init__(self, size: int):
-        """Create Prioritized Replay buffer.
+    def __init__(self,
+                 capacity: int = 10000,
+                 size: Optional[int] = DEPRECATED_VALUE):
+        """Initializes a Replaybuffer instance.
 
         Args:
-            size (int): Max number of timesteps to store in the FIFO buffer.
+            capacity (int): Max number of timesteps to store in the FIFO
+                buffer. After reaching this number, older samples will be
+                dropped to make space for new ones.
         """
+        # Deprecated args.
+        if size != DEPRECATED_VALUE:
+            deprecation_warning(
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False)
+            capacity = size
+
+        # The actual storage (list of SampleBatches).
         self._storage = []
-        self._maxsize = size
+
+        self.capacity = capacity
+        # The next index to override in the buffer.
         self._next_idx = 0
-        self._hit_count = np.zeros(size)
+        self._hit_count = np.zeros(self.capacity)
+
+        # Whether we have already hit our capacity (and have therefore
+        # started to evict older samples).
         self._eviction_started = False
+
         self._num_timesteps_added = 0
         self._num_timesteps_added_wrap = 0
         self._num_timesteps_sampled = 0
@@ -71,9 +95,8 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float) -> None:
-        warn_replay_buffer_size(
-            item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
+        warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
@@ -84,8 +107,8 @@ class ReplayBuffer:
         else:
             self._storage[self._next_idx] = item
 
-        # Wrap around storage as a circular buffer once we hit maxsize.
-        if self._num_timesteps_added_wrap >= self._maxsize:
+        # Wrap around storage as a circular buffer once we hit capacity.
+        if self._num_timesteps_added_wrap >= self.capacity:
             self._eviction_started = True
             self._num_timesteps_added_wrap = 0
             self._next_idx = 0
@@ -122,6 +145,8 @@ class ReplayBuffer:
     def stats(self, debug=False) -> dict:
         data = {
             "added_count": self._num_timesteps_added,
+            "added_count_wrapped": self._num_timesteps_added_wrap,
+            "eviction_started": self._eviction_started,
             "sampled_count": self._num_timesteps_sampled,
             "est_size_bytes": self._est_size_bytes,
             "num_entries": len(self._storage),
@@ -130,27 +155,58 @@ class ReplayBuffer:
             data.update(self._evicted_hit_stats.stats())
         return data
 
+    @DeveloperAPI
+    def get_state(self) -> Dict[str, Any]:
+        """Returns all local state.
+
+        Returns:
+            Dict[str, Any]: The serializable local state.
+        """
+        state = {"_storage": self._storage, "_next_idx": self._next_idx}
+        state.update(self.stats(debug=False))
+        return state
+
+    @DeveloperAPI
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Restores all local state to the provided `state`.
+
+        Args:
+            state (Dict[str, Any]): The new state to set this buffer. Can be
+                obtained by calling `self.get_state()`.
+        """
+        # The actual storage.
+        self._storage = state["_storage"]
+        self._next_idx = state["_next_idx"]
+        # Stats and counts.
+        self._num_timesteps_added = state["added_count"]
+        self._num_timesteps_added_wrap = state["added_count_wrapped"]
+        self._eviction_started = state["eviction_started"]
+        self._num_timesteps_sampled = state["sampled_count"]
+        self._est_size_bytes = state["est_size_bytes"]
+
 
 @DeveloperAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
-    def __init__(self, size: int, alpha: float):
-        """Create Prioritized Replay buffer.
+    def __init__(self,
+                 capacity: int = 10000,
+                 alpha: float = 1.0,
+                 size: Optional[int] = DEPRECATED_VALUE):
+        """Initializes a PrioritizedReplayBuffer instance.
 
         Args:
-            size (int): Max number of items to store in the FIFO buffer.
-            alpha (float): how much prioritization is used
-                (0 - no prioritization, 1 - full prioritization).
-
-        See also:
-            ReplayBuffer.__init__()
+            capacity (int): Max number of timesteps to store in the FIFO
+                buffer. After reaching this number, older samples will be
+                dropped to make space for new ones.
+            alpha (float): How much prioritization is used
+                (0.0=no prioritization, 1.0=full prioritization).
         """
-        super(PrioritizedReplayBuffer, self).__init__(size)
+        super(PrioritizedReplayBuffer, self).__init__(capacity, size)
         assert alpha > 0
         self._alpha = alpha
 
         it_capacity = 1
-        while it_capacity < size:
+        while it_capacity < self.capacity:
             it_capacity *= 2
 
         self._it_sum = SumSegmentTree(it_capacity)
@@ -159,6 +215,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._prio_change_stats = WindowStat("reprio", 1000)
 
     @DeveloperAPI
+    @override(ReplayBuffer)
     def add(self, item: SampleBatchType, weight: float) -> None:
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(item, weight)
@@ -177,6 +234,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return res
 
     @DeveloperAPI
+    @override(ReplayBuffer)
     def sample(self, num_items: int, beta: float) -> SampleBatchType:
         """Sample a batch of experiences and return priority weights, indices.
 
@@ -255,11 +313,44 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
 
     @DeveloperAPI
+    @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         parent = ReplayBuffer.stats(self, debug)
         if debug:
             parent.update(self._prio_change_stats.stats())
         return parent
+
+    @DeveloperAPI
+    @override(ReplayBuffer)
+    def get_state(self) -> Dict[str, Any]:
+        """Returns all local state.
+
+        Returns:
+            Dict[str, Any]: The serializable local state.
+        """
+        # Get parent state.
+        state = super().get_state()
+        # Add prio weights.
+        state.update({
+            "sum_segment_tree": self._it_sum.get_state(),
+            "min_segment_tree": self._it_min.get_state(),
+            "max_priority": self._max_priority,
+        })
+        return state
+
+    @DeveloperAPI
+    @override(ReplayBuffer)
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Restores all local state to the provided `state`.
+
+        Args:
+            state (Dict[str, Any]): The new state to set this buffer. Can be
+                obtained by calling `self.get_state()`.
+        """
+        super().set_state(state)
+        self._it_sum.set_state(state["sum_segment_tree"])
+        self._it_min.set_state(state["min_segment_tree"])
+        self._max_priority = state["max_priority"]
 
 
 # Visible for testing.
@@ -272,18 +363,21 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     Ray actors are single-threaded, so for scalability, multiple replay actors
     may be created to increase parallelism."""
 
-    def __init__(self,
-                 num_shards: int = 1,
-                 learning_starts: int = 1000,
-                 buffer_size: int = 10000,
-                 replay_batch_size: int = 1,
-                 prioritized_replay_alpha: float = 0.6,
-                 prioritized_replay_beta: float = 0.4,
-                 prioritized_replay_eps: float = 1e-6,
-                 replay_mode: str = "independent",
-                 replay_sequence_length: int = 1,
-                 replay_burn_in: int = 0,
-                 replay_zero_init_states: bool = True):
+    def __init__(
+            self,
+            num_shards: int = 1,
+            learning_starts: int = 1000,
+            capacity: int = 10000,
+            replay_batch_size: int = 1,
+            prioritized_replay_alpha: float = 0.6,
+            prioritized_replay_beta: float = 0.4,
+            prioritized_replay_eps: float = 1e-6,
+            replay_mode: str = "independent",
+            replay_sequence_length: int = 1,
+            replay_burn_in: int = 0,
+            replay_zero_init_states: bool = True,
+            buffer_size=DEPRECATED_VALUE,
+    ):
         """Initializes a LocalReplayBuffer instance.
 
         Args:
@@ -292,7 +386,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             learning_starts (int): Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            buffer_size (int): The size of the buffer. Note that when
+            capacity (int): The capacity of the buffer. Note that when
                 `replay_sequence_length` > 1, this is the number of sequences
                 (not single timesteps) stored.
             replay_batch_size (int): The batch size to be sampled (in
@@ -319,8 +413,14 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 buffer (if replay_sequence_length > 0) are alwayas 0.0 or
                 should be updated with the previous train_batch state outputs.
         """
+        # Deprecated args.
+        if buffer_size != DEPRECATED_VALUE:
+            deprecation_warning(
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False)
+            capacity = buffer_size
+
         self.replay_starts = learning_starts // num_shards
-        self.buffer_size = buffer_size // num_shards
+        self.capacity = capacity // num_shards
         self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -349,11 +449,11 @@ class LocalReplayBuffer(ParallelIteratorWorker):
 
         def new_buffer():
             return PrioritizedReplayBuffer(
-                self.buffer_size, alpha=prioritized_replay_alpha)
+                self.capacity, alpha=prioritized_replay_alpha)
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
-        # Metrics
+        # Metrics.
         self.add_batch_timer = TimerStat()
         self.replay_timer = TimerStat()
         self.update_priorities_timer = TimerStat()
@@ -453,6 +553,18 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 "policy_{}".format(policy_id): replay_buffer.stats(debug=debug)
             })
         return stat
+
+    def get_state(self) -> Dict[str, Any]:
+        state = {"num_added": self.num_added, "replay_buffers": {}}
+        for policy_id, replay_buffer in self.replay_buffers.items():
+            state["replay_buffers"][policy_id] = replay_buffer.get_state()
+        return state
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        self.num_added = state["num_added"]
+        buffer_states = state["replay_buffers"]
+        for policy_id in buffer_states.keys():
+            self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
 
 
 ReplayActor = ray.remote(num_cpus=0)(LocalReplayBuffer)

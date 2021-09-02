@@ -3,6 +3,7 @@ from traceback import format_exception
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+import ray.ray_constants as ray_constants
 import colorama
 import setproctitle
 
@@ -285,11 +286,23 @@ class ObjectLostError(RayError):
         object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex):
+    def __init__(self, object_ref_hex, call_site):
         self.object_ref_hex = object_ref_hex
+        self.call_site = call_site.replace(
+            ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
 
     def __str__(self):
-        return (f"Object {self.object_ref_hex} is lost due to node failure.")
+        msg = (f"Object {self.object_ref_hex} cannot be retrieved due to node "
+               "failure or system error.")
+        if self.call_site:
+            msg += (f" The ObjectRef was created at: {self.call_site}")
+        else:
+            msg += (
+                " To see information about where this ObjectRef was created "
+                "in Python, set the environment variable "
+                "RAY_record_ref_creation_sites=1 during `ray start` and "
+                "`ray.init()`.")
+        return msg
 
 
 class GetTimeoutError(RayError):

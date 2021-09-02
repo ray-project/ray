@@ -684,7 +684,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev.sample()
         # Make sure all environments got a different deterministic seed.
         seeds = ev.foreach_env(lambda env: env.rng_seed)
-        assert seeds == [1, 2, 3]
+        self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
 
     def test_wrap_multi_agent_env(self):

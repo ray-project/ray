@@ -259,7 +259,7 @@ class _ExternalEnvToBaseEnv(BaseEnv):
             while len(results[0]) == 0:
                 self.external_env._results_avail_condition.wait()
                 results = self._poll()
-                if not self.external_env.isAlive():
+                if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
         limit = self.external_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
@@ -466,8 +466,9 @@ class _MultiAgentEnvState:
         self.env = env
         self.initialized = False
 
-    def poll(self) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict,
-                            MultiAgentDict]:
+    def poll(
+            self
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         if not self.initialized:
             self.reset()
             self.initialized = True
