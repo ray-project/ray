@@ -42,9 +42,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
     work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
-    thread_io_service_.reset(new std::thread([this] {
-      io_service_->run();
-    }));
+    thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
