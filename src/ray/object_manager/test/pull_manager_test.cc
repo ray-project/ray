@@ -30,7 +30,6 @@ class PullManagerTestWithCapacity {
         object_is_local_(false),
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
-        num_object_store_full_calls_(0),
         fake_time_(0),
         pull_manager_(
             self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
@@ -44,8 +43,10 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this]() { num_object_store_full_calls_++; },
-            [this](const ObjectID &object_id) { return PinReturn(); }) {}
+            [this](const ObjectID &object_id) { return PinReturn(); },
+            [this](const ObjectID &object_id) {
+              return GetLocalSpilledObjectURL(object_id);
+            }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
@@ -72,16 +73,20 @@ class PullManagerTestWithCapacity {
     }
   }
 
+  std::string GetLocalSpilledObjectURL(const ObjectID &oid) { return spilled_url_[oid]; }
+
+  void ObjectSpilled(const ObjectID &oid, std::string url) { spilled_url_[oid] = url; }
+
   NodeID self_node_id_;
   bool object_is_local_;
   bool allow_pin_ = false;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
-  int num_object_store_full_calls_;
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
   std::unordered_map<ObjectID, int> num_abort_calls_;
+  std::unordered_map<ObjectID, std::string> spilled_url_;
 };
 
 class PullManagerTest : public PullManagerTestWithCapacity,
@@ -190,6 +195,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 
   NodeID node_that_object_spilled = NodeID::FromRandom();
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
 
@@ -198,6 +204,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // No retry yet.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 1);
@@ -206,6 +213,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   // The call can be retried after a delay.
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
@@ -213,6 +221,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 
   // Don't restore an object if it's local.
   object_is_local_ = true;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  NodeID::FromRandom(), 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
@@ -248,6 +257,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
                                  0);
 
@@ -256,6 +266,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   // No retry yet.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
                                  0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -263,7 +274,113 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 
   // The call can be retried after a delay.
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
+  /// Test the scneario where the object is spilled to local storage, like filesystems.
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(1);
+  auto obj1 = ObjectRefsToIds(refs)[0];
+  rpc::Address addr1;
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  fake_time_ += 10.;
+  // Objects are spilled locally, but the remote object directory doesn't have the
+  // information. It should still restore objects.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "", self_node_id_, 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // The call can be retried after a delay, and the url in the remote object directory is
+  // updated now.
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
+  /// Test the scneario where the object is spilled to external storages, such as S3.
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(1);
+  auto obj1 = ObjectRefsToIds(refs)[0];
+  rpc::Address addr1;
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  fake_time_ += 10.;
+  // Objects are spilled to the empty URL locally if it is spilled to external storages.
+  ObjectSpilled(obj1, "");
+  // If objects are spilled to external storages, the node id should be Nil().
+  // So this shouldn't invoke restoration.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // Now Nil ID is properly updated.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
+                                 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // The call can be retried after a delay.
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
                                  0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
@@ -300,6 +417,7 @@ TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
   const auto remote_node_that_spilled_object = NodeID::FromRandom();
   client_ids.insert(copy_node1);
   client_ids.insert(copy_node2);
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  remote_node_that_spilled_object, 0);
 
@@ -671,43 +789,23 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
-  ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
-  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (GetParam()) {
     ASSERT_FALSE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
-    }
     return;
   }
 
-  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
-    ASSERT_TRUE(pull_manager_.HasPullsQueued());
-    AssertNumActiveRequestsEquals(0);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    }
-    for (auto &oid : oids) {
-      ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 1);
-    }
-    ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  } else {
-    ASSERT_FALSE(pull_manager_.HasPullsQueued());
-    AssertNumActiveRequestsEquals(3);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    }
-    for (auto &oid : oids) {
-      ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 0);
-    }
-    ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
+  AssertNumActiveRequestsEquals(3);
+  for (auto &oid : oids) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
+    ASSERT_EQ(num_abort_calls_[oid], 0);
   }
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
@@ -748,23 +846,16 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
-  num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
-    int num_requests_expected = std::max(
-        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
-    if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+    int num_requests_expected = std::max(1, num_requests_quota);
+    if (GetParam()) {
       num_requests_expected = num_requests;
     }
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
 
     AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      // The total requests that are active is under the specified capacity.
-      ASSERT_TRUE(
-          IsUnderCapacity(num_requests_expected * num_oids_per_request * object_size));
-    }
     // This is the maximum number of requests that can be served at once that
     // is under the capacity.
     if (num_requests_expected < num_requests) {
@@ -772,13 +863,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (!RayConfig::instance().plasma_unlimited()) {
-      if (num_requests_quota == num_requests_expected) {
-        ASSERT_EQ(num_object_store_full_calls_, 0);
-      } else {
-        ASSERT_EQ(num_object_store_full_calls_, 1);
-      }
-    }
     for (size_t i = 0; i < req_ids.size(); i++) {
       if ((int)i < num_requests_expected) {
         ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
@@ -786,7 +870,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
         ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
       }
     }
-    num_object_store_full_calls_ = 0;
   }
 
   for (auto req_id : req_ids) {
@@ -800,7 +883,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
   if (GetParam()) {
     prio = BundlePriority::GET_REQUEST;
   }
-  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (GetParam()) {
     return;  // This case isn't meaningful to test.
   }
   /// Test admission control while requests are cancelled out-of-order. When an
@@ -959,11 +1042,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // the same type by FIFO order.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
-  if (RayConfig::instance().plasma_unlimited()) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
-  } else {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
-  }
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 

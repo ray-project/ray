@@ -15,10 +15,13 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 #include <boost/range.hpp>
+#include <csignal>
 #include <fstream>
 #include <set>
 #include <thread>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 
@@ -235,6 +238,55 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   boost::filesystem::remove_all(log_dir.c_str());
 }
 
+TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
+  ray::RayEventContext::Instance().ResetEventContext();
+  TestEventReporter::event_list.clear();
+  ray::EventManager::Instance().ClearReporters();
+  ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RAY_EVENT(INFO, "label 0") << "send message 0";
+
+  std::thread private_thread = std::thread(std::bind([&]() {
+    auto custom_fields = std::unordered_map<std::string, std::string>();
+    custom_fields.emplace("node_id", "node 1");
+    custom_fields.emplace("job_id", "job 1");
+    custom_fields.emplace("task_id", "task 1");
+    ray::RayEventContext::Instance().SetEventContext(
+        rpc::Event_SourceType::Event_SourceType_GCS, custom_fields);
+    RAY_EVENT(INFO, "label 2") << "send message 2";
+  }));
+
+  private_thread.join();
+
+  RAY_EVENT(INFO, "label 1") << "send message 1";
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+
+  EXPECT_EQ(result.size(), 3);
+  CheckEventDetail(result[0], "", "", "", "COMMON", "INFO", "label 0", "send message 0");
+  CheckEventDetail(result[1], "job 1", "node 1", "task 1", "GCS", "INFO", "label 2",
+                   "send message 2");
+  CheckEventDetail(result[2], "job 1", "node 1", "task 1", "GCS", "INFO", "label 1",
+                   "send message 1");
+
+  ray::RayEventContext::Instance().ResetEventContext();
+  TestEventReporter::event_list.clear();
+
+  std::thread private_thread_2 = std::thread(std::bind([&]() {
+    ray::RayEventContext::Instance().SetSourceType(
+        rpc::Event_SourceType::Event_SourceType_RAYLET);
+    ray::RayEventContext::Instance().SetCustomField("job_id", "job 1");
+    RAY_EVENT(INFO, "label 2") << "send message 2";
+  }));
+
+  private_thread_2.join();
+
+  RAY_EVENT(INFO, "label 3") << "send message 3";
+
+  EXPECT_EQ(result.size(), 2);
+  CheckEventDetail(result[0], "job 1", "", "", "RAYLET", "INFO", "label 2",
+                   "send message 2");
+  CheckEventDetail(result[1], "", "", "", "COMMON", "INFO", "label 3", "send message 3");
+}
+
 TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::string log_dir = GenerateLogDir();
 
@@ -346,6 +398,35 @@ TEST(EVENT_TEST, WITH_FIELD) {
   EXPECT_EQ(double_value, 0.123);
   auto bool_value = custom_fields["bool"].get<bool>();
   EXPECT_EQ(bool_value, true);
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  auto custom_fields = std::unordered_map<std::string, std::string>();
+  custom_fields.emplace("node_id", "node 1");
+  custom_fields.emplace("job_id", "job 1");
+  custom_fields.emplace("task_id", "task 1");
+  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+
+  RAY_CHECK(1 > 0) << "correct test case";
+
+  ASSERT_DEATH({ RAY_CHECK(1 < 0) << "incorrect test case"; }, "");
+
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  json out_custom_fields;
+  rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
+
+  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL",
+                   EL_RAY_FATAL_CHECK_FAILED, "NULL");
+  EXPECT_THAT(ele_1.message(),
+              testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
+
   boost::filesystem::remove_all(log_dir.c_str());
 }
 

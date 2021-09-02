@@ -34,19 +34,22 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
-      : id_(object_id), owner_address_(owner_address) {}
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address,
+                     const std::string &call_site)
+      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
+    ref->set_call_site(call_site_);
   }
 
  private:
   /// Id of the argument if passed by reference, otherwise nullptr.
   const ObjectID id_;
   const rpc::Address owner_address_;
+  const std::string call_site_;
 };
 
 class TaskArgByValue : public TaskArg {
@@ -68,8 +71,8 @@ class TaskArgByValue : public TaskArg {
       const auto &metadata = value_->GetMetadata();
       arg_proto->set_metadata(metadata->Data(), metadata->Size());
     }
-    for (const auto &nested_id : value_->GetNestedIds()) {
-      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    for (const auto &nested_ref : value_->GetNestedRefs()) {
+      arg_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
     }
   }
 
@@ -131,6 +134,12 @@ class TaskSpecBuilder {
     for (const auto &env : override_environment_variables) {
       (*message_->mutable_override_environment_variables())[env.first] = env.second;
     }
+    return *this;
+  }
+
+  TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions) {
+    message_->set_max_retries(max_retries);
+    message_->set_retry_exceptions(retry_exceptions);
     return *this;
   }
 

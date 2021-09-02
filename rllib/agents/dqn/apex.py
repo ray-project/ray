@@ -90,7 +90,7 @@ class OverrideDefaultResourceRequest:
                 # replay buffer and use 1 CPU each.
                 "CPU": cf["num_cpus_for_driver"] +
                 cf["optimizer"]["num_replay_buffer_shards"],
-                "GPU": cf["num_gpus"]
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.
@@ -162,7 +162,8 @@ def apex_execution_plan(workers: WorkerSet,
     # Update experience priorities post learning.
     def update_prio_and_stats(item: Tuple[ActorHandle, dict, int]) -> None:
         actor, prio_dict, count = item
-        actor.update_priorities.remote(prio_dict)
+        if config.get("prioritized_replay"):
+            actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.

@@ -125,8 +125,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         output_hidden_shape = 1
 
     def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -145,8 +145,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
         mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
@@ -186,7 +187,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         policy.loss = loss
         values_batched = make_time_major(
             policy,
-            train_batch.get("seq_lens"),
+            train_batch.get(SampleBatch.SEQ_LENS),
             values,
             drop_last=policy.config["vtrace"])
         policy._vf_explained_var = explained_variance(

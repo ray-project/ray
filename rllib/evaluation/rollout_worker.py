@@ -2,13 +2,13 @@ import random
 import numpy as np
 import gym
 import logging
-import pickle
 import platform
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
 import ray
+from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -29,7 +29,6 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -73,6 +72,72 @@ def get_global_worker() -> "RolloutWorker":
 
     global _global_worker
     return _global_worker
+
+
+def _update_global_seed(policy_config: TrainerConfigDict, seed: int):
+    """Set Python random, numpy, env, and torch/tf seeds.
+
+    This is useful for debugging and testing purposes.
+    """
+    if not seed:
+        return
+
+    # Python random module.
+    random.seed(seed)
+    # Numpy.
+    np.random.seed(seed)
+
+    # Torch.
+    if torch and policy_config.get("framework") == "torch":
+        torch.manual_seed(seed)
+        # See https://github.com/pytorch/pytorch/issues/47672.
+        cuda_version = torch.version.cuda
+        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+        else:
+            from distutils.version import LooseVersion
+
+            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
+                # Not all Operations support this.
+                torch.use_deterministic_algorithms(True)
+            else:
+                torch.set_deterministic(True)
+        # This is only for Convolution no problem.
+        torch.backends.cudnn.deterministic = True
+    # Tf2.x.
+    elif tf and policy_config.get("framework") == "tf2":
+        tf.random.set_seed(seed)
+    # Tf-eager.
+    elif tf1 and policy_config.get("framework") == "tfe":
+        tf1.set_random_seed(seed)
+
+
+def _update_env_seed(env: EnvType, seed: int, worker_idx: int,
+                     vector_idx: int):
+    """Set a deterministic random seed on environment.
+
+    TODO: does remote envs have seed() func?
+    TODO: if a gym env is wrapped in a gym.wrappers.Monitor,
+        is there still seed() func?
+    """
+    if not seed:
+        return
+
+    # A single RL job is unlikely to have more than 10K
+    # rollout workers.
+    max_num_envs_per_workers: int = 1000
+    assert worker_idx < max_num_envs_per_workers, \
+        "Too many envs per worker. Random seeds may collide."
+    computed_seed: int = (
+        worker_idx * max_num_envs_per_workers + vector_idx + seed)
+
+    # Gym.env.
+    # This will silently fail for most OpenAI gyms
+    # (they do nothing and return None per default)
+    if not hasattr(env, "seed"):
+        logger.info("Env doesn't support env.seed(): {}".format(env))
+    else:
+        env.seed(computed_seed)
 
 
 @DeveloperAPI
@@ -307,6 +372,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
 
@@ -395,6 +461,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.env = None
 
+        _update_global_seed(policy_config, seed)
+
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
@@ -481,14 +549,25 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
+            # Ideally, we would use the same make_env() function below
+            # to create self.env, but wrap(env) and self.env has a cyclic
+            # dependency on each other right now, so we would settle on
+            # duplicating the random seed setting logic for now.
+            _update_env_seed(self.env, seed, worker_index, 0)
 
         def make_env(vector_index):
-            return wrap(
+            env = wrap(
                 env_creator(
                     env_context.copy_with_overrides(
                         worker_index=worker_index,
                         vector_index=vector_index,
                         remote=remote_worker_envs)))
+            # make_env() is used to created additional environments
+            # during environment vectorization below.
+            # So we make sure a deterministic random seed is set on
+            # all the environments if specified.
+            _update_env_seed(env, seed, worker_index, vector_index)
+            return env
 
         self.make_env_fn = make_env
         self.spaces = spaces
@@ -507,46 +586,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
-
-        # Set Python random, numpy, env, and torch/tf seeds.
-        if seed is not None:
-            # Python random module.
-            random.seed(seed)
-            # Numpy.
-            np.random.seed(seed)
-            # Gym.env.
-            # This will silently fail for most OpenAI gyms
-            # (they do nothing and return None per default)
-            if not hasattr(self.env, "seed"):
-                logger.info("Env doesn't support env.seed(): {}".format(
-                    self.env))
-            else:
-                self.env.seed(seed)
-
-            # Torch.
-            if torch and policy_config.get("framework") == "torch":
-                torch.manual_seed(seed)
-                # See https://github.com/pytorch/pytorch/issues/47672.
-                cuda_version = torch.version.cuda
-                if cuda_version is not None and float(
-                        torch.version.cuda) >= 10.2:
-                    os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-                else:
-                    from distutils.version import LooseVersion
-                    if LooseVersion(
-                            torch.__version__) >= LooseVersion("1.8.0"):
-                        # Not all Operations support this.
-                        torch.use_deterministic_algorithms(True)
-                    else:
-                        torch.set_determinstic(True)
-                # This is only for Convolution no problem.
-                torch.backends.cudnn.deterministic = True
-            # Tf2.x.
-            elif tf and policy_config.get("framework") == "tf2":
-                tf.random.set_seed(seed)
-            # Tf-eager.
-            elif tf1 and policy_config.get("framework") == "tfe":
-                tf1.set_random_seed(seed)
 
         # Check available number of GPUs.
         num_gpus = policy_config.get("num_gpus", 0) if \
@@ -780,10 +819,8 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
-        if self.compress_observations == "bulk":
-            batch.compress(bulk=True)
-        elif self.compress_observations:
-            batch.compress()
+        if self.compress_observations:
+            batch.compress(bulk=self.compress_observations == "bulk")
 
         if self.fake_sampler:
             self.last_batch = batch
@@ -1057,7 +1094,6 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1095,14 +1131,16 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
-                                      action_space, config)
+                                      action_space, config or {})
             },
             self.env,
             spaces=self.spaces,
-            policy_config=policy_config)
-
+            policy_config=self.policy_config,
+        )
         self._build_policy_map(
-            policy_dict, policy_config, seed=policy_config.get("seed"))
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
 
         self.filters[policy_id] = get_filter(
@@ -1244,11 +1282,16 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def save(self) -> bytes:
         filters = self.get_filters(flush_after=True)
-        state = {
-            pid: self.policy_map[pid].get_state()
-            for pid in self.policy_map
-        }
-        return pickle.dumps({"filters": filters, "state": state})
+        state = {}
+        policy_specs = {}
+        for pid in self.policy_map:
+            state[pid] = self.policy_map[pid].get_state()
+            policy_specs[pid] = self.policy_map.policy_specs[pid]
+        return pickle.dumps({
+            "filters": filters,
+            "state": state,
+            "policy_specs": policy_specs,
+        })
 
     @DeveloperAPI
     def restore(self, objs: bytes) -> None:
@@ -1256,12 +1299,23 @@ class RolloutWorker(ParallelIteratorWorker):
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                logger.warning(
-                    f"pid={pid} not found in policy_map! It was probably added"
-                    " on-the-fly and is not part of the static `config."
-                    "multiagent.policies` dict. Ignoring it for now.")
-                continue
-            self.policy_map[pid].set_state(state)
+                pol_spec = objs.get("policy_specs", {}).get(pid)
+                if not pol_spec:
+                    logger.warning(
+                        f"PolicyID '{pid}' was probably added on-the-fly (not"
+                        " part of the static `multagent.policies` config) and"
+                        " no PolicySpec objects found in the pickled policy "
+                        "state. Will not add `{pid}`, but ignore it for now.")
+                else:
+                    self.add_policy(
+                        policy_id=pid,
+                        policy_cls=pol_spec.policy_class,
+                        observation_space=pol_spec.observation_space,
+                        action_space=pol_spec.action_space,
+                        config=pol_spec.config,
+                    )
+            else:
+                self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
     def set_global_vars(self, global_vars: dict) -> None:
@@ -1480,10 +1534,3 @@ def _validate_env(env: Any) -> EnvType:
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
             "function returned {} ({}).".format(env, type(env)))
     return env
-
-
-def _has_tensorflow_graph(policy_dict: MultiAgentPolicyConfigDict) -> bool:
-    for policy, _, _, _ in policy_dict.values():
-        if issubclass(policy, TFPolicy):
-            return True
-    return False

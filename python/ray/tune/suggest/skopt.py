@@ -343,7 +343,7 @@ class SkOptSearch(Searcher):
                     domain.lower, domain.upper - 1, prior="uniform")
 
             elif isinstance(domain, Categorical):
-                return domain.categories
+                return sko.space.Categorical(domain.categories)
 
             raise ValueError("SkOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(

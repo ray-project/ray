@@ -15,6 +15,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
+from ray.tune.utils import flatten_dict
 
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
@@ -288,6 +289,10 @@ class HyperOptSearch(Searcher):
 
         # Taken from HyperOpt.base.evaluate
         config = hpo.base.spec_from_misc(new_trial["misc"])
+
+        # We have to flatten nested spaces here so parameter names match
+        config = flatten_dict(config, flatten_list=True)
+
         ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
         memo = self.domain.memo_from_config(config)
         hpo.utils.use_obj_for_literal_in_memo(self.domain.expr, ctrl,

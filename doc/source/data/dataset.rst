@@ -1,11 +1,11 @@
 .. _datasets:
 
-Datasets: Distributed Arrow on Ray
-==================================
+Datasets: Flexible Distributed Data Loading
+===========================================
 
 .. tip::
 
-  Ray Datasets is available in early preview at ``ray.data``.
+  Datasets is available as **beta** in Ray 1.7+ (alpha release available in Ray 1.6). Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__, or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__, or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -68,12 +68,15 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ray.data.from_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ray.data.from_mars()``
      - (todo)
    * - Pandas Dataframe Objects
      - ``ray.data.from_pandas()``
+     - ✅
+   * - NumPy ndarray Objects
+     - ``ray.data.from_numpy()``
      - ✅
    * - Arrow Table Objects
      - ``ray.data.from_arrow()``
@@ -109,7 +112,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ds.to_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ds.to_mars()``
      - (todo)
@@ -121,6 +124,9 @@ Datasource Compatibility Matrices
      - ✅
    * - Pandas Dataframe Objects
      - ``ds.to_pandas()``
+     - ✅
+   * - NumPy ndarray Objects
+     - ``ds.to_numpy()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``
@@ -359,6 +365,17 @@ Tensor datasets are also created whenever an array type is returned from a map f
     ds = ds.map_batches(lambda x: np.array(x))
     # -> Dataset(num_blocks=10, num_rows=10,
     #            schema=<Tensor: shape=(None,), dtype=int64>)
+
+Tensor datasets can also be created from NumPy ndarrays that are already stored in the Ray object store:
+
+.. code-block:: python
+
+    import numpy as np
+
+    # Create a Dataset from a list of NumPy ndarray objects.
+    arr1 = np.arange(0, 10)
+    arr2 = np.arange(10, 20)
+    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
 
 Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 

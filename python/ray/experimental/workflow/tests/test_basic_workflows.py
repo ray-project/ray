@@ -119,6 +119,35 @@ def test_async_execution(workflow_start_regular_shared):
     assert ray.get(output) == 314
 
 
+def test_partial(workflow_start_regular_shared):
+    ys = [1, 2, 3]
+
+    def add(x, y):
+        return x + y
+
+    from functools import partial
+
+    f1 = workflow.step(partial(add, 10)).step(10)
+
+    assert "__anonymous_func__" in f1._name
+    assert f1.run() == 20
+
+    fs = [partial(add, y=y) for y in ys]
+
+    @ray.workflow.step
+    def chain_func(*args, **kw_argv):
+        # Get the first function as a start
+        wf_step = workflow.step(fs[0]).step(*args, **kw_argv)
+        for i in range(1, len(fs)):
+            # Convert each function inside steps into workflow step
+            # function and then use the previous output as the input
+            # for them.
+            wf_step = workflow.step(fs[i]).step(wf_step)
+        return wf_step
+
+    assert chain_func.step(1).run() == 7
+
+
 @ray.remote
 def deep_nested(x):
     if x >= 42:
@@ -226,6 +255,31 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     assert ret is None
     assert err is not None
     assert (tmp_path / "test").read_text() == "4"
+
+
+def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
+    @workflow.step
+    def f2():
+        return 10
+
+    @workflow.step
+    def f1():
+        return f2.step()
+
+    assert (10, None) == f1.options(catch_exceptions=True).step().run()
+
+
+def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
+    @workflow.step
+    def f1(n):
+        if n == 0:
+            raise ValueError()
+        else:
+            return f1.step(n - 1)
+
+    ret, err = f1.options(catch_exceptions=True).step(5).run()
+    assert ret is None
+    assert isinstance(err, ValueError)
 
 
 if __name__ == "__main__":
