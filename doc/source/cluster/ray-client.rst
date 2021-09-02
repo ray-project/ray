@@ -57,7 +57,7 @@ Ray client should be used when you want to connect a script or an interactive sh
 How do you use the Ray client?
 ------------------------------
 
-Step 1: set up your Ray cluster
+Step 1: Set up your Ray cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, you'll want to create a remote Ray cluster. Follow the directions in :ref:`ref-cluster-quick-start` to do this.
@@ -152,4 +152,15 @@ If you are using the ``nginx-ingress-controller``, you may be able to resolve th
         nginx.ingress.kubernetes.io/server-snippet: |
           underscores_in_headers on;
           ignore_invalid_headers on;
+
+Ray client logs
+~~~~~~~~~~~~~~~
+
+Ray client logs can be found at ``/tmp/ray/session_latest/logs`` on the head node.
    
+Uploads to the head node
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+When running ``ray.connect()``, the Ray client will upload the project directory on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``. If a ``working_dir`` is specified in the runtime env, this ``working_dir`` on the laptop will be uploaded instead of the project directory. In other words, the ``working_dir`` / runtime env mechanism is always used under the hood, but if the ``working_dir`` is not specified, then ``working_dir`` is set to the project directory by default.
+
+Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the project directory on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on Anyscale. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
