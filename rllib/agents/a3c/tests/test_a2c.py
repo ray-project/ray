@@ -10,7 +10,7 @@ class TestA2C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     def tearDown(self):
         ray.shutdown()
@@ -24,7 +24,7 @@ class TestA2C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config ,frameworks="torch"):#TODO
             for env in ["PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):

@@ -220,6 +220,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 used_for_compute_actions=False,
                 space=self.view_requirements[SampleBatch.OBS].space,
             )
+        print(self)
 
     @override(TorchModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
