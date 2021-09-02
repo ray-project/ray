@@ -67,8 +67,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    io_service_->stop();
     gcs_server_->Stop();
+    io_service_->stop();
     thread_io_service_->join();
     gcs_server_.reset();
 

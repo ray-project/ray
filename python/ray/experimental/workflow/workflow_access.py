@@ -150,9 +150,9 @@ class WorkflowManagementActor:
             step result. If it does not exist, return None
         """
         try:
-            return self._step_output_cache[(workflow_id, step_id)].output
+            output = self._step_output_cache[(workflow_id, step_id)].output
+            return output
         except Exception:
-            print("Fail to find:", workflow_id, step_id)
             return None
 
     def run_or_resume(self, workflow_id: str, ignore_existing: bool = False
@@ -173,12 +173,16 @@ class WorkflowManagementActor:
                                "already exists.")
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         step_id = wf_store.get_entrypoint_step_id()
-        result = recovery.resume_workflow_step(workflow_id, step_id,
-                                               self._store.storage_url)
-
+        try:
+            current_output = self._workflow_outputs[workflow_id].output
+        except KeyError:
+            current_output = None
+        result = recovery.resume_workflow_step(
+            workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
+        print("run_or_resume: ", workflow_id, step_id, result.persisted_output)
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(

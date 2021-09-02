@@ -420,11 +420,6 @@ class WorkerPoolTest : public ::testing::Test {
           return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
               new MockRuntimeEnvAgentClient());
         },
-        /*put_agent_address=*/
-        [](const std::string &value, const PutAgentAddressCallback &callback) {
-          RAY_UNUSED(value);
-          callback(ray::Status::OK(), 0);
-        },
         false);
     const rpc::RegisterAgentRequest request;
     rpc::RegisterAgentReply reply;
