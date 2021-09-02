@@ -1366,6 +1366,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
+  // Interface that receives tasks from direct actor calls.
+  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
   /// Event loop where tasks are processed.
   instrumented_io_context task_execution_service_;
 
@@ -1387,9 +1390,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor task are ready.
   std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
-  // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
-
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
@@ -1409,7 +1409,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
+  std::atomic<bool> exiting_;
 
   int64_t max_direct_call_object_size_;
 
