@@ -408,7 +408,7 @@ Fault Tolerance & Elastic Training
 ----------------------------------
 
 RaySGD has built-in fault tolerance to recover from worker failures (i.e.
-``RayActorError``s). When a failure is detected, the workers will be shut
+``RayActorError``\s). When a failure is detected, the workers will be shut
 down and new workers will be added in. The training function will be
 restarted, but progress from the previous execution can be resumed through
 checkpointing.
@@ -431,7 +431,7 @@ Training on a large dataset
 
 .. note:: This feature is coming soon!
 
-SGD provides native support for :ref:`Ray Datasets <datasets>`. You can pass in a Dataset to RaySGD via ``Trainer.run``.
+SGD provides native support for :ref:`Ray Datasets <datasets>`. You can pass in a Dataset to RaySGD via ``Trainer.run``\.
 Underneath the hood, RaySGD will automatically shard the given dataset.
 
 
