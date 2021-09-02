@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import inspect
 import logging
 import os
@@ -45,6 +45,14 @@ BACKEND_NAME_TO_CONFIG_CLS = {
 
 class Trainer:
     """A class for enabling seamless distributed deep learning.
+
+    Directory structure:
+    - A logdir is created during instantiation. This will hold all the
+    results/checkpoints for the lifetime of the Trainer. By default, it will be
+    of the form ``~/ray_results/sgd_<datestring>``.
+    - A run_dir is created for each ``run`` call. This will
+    hold the checkpoints and results for a single ``trainer.run()`` or
+    ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
 
     Args:
         backend (Union[str, BackendConfig]): The backend used for

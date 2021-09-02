@@ -44,13 +44,7 @@ class SGDBackendError(Exception):
 class CheckpointManager:
     """Manages checkpoint processing, writing, and loading.
 
-    Directory structure:
-    - A logdir is created during instantiation. This will hold all the
-    results/checkpoints for the lifetime of the Trainer. By default, it will be
-    of the form ``~/ray_results/sgd_<datestring>``.
-    - A run_dir is created every time ``start_training`` is called. This will
-    hold the checkpoints and results for a single ``trainer.run()`` or
-    ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
+
     - A ``checkpoints`` directory is created in the ``run_dir`` and contains
     all the checkpoint files.
 
@@ -89,7 +83,7 @@ class CheckpointManager:
         self._checkpoint_id = checkpoint_id if checkpoint_id else 0
         self._checkpoint_strategy = CheckpointStrategy() if \
             checkpoint_strategy is None else checkpoint_strategy
-        self.latest_run_dir = run_dir
+        self.run_dir = run_dir
 
     def _process_checkpoint(self,
                             checkpoint_results: List[TrainingResult]) -> None:
@@ -99,10 +93,11 @@ class CheckpointManager:
         checkpoint = checkpoint_results[0].data
         # Store checkpoint in memory.
         self.latest_checkpoint = checkpoint
-        # Increment checkpoint id.
-        self._latest_checkpoint_id += 1
 
         self.write_checkpoint(checkpoint)
+
+        # Increment checkpoint id.
+        self._latest_checkpoint_id += 1
 
     def _load_checkpoint(self,
                          checkpoint_to_load: Optional[Union[Dict, str, Path]]
@@ -140,7 +135,7 @@ class CheckpointManager:
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
         checkpoint_dir = Path("checkpoints")
-        return construct_path(checkpoint_dir, self.latest_run_dir)
+        return construct_path(checkpoint_dir, self.run_dir)
 
     @property
     def latest_checkpoint_file_name(self) -> Optional[str]:
@@ -218,8 +213,6 @@ class BackendExecutor:
     Attributes:
         logdir (Path): Path to the file directory where logs will be
             persisted.
-        latest_run_dir (Optional[Path]): Path to the file directory for the
-            latest run. Configured through ``start_training``.
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
             ``start_training``.
@@ -329,9 +322,9 @@ class BackendExecutor:
     def start_training(
             self,
             train_func: Callable[[], T],
+            run_dir: Path,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None,
-            run_dir: Optional[Path] = None,
             checkpoint_id: Optional[int] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -340,8 +333,7 @@ class BackendExecutor:
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            run_dir (Optional[str|Path]): The absolute path or path relative
-                to ``Trainer.logdir`` for this run's logs.
+            run_dir (Path): The directory to use for this run.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``sgd.load_checkpoint()``. If this is a
@@ -350,7 +342,6 @@ class BackendExecutor:
                 is ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
-            run_dir (Optional[Path]): The directory to use for this run.
             checkpoint_id (Optional[int]): The checkpoint id to start with.
         """
         self.checkpoint_manager.on_start_training(
@@ -600,10 +591,6 @@ class BackendExecutor:
         return not isinstance(self.worker_group, InactiveWorkerGroup)
 
     @property
-    def latest_run_dir(self):
-        return self.checkpoint_manager.latest_run_dir
-
-    @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
         return self.checkpoint_manager.latest_checkpoint_dir
@@ -614,7 +601,7 @@ class BackendExecutor:
         return self.checkpoint_manager.latest_checkpoint_path
 
     @property
-    def latest_checkpoint_id(self):
+    def latest_checkpoint_id(self) -> int:
         return self.checkpoint_manager._latest_checkpoint_id
 
     @property

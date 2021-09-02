@@ -43,4 +43,4 @@ TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
 # The key to use to specify the checkpoint id for Tune.
 # This needs to be added to the checkpoint dictionary so if the Tune trial
 # is restarted, the checkpoint_id can continue to increment.
-TUNE_ITERATION_KEY = "_current_checkpoint_id"
+TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
