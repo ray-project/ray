@@ -70,11 +70,11 @@ class GlobalStateAccessorTest : public ::testing::Test {
     gcs_client_.reset();
 
     gcs_server_->Stop();
-    gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
 
     io_service_->stop();
     thread_io_service_->join();
+    gcs_server_.reset();
   }
 
   // GCS server.
