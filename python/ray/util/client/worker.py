@@ -153,6 +153,13 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            if log_once("ray_client_security_groups"):
+                warnings.warn(
+                    "Ray Client connection timed out. Ensure that "
+                    "the Ray Client port on the head node is reachable "
+                    "from your local machine. See https://docs.ray.io/en"
+                    "/latest/cluster/ray-client.html#step-2-check-ports for "
+                    "more information.")
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
