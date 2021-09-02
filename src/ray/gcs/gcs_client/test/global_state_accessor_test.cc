@@ -67,12 +67,12 @@ class GlobalStateAccessorTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    gcs_client_->Disconnect();
     gcs_server_->Stop();
     io_service_->stop();
     thread_io_service_->join();
     gcs_server_.reset();
 
-    gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
     TestSetupUtil::FlushAllRedisServers();
