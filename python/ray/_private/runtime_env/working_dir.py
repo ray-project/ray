@@ -416,6 +416,9 @@ def setup_working_dir(runtime_env: dict,
     if not runtime_env.get("uris"):
         return
 
+    # Overwrite the module-wide logger and PKG_DIR temporarily.
+    # TODO(edoakes): we should be able to remove this by refactoring the
+    # working_dir setup code into a class instead of using global vars.
     global _logger, PKG_DIR
     prev_logger = _logger
     prev_pkg_dir = PKG_DIR
