@@ -62,7 +62,7 @@ class DataClient:
     def _data_main(self) -> None:
         reconnecting = "False"
         try:
-            while True:
+            while not self.client_worker._in_shutdown:
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(
                     self.client_worker.channel)
                 metadata = self._metadata + [("reconnecting", reconnecting)]
@@ -112,6 +112,7 @@ class DataClient:
                             logger.warning(
                                 "Failed to reconnect the data channel")
                             return
+                        logger.info("Reconnection succeeded!")
                     self.request_queue = queue.Queue()
                     with self.outstanding_requests_lock:
                         for request in self.outstanding_requests.values():

@@ -52,7 +52,10 @@ class LogstreamClient:
                     iter(self.request_queue.get, None),
                     metadata=self._metadata)
             except ValueError:
-                # Initiated stub when dataclient tried to reset channel
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
                 time.sleep(.5)
                 continue
             try:

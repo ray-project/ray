@@ -137,8 +137,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             # this request will be sent when the object is
                             # ready.
                             continue
-                        else:
-                            yield get_resp
                     else:
                         get_resp = self.basic_service._get_object(
                             req.get, client_id)

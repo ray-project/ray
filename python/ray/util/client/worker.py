@@ -200,7 +200,8 @@ class Worker:
                         f"retry in {timeout}s...")
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
-                # server should already be ready
+                # we already know the server exists, attempt to reconnect
+                # as soon as we can
                 timeout = backoff(timeout)
 
         # If we made it through the loop without service_ready
@@ -230,7 +231,10 @@ class Worker:
                     continue
                 raise
             except ValueError:
-                # Attempted to use stub while channel is being recreated
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
                 time.sleep(.5)
                 continue
         raise ConnectionError("Client is shutting down.")
