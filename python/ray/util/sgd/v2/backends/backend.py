@@ -61,6 +61,8 @@ class CheckpointManager:
             checkpoint.
         latest_checkpoint_path (Optional[Path]): Path to the latest persisted
             checkpoint from the latest run.
+        latest_checkpoint_id (Optional[int]): The id of the most recently
+            saved checkpoint.
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
     """
@@ -213,8 +215,6 @@ class BackendExecutor:
             Defaults to 3. Set to -1 for unlimited retries.
 
     Attributes:
-        logdir (Path): Path to the file directory where logs will be
-            persisted.
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
             ``start_training``.

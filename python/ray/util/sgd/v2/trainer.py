@@ -100,8 +100,12 @@ class Trainer:
             raise NotImplementedError("`resources_per_worker` argument is not "
                                       "supported yet.")
 
-        self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu), logdir, max_retries)
+        self._executor = BackendExecutor(
+            backend_config=backend_config,
+            num_workers=num_workers,
+            num_cpus_per_worker=1,
+            num_gpus_per_worker=int(use_gpu),
+            max_retries=max_retries)
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
