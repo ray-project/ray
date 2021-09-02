@@ -1,5 +1,3 @@
-
-
 import sys
 
 import pytest
@@ -8,6 +6,7 @@ import ray
 from ray import serve
 from ray.serve.constants import (SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME)
 from ray.serve.tests.test_failure import request_with_retries
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_recover_from_replica_actor_names(serve_instance):

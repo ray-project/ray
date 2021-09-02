@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from enum import Enum
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from pydantic.typing import NoneType
 
 import ray
 from ray import cloudpickle
