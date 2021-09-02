@@ -285,14 +285,14 @@ class TrialExecutor(metaclass=ABCMeta):
         if len(all_trials) == self._all_trials_size:
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
-            elif time.monotonic(
-            ) - self._no_running_trials_since > _get_insufficient_resources_warning_threshold(  # noqa
-            ):
+            elif (time.monotonic() - self._no_running_trials_since >
+                  _get_insufficient_resources_warning_threshold()):
                 if not is_ray_cluster():  # autoscaler not enabled
                     # If any of the pending trial cannot be fulfilled,
                     # that's a good enough hint of trial resources not enough.
                     for trial in all_trials:
-                        if not _can_fulfill_no_autoscaler(trial):
+                        if (trial.status is Trial.PENDING
+                                and not _can_fulfill_no_autoscaler(trial)):
                             raise TuneError(
                                 _get_insufficient_resources_error_msg(
                                     trial.resources))
