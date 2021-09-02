@@ -343,7 +343,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             logger.exception(f"Proxying call to {method} failed!")
 
     def _has_channel_for_request(self, context):
-        client_id = _get_client_id_from_context(context)
+        client_id = _get_client_id_from_context(context, logger)
         return self.proxy_manager.has_channel(client_id)
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
