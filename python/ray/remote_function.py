@@ -289,9 +289,10 @@ class RemoteFunction:
 
         if runtime_env is None:
             runtime_env = self._runtime_env
-        job_config = worker.core_worker.get_job_config()
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
         runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_config)
+            runtime_env, job_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
