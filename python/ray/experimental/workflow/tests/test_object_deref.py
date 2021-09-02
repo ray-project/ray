@@ -17,6 +17,11 @@ def nested_ref():
 
 
 @workflow.step
+def nested_ref_workflow():
+    return nested_ref.remote()
+
+
+@workflow.step
 def nested_workflow(n: int):
     if n <= 0:
         return "nested"
@@ -76,6 +81,11 @@ def test_objectref_inputs(workflow_start_regular_shared):
             "output": nested_workflow.step(7)
         }]).run()
     assert output is True, s
+
+
+def test_objectref_outputs(workflow_start_regular_shared):
+    output = nested_ref_workflow.step().run()
+    assert output == 42
 
 
 def test_object_deref(workflow_start_regular_shared):
