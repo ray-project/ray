@@ -1,6 +1,7 @@
 #include "queue/transport.h"
 
 #include "queue/utils.h"
+#include "ray/common/common_protocol.h"
 #include "ray/streaming/streaming.h"
 
 namespace ray {
@@ -11,16 +12,15 @@ static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 
 void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
   STREAMING_LOG(DEBUG) << "Transport::Send buffer size: " << buffer->Size();
-  std::vector<ObjectID> return_ids;
-  ray::streaming::SendInternal(peer_actor_id_, std::move(buffer), async_func_,
-                               TASK_OPTION_RETURN_NUM_0, return_ids);
+  RAY_UNUSED(ray::streaming::SendInternal(peer_actor_id_, std::move(buffer), async_func_,
+                                          TASK_OPTION_RETURN_NUM_0));
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
-  std::vector<ObjectID> return_ids;
-  ray::streaming::SendInternal(peer_actor_id_, buffer, sync_func_,
-                               TASK_OPTION_RETURN_NUM_1, return_ids);
+  auto return_refs = ray::streaming::SendInternal(peer_actor_id_, buffer, sync_func_,
+                                                  TASK_OPTION_RETURN_NUM_1);
+  auto return_ids = ObjectRefsToIds(return_refs);
 
   std::vector<std::shared_ptr<RayObject>> results;
   Status get_st =
