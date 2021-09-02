@@ -40,14 +40,13 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         # Actions are always:
         # (episodeID, envID) as floats.
         self.action_space = \
-            gym.spaces.Box(-float("inf"), float("inf"), shape=(2, ))
+            gym.spaces.Box(0.0, 10000000000.0, shape=(2, ))
         # Observation dims:
         # 0=agent ID.
         # 1=episode ID (0.0 for obs after reset).
         # 2=env ID (0.0 for obs after reset).
         # 3=ts (of the agent).
-        self.observation_space = \
-            gym.spaces.Box(float("-inf"), float("inf"), (4, ))
+        self.observation_space = gym.spaces.Box(0.0, 10000000000.0, (4, ))
         self.timesteps = [0] * self.num_agents
         self.dones = set()
 

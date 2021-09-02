@@ -103,6 +103,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
             "env_id": ViewRequirement(),
             "t": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
+            "state_out_0": ViewRequirement(space=self.state_space),
             "state_in_0": ViewRequirement(
                 "state_out_0",
                 # Provide state outs -50 to -1 as "state-in".

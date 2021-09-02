@@ -28,7 +28,8 @@ class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
-        assert sum(train_batch[SampleBatch.SEQ_LENS]) == 201
+        if SampleBatch.SEQ_LENS in train_batch:
+            assert sum(train_batch[SampleBatch.SEQ_LENS]) == 201
         for k, v in train_batch.items():
             if k == "state_in_0":
                 assert len(v) == len(train_batch[SampleBatch.SEQ_LENS])
@@ -176,7 +177,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             )
             rw = trainer.workers.local_worker()
             sample = rw.sample()
-            assert sample.count == config["rollout_fragment_length"]
+            assert sample.count == config["train_batch_size"]
             results = trainer.train()
             assert results["train_batch_size"] == config["train_batch_size"]
             trainer.stop()
@@ -214,8 +215,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             expected_a_ = a_
 
     def test_traj_view_lstm_functionality(self):
-        action_space = Box(-float("inf"), float("inf"), shape=(3, ))
-        obs_space = Box(-1.0, 1.0, (4, ))
+        action_space = Box(0.0, 10000000000.0, shape=(3, ))
+        obs_space = Box(0.0, 10000000000.0, (4, ))
         max_seq_len = 50
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
@@ -265,8 +266,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             check(pol_batch_w, pol_batch_wo)
 
     def test_traj_view_attention_functionality(self):
-        action_space = Box(-float("inf"), float("inf"), shape=(3, ))
-        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        action_space = Box(0.0, 10000000000.0, shape=(3, ))
+        obs_space = Box(0.0, 10000000000.0, (4, ))
         max_seq_len = 50
         rollout_fragment_length = 201
         policies = {
@@ -285,7 +286,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "model": {
                 "max_seq_len": max_seq_len,
             },
-        },
+        }
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
@@ -339,10 +340,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["dim"] = 42
         config["train_batch_size"] = 200
         config["num_sgd_iter"] = 2
-        #config["sgd_minibatch_size"] = 100
+        # config["sgd_minibatch_size"] = 100
         config["seed"] = 42
         config["num_workers"] = 1
-        #config["create_env_on_driver"] = True
+        config["create_env_on_driver"] = True
         config["env"] = "Pong-v0"
 
         for _ in framework_iterator(config, frameworks="tf"):  #TODO
