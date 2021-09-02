@@ -202,7 +202,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e.start_training(train, run_dir=tmp_path)
     e.finish_training()
 
-    assert e.latest_checkpoint_id == 2
+    assert e.latest_checkpoint_id == 1
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
@@ -219,6 +219,25 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e2.start_training(
         validate, checkpoint=e.latest_checkpoint_path, run_dir=tmp_path)
     e2.finish_training()
+
+
+def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
+    def train():
+        for i in range(2):
+            sgd.save_checkpoint(epoch=i)
+
+    config = TestConfig()
+    e = BackendExecutor(config)
+    e.start()
+    e.start_training(train, run_dir=tmp_path, checkpoint_id=100)
+    e.finish_training()
+
+    assert e.latest_checkpoint_id == 101
+    assert e.latest_checkpoint is not None
+    assert e.latest_checkpoint["epoch"] == 1
+    assert e.latest_checkpoint_path is not None
+
+    assert os.path.exists(e.latest_checkpoint_path)
 
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
