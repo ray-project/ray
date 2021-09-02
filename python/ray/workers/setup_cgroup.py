@@ -10,7 +10,8 @@ import cgroupspy.controllers
 def create_cgroup_for_worker(resource_json):
     t = cgroupspy.trees.Tree()
     # todo add timestampe?
-    cgroup_name = "ray-" + "".join(random.sample(string.ascii_letters + string.digits, 8))
+    cgroup_name = "ray-" + "".join(
+        random.sample(string.ascii_letters + string.digits, 8))
     allocated_resource = json.loads(resource_json)
     cgroup_nodes = []
     if "CPU" in allocated_resource.keys():
@@ -42,7 +43,8 @@ def create_cgroup_for_worker(resource_json):
         memory_cset = t.get_node_by_path("/memory")
         worker_memory_cset = memory_cset.create_cgroup(cgroup_name)
         ctl = cgroupspy.controllers.Controller(worker_memory_cset)
-        ctl.set_property(b"memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
+        ctl.set_property(b"memory.limit_in_bytes",
+                         str(int(allocated_resource["memory"] / 10000)))
         cgroup_nodes.append(worker_memory_cset)
     return cgroup_nodes
 

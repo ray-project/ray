@@ -11,8 +11,7 @@ import ray
 @pytest.mark.skipif(
     sys.platform != "linux", reason="cgroup only supported on linux.")
 def test_resource_limit_without_container(shutdown_only):
-    ray.init(
-        _system_config={"worker_resource_limits_enabled": True})
+    ray.init(_system_config={"worker_resource_limits_enabled": True})
 
     def _get_memory_cgroup_name():
         for line in open("/proc/self/cgroup"):
@@ -54,31 +53,39 @@ def test_resource_limit_without_container(shutdown_only):
         return ctl.get_property(b"cpu.shares")
 
     memory_cgroup_name = ray.get(
-        get_memory_cgroup_name.options(memory=100 * 1024 * 1024,
-                                       runtime_env={"env_vars": {
-                                           "a": "b",
-                                       }}).remote())
+        get_memory_cgroup_name.options(
+            memory=100 * 1024 * 1024, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert memory_cgroup_name.startswith("/ray-")
 
     cpu_cgroup_name = ray.get(
-        get_cpu_cgroup_name.options(num_cpus=1,
-                                    runtime_env={"env_vars": {
-                                        "a": "b",
-                                    }}).remote())
+        get_cpu_cgroup_name.options(
+            num_cpus=1, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert cpu_cgroup_name.startswith("/ray-")
 
     memory_value = ray.get(
-        get_memory_cgroup_value.options(memory=100 * 1024 * 1024,
-                                        runtime_env={"env_vars": {
-                                            "a": "b",
-                                        }}).remote())
+        get_memory_cgroup_value.options(
+            memory=100 * 1024 * 1024, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert memory_value == str(100 * 1024 * 1024)
 
     cpu_value = ray.get(
-        get_cpu_cgroup_value.options(num_cpus=1,
-                                     runtime_env={"env_vars": {
-                                         "a": "b",
-                                     }}).remote())
+        get_cpu_cgroup_value.options(
+            num_cpus=1, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert cpu_value == str(1024)
 
 
@@ -86,8 +93,10 @@ def test_resource_limit_without_container(shutdown_only):
     sys.platform != "linux", reason="cgroup only supported on linux.")
 def test_cpuset_resource_limit_without_container(shutdown_only):
     ray.init(
-        _system_config={"worker_resource_limits_enabled": True,
-                        "predefined_unit_instance_resources": "CPU,GPU"})
+        _system_config={
+            "worker_resource_limits_enabled": True,
+            "predefined_unit_instance_resources": "CPU,GPU"
+        })
 
     def _get_cpuset_cgroup_name():
         for line in open("/proc/self/cgroup"):
@@ -109,17 +118,21 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
         return ctl.get_property(b"cpuset.cpus")
 
     cpuset_cgroup_name = ray.get(
-        get_cpuset_cgroup_name.options(num_cpus=1,
-                                       runtime_env={"env_vars": {
-                                           "a": "b",
-                                       }}).remote())
+        get_cpuset_cgroup_name.options(
+            num_cpus=1, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert cpuset_cgroup_name.startswith("/ray-")
 
     cpuset_value = ray.get(
-        get_cpuset_cgroup_value.options(num_cpus=1,
-                                        runtime_env={"env_vars": {
-                                            "a": "b",
-                                        }}).remote())
+        get_cpuset_cgroup_value.options(
+            num_cpus=1, runtime_env={
+                "env_vars": {
+                    "a": "b",
+                }
+            }).remote())
     assert cpuset_value == "0"
 
 

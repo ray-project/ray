@@ -128,6 +128,7 @@ if __name__ == "__main__":
 
         if args.allocated_instances_serialized_json != "{}":
             import setup_cgroup
-            setup_cgroup.start_worker_in_cgroup(start_worker, args.allocated_instances_serialized_json)
+            setup_cgroup.start_worker_in_cgroup(
+                start_worker, args.allocated_instances_serialized_json)
         else:
             start_worker()
