@@ -452,7 +452,7 @@ class SGDIterator:
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=run_dir,
-                latest_checkpoint_id=checkpoint_id
+                latest_checkpoint_id=latest_checkpoint_id
             )
         )
 
