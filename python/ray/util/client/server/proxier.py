@@ -48,7 +48,7 @@ def _get_client_id_from_context(context: Any) -> str:
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
-        context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
     return client_id
 
 
