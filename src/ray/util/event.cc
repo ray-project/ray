@@ -205,8 +205,24 @@ void RayEventContext::SetCustomFields(
 ///
 /// RayEvent
 ///
-rpc::Event_Severity RayEvent::severity_threshold_ =
-    rpc::Event_Severity::Event_Severity_WARNING;
+static rpc::Event_Severity severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+
+static void SetEventLevel(const std::string &event_level) {
+  std::string level = event_level;
+  std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+  if (level == "info") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+  } else if (level == "warning") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_WARNING;
+  } else if (level == "error") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_ERROR;
+  } else if (level == "fatal") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_FATAL;
+  } else {
+    RAY_LOG(WARNING) << "Unrecognized setting of event level " << level;
+  }
+  RAY_LOG(INFO) << "Set ray event level to " << level;
+}
 
 void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
                            const std::string &message) {
@@ -220,28 +236,7 @@ bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
   return event_level >= severity_threshold_;
 }
 
-void RayEvent::SetLevel(const std::string event_level) {
-  std::string level = event_level;
-  // The environment variable have a higher priority.
-  const char *var_value = getenv("RAY_BACKEND_EVENT_LEVEL");
-  if (var_value != nullptr) {
-    level = var_value;
-    RAY_LOG(INFO) << "Got event level from env RAY_BACKEND_EVENT_LEVEL=" << var_value;
-  }
-  std::transform(level.begin(), level.end(), level.begin(), ::tolower);
-  if (level == "info") {
-    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
-  } else if (level == "warning") {
-    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_WARNING;
-  } else if (level == "error") {
-    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_ERROR;
-  } else if (level == "fatal") {
-    RayEvent::severity_threshold_ = rpc::Event_Severity::Event_Severity_FATAL;
-  } else {
-    RAY_LOG(WARNING) << "Unrecognized setting of event level " << var_value;
-  }
-  RAY_LOG(INFO) << "Set ray event level to " << level;
-}
+void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
@@ -288,7 +283,7 @@ void RayEventInit(rpc::Event_SourceType source_type,
   auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
   ray::EventManager::Instance().AddReporter(
       std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-  ray::RayEvent::SetLevel(event_level);
+  SetEventLevel(event_level);
   RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
 }
 

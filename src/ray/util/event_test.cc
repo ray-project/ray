@@ -161,7 +161,6 @@ std::string GenerateLogDir() {
 TEST(EVENT_TEST, TEST_BASIC) {
   TestEventReporter::event_list.clear();
   EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
 
   RAY_EVENT(WARNING, "label") << "test for empty reporters";
 
@@ -210,7 +209,6 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -244,7 +242,6 @@ TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
   ray::RayEventContext::Instance().ResetEventContext();
   TestEventReporter::event_list.clear();
   ray::EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
   ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RAY_EVENT(INFO, "label 0") << "send message 0";
 
@@ -294,7 +291,6 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_GCS, log_dir));
@@ -342,7 +338,6 @@ TEST(EVENT_TEST, LOG_ROTATE) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -371,7 +366,6 @@ TEST(EVENT_TEST, WITH_FIELD) {
   std::string log_dir = GenerateLogDir();
 
   EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -411,7 +405,6 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   std::string log_dir = GenerateLogDir();
 
   ray::EventManager::Instance().ClearReporters();
-  ray::RayEvent::SetLevel("info");
   auto custom_fields = std::unordered_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
@@ -497,19 +490,6 @@ TEST(EVENT_TEST, TEST_LOG_LEVEL) {
   EXPECT_EQ(result.size(), 1);
   CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
   result.clear();
-
-  // Test set level from env
-  setenv("RAY_BACKEND_EVENT_LEVEL", "FATAL", true);
-  ray::RayEvent::SetLevel("info");
-  RAY_EVENT(INFO, "label") << "test info";
-  RAY_EVENT(WARNING, "label") << "test warning";
-  RAY_EVENT(ERROR, "label") << "test error";
-  RAY_EVENT(FATAL, "label") << "test fatal";
-
-  EXPECT_EQ(result.size(), 1);
-  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
-  result.clear();
-  unsetenv("RAY_BACKEND_EVENT_LEVEL");
 }
 
 }  // namespace ray
