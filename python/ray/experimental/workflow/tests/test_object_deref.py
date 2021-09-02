@@ -30,8 +30,8 @@ def deref_check(u: int, v: "ObjectRef[int]",
                 z: List[Dict[str, str]]):
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
-                and x == "nested" and y[0] == "nested"
-                and z[0]["output"] == "nested"), f"{u}, {v}, {w}, {x}, {y}, {z}"
+                and x == "nested" and y[0] == "nested" and
+                z[0]["output"] == "nested"), f"{u}, {v}, {w}, {x}, {y}, {z}"
     except Exception:
         return False
 
@@ -75,7 +75,7 @@ def test_objectref_inputs(workflow_start_regular_shared):
         nested_workflow.step(10), [nested_workflow.step(9)], [{
             "output": nested_workflow.step(7)
         }]).run()
-    assert output == True, s
+    assert output is True, s
 
 
 def test_object_deref(workflow_start_regular_shared):

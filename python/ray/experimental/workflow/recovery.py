@@ -25,7 +25,6 @@ class WorkflowNotResumableError(Exception):
         self.message = f"Workflow[id={workflow_id}] is not resumable."
         super().__init__(self.message)
 
-
 @WorkflowStepFunction
 def _recover_workflow_step(input_object_refs: List[str],
                            input_workflows: List[Any],
