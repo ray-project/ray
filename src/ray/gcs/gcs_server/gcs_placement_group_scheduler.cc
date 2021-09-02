@@ -105,6 +105,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   // Filter out the nodes already scheduled by this placement group.
   absl::flat_hash_set<NodeID> nodes_in_use;
   if (context->bundle_locations_.has_value()) {
+    RAY_LOG(INFO) << "Shouldn't hapen";
     const auto &bundle_locations = context->bundle_locations_.value();
     for (auto &bundle : *bundle_locations) {
       nodes_in_use.insert(bundle.second.first);
@@ -138,7 +139,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
 
-  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
+  RAY_LOG(INFO) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
   auto selected_nodes = scheduler_strategies_[strategy]->Schedule(
@@ -147,7 +148,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
-    RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
+    RAY_LOG(ERROR) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
                    << ", because no nodes are available.";
     failure_callback(placement_group);
@@ -214,7 +215,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-  RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
+  RAY_LOG(INFO) << "Preparing resource from node " << node_id
                  << " for a bundle: " << bundle->DebugString();
   lease_client->PrepareBundleResources(
       *bundle, [node_id, bundle, callback](
@@ -222,10 +223,10 @@ void GcsPlacementGroupScheduler::PrepareResources(
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
-          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
+          RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                          << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
+          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
                          << " for bundle: " << bundle->DebugString();
         }
         callback(result);
@@ -303,6 +304,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   lease_status_tracker->MarkCommitPhaseStarted();
+  RAY_LOG(INFO) << "Starting to commit!";
   for (const auto &bundle_to_commit : *prepared_bundle_locations) {
     const auto &node_id = bundle_to_commit.second.first;
     const auto &node = gcs_node_manager_.GetAliveNode(node_id);
@@ -342,12 +344,14 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  RAY_LOG(INFO) << "All bundles are prepared " << placement_group_id;
 
   if (!lease_status_tracker->AllPrepareRequestsSuccessful()) {
     // Erase the status tracker from a in-memory map if exists.
     // NOTE: A placement group may be scheduled several times to succeed.
     // If a prepare failure occurs during scheduling, we just need to release the prepared
     // bundle resources of this scheduling.
+    RAY_LOG(INFO) << "Prepare requests were not successful " << placement_group_id;
     DestroyPlacementGroupPreparedBundleResources(placement_group_id);
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
@@ -391,7 +395,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
-
+  RAY_LOG(INFO) << "All bundles are returned!";
   // Clean up the leasing progress map.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   RAY_CHECK(it != placement_group_leasing_in_progress_.end());
@@ -408,6 +412,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   // However, it cannot destroy the newly submitted bundles in this scheduling, so we need
   // to destroy them separately.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
+    RAY_LOG(INFO) << "Bundles are cancelled to be created";
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
     schedule_failure_handler(placement_group);
@@ -420,6 +425,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   AcquireBundleResources(committed_bundle_locations);
 
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
+    RAY_LOG(INFO) << "Bundles are failed to be created";
     // Update the state to be reschedule so that the failure handle will reschedule the
     // failed bundles.
     const auto &uncommitted_bundle_locations =

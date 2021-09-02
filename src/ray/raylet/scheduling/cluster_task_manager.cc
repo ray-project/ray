@@ -920,6 +920,17 @@ std::string ClusterTaskManager::DebugStr() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
+  // for (auto shapes_it = infeasible_tasks_.begin();
+  //      shapes_it != infeasible_tasks_.end();) {
+  //   auto &work_queue = shapes_it->second;
+  //   RAY_CHECK(!work_queue.empty())
+  //       << "Empty work queue shouldn't have been added as a infeasible shape.";
+  //   // We only need to check the first item because every task has the same shape.
+  //   // If the first entry is infeasible, that means everything else is the same.
+  //   const auto work = work_queue[0];
+  //   RayTask task = work->task;
+  //   buffer << "Infeasible task: " << task.GetTaskSpecification().TaskId();
+  // }
   buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
   buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
@@ -957,8 +968,6 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     // If the first entry is infeasible, that means everything else is the same.
     const auto work = work_queue[0];
     RayTask task = work->task;
-    RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
-                   << task.GetTaskSpecification().TaskId();
     auto placement_resources =
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     // This argument is used to set violation, which is an unsupported feature now.
@@ -973,11 +982,9 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
     if (is_infeasible) {
-      RAY_LOG(DEBUG) << "No feasible node found for task "
-                     << task.GetTaskSpecification().TaskId();
       shapes_it++;
     } else {
-      RAY_LOG(DEBUG) << "Infeasible task of task id "
+      RAY_LOG(INFO) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
       tasks_to_schedule_[shapes_it->first] = shapes_it->second;
@@ -1192,8 +1199,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
-                 << waiting_task_queue_.size();
+  // RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
+  //                << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their

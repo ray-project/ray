@@ -143,21 +143,25 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         #         actor_cnt += 1
 
     # Remove the rest of placement groups.
-    for pg in pgs_removed:
-        remove_placement_group(pg)
+    # for pg in pgs_removed:
+    #     remove_placement_group(pg)
 
     print("ready")
-    # unready = [pg.ready() for pg in pgs_unremoved]
-    # i = 0
-    # while unready:
-    #     ready, unready = ray.wait(unready, timeout=0)
-    #     time.sleep(0.01)
-    #     i += 1
-    #     if i % 100 == 0:
-    #         print(f"{i} iterations")
-    #     if len(ready) < 1:
-    #         print(f"Nothing ready. Unready size: {len(unready)}")
-    [pg.wait(timeout_seconds=30) for pg in pgs_unremoved]
+    unready = [pg.ready() for pg in pgs_unremoved]
+    i = 0
+    while unready:
+        ready, unready = ray.wait(unready, timeout=0)
+        time.sleep(0.01)
+        i += 1
+        if i % 100 == 0:
+            print(f"{i} iterations")
+        if len(ready) < 1 and i % 100 == 0:
+            print(f"Nothing ready. Unready size: {len(unready)}")
+        if i % 3000 == 0:
+            print("Try with the wait API...")
+            [print(pg.wait(timeout_seconds=30)) for pg in pgs_unremoved]
+            print(unready)
+    # [pg.wait(timeout_seconds=30) for pg in pgs_unremoved]
     print("pgs ready")
     ray.get(tasks)
     ray.get([actor.ping.remote() for actor in actors])
@@ -166,17 +170,19 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         remove_placement_group(pg)
 
 
-pre_created_num_pgs = round(num_pg * 0.3)
+# pre_created_num_pgs = round(num_pg * 0.3)
+pre_created_num_pgs = 0
 print(f"pre created num pgs: {pre_created_num_pgs}")
 num_pgs_to_create = num_pg - pre_created_num_pgs
 pg_launchers = []
 for i in range(3):
-    pre_created_pgs = [
-        placement_group(bundles, strategy="STRICT_SPREAD")
-        for _ in range(pre_created_num_pgs // 3)
-    ]
+    # pre_created_pgs = [
+    #     placement_group(bundles, strategy="STRICT_SPREAD")
+    #     for _ in range(pre_created_num_pgs // 3)
+    # ]
     pg_launchers.append(
-        pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
+        pg_launcher.remote([], num_pgs_to_create // 3))
+print(f"{(num_pgs_to_create // 3) * 3} pgs will be created")
 
 ray.get(pg_launchers)
 assert ray.cluster_resources()["GPU"] == num_nodes * resource_quantity

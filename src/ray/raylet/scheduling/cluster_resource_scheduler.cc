@@ -345,10 +345,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. "
-                 << "forcing spillback: " << force_spillback
-                 << ". Best node: " << best_node_id
-                 << ", is infeasible: " << *is_infeasible;
+  // RAY_LOG(DEBUG) << "Scheduling decision. "
+  //                << "forcing spillback: " << force_spillback
+  //                << ". Best node: " << best_node_id
+  //                << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
 

@@ -120,7 +120,7 @@ std::vector<NodeID> GcsResourceScheduler::StrictSpreadSchedule(
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
   std::vector<NodeID> result;
   if (required_resources_list.size() > candidate_nodes.size()) {
-    RAY_LOG(DEBUG) << "The number of required resources "
+    RAY_LOG(INFO) << "The number of required resources "
                    << required_resources_list.size()
                    << " is greater than the number of candidate nodes "
                    << candidate_nodes.size() << ", scheduling fails.";

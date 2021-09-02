@@ -860,10 +860,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
-
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
@@ -1548,7 +1544,9 @@ void NodeManager::HandleUpdateResourceUsage(
       }
     }
   }
+  RAY_LOG(INFO) << "[HandleUpdateResourceUsage] replying";
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  RAY_LOG(INFO) << "[HandleUpdateResourceUsage] replied";
 }
 
 void NodeManager::HandleRequestResourceReport(
@@ -1607,10 +1605,12 @@ void NodeManager::HandlePrepareBundleResources(
     const rpc::PrepareBundleResourcesRequest &request,
     rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
+  RAY_LOG(INFO) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
 
   auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
+  RAY_LOG(INFO) << "Request to prepare bundle resources is done, "
+                 << bundle_spec.DebugString() << " prepared " << prepared;
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1619,9 +1619,11 @@ void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
+  RAY_LOG(INFO) << "Request to commit bundle resources is received, "
                  << bundle_spec.DebugString();
   placement_group_resource_manager_->CommitBundle(bundle_spec);
+  RAY_LOG(INFO) << "Request to commit bundle resources is done, "
+                 << bundle_spec.DebugString();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -2409,11 +2411,11 @@ void NodeManager::RecordMetrics() {
 void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   bool suppress_warning = false;
 
-  if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
-    // If the task is part of a placement group, do nothing. If necessary, the infeasible
-    // warning should come from the placement group scheduling, not the task scheduling.
-    suppress_warning = true;
-  }
+  // if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+  //   // If the task is part of a placement group, do nothing. If necessary, the infeasible
+  //   // warning should come from the placement group scheduling, not the task scheduling.
+  //   suppress_warning = true;
+  // }
 
   // Push a warning to the task's driver that this task is currently infeasible.
   if (!suppress_warning) {

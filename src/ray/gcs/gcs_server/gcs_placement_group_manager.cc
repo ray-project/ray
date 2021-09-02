@@ -275,11 +275,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   // Update the placement group load to report load information to the autoscaler.
+  RAY_LOG(INFO) << "Scheduling pending placement groups";
   if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
+    RAY_LOG(INFO) << "Scheduling still in progress";
     return;
   }
   const auto placement_group = pending_placement_groups_.front();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  RAY_LOG(INFO) << "New scheduling for " << placement_group_id << "Starts!";
   // Do not reschedule if the placement group has removed already.
   if (registered_placement_groups_.contains(placement_group_id)) {
     MarkSchedulingStarted(placement_group_id);
