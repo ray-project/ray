@@ -43,10 +43,8 @@ class BackendInfo:
 
 @dataclass
 class ReplicaName:
-    # Contextual input sources
     deployment_tag: BackendTag
     replica_suffix: str
-    # Generated replica name with fixed naming rule
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
 

@@ -80,9 +80,12 @@ class ServeController:
         self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+        # Fetch all running actors in current cluster as source of current
+        # replica state for controller failure recovery
+        all_current_actor_names = ray.util.list_named_actors()
         self.backend_state_manager = BackendStateManager(
             controller_name, detached, self.kv_store, self.long_poll_host,
-            self.goal_manager)
+            self.goal_manager, all_current_actor_names)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 

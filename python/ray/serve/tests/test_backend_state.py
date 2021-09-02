@@ -1880,18 +1880,23 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
 
 
 @pytest.fixture
-def mock_backend_state_manager() -> Tuple[BackendStateManager, Mock, Mock]:
+def mock_backend_state_manager(
+) -> Tuple[BackendStateManager, Mock, AsyncGoalManager]:
     timer = MockTimer()
     with patch(
             "ray.serve.backend_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
-                "time.time", new=timer.time), patch(
-                    "ray.serve.long_poll.LongPollHost") as mock_long_poll:
+                "ray.serve.backend_state.CONTROLLER_STARTUP_GRACE_PERIOD_S",
+                0), patch(
+                    "time.time", new=timer.time), patch(
+                        "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
+        all_current_actor_names = []
         backend_state_manager = BackendStateManager(
-            "name", True, kv_store, mock_long_poll, goal_manager)
+            "name", True, kv_store, mock_long_poll, goal_manager,
+            all_current_actor_names)
         yield backend_state_manager, timer, goal_manager
         # Clear checkpoint at the end of each test
         kv_store.delete(CHECKPOINT_KEY)
@@ -1979,10 +1984,9 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
     # Step 2: Delete _replicas from backend_state
     backend_state._replicas = ReplicaStateContainer()
     # Step 3: Create new backend_state by resuming from passed in replica tags
-    with patch(
-            "ray.util.list_named_actors",
-            return_value=[mocked_replica.replica_tag]):
-        backend_state_manager._recover_from_checkpoint()
+
+    backend_state_manager._recover_from_checkpoint(
+        [mocked_replica.replica_tag])
 
     # Step 4: Ensure new backend_state is correct
     backend_state_manager.update()

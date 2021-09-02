@@ -242,6 +242,14 @@ py_test(
    deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_serve_recovery",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Make sure the example showing in doc is tested
 py_test(
     name = "quickstart_class",
