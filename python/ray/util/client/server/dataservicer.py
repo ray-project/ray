@@ -78,7 +78,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
         logger.debug(f"New data connection from client {client_id}: ")
         accepted_connection = self._init(client_id, context, start_time)
-        replay_cache = self.replay_caches[client_id]
         async_cache: AsyncReplayCache = self.async_caches[client_id]
         if not accepted_connection:
             return
@@ -101,11 +100,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
 
                 req_id = req.req_id
-                thread_id = req.thread_id
-
-                cached_result = replay_cache.check_cache(thread_id, req_id)
-                if cached_result is not None:
-                    yield cached_result
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
                 resp = None
@@ -175,7 +169,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-                replay_cache.update_cache(thread_id, req_id, resp)
 
                 yield resp
         finally:

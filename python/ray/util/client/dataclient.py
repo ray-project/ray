@@ -106,6 +106,7 @@ class DataClient:
                         ping_succeeded = False
                     if not ping_succeeded:
                         self.client_worker._reconnect_channel()
+                    self.request_queue = queue.Queue()
                     with self.outstanding_requests_lock:
                         for request in self.outstanding_requests.values():
                             # Resend outstanding requests
