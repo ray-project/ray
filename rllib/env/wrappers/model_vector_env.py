@@ -27,7 +27,7 @@ def model_vector_env(env: EnvType) -> BaseEnv:
     worker_index = worker.worker_index
     if worker_index:
         env = _VectorizedModelGymEnv(
-            make_env=worker.make_env_fn,
+            make_env=worker.make_sub_env_fn,
             existing_envs=[env],
             num_envs=worker.num_envs,
             observation_space=env.observation_space,
@@ -35,7 +35,7 @@ def model_vector_env(env: EnvType) -> BaseEnv:
         )
     return BaseEnv.to_base_env(
         env,
-        make_env=worker.make_env_fn,
+        make_env=worker.make_sub_env_fn,
         num_envs=worker.num_envs,
         remote_envs=False,
         remote_env_batch_wait_ms=0)
