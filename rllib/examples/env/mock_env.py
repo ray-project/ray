@@ -47,7 +47,7 @@ class MockEnv2(gym.Env):
 
     def step(self, action):
         self.i += 1
-        return self.i, 100.0, self.i >= self.episode_length, {}
+        return self.i, 100.0, self.i >= self.episode_length - 1, {}
 
     def seed(self, rng_seed):
         self.rng_seed = rng_seed

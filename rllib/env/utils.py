@@ -3,6 +3,7 @@ import os
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils import add_mixins
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
@@ -70,7 +71,7 @@ c) Make sure you provide a fully qualified classpath, e.g.:
         raise gym.error.Error(error_msg)
 
 
-class VideoMonitor(wrappers.Monitor, MultiAgentEnv):
+class VideoMonitor(wrappers.Monitor):
     # Same as original method, but doesn't use the StatsRecorder as it will
     # try to add up multi-agent rewards dicts, which throws errors.
     def _after_step(self, observation, reward, done, info):
@@ -101,6 +102,7 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         print(f"Setting the path for recording to {path_}")
         wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
             else wrappers.Monitor
+        wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
             path_,

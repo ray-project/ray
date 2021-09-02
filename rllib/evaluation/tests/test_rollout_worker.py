@@ -680,8 +680,10 @@ class TestRolloutWorker(unittest.TestCase):
             num_envs=3,
             policy_spec=MockPolicy,
             seed=1)
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
+        # Make sure all environments got a different deterministic seed.
         seeds = ev.foreach_env(lambda env: env.rng_seed)
-        # Make sure all environments get a different deterministic seed.
         assert seeds == [1, 2, 3]
         ev.stop()
 
@@ -693,9 +695,12 @@ class TestRolloutWorker(unittest.TestCase):
                 "in_evaluation": False,
             },
             record_env=tempfile.gettempdir())
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
         # Make sure the resulting environment is indeed still an
         # instance of MultiAgentEnv and VideoMonitor.
-        self.assertTrue(isinstance(ev.env, MultiAgentEnv))
+        self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
+        self.assertTrue(isinstance(ev.env, gym.Env))
         self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
