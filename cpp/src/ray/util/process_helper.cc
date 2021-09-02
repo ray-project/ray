@@ -194,6 +194,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.num_workers = 1;
+  options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   rpc::JobConfig job_config;
   for (const auto &path : ConfigInternal::Instance().code_search_path) {

@@ -277,6 +277,10 @@ def maybe_fetch_api_token():
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
 
 
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
+
+
 class ReleaseTestTimeoutError(RuntimeError):
     pass
 
@@ -876,8 +880,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1193,6 +1201,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1452,7 +1461,8 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1467,6 +1477,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {

@@ -17,6 +17,8 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -26,31 +28,15 @@ namespace raylet {
 void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << request.agent_ip_address()
-                << ", port: " << request.agent_port() << ", pid: " << request.agent_pid();
-  auto serialized_register_agent = request.SerializeAsString();
-  put_agent_address_(
-      serialized_register_agent,
-      [this, request, reply, send_reply_callback](ray::Status status,
-                                                  const boost::optional<int> &result) {
-        RAY_UNUSED(result);
-        if (status.ok()) {
-          agent_pid_ = request.agent_pid();
-          agent_ip_address_ = request.agent_ip_address();
-          agent_port_ = request.agent_port();
-          runtime_env_agent_client_ =
-              runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
-          RAY_LOG(INFO) << "Update agent address success, node id = " << options_.node_id
-                        << ", ip = " << request.agent_ip_address()
-                        << ", port = " << request.agent_port()
-                        << ", pid = " << request.agent_pid();
-          reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-          send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-        } else {
-          RAY_LOG(ERROR) << "Failed to update agent address, " << status;
-          send_reply_callback(status, nullptr, nullptr);
-        }
-      });
+  agent_ip_address_ = request.agent_ip_address();
+  agent_port_ = request.agent_port();
+  agent_pid_ = request.agent_pid();
+  runtime_env_agent_client_ =
+      runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
+  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
+                << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  reply->set_status(rpc::AGENT_RPC_STATUS_OK);
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
 void AgentManager::StartAgent() {
@@ -97,8 +83,14 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered, restart it.";
+            std::ostringstream error_message;
+            error_message << "Agent process with pid " << child.GetId()
+                          << " has not registered, restart it.";
+            RAY_LOG(WARNING) << error_message.str();
+            RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
+                    .WithField("ip", agent_ip_address_)
+                    .WithField("pid", agent_pid_)
+                << error_message.str();
             child.Kill();
           }
         },
@@ -107,8 +99,14 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
 
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code;
+    std::ostringstream error_message;
+    error_message << "Agent process with pid " << child.GetId() << " exit, return value "
+                  << exit_code;
+    RAY_LOG(WARNING) << error_message.str();
+    RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
+            .WithField("ip", agent_ip_address_)
+            .WithField("pid", agent_pid_)
+        << error_message.str();
     RAY_UNUSED(delay_executor_([this] { StartAgent(); },
                                RayConfig::instance().agent_restart_interval_ms()));
   });

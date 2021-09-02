@@ -26,16 +26,6 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
-    "--worker-entrypoint",
-    type=str,
-    help="the worker entrypoint: python,java etc. ")
-
-parser.add_argument(
-    "--worker-language",
-    type=str,
-    help="the worker entrypoint: python,java,cpp etc.")
-
-parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
@@ -149,23 +139,34 @@ def setup_worker(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    worker_executable: str = args.worker_entrypoint
-    worker_language: str = args.worker_language
+    py_executable: str = sys.executable
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
+    if args.serialized_runtime_env_context:
+        runtime_env_context = RuntimeEnvContext.deserialize(
+            args.serialized_runtime_env_context)
 
     # Ray client server setups runtime env by itself instead of agent.
     if runtime_env.get("conda") or runtime_env.get("pip"):
         if not args.serialized_runtime_env_context:
             runtime_env_context = setup_runtime_env(runtime_env,
                                                     args.session_dir)
-        else:
-            runtime_env_context = RuntimeEnvContext.deserialize(
-                args.serialized_runtime_env_context)
 
-    # activate conda
-    if runtime_env_context and runtime_env_context.conda_env_name:
-        worker_executable = "python"
+    if runtime_env_context and runtime_env_context.working_dir is not None:
+        commands += [f"cd {runtime_env_context.working_dir}"]
+
+        # Insert the working_dir as the first entry in PYTHONPATH. This is
+        # compatible with users providing their own PYTHONPATH in env_vars.
+        env_vars = runtime_env.get("env_vars", None) or {}
+        python_path = runtime_env_context.working_dir
+        if "PYTHONPATH" in env_vars:
+            python_path += os.pathsep + runtime_env["PYTHONPATH"]
+        env_vars["PYTHONPATH"] = python_path
+        runtime_env["env_vars"] = env_vars
+
+    # Add a conda activate command prefix if using a conda env.
+    if runtime_env_context and runtime_env_context.conda_env_name is not None:
+        py_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
         if (conda_activate_commands):
@@ -177,37 +178,21 @@ def setup_worker(input_args):
             "the context %s.", args.serialized_runtime_env,
             args.serialized_runtime_env_context)
 
-    worker_command = [f"exec {worker_executable}"]
-    if worker_language == "java":
-        # Java worker don't parse the command parameters, add option.
-        remaining_args.insert(
-            len(remaining_args) - 1, "-D{}={}".format(
-                "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
-        worker_command += remaining_args
-    elif worker_language == "cpp":
-        worker_command += remaining_args
-        # cpp worker flags must use underscore
-        worker_command += [
-            "--serialized_runtime_env", f"'{args.serialized_runtime_env}'"
-        ]
-    else:
-        worker_command += remaining_args
-        # Pass the runtime for working_dir setup.
-        # We can't do it in shim process here because it requires
-        # connection to gcs.
-        worker_command += [
-            "--serialized-runtime-env", f"'{args.serialized_runtime_env}'"
-        ]
+    commands += [
+        " ".join(
+            [f"exec {py_executable}"] + remaining_args +
+            # Pass the runtime for working_dir setup.
+            # We can't do it in shim process here because it requires
+            # connection to gcs.
+            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
+    ]
 
-    commands += [" ".join(worker_command)]
-    command_separator = " && "
-    command_str = command_separator.join(commands)
+    command_str = " && ".join(commands)
 
     # update env vars
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
-
     os.execvp("bash", ["bash", "-c", command_str])
 
 
