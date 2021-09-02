@@ -89,7 +89,7 @@ class DataClient:
                             self.cv.notify_all()
                 return
             except grpc.RpcError as e:
-                logger.exception("Got error from data channel:")
+                logger.info("Got error from data channel.")
                 if (backoff_tracker.retries() >=
                         self.client_worker._connection_retries):
                     logger.info(
@@ -140,6 +140,7 @@ class DataClient:
         self.request_queue.put(req)
         with self.outstanding_requests_lock:
             self.outstanding_requests[req_id] = req
+        req.thread_id = threading.get_ident()
         data = None
         with self.cv:
             self.cv.wait_for(
@@ -170,6 +171,7 @@ class DataClient:
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
         req_id = self._next_id()
+        req.thread_id = threading.get_ident()
         req.req_id = req_id
         if callback:
             self.asyncio_waiting_data[req_id] = callback

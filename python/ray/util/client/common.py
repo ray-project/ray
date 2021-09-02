@@ -18,6 +18,7 @@ from typing import Any
 from typing import List
 from typing import Dict
 from typing import Optional
+from typing import Tuple
 from typing import Union
 
 # The maximum field value for int32 id's -- which is also the maximum
@@ -441,3 +442,91 @@ class BackoffTracker:
         if now - self.last_backoff > BACKOFF_RESET_INTERVAL:
             self._retries = 0
             self.timeout = self._intial_backoff
+
+
+class ReplayCache:
+    """
+    Cache for blocking method calls. Needed to prevent retried requests from
+    being applied multiple times on the server. The high level logic is:
+
+    1. Before making a call, check the cache for the current thread.
+    2. If present in the cache, check the request id of the cached
+        response.
+        a. If it matches the current request_id, then the request has been
+            received before and we shouldn't re-attempt the logic. Wait for
+            the response to become available in the cache, and then return it
+        b. If it doesn't match, then this is a new request and we can
+            proceed with calling the real stub. While the response is still
+            being generated, temporarily keep (req_id, None) in the cache.
+            Once the call is finished, update the cache entry with the
+            new (req_id, response) pair. Notify other threads that may
+            have been waiting for the response to be prepared.
+
+    Note that no clean up logic is used, the last response for each thread
+    will always be remembered, so at most the cache will hold N entries,
+    where N is the number of threads on the client side.
+    """
+
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.cache: Dict[int, Tuple[int, Any]] = {}
+
+    def check_cache(self, thread_id, request_id) -> Optional[Any]:
+        with self.cv:
+            if thread_id in self.cache:
+                cached_request_id, cached_resp = self.cache[thread_id]
+                if cached_request_id == request_id:
+                    while cached_resp is None:
+                        # The call was started, but the response hasn't yet
+                        # been added to the cache. Let go of the lock and
+                        # wait until the response is ready.
+                        self.state_cv.wait()
+                        _, cached_resp = self.cache[request_id]
+                    return cached_resp
+            self.cache[thread_id] = (request_id, None)
+        return None
+
+    def update_cache(self, thread_id, request_id, response) -> None:
+        with self.cv:
+            self.cache[thread_id] = (request_id, response)
+            self.cv.notify_all()
+
+
+class AsyncReplayCache:
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.cache = {}
+
+    def check_cache(self, request_id) -> Optional[Any]:
+        with self.cv:
+            if request_id in self.cache:
+                cached_resp = self.cache[request_id]
+                while cached_resp is None:
+                    # The call was started, but the response hasn't yet
+                    # been added to the cache. Let go of the lock and
+                    # wait until the response is ready.
+                    self.state_cv.wait()
+                    cached_resp = self.cache[request_id]
+                return cached_resp
+            self.cache[request_id] = None
+        return None
+
+    def update_cache(self, request_id, response) -> None:
+        with self.cv:
+            self.cache[request_id] = response
+            self.cv.notify_all()
+
+    def remove_entry(self, request_id) -> bool:
+        with self.cv:
+            if request_id not in self.cache:
+                return False
+            del self.cache[request_id]
+            return True
+
+    def keep_entries(self, entries):
+        with self.cv:
+            new_cache = {}
+            for req_id in entries:
+                if req_id in self.cache:
+                    new_cache[req_id] = self.cache[req_id]
+            self.cache = new_cache

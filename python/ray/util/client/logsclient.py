@@ -52,7 +52,7 @@ class LogstreamClient:
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
-                logger.exception("Got error from log channel:")
+                logger.info("Got error from log channel.")
                 if (backoff_tracker.retries() >=
                         self.client_worker._connection_retries):
                     logger.info(
