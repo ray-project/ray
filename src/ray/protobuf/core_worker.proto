@@ -124,6 +124,8 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
+  // Whether the result contains an application-level error (exception).
+  bool is_application_level_error = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -275,11 +277,7 @@ message PlasmaObjectReadyReply {
 }
 
 message SpillObjectsRequest {
-  // The IDs of objects to be spilled.
-  repeated bytes object_ids_to_spill = 1;
-  // The owner addresses of the objects to be spilled. Must be in the same order as
-  // object_ids_to_spill.
-  repeated Address owner_addresses = 2;
+  repeated ObjectReference object_refs_to_spill = 1;
 }
 
 message SpillObjectsReply {

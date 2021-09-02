@@ -24,7 +24,7 @@ There are also many :ref:`community integrations <ray-oss-list>` with Ray, inclu
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
