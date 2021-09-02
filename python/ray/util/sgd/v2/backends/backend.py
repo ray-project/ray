@@ -12,7 +12,7 @@ from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
-    TUNE_ITERATION_KEY
+    TUNE_CHECKPOINT_ID
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
@@ -80,7 +80,7 @@ class CheckpointManager:
     ):
         """Checkpoint code executed during BackendExecutor start_training."""
         # Restart checkpointing.
-        self._checkpoint_id = checkpoint_id if checkpoint_id else 0
+        self._latest_checkpoint_id = checkpoint_id if checkpoint_id else 0
         self._checkpoint_strategy = CheckpointStrategy() if \
             checkpoint_strategy is None else checkpoint_strategy
         self.run_dir = run_dir
@@ -91,13 +91,14 @@ class CheckpointManager:
 
         # Get checkpoint from first worker.
         checkpoint = checkpoint_results[0].data
+
+        # Increment checkpoint id.
+        self._latest_checkpoint_id += 1
+
         # Store checkpoint in memory.
         self.latest_checkpoint = checkpoint
 
         self.write_checkpoint(checkpoint)
-
-        # Increment checkpoint id.
-        self._latest_checkpoint_id += 1
 
     def _load_checkpoint(self,
                          checkpoint_to_load: Optional[Union[Dict, str, Path]]
@@ -172,13 +173,13 @@ class TuneCheckpointManager(CheckpointManager):
             # If the Tune trial is restarted, a new Trainer is instantiated.
             # However, we want the checkpoint_id to continue incrementing
             # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint[TUNE_ITERATION_KEY]
+            self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
         return loaded_checkpoint
 
     def write_checkpoint(self, checkpoint: Dict):
         # Store the checkpoint_id in the file so that the Tune trial can be
         # resumed after failure or cancellation.
-        checkpoint[TUNE_ITERATION_KEY] = self._latest_checkpoint_id
+        checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
                 checkpoint_dir:

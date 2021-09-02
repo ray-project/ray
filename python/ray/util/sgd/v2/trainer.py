@@ -13,7 +13,8 @@ from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
-from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR
+from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
+    TUNE_CHECKPOINT_FILE_NAME
 
 # Ray SGD should be usable even if Tune is not installed.
 from ray.util.sgd.v2.utils import construct_path
@@ -549,7 +550,8 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
         trainer.start()
 
         if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            checkpoint_path = os.path.join(checkpoint_dir,
+                                           TUNE_CHECKPOINT_FILE_NAME)
         else:
             checkpoint_path = None
 
