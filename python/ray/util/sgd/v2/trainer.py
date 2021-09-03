@@ -19,6 +19,7 @@ from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 
 # Ray SGD should be usable even if Tune is not installed.
 from ray.util.sgd.v2.utils import construct_path
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -174,7 +175,7 @@ class Trainer:
             args, kwargs: The arguments to pass into ``train_cls.__init__``.
         """
 
-        return ExecutableTrainer(self._executor)
+        return ExecutableTrainer(self._executor, train_cls, *args, **kwargs)
 
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
@@ -244,7 +245,7 @@ class Trainer:
             config: Optional[Dict[str, Any]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
-    ) -> Iterator[List[Dict]]:
+    ) -> "SGDIterator":
         """Same as ``run`` except returns an iterator over the results.
 
         This is useful if you want to have more customization of what to do
@@ -566,7 +567,14 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
 
 class ExecutableTrainer:
-    """"""
+    """A class for stateful execution on an executable class.
+
+    This allows you to pass in a class definition to be instantiated on each
+    worker, and then execute methods on this class on each worker.
+
+    This should not be instantiated directly and instead should be used only
+    from the output of ``trainer.run_executable``.
+    """
     def __init__(self, backend_executor: BackendExecutor, train_cls: type,
                  *args, **kwargs):
         self.executor = backend_executor

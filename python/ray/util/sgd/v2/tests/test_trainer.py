@@ -910,6 +910,23 @@ def test_run_after_user_error(ray_start_2_cpus):
     assert output == [1, 1]
 
 
+def test_run_executable(ray_start_2_cpus):
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+
+    class Incrementer:
+        def __init__(self, starting=0):
+            self.count = starting
+        def increment(self):
+            self.count += 1
+        def get_count(self):
+            return self.count
+
+    executor = trainer.run_executable(Incrementer, starting=2)
+    assert executor.execute(lambda w: w.get_count()) == [2, 2]
+
+
 if __name__ == "__main__":
     import pytest
     import sys
