@@ -114,7 +114,7 @@ RaySGD provides a thin API around different backend frameworks for
 distributed deep learning. At the moment, RaySGD allows you to perform
 training with:
 
-* **Pytorch:** RaySGD initializes your distributed process group, allowing you to run your `DataDistributedParallel` training script.
+* **Pytorch:** RaySGD initializes your distributed process group, allowing you to run your `DistributedDataParallel` training script.
 * **Tensorflow:**  RaySGD configures `TF_CONFIG` for you, allowing you to run your `MultiWorkerMirroredStrategy` training script.
 * **Horovod:** RaySGD configures the Horovod environment and Rendezvous server for you, allowing you to run your `DistributedOptimizer` training script.
 
