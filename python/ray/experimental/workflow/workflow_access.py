@@ -375,7 +375,6 @@ def init_management_actor() -> None:
                                f"({store.storage_url}) different from the "
                                f"workflow manager({storage_url}).")
     except ValueError as e:
-        print("Couldn't get it: ", e)
         logger.info("Initializing workflow manager...")
         # the actor does not exist
         actor = WorkflowManagementActor.options(
