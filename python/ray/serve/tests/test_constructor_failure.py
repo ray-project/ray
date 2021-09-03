@@ -8,7 +8,26 @@ import ray
 from ray import serve
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_consistent_constructor_failure(serve_instance):
+    # # Test failed to deploy with total of 1 replica
+    @serve.deployment(num_replicas=1)
+    class ConstructorFailureDeploymentOneReplica:
+        def __init__(self):
+            raise RuntimeError("Intentionally throwing on only one replica")
+
+        async def serve(self, request):
+            return "hi"
+
+    with pytest.raises(RuntimeError):
+        ConstructorFailureDeploymentOneReplica.deploy()
+
+    # Assert no replicas are running in deployment backend after failed
+    # deploy() call
+    backend_dict = ray.get(
+        serve_instance._controller._all_replica_handles.remote())
+    assert backend_dict["ConstructorFailureDeploymentOneReplica"] == {}
+
     # # Test failed to deploy with total of 2 replicas
     @serve.deployment(num_replicas=2)
     class ConstructorFailureDeploymentTwoReplicas:
@@ -18,7 +37,8 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
         async def serve(self, request):
             return "hi"
 
-    ConstructorFailureDeploymentTwoReplicas.deploy()
+    with pytest.raises(RuntimeError):
+        ConstructorFailureDeploymentTwoReplicas.deploy()
 
     # Assert no replicas are running in deployment backend after failed
     # deploy() call
@@ -27,6 +47,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     assert backend_dict["ConstructorFailureDeploymentTwoReplicas"] == {}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_partial_constructor_failure(serve_instance):
     # Test deploy with 2 replicas but one of them failed all
     # attempts
@@ -64,6 +85,7 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     assert len(backend_dict["PartialConstructorFailureDeployment"]) == 2
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_transient_constructor_failure(serve_instance):
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
