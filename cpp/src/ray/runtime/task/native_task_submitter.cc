@@ -86,8 +86,8 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
-std::string NativeTaskSubmitter::GetGetCurrentJobID() const {
-  return CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex();
+JobID NativeTaskSubmitter::GetCurrentJobID() const {
+  return CoreWorkerProcess::GetCoreWorker().GetCurrentJobId();
 }
 
 ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name) const {
@@ -99,7 +99,6 @@ ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name
     return ActorID::Nil();
   }
 
-  std::string actor_id;
   auto actor_handle = pair.first;
   RAY_CHECK(actor_handle);
   return actor_handle->GetActorID();

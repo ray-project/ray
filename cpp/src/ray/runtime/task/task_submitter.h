@@ -45,9 +45,9 @@ class TaskSubmitter {
     if (name.empty()) {
       return "";
     }
-    return global ? name : GetGetCurrentJobID() + "-" + name;
+    return global ? name : GetCurrentJobID().Hex() + "-" + name;
   }
-  virtual std::string GetGetCurrentJobID() const = 0;
+  virtual JobID GetCurrentJobID() const = 0;
 };
 }  // namespace internal
 }  // namespace ray

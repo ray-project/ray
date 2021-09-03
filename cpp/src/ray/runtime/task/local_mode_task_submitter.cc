@@ -108,8 +108,8 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
-std::string LocalModeTaskSubmitter::GetGetCurrentJobID() const {
-  return local_mode_ray_tuntime_.GetCurrentJobID().Hex();
+JobID LocalModeTaskSubmitter::GetCurrentJobID() const {
+  return local_mode_ray_tuntime_.GetCurrentJobID();
 }
 
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
