@@ -1,13 +1,14 @@
 # coding: utf-8
-from freezegun import freeze_time
-from unittest.mock import patch
+
+
 import os
+import pytest
 import unittest
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune import Trainable
+from ray.tune import Trainable, TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import TRAINING_ITERATION
@@ -20,54 +21,39 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S"] = "1"
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "1"
         self.cluster = Cluster(
             initialize_head=True,
             connect=True,
             head_node_args={
                 "num_cpus": 4,
                 "num_gpus": 2,
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
             })
 
     def tearDown(self):
         ray.shutdown()
         self.cluster.shutdown()
 
-    @freeze_time("2021-08-03", auto_tick_seconds=15)
-    @patch.object(ray.tune.trial_executor.logger, "warning")
-    def testOutputWarningMessage(self, mocked_warn):
+    # no autoscaler case, resource is not sufficient. Raise error.
+    def testRaiseErrorNoAutoscaler(self):
         def train(config):
             pass
 
-        tune.run(
-            train, resources_per_trial={
-                "cpu": 1,
-                "gpu": 1,
-            })
-        msg = (
-            "No trial is running and no new trial has been started within at"
-            " least the last 1.0 seconds. This could be due to the cluster "
-            "not having enough resources available to start the next trial. "
-            "Please stop the tuning job and readjust resources_per_trial "
-            "argument passed into tune.run() and/or start a cluster with more "
-            "resources.")
-        mocked_warn.assert_called_with(msg)
-
-    @freeze_time("2021-08-03")
-    @patch.object(ray.tune.trial_executor.logger, "warning")
-    def testNotOutputWarningMessage(self, mocked_warn):
-        def train(config):
-            pass
-
-        tune.run(
-            train, resources_per_trial={
-                "cpu": 1,
-                "gpu": 1,
-            })
-        mocked_warn.assert_not_called()
+        with pytest.raises(TuneError) as cm:
+            tune.run(
+                train,
+                resources_per_trial={
+                    "cpu": 5,  # more than what the cluster can offer.
+                    "gpu": 3,
+                })
+        msg = ("You asked for 5.0 cpu and 3.0 gpu per trial, "
+               "but the cluster only has 4.0 cpu and 2.0 gpu. "
+               "Stop the tuning job and "
+               "adjust the resources requested per trial "
+               "(possibly via `resources_per_trial` "
+               "or via `num_workers` for rllib) "
+               "and/or add more resources to your Ray runtime.")
+        assert str(cm._excinfo[1]) == msg
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -475,6 +461,5 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
