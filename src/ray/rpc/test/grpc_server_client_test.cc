@@ -79,9 +79,14 @@ class TestGrpcServerClientFixture : public ::testing::Test {
       handler_io_service_.run();
     });
     test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
-    grpc_server_.reset(new GrpcServer("test", 123321));
+    grpc_server_.reset(new GrpcServer("test", 0));
     grpc_server_->RegisterService(*test_service_);
     grpc_server_->Run();
+
+    // Wait until server starts listening.
+    while (grpc_server_->GetPort() == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     // Prepare a client
     client_thread_ = std::make_unique<std::thread>([this]() {
@@ -91,7 +96,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
     });
     client_call_manager_.reset(new ClientCallManager(client_io_service_));
     grpc_client_.reset(
-        new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+        new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   }
 
   void TearDown() {
@@ -149,7 +154,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(
-      new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+      new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Freeze server first, it won't reply any request.
   test_service_handler_.frozen = true;
   // Send request.
@@ -182,7 +187,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(
-      new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+      new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Freeze server first, it won't reply any request.
   test_service_handler_.frozen = true;
   // Send request.
@@ -211,7 +216,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   // Reinit client with infinite timeout.
   client_call_manager_.reset(new ClientCallManager(client_io_service_));
   grpc_client_.reset(
-      new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+      new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Send again, this request should be replied. If any leaking happened, this call won't
   // be replied to since the max_active_rpcs is 1.
   bool done = false;
