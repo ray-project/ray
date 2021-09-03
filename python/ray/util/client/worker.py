@@ -252,7 +252,7 @@ class Worker:
         with self._req_id_lock:
             self._req_id += 1
             if self._req_id > INT32_MAX:
-                self._req_id = 0
+                self._req_id = 1
             request.req_id = self._req_id
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):

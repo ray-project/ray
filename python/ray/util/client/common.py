@@ -419,6 +419,21 @@ def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
     return client_id
 
 
+def _should_replace_cache(curr_id: int, old_id: int) -> bool:
+    """
+    We should only replace cache entries with the responses for newer IDs.
+    Most of the time newer IDs will be the ones with higher value, except when
+    the req_id counter rolls over. We check for this case by checking the
+    distance between the two IDs. If the distance is significant, then it's
+    likely that the req_id counter rolled over, and the smaller id should
+    still be used to replace the one in cache.
+    """
+    if curr_id > old_id:
+        return True
+    diff = old_id - curr_id
+    return diff > (INT32_MAX // 2)
+
+
 class ReplayCache:
     """
     Cache for blocking method calls. Needed to prevent retried requests from
@@ -453,6 +468,10 @@ class ReplayCache:
         self.cache: Dict[int, Tuple[int, Any]] = {}
 
     def check_cache(self, thread_id, request_id) -> Optional[Any]:
+        """
+        Check the cache for a given thread, and see if the entry in the cache
+        matches the current request_id.
+        """
         with self.cv:
             if thread_id in self.cache:
                 cached_request_id, cached_resp = self.cache[thread_id]
@@ -462,12 +481,35 @@ class ReplayCache:
                         # been added to the cache. Let go of the lock and
                         # wait until the response is ready.
                         self.state_cv.wait()
-                        _, cached_resp = self.cache[request_id]
+                        cached_request_id, cached_resp = self.cache[request_id]
+                        if cached_request_id != request_id:
+                            raise RuntimeError(
+                                "Cached response doesn't match the id of the "
+                                "original request. This might happen if this "
+                                "request was received out of order. The "
+                                "result of the caller is no longer needed. "
+                                f"({request_id} != {cached_request_id})")
                     return cached_resp
+                if not _should_replace_cache(request_id, cached_request_id):
+                    raise RuntimeError(
+                        "Attempting to replace newer entry in with older "
+                        "one. This might happen if this request was received "
+                        "out of order. The result of the caller is no "
+                        f"longer needed. ({request_id} != {cached_request_id}")
             self.cache[thread_id] = (request_id, None)
         return None
 
     def update_cache(self, thread_id, request_id, response) -> None:
         with self.cv:
-            self.cache[thread_id] = (request_id, response)
             self.cv.notify_all()
+            cached_request_id, cached_resp = self.cache[thread_id]
+            if cached_request_id != request_id or cached_resp is not None:
+                # The cache was overwritten by a newer requester between
+                # our call to check_cache and our call to update it
+                raise RuntimeError(
+                    "Attempting to update the cache, but placeholder's have "
+                    "do not match the current request_id. This might happen "
+                    "if this request was received out of order. The result "
+                    f"of the caller is no longer needed. ({request_id} != "
+                    f"{cached_request_id})")
+            self.cache[thread_id] = (request_id, response)

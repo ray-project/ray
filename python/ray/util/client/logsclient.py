@@ -11,6 +11,8 @@ import grpc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
+from ray.util.debug import log_once
+
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
 # The client logger need its own root -- possibly this one.
@@ -41,6 +43,11 @@ class LogstreamClient:
         reconnecting = False
         while not self.client_worker._in_shutdown:
             if reconnecting:
+                log_once(
+                    "lost_reconnect_logs",
+                    "Log channel is reconnecting. Logs produced while the "
+                    "connection was down can be found on the head node of "
+                    "the cluster in `ray_client_server_[port].out`")
                 # Refresh queue and retry last request
                 self.request_queue = queue.Queue()
                 if self.last_req:
