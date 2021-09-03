@@ -9,13 +9,8 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Tuple
-from typing import Optional
-from typing import TYPE_CHECKING
+import tempfile
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import grpc
 
@@ -26,16 +21,11 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.util.client.client_pickler import convert_to_arg
-from ray.util.client.client_pickler import dumps_from_client
-from ray.util.client.client_pickler import loads_from_server
-from ray.util.client.common import ClientStub
-from ray.util.client.common import ClientActorHandle
-from ray.util.client.common import ClientActorClass
-from ray.util.client.common import ClientRemoteFunc
-from ray.util.client.common import ClientActorRef
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_OPTIONS
+from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
+                                            loads_from_server)
+from ray.util.client.common import (ClientActorClass, ClientActorHandle,
+                                    ClientActorRef, ClientObjectRef,
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -153,6 +143,13 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            if log_once("ray_client_security_groups"):
+                warnings.warn(
+                    "Ray Client connection timed out. Ensure that "
+                    "the Ray Client port on the head node is reachable "
+                    "from your local machine. See https://docs.ray.io/en"
+                    "/latest/cluster/ray-client.html#step-2-check-ports for "
+                    "more information.")
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -506,13 +503,6 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _call_init(self, init_request: ray_client_pb2.InitRequest) -> None:
-        init_resp = self.data_client.Init(init_request)
-        if not init_resp.ok:
-            raise ConnectionAbortedError(
-                f"Init Failure From Server:\n{init_resp.msg}")
-        return
-
     def _server_init(self,
                      job_config: JobConfig,
                      ray_init_kwargs: Optional[Dict[str, Any]] = None):
@@ -521,25 +511,29 @@ class Worker:
             ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest(
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                return
+                serialized_job_config = None
+            else:
+                # Generate and upload URIs for the working directory. This
+                # uses internal_kv to upload to the GCS.
+                import ray._private.runtime_env as runtime_env
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
+                                                      tmp_dir)
+                    runtime_env.rewrite_runtime_env_uris(job_config)
+                    runtime_env.upload_runtime_env_package_if_needed(
+                        job_config)
+                    runtime_env.PKG_DIR = old_dir
 
-            import ray._private.runtime_env as runtime_env
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
-                # Generate the uri for runtime env
-                runtime_env.rewrite_runtime_env_uris(job_config)
-                init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config),
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
+                serialized_job_config = pickle.dumps(job_config)
+
+            response = self.data_client.Init(
+                ray_client_pb2.InitRequest(
+                    job_config=serialized_job_config,
+                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+            if not response.ok:
+                raise ConnectionAbortedError(
+                    f"Initialization failure from server:\n{response.msg}")
+
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 

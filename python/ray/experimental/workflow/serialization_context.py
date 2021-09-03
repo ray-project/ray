@@ -214,10 +214,5 @@ def make_workflow_inputs(args_list: List[Any]) -> WorkflowInputs:
         # semantics. See "tests/test_variable_mutable.py" as
         # an example.
         input_placeholder: ray.ObjectRef = ray.put(args_list)
-        if object_refs:
-            raise ValueError(
-                "There are ObjectRefs in workflow inputs. However "
-                "workflow currently does not support checkpointing "
-                "ObjectRefs.")
     return WorkflowInputs(input_placeholder, object_refs, workflows,
                           workflow_refs)

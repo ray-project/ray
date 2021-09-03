@@ -1,3 +1,4 @@
+import uuid
 import logging
 import inspect
 from functools import wraps
@@ -114,6 +115,7 @@ class RemoteFunction:
             self._function)
 
         self._last_export_session_and_job = None
+        self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -248,9 +250,8 @@ class RemoteFunction:
             # first driver. This is an argument for repickling the function,
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
-
             self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._pickled_function)
+                self._function, self._uuid)
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -289,9 +290,10 @@ class RemoteFunction:
 
         if runtime_env is None:
             runtime_env = self._runtime_env
-        job_config = worker.core_worker.get_job_config()
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
         runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_config)
+            runtime_env, job_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
