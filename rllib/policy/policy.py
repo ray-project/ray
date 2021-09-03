@@ -600,7 +600,7 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             state (object): The new state to set this policy to. Can be
-                obtained by calling `Policy.get_state()`.
+                obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]

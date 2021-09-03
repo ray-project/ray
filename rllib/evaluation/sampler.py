@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
+from typing import Any, Callable, Dict, List, Iterator, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
@@ -133,7 +133,7 @@ class SyncSampler(SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            clip_rewards: bool,
+            clip_rewards: Union[bool, float],
             rollout_fragment_length: int,
             count_steps_by: str = "env_steps",
             callbacks: "DefaultCallbacks",
@@ -159,8 +159,9 @@ class SyncSampler(SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool,float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
+            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+                actual float value for +/- value clipping. False for no
+                clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -270,7 +271,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            clip_rewards: bool,
+            clip_rewards: Union[bool, float],
             rollout_fragment_length: int,
             count_steps_by: str = "env_steps",
             callbacks: "DefaultCallbacks",
@@ -297,8 +298,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool, float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
+            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+                actual float value for +/- value clipping. False for no
+                clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -461,7 +463,7 @@ def _env_runner(
         observation_fn: "ObservationFunction",
         sample_collector: Optional[SampleCollector] = None,
         render: bool = None,
-) -> Iterable[SampleBatchType]:
+) -> Iterator[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:

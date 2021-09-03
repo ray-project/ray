@@ -4,19 +4,23 @@ workflows.
 """
 
 import asyncio
+from collections import ChainMap
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
+import io
 
 import ray
+from ray import cloudpickle
 from ray._private import signature
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
-                                              WorkflowMetaData, WorkflowStatus,
-                                              WorkflowRef, StepType)
+from ray.experimental.workflow.common import (
+    Workflow, WorkflowData, StepID, WorkflowMetaData, WorkflowStatus,
+    WorkflowRef, StepType, calculate_identifiers)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
+from ray.types import ObjectRef
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -27,6 +31,7 @@ STEP_INPUTS_METADATA = "inputs.json"
 STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
+STEP_EXCEPTION = "exception.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
@@ -69,25 +74,13 @@ class StepInspectResult:
     ray_options: Optional[Dict[str, Any]] = None
     # type of workflow step
     step_type: Optional[StepType] = None
+    # step throw exception
+    step_raised_exception: bool = False
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
                 or (self.args_valid and self.object_refs is not None
                     and self.workflows is not None and self.func_body_valid))
-
-
-@dataclass
-class StepStatus:
-    # does the step output checkpoint exist?
-    output_object_exists: bool
-    # does the step output metadata exist?
-    output_metadata_exists: bool
-    # does the step input metadata exist?
-    input_metadata_exists: bool
-    # does the step input argument exist?
-    args_exists: bool
-    # does the step function body exist?
-    func_body_exists: bool
 
 
 class WorkflowStorage:
@@ -107,9 +100,26 @@ class WorkflowStorage:
         Returns:
             Output of the workflow step.
         """
-        return asyncio_run(self._get(self._key_step_output(step_id)))
+
+        tasks = [
+            self._get(self._key_step_output(step_id), no_exception=True),
+            self._get(self._key_step_exception(step_id), no_exception=True)
+        ]
+        ((output_ret, output_err), (exception_ret, exception_err)) = \
+            asyncio_run(asyncio.gather(*tasks))
+        # When we have output, always return output first
+        if output_err is None:
+            return output_ret
+
+        # When we don't have output, check exception
+        if exception_err is None:
+            raise exception_ret
+
+        # In this case, there is no such step
+        raise output_err
 
     def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
+                         exception: Optional[Exception],
                          outer_most_step_id: Optional[StepID]) -> None:
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
@@ -120,6 +130,7 @@ class WorkflowStorage:
             step_id: The ID of the workflow step. If it is an empty string,
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow step.
+            exception: This step should throw exception.
             outer_most_step_id: See
                 "step_executor.execute_workflow" for explanation.
         """
@@ -127,23 +138,32 @@ class WorkflowStorage:
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
             assert step_id != ret.step_id
+            assert exception is None
             tasks.append(
                 self._put(
                     self._key_step_output_metadata(step_id),
                     {"output_step_id": ret.step_id}, True))
             dynamic_output_id = ret.step_id
         else:
-            # This workflow step returns a object.
-            ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-            tasks.append(self._put(self._key_step_output(step_id), ret))
-            dynamic_output_id = step_id
-        # outer_most_step_id == "" indicates the root step of a workflow.
-        # This would directly update "outputs.json" in the workflow dir,
-        # and we want to avoid it.
-        if outer_most_step_id is not None and outer_most_step_id != "":
-            tasks.append(
-                self._update_dynamic_output(outer_most_step_id,
-                                            dynamic_output_id))
+            if exception is None:
+                # This workflow step returns a object.
+                ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
+                tasks.append(self._put(self._key_step_output(step_id), ret))
+                dynamic_output_id = step_id
+                # TODO (yic): Delete exception file
+
+                # outer_most_step_id == "" indicates the root step of a
+                # workflow. This would directly update "outputs.json" in
+                # the workflow dir, and we want to avoid it.
+                if outer_most_step_id is not None and outer_most_step_id != "":
+                    tasks.append(
+                        self._update_dynamic_output(outer_most_step_id,
+                                                    dynamic_output_id))
+            else:
+                assert ret is None
+                tasks.append(
+                    self._put(self._key_step_exception(step_id), exception))
+
         asyncio_run(asyncio.gather(*tasks))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
@@ -191,6 +211,11 @@ class WorkflowStorage:
                 workflows, object_refs, workflow_refs):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
+            # dereference arguments like Ray remote functions
+            flattened_args = [
+                ray.get(a) if isinstance(a, ray.ObjectRef) else a
+                for a in flattened_args
+            ]
             return signature.recover_args(flattened_args)
 
     def save_object_ref(self, obj_ref: ray.ObjectRef) -> None:
@@ -202,12 +227,7 @@ class WorkflowStorage:
         Returns:
             None
         """
-
-        async def _save_object_ref():
-            data = await obj_ref
-            await self._put(self._key_obj_id(obj_ref.hex()), data)
-
-        return asyncio_run(_save_object_ref())
+        return asyncio_run(self._save_object_ref(obj_ref))
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -221,7 +241,7 @@ class WorkflowStorage:
 
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
-            ref = ray.put(data)
+            ref = _put_obj_ref.remote((data, ))
             return ref
 
         return asyncio_run(_load_obj_ref())
@@ -294,17 +314,11 @@ class WorkflowStorage:
     async def _inspect_step(self, step_id: StepID) -> StepInspectResult:
         items = await self._scan(self._key_step_prefix(step_id))
         keys = set(items)
-        field_list = StepStatus(
-            output_object_exists=(STEP_OUTPUT in keys),
-            output_metadata_exists=(STEP_OUTPUTS_METADATA in keys),
-            input_metadata_exists=(STEP_INPUTS_METADATA in keys),
-            args_exists=(STEP_ARGS in keys),
-            func_body_exists=(STEP_FUNC_BODY in keys))
         # does this step contains output checkpoint file?
-        if field_list.output_object_exists:
+        if STEP_OUTPUT in keys:
             return StepInspectResult(output_object_valid=True)
         # do we know where the output comes from?
-        if field_list.output_metadata_exists:
+        if STEP_OUTPUTS_METADATA in keys:
             output_step_id = await self._locate_output_step_id(step_id)
             return StepInspectResult(output_step_id=output_step_id)
 
@@ -313,8 +327,8 @@ class WorkflowStorage:
             metadata = await self._get(
                 self._key_step_input_metadata(step_id), True)
             return StepInspectResult(
-                args_valid=field_list.args_exists,
-                func_body_valid=field_list.func_body_exists,
+                args_valid=(STEP_ARGS in keys),
+                func_body_valid=(STEP_FUNC_BODY in keys),
                 object_refs=metadata["object_refs"],
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
@@ -322,11 +336,19 @@ class WorkflowStorage:
                 catch_exceptions=metadata.get("catch_exceptions"),
                 ray_options=metadata.get("ray_options", {}),
                 step_type=StepType[metadata.get("step_type")],
+                step_raised_exception=(STEP_EXCEPTION in keys),
             )
         except Exception:
             return StepInspectResult(
-                args_valid=field_list.args_exists,
-                func_body_valid=field_list.func_body_exists)
+                args_valid=(STEP_ARGS in keys),
+                func_body_valid=(STEP_FUNC_BODY in keys),
+                step_raised_exception=(STEP_EXCEPTION in keys),
+            )
+
+    async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
+        # TODO (Alex): We should do this in a remote task to exploit locality.
+        data = await obj_ref
+        await self._put(self._key_obj_id(identifier), data)
 
     async def _write_step_inputs(self, step_id: StepID,
                                  inputs: WorkflowData) -> None:
@@ -341,6 +363,9 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
+        save_tasks.extend(
+            self._save_object_ref(obj_id, ref) for obj_id, ref in zip(
+                metadata["object_refs"], inputs.inputs.object_refs))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -447,22 +472,93 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
+    def _reduce_objectref(self, obj_ref: ObjectRef,
+                          upload_tasks: List[ObjectRef]):
+        @ray.remote
+        def put_helper(paths: List[str], obj: Any,
+                       wf_storage: WorkflowStorage) -> None:
+            return asyncio.get_event_loop().run_until_complete(
+                wf_storage._put(paths, obj))
+
+        # TODO (Alex): Ideally we could parallelize these hash calculations,
+        # but we need the result before we can return from this reducer.
+        identifier = calculate_identifiers([obj_ref]).pop()
+        paths = self._key_obj_id(identifier)
+        # TODO (Alex): We should dedupe these puts with the global coordinator.
+        task = put_helper.remote(paths, obj_ref, self)
+        upload_tasks.append(task)
+        return _load_object_ref, (paths, self)
+
     async def _put(self, paths: List[str], data: Any,
-                   is_json: bool = False) -> None:
+                   is_json: bool = False) -> str:
         try:
+            upload_tasks: List[ObjectRef] = []
+            if not is_json:
+                # Setup our custom serializer.
+                output_buffer = io.BytesIO()
+
+                # Cloudpickle doesn't support private dispatch tables, so we
+                # extend the cloudpickler instead to avoid changing
+                # cloudpickle's global dispatch table which is shared with
+                # `ray.put`. See
+                # https://github.com/cloudpipe/cloudpickle/issues/437
+                class ObjectRefPickler(cloudpickle.CloudPickler):
+                    _object_ref_reducer = {
+                        ray.ObjectRef: lambda ref: self._reduce_objectref(
+                            ref, upload_tasks)
+                    }
+                    dispatch_table = ChainMap(
+                        _object_ref_reducer,
+                        cloudpickle.CloudPickler.dispatch_table)
+                    dispatch = dispatch_table
+
+                pickler = ObjectRefPickler(output_buffer)
+                pickler.dump(data)
+                output_buffer.seek(0)
+                value = output_buffer.read()
+            else:
+                value = data
+
             key = self._storage.make_key(*paths)
-            await self._storage.put(key, data, is_json=is_json)
+
+            await self._storage.put(key, value, is_json=is_json)
+            # The serializer only kicks off the upload tasks, and returns
+            # the location they will be uploaded to in order to allow those
+            # uploads to be parallelized. We should wait for those uploads
+            # to be finished before we consider the object fully
+            # serialized.
+            ray.get(upload_tasks)
         except Exception as e:
             raise DataSaveError from e
 
-    async def _get(self, paths: List[str], is_json: bool = False) -> Any:
+        return key
+
+    async def _get(self,
+                   paths: List[str],
+                   is_json: bool = False,
+                   no_exception: bool = False) -> Any:
+        err = None
+        ret = None
         try:
             key = self._storage.make_key(*paths)
-            return await self._storage.get(key, is_json=is_json)
-        except KeyNotFoundError:
-            raise
+            unmarshaled = await self._storage.get(key, is_json=is_json)
+            if is_json:
+                ret = unmarshaled
+            else:
+                ret = cloudpickle.loads(unmarshaled)
+        except KeyNotFoundError as e:
+            err = e
         except Exception as e:
-            raise DataLoadError from e
+            err = DataLoadError()
+            err.__cause__ = e
+
+        if no_exception:
+            return (ret, err)
+        else:
+            if err is None:
+                return ret
+            else:
+                raise err
 
     async def _scan(self, paths: List[str]) -> Any:
         try:
@@ -482,6 +578,9 @@ class WorkflowStorage:
 
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
+
+    def _key_step_exception(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_EXCEPTION]
 
     def _key_step_output_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUTS_METADATA]
@@ -521,3 +620,23 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     if workflow_id is None:
         workflow_id = workflow_context.get_workflow_step_context().workflow_id
     return WorkflowStorage(workflow_id, store)
+
+
+def _load_object_ref(paths: List[str],
+                     wf_storage: WorkflowStorage) -> ObjectRef:
+    @ray.remote
+    def load_ref(paths: List[str], wf_storage: WorkflowStorage):
+        return asyncio.get_event_loop().run_until_complete(
+            wf_storage._get(paths))
+
+    return load_ref.remote(paths, wf_storage)
+
+
+@ray.remote
+def _put_obj_ref(ref: Tuple[ObjectRef]):
+    """
+    Return an ref to an object ref. (This can't be done with
+    `ray.put(obj_ref)`).
+
+    """
+    return ref[0]

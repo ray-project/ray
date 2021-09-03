@@ -1,4 +1,4 @@
-cartpole-r2d2:
+stateless-cartpole-r2d2:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: R2D2
     stop:
@@ -11,14 +11,15 @@ cartpole-r2d2:
         # R2D2 settings.
         burn_in: 20
         zero_init_states: true
-        dueling: false
+        #dueling: false
         lr: 0.0005
         # Give some more time to explore.
         exploration_config:
-          epsilon_timesteps: 100000
+          epsilon_timesteps: 50000
         # Wrap with an LSTM and use a very simple base-model.
         model:
-            fcnet_hiddens: [32]
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
             use_lstm: true
             lstm_cell_size: 64
             max_seq_len: 20

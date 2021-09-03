@@ -23,7 +23,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Serve`_: Scalable and Programmable Serving
-- `Datasets`_: Flexible Distributed Data Loading (beta)
+- `Datasets`_: Flexible Distributed Data Loading (alpha)
 - `Workflows`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
@@ -33,8 +33,8 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
