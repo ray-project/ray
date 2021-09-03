@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -36,6 +36,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             paths: Union[str, List[str]],
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
@@ -66,7 +67,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                         builder.add_block(data)
                     else:
                         builder.add(data)
-            return builder.build()
+            block = builder.build()
+            if block_udf is not None:
+                block = block_udf(block)
+            return block
 
         read_tasks = []
         for read_paths, file_sizes in zip(
@@ -111,6 +115,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  path: str,
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
@@ -124,6 +129,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             fs = filesystem
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
+            if block_udf is not None:
+                block = block_udf(block)
             with fs.open_output_stream(write_path) as f:
                 _write_block_to_file(f, BlockAccessor.for_block(block))
 

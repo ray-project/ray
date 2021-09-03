@@ -477,7 +477,7 @@ With our Pandas extension type, :class:`TensorDtype <ray.data.extensions.tensor_
     print(read_df.equals(df))
     # -> True
 
-If you already have Parquet files with tensor columns containing serialized tensors (e.g. raw or pickle bytes), you can manually cast this tensor column to our tensor extension type.
+If you already have Parquet files with tensor columns containing serialized tensors (e.g. raw or pickle bytes), you can manually cast this tensor column to our tensor extension type via a read-time user-defined function. This UDF will be pushed down to the IO layer and executed on each block in parallel, as it's read from storage.
 
 .. code-block:: python
     import pickle
@@ -495,25 +495,25 @@ If you already have Parquet files with tensor columns containing serialized tens
     ds = ray.data.from_pandas([ray.put(df)])
     ds.write_parquet(str(tmp_path))
 
-    # Read the Parquet files into a new Dataset.
-    ds = ray.data.read_parquet(str(tmp_path))
-
     # Manually deserialize the tensor pickle bytes and cast to our tensor
     # extension type.
-    def deser_mapper(batch: pd.DataFrame):
-        batch["two"] = [pickle.loads(a) for a in batch["two"]]
-        batch["two"] = batch["two"].astype(TensorDtype())
-        return batch
+    def cast_udf(block: pa.Table):
+        block = block.to_pandas()
+        block["two"] = [pickle.loads(a) for a in block["two"]]
+        block["two"] = block["two"].astype(TensorDtype())
+        return pa.Table.from_pandas(block)
 
-    # This cast can be done more correctly (and efficiently) by directly
+    # This cast can be done more explicitly (and efficiently) by directly
     # constructing our tensor extension array.
-    def deser_mapper_direct(batch: pd.DataFrame):
-        from ray.data.extensions import TensorArray
+    def cast_udf_direct(block: pa.Table):
+        block = block.to_pandas()
+        block["two"] = TensorArray([pickle.loads(a) for a in block["two"]])
+        return pa.Table.from_pandas(block)
 
-        batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
-        return batch
+    # Read the Parquet files into a new Dataset, applying the casting UDF.
+    ds = ray.data.read_parquet(str(tmp_path), block_udf=cast_udf)
 
-    ds = ds.map_batches(deser_mapper, batch_format="pandas")
+Please note that the ``block_udf=`` parameter is an experimental developer API and may break in future versions.
 
 **Limitations:**
  * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.

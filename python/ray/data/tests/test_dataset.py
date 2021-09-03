@@ -325,7 +325,6 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     # Manually deserialize the tensor pickle bytes and cast to our tensor
     # extension type.
     def deser_mapper(batch: pd.DataFrame):
-        # batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
         batch["two"] = [pickle.loads(a) for a in batch["two"]]
         batch["two"] = batch["two"].astype(TensorDtype())
         return batch
@@ -382,6 +381,46 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(ray_start_regular_shared,
             ArrowTensorArray.from_numpy(np_col))
 
     ds = ds.map_batches(np_deser_mapper, batch_format="pyarrow")
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
+        ray_start_regular_shared, tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+
+    tensor_col_name = "two"
+
+    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    def np_deser_udf(block: pa.Table):
+        # NOTE(Clark): We use NumPy to consolidate these potentially
+        # non-contiguous buffers, and to do buffer bookkeeping in general.
+        np_col = np.array([
+            np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
+            for buf in block.column(tensor_col_name)
+        ])
+
+        return block.set_column(
+            block._ensure_integer_index(tensor_col_name), tensor_col_name,
+            ArrowTensorArray.from_numpy(np_col))
+
+    ds = ray.data.read_parquet(str(tmp_path), block_udf=np_deser_udf)
+
+    assert isinstance(ds.schema().field_by_name(tensor_col_name).type,
+                      ArrowTensorType)
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -939,6 +978,55 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
+def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
+    one_data = list(range(6))
+    df = pd.DataFrame({
+        "one": one_data,
+        "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    def block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df["one"] += 1
+        return pa.Table.from_pandas(df)
+
+    # 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, block_udf=block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 1
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
+
+    # 2 blocks/read tasks
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, block_udf=block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 2
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
+
+    # 2 blocks/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        parallelism=2,
+        filter=(pa.dataset.field("two") == "a"),
+        block_udf=block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 2
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
+
+
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
     (None, lazy_fixture("local_path"), None),
     (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
@@ -971,6 +1059,30 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
+    data_path = str(tmp_path)
+    one_data = list(range(6))
+    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+
+    def block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df["one"] += 1
+        return pa.Table.from_pandas(df)
+
+    # 2 write tasks
+    ds._set_uuid("data")
+    ds.write_parquet(data_path, block_udf=block_udf)
+    path1 = os.path.join(data_path, "data_000000.parquet")
+    path2 = os.path.join(data_path, "data_000001.parquet")
+    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    expected_df = df
+    expected_df["one"] += 1
+    assert expected_df.equals(dfds)
 
 
 @pytest.mark.parametrize(
