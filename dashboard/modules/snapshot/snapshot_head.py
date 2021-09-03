@@ -1,10 +1,13 @@
 from typing import Dict, Any, List
+import hashlib
 
 import ray
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
+from ray.experimental.internal_kv import (_initialize_internal_kv,
+                                          _internal_kv_initialized,
+                                          _internal_kv_get, _internal_kv_list)
 
 import ray.new_dashboard.utils as dashboard_utils
 
@@ -19,6 +22,10 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
+
+        # Initialize internal KV to be used by the working_dir setup code.
+        _initialize_internal_kv(dashboard_head.gcs_client)
+        assert _internal_kv_initialized()
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
@@ -87,39 +94,59 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
-                "port": actor_table_entry.address.port
+                "port": actor_table_entry.address.port,
+                "metadata": dict()
             }
             actors[actor_id] = entry
+
+            deployments = await self.get_serve_info()
+            for _, deployment_info in deployments.items():
+                for replica_actor_id, actor_info in deployment_info[
+                        "actors"].items():
+                    if replica_actor_id in actors:
+                        serve_metadata = dict()
+                        serve_metadata["replica_tag"] = actor_info[
+                            "replica_tag"]
+                        serve_metadata["deployment_name"] = deployment_info[
+                            "name"]
+                        serve_metadata["version"] = actor_info["version"]
+                        actors[replica_actor_id]["metadata"][
+                            "serve"] = serve_metadata
         return actors
 
-    async def get_serve_info(self):
+    async def get_serve_info(self) -> Dict[str, Any]:
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
         except Exception:
-            return "{}"
-
-        gcs_client = self._dashboard_head.gcs_client
+            return {}
 
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME, gcs_client)
+        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
 
         deployments_per_controller: List[Dict[str, Any]] = []
         for key in serve_snapshot_keys:
-            val_bytes = _internal_kv_get(key,
-                                         gcs_client) or "{}".encode("utf-8")
+            val_bytes = _internal_kv_get(key) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
+        # Merge the deployments dicts of all controllers.
         deployments: Dict[str, Any] = {
             k: v
             for d in deployments_per_controller for k, v in d.items()
+        }
+        # Replace the keys (deployment names) with their hashes to prevent
+        # collisions caused by the automatic conversion to camelcase by the
+        # dashboard agent.
+        deployments = {
+            hashlib.sha1(name.encode()).hexdigest(): info
+            for name, info in deployments.items()
         }
         return deployments
 

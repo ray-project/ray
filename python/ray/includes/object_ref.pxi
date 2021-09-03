@@ -35,10 +35,11 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
-    def __init__(self, id):
+    def __init__(self, id, call_site_data=""):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
         self.in_core_worker = False
+        self.call_site_data = call_site_data
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
@@ -83,6 +84,9 @@ cdef class ObjectRef(BaseID):
 
     def job_id(self):
         return self.task_id().job_id()
+
+    def call_site(self):
+        return decode(self.call_site_data)
 
     cdef size_t hash(self):
         return self.data.Hash()
@@ -146,6 +150,13 @@ cdef class ClientObjectRef(ObjectRef):
         self.in_core_worker = False
 
     def __dealloc__(self):
+        if client is None or client.ray is None:
+            # Similar issue as mentioned in ObjectRef.__dealloc__ above. The
+            # client package or client.ray object might be set
+            # to None when the script exits. Should be safe to skip
+            # call_release in this case, since the client should have already
+            # disconnected at this point.
+            return
         if client.ray.is_connected() and not self.data.IsNil():
             client.ray.call_release(self.id)
 

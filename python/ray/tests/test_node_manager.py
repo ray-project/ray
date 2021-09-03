@@ -1,5 +1,5 @@
 import ray
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue

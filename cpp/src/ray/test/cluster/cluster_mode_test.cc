@@ -15,16 +15,17 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include "../../util/process_helper.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "counter.h"
-#include "gflags/gflags.h"
 #include "plus.h"
 
-int *cmd_argc = nullptr;
-char ***cmd_argv = nullptr;
+int cmd_argc = 0;
+char **cmd_argv = nullptr;
 
-DEFINE_bool(external_cluster, false, "");
-DEFINE_string(redis_password, "12345678", "");
-DEFINE_int32(redis_port, 6379, "");
+ABSL_FLAG(bool, external_cluster, false, "");
+ABSL_FLAG(std::string, redis_password, "12345678", "");
+ABSL_FLAG(int32_t, redis_port, 6379, "");
 
 TEST(RayClusterModeTest, Initialized) {
   ray::Init();
@@ -37,11 +38,12 @@ TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   config.num_cpus = 2;
   config.resources = {{"resource1", 1}, {"resource2", 2}};
-  if (FLAGS_external_cluster) {
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
-                                                             FLAGS_redis_password);
-    config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
-    config.redis_password_ = FLAGS_redis_password;
+  if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
+    auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
+    std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(port, password);
+    config.address = "127.0.0.1:" + std::to_string(port);
+    config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
   /// put and get object
@@ -238,16 +240,27 @@ TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
 }
 
+TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+
+  ray::internal::PlacementGroupCreationOptions options{
+      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+  auto first_placement_group = ray::CreatePlacementGroup(options);
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+}
+
 int main(int argc, char **argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, false);
-  cmd_argc = &argc;
-  cmd_argv = &argv;
+  absl::ParseCommandLine(argc, argv);
+  cmd_argc = argc;
+  cmd_argv = argv;
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
 
   ray::Shutdown();
 
-  if (FLAGS_external_cluster) {
+  if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     ray::internal::ProcessHelper::GetInstance().StopRayNode();
   }
 

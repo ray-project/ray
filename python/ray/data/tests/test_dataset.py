@@ -186,12 +186,14 @@ def test_tensors(ray_start_regular_shared):
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
 
 
-def test_npio(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_np_dir")
-    os.mkdir(path)
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, parallelism=2)
-    ds.write_numpy(path)
-    ds = ray.data.read_numpy(path)
+    ds.write_numpy(data_path, filesystem=fs)
+    ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
                        "schema=<Tensor: shape=(None, 1), dtype=int64>)")
 
@@ -201,7 +203,7 @@ def test_npio(ray_start_regular_shared, tmp_path):
                        "array([7]), array([8]), array([9])]"), ds.take()
 
 
-def test_read_np_savefile(ray_start_regular_shared, tmp_path):
+def test_numpy_read(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(
@@ -214,6 +216,28 @@ def test_read_np_savefile(ray_start_regular_shared, tmp_path):
         ds.take()) == ("[array([0]), array([1]), array([2]), "
                        "array([3]), array([4]), array([5]), array([6]), "
                        "array([7]), array([8]), array([9])]"), ds.take()
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds._set_uuid("data")
+    ds.write_numpy(data_path, filesystem=fs)
+    file_path1 = os.path.join(data_path, "data_000000.npy")
+    file_path2 = os.path.join(data_path, "data_000001.npy")
+    if endpoint_url is None:
+        arr1 = np.load(file_path1)
+        arr2 = np.load(file_path2)
+    else:
+        from s3fs.core import S3FileSystem
+        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
+        arr1 = np.load(s3.open(file_path1))
+        arr2 = np.load(s3.open(file_path2))
+    np.testing.assert_equal(np.concatenate((arr1, arr2)), ds.take())
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -370,6 +394,14 @@ def test_from_pandas(ray_start_regular_shared):
     assert values == rows
 
 
+def test_from_numpy(ray_start_regular_shared):
+    arr1 = np.expand_dims(np.arange(0, 4), 1)
+    arr2 = np.expand_dims(np.arange(4, 8), 1)
+    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
+    values = np.array(ds.take(8))
+    np.testing.assert_equal(np.concatenate((arr1, arr2)), values)
+
+
 def test_from_arrow(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -388,6 +420,23 @@ def test_to_pandas(ray_start_regular_shared):
     ds = ray.data.range_arrow(n)
     dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dfds)
+
+
+def test_to_numpy(ray_start_regular_shared):
+    # Tensor Dataset
+    ds = ray.data.range_tensor(10, parallelism=2)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Table Dataset
+    ds = ray.data.range_arrow(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
 
 def test_to_arrow(ray_start_regular_shared):
@@ -451,15 +500,21 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds.count() == 6
 
 
-def test_parquet_read(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    pq.write_table(table, os.path.join(str(tmp_path), "test1.parquet"))
+    path1 = os.path.join(_unwrap_protocol(data_path), "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    pq.write_table(table, os.path.join(str(tmp_path), "test2.parquet"))
+    path2 = os.path.join(_unwrap_protocol(data_path), "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -485,12 +540,16 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
                               [6, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
-def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     df = pd.DataFrame({
         "one": [1, 1, 1, 3, 3, 3],
         "two": ["a", "b", "c", "e", "f", "g"]
@@ -498,13 +557,12 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
         table,
-        root_path=str(tmp_path),
+        root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
+        filesystem=fs,
         use_legacy_dataset=False)
-    pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
-    print(pq_ds.read().to_pandas())
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
@@ -530,24 +588,102 @@ def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
                               [3, "g"]]
 
     # Test column selection.
-    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
 
 
-def test_parquet_write(ray_start_regular_shared, tmp_path):
+def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
+                                              tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "a", "b", "b", "c", "c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    # 2 partitions, 1 empty partition, 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 1
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+    # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
-    path = os.path.join(tmp_path, "test_parquet_dir")
-    os.mkdir(path)
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
     ds._set_uuid("data")
-    ds.write_parquet(path)
+    ds.write_parquet(path, filesystem=fs)
     path1 = os.path.join(path, "data_000000.parquet")
     path2 = os.path.join(path, "data_000001.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
     assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds._set_uuid("data")
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds.write_parquet(path, filesystem=fs)
+    ds2 = ray.data.read_parquet(path, parallelism=2, filesystem=fs)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df1, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
@@ -834,6 +970,61 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
 
 
+def test_union(ray_start_regular_shared):
+    ds = ray.data.range(20, parallelism=10)
+
+    # Test lazy union.
+    ds = ds.union(ds, ds, ds, ds)
+    assert ds.num_blocks() == 50
+    assert ds.count() == 100
+    assert ds.sum() == 950
+
+    ds = ds.union(ds)
+    assert ds.count() == 200
+    assert ds.sum() == (950 * 2)
+
+    # Test materialized union.
+    ds2 = ray.data.from_items([1, 2, 3, 4, 5])
+    assert ds2.count() == 5
+    ds2 = ds2.union(ds2)
+    assert ds2.count() == 10
+    ds2 = ds2.union(ds)
+    assert ds2.count() == 210
+
+
+def test_split_at_indices(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=3)
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([])
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([-1])
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([3, 1])
+
+    splits = ds.split_at_indices([5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5, 5, 100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [], [5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([0])
+    r = [s.take() for s in splits]
+    assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+
+
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
@@ -983,6 +1174,28 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_from_modin(ray_start_regular_shared):
+    import modin.pandas as mopd
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
+    modf = mopd.DataFrame(df)
+    ds = ray.data.from_modin(modf)
+    dfds = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dfds)
+
+
+def test_to_modin(ray_start_regular_shared):
+    # create two modin dataframes
+    # one directly from a pandas dataframe, and
+    # another from ray.dataset created from the original pandas dataframe
+    #
+    import modin.pandas as mopd
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
+    modf1 = mopd.DataFrame(df)
+    ds = ray.data.from_pandas([df])
+    modf2 = ds.to_modin()
+    assert modf1.equals(modf2)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1268,66 +1481,80 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
-def test_json_write(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_json_dir")
-
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
-    os.mkdir(path)
-    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([ray.put(df)])
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df1)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path = os.path.join(path, "data_000000.json")
-    assert df.equals(pd.read_json(file_path, orient="records", lines=True))
-    shutil.rmtree(path)
+    ds.write_json(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.json")
+    assert df1.equals(
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options))
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path2 = os.path.join(path, "data_000001.json")
-    assert pd.concat([df, df2]).equals(
-        pd.concat([
-            pd.read_json(file_path, orient="records", lines=True),
-            pd.read_json(file_path2, orient="records", lines=True)
-        ]))
-    shutil.rmtree(path)
+    ds.write_json(data_path, filesystem=fs)
+    file_path2 = os.path.join(data_path, "data_000001.json")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options),
+        pd.read_json(
+            file_path2,
+            orient="records",
+            lines=True,
+            storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
 
 
-def test_json_roundtrip(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_json_dir")
-
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     # Single block.
-    os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path = os.path.join(path, "data_000000.json")
-    ds2 = ray.data.read_json([file_path])
+    ds.write_json(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.json")
+    ds2 = ray.data.read_json([file_path], filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert ds2df.equals(df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_json(path)
-    file_path2 = os.path.join(path, "data_000001.json")
-    ds2 = ray.data.read_json([file_path, file_path2], parallelism=2)
+    ds.write_json(data_path, filesystem=fs)
+    ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
     ds2df = pd.concat(ray.get(ds2.to_pandas()))
     assert pd.concat([df, df2]).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-    shutil.rmtree(path)
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -1445,30 +1672,67 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(dir_path))
 
 
-def test_csv_write(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_csv_dir")
-
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
-    os.mkdir(path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df1)])
+    ds._set_uuid("data")
+    ds.write_csv(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.csv")
+    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
+
+    # Two blocks.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds._set_uuid("data")
+    ds.write_csv(data_path, filesystem=fs)
+    file_path2 = os.path.join(data_path, "data_000001.csv")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_csv(file_path, storage_options=storage_options),
+        pd.read_csv(file_path2, storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path", [(None, lazy_fixture("local_path")),
+                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
+    # Single block.
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([ray.put(df)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path = os.path.join(path, "data_000000.csv")
-    assert df.equals(pd.read_csv(file_path))
-    shutil.rmtree(path)
+    ds.write_csv(data_path, filesystem=fs)
+    file_path = os.path.join(data_path, "data_000000.csv")
+    ds2 = ray.data.read_csv([file_path], filesystem=fs)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert ds2df.equals(df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
-    os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
     ds._set_uuid("data")
-    ds.write_csv(path)
-    file_path2 = os.path.join(path, "data_000001.csv")
-    assert pd.concat([df, df2]).equals(
-        pd.concat([pd.read_csv(file_path),
-                   pd.read_csv(file_path2)]))
-    shutil.rmtree(path)
+    ds.write_csv(data_path, filesystem=fs)
+    ds2 = ray.data.read_csv(data_path, parallelism=2, filesystem=fs)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
 def test_sort_simple(ray_start_regular_shared):

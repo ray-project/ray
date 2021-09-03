@@ -1,7 +1,7 @@
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 import time
 import tqdm
@@ -72,9 +72,8 @@ test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
 
-print(
-    f"Sucess! Started {MAX_PLACEMENT_GROUPS} pgs in {end_time - start_time}s. "
-    f"({rate} pgs/s)")
+print(f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
+      f"{end_time - start_time}s. ({rate} pgs/s)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")

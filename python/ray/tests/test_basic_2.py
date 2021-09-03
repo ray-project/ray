@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 import ray.cluster_utils
-from ray.test_utils import client_test_enabled
+from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
@@ -718,6 +718,52 @@ if __name__ == "__main__":
                     repr(ray_start_regular_shared["redis_address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
+
+
+@pytest.mark.skipif(
+    client_test_enabled(), reason="JobConfig doesn't work in client mode")
+def test_use_dynamic_function_and_class():
+    # Test use dynamically defined functions
+    # and classes for remote tasks and actors.
+    # See https://github.com/ray-project/ray/issues/12834.
+    ray.shutdown()
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init(job_config=job_config)
+
+    def foo1():
+        @ray.remote
+        def foo2():
+            return "OK"
+
+        return foo2
+
+    @ray.remote
+    class Foo:
+        @ray.method(num_returns=1)
+        def foo(self):
+            return "OK"
+
+    f = foo1()
+    assert ray.get(f.remote()) == "OK"
+    # Check whether the dynamic function is exported to GCS.
+    # Note, the key format should be kept
+    # the same as in `FunctionActorManager.export`.
+    key_func = (
+        b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
+        b":" + f._function_descriptor.function_id.binary())
+    assert ray.worker.global_worker.redis_client.exists(key_func) == 1
+    foo_actor = Foo.remote()
+
+    assert ray.get(foo_actor.foo.remote()) == "OK"
+    # Check whether the dynamic class is exported to GCS.
+    # Note, the key format should be kept
+    # the same as in `FunctionActorManager.export_actor_class`.
+    key_cls = (
+        b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
+        b":" +
+        foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
+    assert ray.worker.global_worker.redis_client.exists(key_cls) == 1
 
 
 if __name__ == "__main__":

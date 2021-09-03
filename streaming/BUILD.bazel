@@ -275,6 +275,7 @@ cc_test(
         "src/test/ring_buffer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -284,6 +285,7 @@ cc_test(
         "src/test/barrier_helper_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -293,6 +295,7 @@ cc_test(
         "src/test/message_serialization_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -302,6 +305,7 @@ cc_test(
         "src/test/mock_transfer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -311,6 +315,7 @@ cc_test(
         "src/test/streaming_util_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -320,6 +325,7 @@ cc_test(
         "src/test/event_service_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -328,6 +334,7 @@ cc_test(
     srcs = [
         "src/test/queue_protobuf_tests.cc",
     ],
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -337,6 +344,7 @@ cc_test(
         "src/test/data_writer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 

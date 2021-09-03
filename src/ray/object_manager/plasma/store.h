@@ -32,6 +32,8 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/get_request_queue.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -46,8 +48,6 @@ enum class PlasmaError;
 }  // namespace flatbuf
 
 using flatbuf::PlasmaError;
-
-struct GetRequest;
 
 class PlasmaStore {
  public:
@@ -106,11 +106,6 @@ class PlasmaStore {
   ///  - PlasmaError::ObjectInUse, if the object is in use.
   PlasmaError DeleteObject(ObjectID &object_id);
 
-  /// Evict objects returned by the eviction policy.
-  ///
-  /// \param object_ids Object IDs of the objects to be evicted.
-  void EvictObjects(const std::vector<ObjectID> &object_ids);
-
   /// Process a get request from a client. This method assumes that we will
   /// eventually have these objects sealed. If one of the objects has not yet
   /// been sealed, the client that requested the object will be notified when it
@@ -131,13 +126,6 @@ class PlasmaStore {
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID> &object_ids);
-
-  /// Check if the plasma store contains an object:
-  ///
-  /// \param object_id Object ID that will be checked.
-  /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
-  /// not
-  ObjectStatus ContainsObject(const ObjectID &object_id);
 
   /// Record the fact that a particular client is no longer using an object.
   ///
@@ -176,17 +164,18 @@ class PlasmaStore {
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    RAY_CHECK((object_store_.GetNumBytesUnsealed() > 0 &&
-               object_store_.GetNumObjectsUnsealed() > 0) ||
-              (object_store_.GetNumBytesUnsealed() == 0 &&
-               object_store_.GetNumObjectsUnsealed() == 0))
+    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
+              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(num_bytes_in_use_ >= object_store_.GetNumBytesUnsealed());
+    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
+              object_lifecycle_mgr_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
-    int64_t num_bytes_in_use =
-        static_cast<int64_t>(num_bytes_in_use_ - object_store_.GetNumBytesUnsealed());
+    int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
+                               object_lifecycle_mgr_.GetNumBytesUnsealed();
     size_t available = 0;
     if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
       available = allocator_.GetFootprintLimit() - num_bytes_in_use;
@@ -209,31 +198,13 @@ class PlasmaStore {
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
 
-  void AddToClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
-                            const std::shared_ptr<Client> &client);
+  void AddToClientObjectIds(const ObjectID &object_id,
+                            const std::shared_ptr<ClientInterface> &client);
 
-  /// Remove a GetRequest and clean up the relevant data structures.
-  ///
-  /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  /// Remove all of the GetRequests for a given client.
-  ///
-  /// \param client The client whose GetRequests should be removed.
-  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
-
-  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
-
-  void UpdateObjectGetRequests(const ObjectID &object_id);
-
-  int RemoveFromClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
+  int RemoveFromClientObjectIds(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client);
-
-  void EraseFromObjectTable(const ObjectID &object_id);
-
-  const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
-                                          plasma::flatbuf::ObjectSource source,
-                                          bool allow_fallback_allocation);
 
   // Start listening for clients.
   void DoAccept();
@@ -248,23 +219,8 @@ class PlasmaStore {
   ray::local_stream_socket socket_;
   /// The allocator that allocates mmaped memory.
   IAllocator &allocator_;
-  /// The object store stores created objects.
-  ObjectStore object_store_;
-  /// The state that is managed by the eviction policy.
-  EvictionPolicy eviction_policy_;
-  /// A hash table mapping object IDs to a vector of the get requests that are
-  /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
-
-  /// A callback to asynchronously spill objects when space is needed. The
-  /// callback returns the amount of space still needed after the spilling is
-  /// complete.
-  /// NOTE: This function should guarantee the thread-safety because the callback is
-  /// shared with the main raylet thread.
-  const ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is
@@ -276,18 +232,14 @@ class PlasmaStore {
   /// shared with the main raylet thread.
   const ray::DeleteObjectCallback delete_object_callback_;
 
+  ObjectLifecycleManager object_lifecycle_mgr_;
+
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
 
   /// The percentage of object store memory used above which spilling is triggered.
   const float object_spilling_threshold_;
-
-  /// The amount of time to wait between logging space usage debug messages.
-  const uint64_t usage_log_interval_ns_;
-
-  /// The last time space usage was logged.
-  uint64_t last_usage_log_ns_ = 0;
 
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be
@@ -308,17 +260,14 @@ class PlasmaStore {
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
 
-  /// Total number of bytes allocated to objects that are in use by any client.
-  /// This includes objects that are being created and objects that a client
-  /// called get on.
-  int64_t num_bytes_in_use_ = 0;
-
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
   bool dumped_on_oom_ = false;
+
+  GetRequestQueue get_request_queue_;
 };
 
 }  // namespace plasma

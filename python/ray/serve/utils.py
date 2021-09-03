@@ -7,10 +7,7 @@ import string
 import time
 from typing import Iterable, Tuple
 import os
-from collections import UserDict
 
-import starlette.requests
-import starlette.responses
 import requests
 import numpy as np
 import pydantic
@@ -19,90 +16,18 @@ import ray
 import ray.serialization_addons
 from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
-class ServeMultiDict(UserDict):
-    """Compatible data structure to simulate Starlette Request query_args."""
-
-    def getlist(self, key):
-        """Return the list of items for a given key."""
-        return self.data.get(key, [])
-
-
-class ServeRequest:
-    """The request object used when passing arguments via ServeHandle.
-
-    ServeRequest partially implements the API of Starlette Request. You only
-    need to write your model serving code once; it can be queried by both HTTP
-    and Python.
-
-    To use the full Starlette Request interface with ServeHandle, you may
-    instead directly pass in a Starlette Request object to the ServeHandle.
-    """
-
-    def __init__(self, data, kwargs, headers, method):
-        self._data = data
-        self._kwargs = ServeMultiDict(kwargs)
-        self._headers = headers
-        self._method = method
-
-    @property
-    def headers(self):
-        """The HTTP headers from ``handle.option(http_headers=...)``."""
-        return self._headers
-
-    @property
-    def method(self):
-        """The HTTP method data from ``handle.option(http_method=...)``."""
-        return self._method
-
-    @property
-    def query_params(self):
-        """The keyword arguments from ``handle.remote(**kwargs)``."""
-        return self._kwargs
-
-    async def json(self):
-        """The request dictionary, from ``handle.remote(dict)``."""
-        if not isinstance(self._data, dict):
-            raise RayServeException("Request data is not a dictionary. "
-                                    f"It is {type(self._data)}.")
-        return self._data
-
-    async def form(self):
-        """The request dictionary, from ``handle.remote(dict)``."""
-        if not isinstance(self._data, dict):
-            raise RayServeException("Request data is not a dictionary. "
-                                    f"It is {type(self._data)}.")
-        return self._data
-
-    async def body(self):
-        """The request data from ``handle.remote(obj)``."""
-        return self._data
-
-
 def parse_request_item(request_item):
-    if len(request_item.args) <= 1:
-        arg = request_item.args[0] if len(request_item.args) == 1 else None
-
-        # If the input data from handle is web request, we don't need to wrap
-        # it in ServeRequest.
-        if isinstance(arg, starlette.requests.Request):
-            return (arg, ), {}
-        elif request_item.metadata.http_arg_is_pickled:
+    if len(request_item.args) == 1:
+        arg = request_item.args[0]
+        if request_item.metadata.http_arg_is_pickled:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
-        elif request_item.metadata.use_serve_request:
-            return (ServeRequest(
-                arg,
-                request_item.kwargs,
-                headers=request_item.metadata.http_headers,
-                method=request_item.metadata.http_method,
-            ), ), {}
 
     return request_item.args, request_item.kwargs
 
@@ -202,7 +127,7 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     if controller_name is None:
         name = actor_name
     else:
-        name = "{}:{}".format(actor_name, controller_name)
+        name = "{}:{}".format(controller_name, actor_name)
 
     for modifier in modifiers:
         name += "-{}".format(modifier)
@@ -235,32 +160,6 @@ def get_node_id_for_actor(actor_handle):
 
     return ray.state.actors()[actor_handle._actor_id.hex()]["Address"][
         "NodeID"]
-
-
-async def mock_imported_function(request):
-    return await request.body()
-
-
-class MockImportedBackend:
-    """Used for testing backends.ImportedBackend.
-
-    This is necessary because we need the class to be installed in the worker
-    processes. We could instead mock out importlib but doing so is messier and
-    reduces confidence in the test (it isn't truly end-to-end).
-    """
-
-    def __init__(self, arg):
-        self.arg = arg
-        self.config = None
-
-    def reconfigure(self, config):
-        self.config = config
-
-    def __call__(self, request):
-        return {"arg": self.arg, "config": self.config}
-
-    async def other_method(self, request):
-        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,

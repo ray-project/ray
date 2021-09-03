@@ -1,16 +1,18 @@
 import inspect
-from enum import Enum
-from typing import Any, List, Optional, Union
+import os
 import pickle
+from enum import Enum
+from typing import Any, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
 from google.protobuf.json_format import MessageToDict
-
-from ray import cloudpickle as cloudpickle
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.generated.serve_pb2 import BackendLanguage
+
+from ray import cloudpickle as cloudpickle
 
 
 class BackendConfig(BaseModel):
@@ -179,11 +181,21 @@ class HTTPOptions(pydantic.BaseModel):
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
+    root_url: str = ""
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+        return v
+
+    @validator("root_url", always=True)
+    def fill_default_root_url(cls, v, values):
+        if v == "":
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            else:
+                return f"http://{values['host']}:{values['port']}"
         return v
 
     class Config:

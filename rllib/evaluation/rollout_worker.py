@@ -1,14 +1,12 @@
-import random
-import numpy as np
 import gym
 import logging
-import pickle
 import platform
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
 import ray
+from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -29,12 +27,12 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -73,6 +71,32 @@ def get_global_worker() -> "RolloutWorker":
 
     global _global_worker
     return _global_worker
+
+
+def _update_env_seed_if_necessary(env: EnvType, seed: int, worker_idx: int,
+                                  vector_idx: int):
+    """Set a deterministic random seed on environment.
+
+    NOTE: this may not work with remote environments (issue #18154).
+    """
+    if not seed:
+        return
+
+    # A single RL job is unlikely to have more than 10K
+    # rollout workers.
+    max_num_envs_per_workers: int = 1000
+    assert worker_idx < max_num_envs_per_workers, \
+        "Too many envs per worker. Random seeds may collide."
+    computed_seed: int = (
+        worker_idx * max_num_envs_per_workers + vector_idx + seed)
+
+    # Gym.env.
+    # This will silently fail for most OpenAI gyms
+    # (they do nothing and return None per default)
+    if not hasattr(env, "seed"):
+        logger.info("Env doesn't support env.seed(): {}".format(env))
+    else:
+        env.seed(computed_seed)
 
 
 @DeveloperAPI
@@ -156,7 +180,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_envs: int = 1,
             observation_fn: "ObservationFunction" = None,
             observation_filter: str = "NoFilter",
-            clip_rewards: bool = None,
+            clip_rewards: Optional[Union[bool, float]] = None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             env_config: EnvConfigDict = None,
@@ -245,9 +269,10 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn (ObservationFunction): Optional multi-agent
                 observation function.
             observation_filter (str): Name of observation filter to use.
-            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
-                experience postprocessing. Setting to None means clip for Atari
-                only.
+            clip_rewards (Optional[Union[bool, float]]): Whether to clip
+                rewards to [-1.0, 1.0] prior to experience postprocessing.
+                None: Clip for Atari only.
+                float: Clip to [-clip_rewards; +clip_rewards].
             normalize_actions (bool): Whether to normalize actions to the
                 action space's bounds.
             clip_actions (bool): Whether to clip action values to the range
@@ -307,6 +332,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
 
@@ -374,7 +400,8 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
-        model_config: ModelConfigDict = model_config or {}
+        model_config: ModelConfigDict = \
+            model_config or self.policy_config.get("model") or {}
 
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
@@ -393,43 +420,34 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
+        # Update the global seed for numpy/random/tf-eager/torch.
+        update_global_seed_if_necessary(policy_config.get("framework"), seed)
+
+        # A single environment provided by the user (via config.env). This may
+        # also remain None.
+        # 1) Create the env using the user provided env_creator. This may
+        #    return a gym.Env (incl. MultiAgentEnv), an already vectorized
+        #    VectorEnv, BaseEnv, ExternalEnv, or an ActorHandle (remote env).
+        # 2) Wrap - if applicable - with Atari/recording/rendering wrappers.
+        # 3) Seed the env, if necessary.
+        # 4) Vectorize the existing single env by creating more clones of
+        #    this env and wrapping it with the RLlib BaseEnv class.
         self.env = None
 
-        # Create an env for this worker.
+        # Create a (single) env for this worker.
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
+
         if self.env is not None:
             # Validate environment (general validation function).
-            self.env = _validate_env(self.env)
+            _validate_env(self.env, env_context=self.env_context)
             # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
-
-            # MultiAgentEnv (a gym.Env) -> Wrap and make
-            # the wrapped Env yet another MultiAgentEnv.
-            if isinstance(self.env, MultiAgentEnv):
-
-                def wrap(env):
-                    cls = env.__class__
-                    # Add gym.Env as mixin parent to the env's class
-                    # (so it can be wrapped).
-                    env.__class__ = \
-                        type(env.__class__.__name__, (type(env), gym.Env), {})
-                    # Wrap the (now gym.Env) env with our (multi-agent capable)
-                    # recording wrapper.
-                    env = record_env_wrapper(env, record_env, log_dir,
-                                             policy_config)
-                    # Make sure, we make the wrapped object a member of the
-                    # original MultiAgentEnv sub-class again.
-                    if type(env) is not cls:
-                        env.__class__ = \
-                            type(cls.__name__, (type(env), cls), {})
-                    return env
-
             # We can't auto-wrap a BaseEnv.
-            elif isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
+            if isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
                 def wrap(env):
                     return env
@@ -447,27 +465,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
-                # Deprecated way of framestacking is used.
-                framestack = model_config.get("framestack") is True
-                # framestacking via trajectory view API is enabled.
-                num_framestacks = model_config.get("num_framestacks", 0)
-
-                # Trajectory view API is on and num_framestacks=auto:
-                # Only stack traj. view based if old
-                # `framestack=[invalid value]`.
-                if num_framestacks == "auto":
-                    if framestack == DEPRECATED_VALUE:
-                        model_config["num_framestacks"] = num_framestacks = 4
-                    else:
-                        model_config["num_framestacks"] = num_framestacks = 0
-                framestack_traj_view = num_framestacks > 1
+                # Framestacking is used.
+                use_framestack = model_config.get("framestack") is True
 
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=framestack,
-                        framestack_via_traj_view_api=framestack_traj_view)
+                        framestack=use_framestack)
                     env = record_env_wrapper(env, record_env, log_dir,
                                              policy_config)
                     return env
@@ -481,16 +486,39 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
+            # Ideally, we would use the same make_sub_env() function below
+            # to create self.env, but wrap(env) and self.env has a cyclic
+            # dependency on each other right now, so we would settle on
+            # duplicating the random seed setting logic for now.
+            _update_env_seed_if_necessary(self.env, seed, worker_index, 0)
 
-        def make_env(vector_index):
-            return wrap(
-                env_creator(
-                    env_context.copy_with_overrides(
-                        worker_index=worker_index,
-                        vector_index=vector_index,
-                        remote=remote_worker_envs)))
+        def make_sub_env(vector_index):
+            # Used to created additional environments during environment
+            # vectorization.
 
-        self.make_env_fn = make_env
+            # Create the env context (config dict + meta-data) for
+            # this particular sub-env within the vectorized one.
+            env_ctx = env_context.copy_with_overrides(
+                worker_index=worker_index,
+                vector_index=vector_index,
+                remote=remote_worker_envs)
+            # Create the sub-env.
+            env = env_creator(env_ctx)
+            # Validate first.
+            _validate_env(env, env_context=env_ctx)
+            # Custom validation function given by user.
+            if validate_env is not None:
+                validate_env(env, env_ctx)
+            # Use our wrapper, defined above.
+            env = wrap(env)
+
+            # Make sure a deterministic random seed is set on
+            # all the sub-environments if specified.
+            _update_env_seed_if_necessary(env, seed, worker_index,
+                                          vector_index)
+            return env
+
+        self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
         policy_dict = _determine_spaces_for_multi_agent_dict(
@@ -507,46 +535,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
-
-        # Set Python random, numpy, env, and torch/tf seeds.
-        if seed is not None:
-            # Python random module.
-            random.seed(seed)
-            # Numpy.
-            np.random.seed(seed)
-            # Gym.env.
-            # This will silently fail for most OpenAI gyms
-            # (they do nothing and return None per default)
-            if not hasattr(self.env, "seed"):
-                logger.info("Env doesn't support env.seed(): {}".format(
-                    self.env))
-            else:
-                self.env.seed(seed)
-
-            # Torch.
-            if torch and policy_config.get("framework") == "torch":
-                torch.manual_seed(seed)
-                # See https://github.com/pytorch/pytorch/issues/47672.
-                cuda_version = torch.version.cuda
-                if cuda_version is not None and float(
-                        torch.version.cuda) >= 10.2:
-                    os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
-                else:
-                    from distutils.version import LooseVersion
-                    if LooseVersion(
-                            torch.__version__) >= LooseVersion("1.8.0"):
-                        # Not all Operations support this.
-                        torch.use_deterministic_algorithms(True)
-                    else:
-                        torch.set_determinstic(True)
-                # This is only for Convolution no problem.
-                torch.backends.cudnn.deterministic = True
-            # Tf2.x.
-            elif tf and policy_config.get("framework") == "tf2":
-                tf.random.set_seed(seed)
-            # Tf-eager.
-            elif tf1 and policy_config.get("framework") == "tfe":
-                tf1.set_random_seed(seed)
 
         # Check available number of GPUs.
         num_gpus = policy_config.get("num_gpus", 0) if \
@@ -611,18 +599,22 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
+        # Vectorize environment, if any.
         self.num_envs: int = num_envs
-
+        # This RolloutWorker has no env.
         if self.env is None:
             self.async_env = None
+        # Use a custom env-vectorizer and call it providing self.env.
         elif "custom_vector_env" in policy_config:
-            custom_vec_wrapper = policy_config["custom_vector_env"]
-            self.async_env = custom_vec_wrapper(self.env)
+            self.async_env = policy_config["custom_vector_env"](self.env)
+        # Default: Vectorize self.env via the make_sub_env function. This adds
+        # further clones of self.env and creates a RLlib BaseEnv (which is
+        # vectorized under the hood).
         else:
             # Always use vector env for consistency even if num_envs = 1.
             self.async_env: BaseEnv = BaseEnv.to_base_env(
                 self.env,
-                make_env=make_env,
+                make_env=self.make_sub_env_fn,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
@@ -736,7 +728,8 @@ class RolloutWorker(ParallelIteratorWorker):
             return self.last_batch
         elif self.input_reader is None:
             raise ValueError("RolloutWorker has no `input_reader` object! "
-                             "Cannot call `sample()`.")
+                             "Cannot call `sample()`. You can try setting "
+                             "`create_env_on_driver` to True.")
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
@@ -780,10 +773,8 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
-        if self.compress_observations == "bulk":
-            batch.compress(bulk=True)
-        elif self.compress_observations:
-            batch.compress()
+        if self.compress_observations:
+            batch.compress(bulk=self.compress_observations == "bulk")
 
         if self.fake_sampler:
             self.last_batch = batch
@@ -1057,7 +1048,6 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1095,14 +1085,16 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
-                                      action_space, config)
+                                      action_space, config or {})
             },
             self.env,
             spaces=self.spaces,
-            policy_config=policy_config)
-
+            policy_config=self.policy_config,
+        )
         self._build_policy_map(
-            policy_dict, policy_config, seed=policy_config.get("seed"))
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
 
         self.filters[policy_id] = get_filter(
@@ -1244,11 +1236,16 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def save(self) -> bytes:
         filters = self.get_filters(flush_after=True)
-        state = {
-            pid: self.policy_map[pid].get_state()
-            for pid in self.policy_map
-        }
-        return pickle.dumps({"filters": filters, "state": state})
+        state = {}
+        policy_specs = {}
+        for pid in self.policy_map:
+            state[pid] = self.policy_map[pid].get_state()
+            policy_specs[pid] = self.policy_map.policy_specs[pid]
+        return pickle.dumps({
+            "filters": filters,
+            "state": state,
+            "policy_specs": policy_specs,
+        })
 
     @DeveloperAPI
     def restore(self, objs: bytes) -> None:
@@ -1256,12 +1253,23 @@ class RolloutWorker(ParallelIteratorWorker):
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                logger.warning(
-                    f"pid={pid} not found in policy_map! It was probably added"
-                    " on-the-fly and is not part of the static `config."
-                    "multiagent.policies` dict. Ignoring it for now.")
-                continue
-            self.policy_map[pid].set_state(state)
+                pol_spec = objs.get("policy_specs", {}).get(pid)
+                if not pol_spec:
+                    logger.warning(
+                        f"PolicyID '{pid}' was probably added on-the-fly (not"
+                        " part of the static `multagent.policies` config) and"
+                        " no PolicySpec objects found in the pickled policy "
+                        "state. Will not add `{pid}`, but ignore it for now.")
+                else:
+                    self.add_policy(
+                        policy_id=pid,
+                        policy_cls=pol_spec.policy_class,
+                        observation_space=pol_spec.observation_space,
+                        action_space=pol_spec.action_space,
+                        config=pol_spec.config,
+                    )
+            else:
+                self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
     def set_global_vars(self, global_vars: dict) -> None:
@@ -1404,6 +1412,8 @@ def _determine_spaces_for_multi_agent_dict(
         policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
+    policy_config = policy_config or {}
+
     # Try extracting spaces from env or from given spaces dict.
     env_obs_space = None
     env_act_space = None
@@ -1436,7 +1446,7 @@ def _determine_spaces_for_multi_agent_dict(
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif policy_config and policy_config.get("observation_space"):
+            elif policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1444,6 +1454,7 @@ def _determine_spaces_for_multi_agent_dict(
                     f"{pid} and env does not have an observation space OR "
                     "no spaces received from other workers' env(s) OR no "
                     "`observation_space` specified in config!")
+
             multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
                 observation_space=obs_space)
 
@@ -1452,7 +1463,7 @@ def _determine_spaces_for_multi_agent_dict(
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif policy_config and policy_config.get("action_space"):
+            elif policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(
@@ -1465,25 +1476,42 @@ def _determine_spaces_for_multi_agent_dict(
     return multi_agent_dict
 
 
-def _validate_env(env: Any) -> EnvType:
-    # Allow this as a special case (assumed gym.Env).
-    if hasattr(env, "observation_space") and hasattr(env, "action_space"):
-        return env
+def _validate_env(env: EnvType, env_context: EnvContext = None):
+    # Base message for checking the env for vector-index=0
+    msg = f"Validating sub-env at vector index={env_context.vector_index} ..."
 
     allowed_types = [
-        gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
-        ray.actor.ActorHandle
+        gym.Env, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle
     ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
-        raise ValueError(
-            "Returned env should be an instance of gym.Env, MultiAgentEnv, "
-            "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
-            "function returned {} ({}).".format(env, type(env)))
-    return env
+        # Allow this as a special case (assumed gym.Env).
+        # TODO: Disallow this early-out. Everything should conform to a few
+        #  supported classes, i.e. gym.Env/MultiAgentEnv/etc...
+        if hasattr(env, "observation_space") and hasattr(env, "action_space"):
+            logger.warning(msg + f" (warning; invalid env-type={type(env)})")
+            return
+        else:
+            logger.warning(msg + " (NOT OK)")
+            raise EnvError(
+                "Returned env should be an instance of gym.Env (incl. "
+                "MultiAgentEnv), ExternalEnv, VectorEnv, or BaseEnv. "
+                f"The provided env creator function returned {env} "
+                f"(type={type(env)}).")
 
+    # Do some test runs with the provided env.
+    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
+        # Make sure the gym.Env has the two space attributes properly set.
+        assert hasattr(env, "observation_space") and hasattr(
+            env, "action_space")
+        # Get a dummy observation by resetting the env.
+        dummy_obs = env.reset()
+        # Check, if observation is ok (part of the observation space). If not,
+        # error.
+        if not env.observation_space.contains(dummy_obs):
+            logger.warning(msg + " (NOT OK)")
+            raise EnvError(
+                f"Env's `observation_space` {env.observation_space} does not "
+                f"contain returned observation after a reset ({dummy_obs})!")
 
-def _has_tensorflow_graph(policy_dict: MultiAgentPolicyConfigDict) -> bool:
-    for policy, _, _, _ in policy_dict.values():
-        if issubclass(policy, TFPolicy):
-            return True
-    return False
+    # Log that everything is ok.
+    logger.info(msg + " (ok)")
