@@ -30,9 +30,9 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const rpc::Address &caller_address,
-                                 const TaskSpecification &spec,
-                                 const std::string &call_site, int max_retries) {
+std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
+    const rpc::Address &caller_address, const TaskSpecification &spec,
+    const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -62,8 +62,9 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
   if (spec.IsActorTask()) {
     num_returns--;
   }
-  if (!spec.IsActorCreationTask()) {
-    for (size_t i = 0; i < num_returns; i++) {
+  std::vector<rpc::ObjectReference> returned_refs;
+  for (size_t i = 0; i < num_returns; i++) {
+    if (!spec.IsActorCreationTask()) {
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -73,6 +74,12 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
                                          /*is_reconstructable=*/true);
     }
+
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    returned_refs.push_back(std::move(ref));
   }
 
   {
@@ -82,6 +89,8 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                   .second);
     num_pending_tasks_++;
   }
+
+  return returned_refs;
 }
 
 Status TaskManager::ResubmitTask(const TaskID &task_id,
