@@ -1,6 +1,6 @@
 import argparse
 import os
-from time import perf_counter
+from time import sleep, perf_counter
 import json
 import ray
 
@@ -27,6 +27,8 @@ def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpus-per-actor", type=float, default=0.1)
     parser.add_argument("--total-actors", type=int, default=20000)
+    parser.add_argument("--no-report", type=bool, default=False)
+    parser.add_argument("--fail", type=bool, default=False)
     return parser.parse_known_args()
 
 
@@ -37,7 +39,9 @@ def main():
     actors = test_max_actors_launch(args.cpus_per_actor, args.total_actors)
     actor_launch_end = perf_counter()
     actor_launch_time = actor_launch_end - actor_launch_start
-
+    if args.fail:
+        sleep(10)
+        return
     actor_ready_start = perf_counter()
     test_actor_ready(actors)
     actor_ready_end = perf_counter()
@@ -55,7 +59,7 @@ def main():
     print(f"Total time: {actor_launch_time + actor_ready_time}"
           f" ({args.total_actors} actors)")
 
-    if "TEST_OUTPUT_JSON" in os.environ:
+    if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
             "actor_launch_time": actor_launch_time,
