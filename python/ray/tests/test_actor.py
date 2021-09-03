@@ -11,9 +11,8 @@ import sys
 import tempfile
 import datetime
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import wait_for_condition
-from ray.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
 
 import ray
@@ -22,7 +21,8 @@ import ray
 import setproctitle  # noqa
 
 
-def test_caching_actors(shutdown_only):
+@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
     @ray.remote
@@ -33,12 +33,17 @@ def test_caching_actors(shutdown_only):
         def get_val(self):
             return 3
 
-    # Check that we can't actually create actors before ray.init() has been
-    # called.
-    with pytest.raises(Exception):
-        f = Foo.remote()
+    if set_enable_auto_connect == "0":
+        # Check that we can't actually create actors before ray.init() has
+        # been called.
+        with pytest.raises(Exception):
+            f = Foo.remote()
 
-    ray.init(num_cpus=1)
+        ray.init(num_cpus=1)
+    else:
+        # Actor creation should succeed here because ray.init() auto connection
+        # is (by default) enabled.
+        f = Foo.remote()
 
     f = Foo.remote()
 
@@ -860,6 +865,55 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
+
+
+def test_named_actor_cache(ray_start_regular_shared):
+    """Verify that named actor cache works well."""
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    a = Counter.options(name="hi").remote()
+    first_get = ray.get_actor("hi")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+    second_get = ray.get_actor("hi")
+    assert ray.get(second_get.inc_and_get.remote()) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("hi")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    get_after_restart = Counter.options(name="hi").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+
+
 def test_wrapped_actor_handle(ray_start_regular_shared):
     @ray.remote
     class B:
@@ -972,6 +1026,34 @@ def test_return_actor_handle_from_actor(ray_start_regular_shared):
     outer = Outer.remote()
     inner = ray.get(outer.get_ref.remote())
     assert ray.get(inner.ping.remote()) == "pong"
+
+
+def test_actor_autocomplete(ray_start_regular_shared):
+    """
+    Test that autocomplete works with actors by checking that the builtin dir()
+    function works as expected.
+    """
+
+    @ray.remote
+    class Foo:
+        def method_one(self) -> None:
+            pass
+
+    class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
+
+    assert set(class_calls) == {"method_one", "options", "remote"}
+
+    f = Foo.remote()
+
+    methods = [fn for fn in dir(f) if not fn.startswith("_")]
+    assert methods == ["method_one"]
+
+    all_methods = set(dir(f))
+    assert all_methods == {"__init__", "method_one", "__ray_terminate__"}
+
+    method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
+
+    assert set(method_options) == {"options", "remote"}
 
 
 if __name__ == "__main__":

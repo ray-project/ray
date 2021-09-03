@@ -49,7 +49,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
+    # Also available via `from ray._private.test_utils import SignalActor`
     import ray
     import asyncio
 
@@ -423,33 +423,112 @@ To get information about the current available resource capacity of your cluster
 .. autofunction:: ray.available_resources
     :noindex:
 
-.. _conda-environments-for-tasks-and-actors:
+.. _runtime-environments:
 
-Conda Environments for Tasks and Actors
------------------------------------------
+Runtime Environments
+-----------------------------------
 
-Starting with Ray 1.3.0, Ray supports starting tasks and actors in `conda environments <https://docs.conda.io/en/latest/>`_.
-This allows you to use tasks and actors with different (possibly conflicting) package dependencies within a single Ray runtime.
-You will need to have the desired conda environments installed beforehand on all nodes in your Ray cluster, and they
-must all use the same Python minor version (e.g., Python 3.8).  Note that this feature is currently unavailable on Windows.
+.. note::
 
-To start a specific task or an actor in an existing conda environment, pass in the environment name to your task or 
-actor via the ``runtime_env`` parameter as follows:
+    This API is in beta and may change before becoming stable.
+
+.. note::
+
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``.
+
+On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
+
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
+The runtime environment defines the dependencies required for your workload.
+
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __ray_init_start__
+   :end-before: __ray_init_end__
+
+..
+  TODO(architkulkarni): run Ray Client doc example in CI
 
 .. code-block:: python
 
-    result = ray.get(my_task.options(runtime_env={"conda_env": "my_env"}).remote())
+    # Using Ray Client
+    ray.init("ray://localhost:10001", runtime_env=runtime_env)
+
+...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
+
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __per_task_per_actor_start__
+   :end-before: __per_task_per_actor_end__
+
+The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
+
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+  It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
+  Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
+  All Ray workers for your job will be started in their node's copy of this working directory.
+
+  - Examples
+
+    - ``"."  # cwd``
+
+    - ``"/code/my_project"``
+
+  Note: Setting this option per-task or per-actor is currently unsupported.
+
+  Note: If your working directory contains a `.gitignore` file, the files and paths specified therein will not be uploaded to the cluster.
+
+- ``excludes`` (List[str]): When used with ``working_dir``, specifies a list of files or paths to exclude from being uploaded to the cluster.
+  This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
+
+  - Example: ``["my_file.txt", "path/to/dir", "*.log"]``
+
+- ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.  The path may be an absolute path or a relative path.  (Note: A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.)
+  This will be dynamically installed in the ``runtime_env``.
+  To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
+
+  - Example: ``["requests==1.0.0", "aiohttp"]``
+
+  - Example: ``"./requirements.txt"``
+
+- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
+  `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
+  or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
+  Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
+
+  - Example: ``{"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}``
+
+  - Example: ``"./environment.yml"``
+
+  - Example: ``"pytorch_p36"``
+
+  Note: if specifying the path to an "environment.yml" file, you may provide an absolute path or a relative path.  A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.
+
+- ``env_vars`` (Dict[str, str]): Environment variables to set.
+
+  - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
+
+If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
+For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
+The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ``runtime_env["env_vars"]`` dict of the parent.
+This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+
+Here are some examples of runtime environments combining multiple options:
+
+..
+  TODO(architkulkarni): run working_dir doc example in CI
 
 .. code-block:: python
 
-    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"}).remote()
+    runtime_env = {"working_dir": "/code/my_project", "pip": ["pendulum=2.1.2"]}
 
-Nested tasks and actors will inherit the conda environment of their parent by default.
-
-To have Ray start all tasks and actors in a specific conda environment by default, you may
-pass in the desired conda environment name into ``ray.init()``:
-
-.. code-block:: python
-
-    from ray.job_config import JobConfig
-    ray.init(job_config=JobConfig(runtime_env={"conda_env": "my_env"}))
+.. literalinclude:: ../examples/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __runtime_env_conda_def_start__
+   :end-before: __runtime_env_conda_def_end__

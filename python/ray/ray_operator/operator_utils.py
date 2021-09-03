@@ -30,10 +30,10 @@ AUTOSCALER_RETRIES_FIELD = "autoscalerRetries"
 MAX_STATUS_RETRIES = 3
 DELAY_BEFORE_STATUS_RETRY = .5
 
-OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
+OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE", "")
 # Operator is namespaced if the above environment variable is set,
 # cluster-scoped otherwise:
-NAMESPACED_OPERATOR = OPERATOR_NAMESPACE is not None
+NAMESPACED_OPERATOR = OPERATOR_NAMESPACE != ""
 
 RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or \
     os.path.expanduser("~/ray_cluster_configs")
@@ -308,13 +308,13 @@ def infer_head_port(cluster_config: Dict[str, Any]) -> str:
     return str(ray_constants.DEFAULT_PORT)
 
 
-def check_redis_password_not_specified(cluster_config, cluster_identifier):
+def check_redis_password_not_specified(cluster_config, name, namespace):
     """Detect if Redis password is specified in the head Ray start commands.
     The operator does not currently support setting a custom Redis password.
     """
     head_start_commands = cluster_config.get("head_start_ray_commands", [])
     if any("redis-password" in cmd for cmd in head_start_commands):
-        prefix = ",".join(cluster_identifier) + ":"
+        prefix = ",".join([name, namespace]) + ":"
         raise ValueError(f"{prefix}The Ray Kubernetes Operator does not"
                          " support setting a custom Redis password in Ray"
                          " start commands.")

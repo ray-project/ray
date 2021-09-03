@@ -24,6 +24,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -84,10 +85,6 @@ struct NodeManagerConfig {
   std::string agent_command;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled;
-  /// Whether to enable automatic object deletion for object spilling.
-  bool automatic_object_deletion_enabled;
   /// The store socket name.
   std::string store_socket_name;
   /// The path to the ray temp dir.
@@ -96,6 +93,8 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The path of this ray resource dir.
   std::string resource_dir;
+  /// If true make Ray debugger available externally.
+  int ray_debugger_external;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.
@@ -104,9 +103,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
-  // reports from raylets.
-  bool pull_based_resource_reporting;
 };
 
 class HeartbeatSender {
@@ -147,8 +143,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Process a new client connection.
   ///
@@ -244,12 +239,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
+  /// Fill out the normal task resource report.
+  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
+
   /// Fill out the resource report. This can be called by either method to transport the
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);
-
-  /// Report resource usage to the GCS.
-  void ReportResourceUsage();
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
@@ -257,11 +252,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Flush objects that are out of scope in the application. This will attempt
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
-
-  /// Get profiling information from the object manager and push it to the GCS.
-  ///
-  /// \return Void.
-  void GetObjectManagerProfileInfo();
 
   /// Handler for a resource usage notification from the GCS.
   ///
@@ -285,7 +275,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task_spec Task specification of the actor creation task that created the
+  /// \param task_spec RayTask specification of the actor creation task that created the
   /// actor.
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
@@ -294,7 +284,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -581,8 +571,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
   /// print.
   ///
-  /// \param task Task that is infeasible
-  void PublishInfeasibleTaskError(const Task &task) const;
+  /// \param task RayTask that is infeasible
+  void PublishInfeasibleTaskError(const RayTask &task) const;
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
@@ -621,18 +611,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
+  /// A pool of workers.
+  WorkerPool worker_pool_;
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `CoreWorkerClient`s.
+  rpc::ClientCallManager client_call_manager_;
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+  /// The raylet client to initiate the pubsub to core workers (owners).
+  /// It is used to subscribe objects to evict.
+  std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  /// The object table. This is shared between the object manager and node
+  /// manager.
+  std::unique_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
   plasma::PlasmaClient store_client_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The object table. This is shared with the object manager.
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
@@ -640,8 +641,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last resource report was sent at. Used to make sure we are
   /// keeping up with resource reports.
   uint64_t last_resource_report_at_ms_;
-  /// Whether to enable fair queueing between task classes in raylet.
-  bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;
@@ -652,13 +651,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
 
-  /// A pool of workers.
-  WorkerPool worker_pool_;
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
 
-  std::unique_ptr<AgentManager> agent_manager_;
+  std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
@@ -669,13 +666,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The agent manager RPC service.
   std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
   rpc::AgentManagerGrpcService agent_manager_service_;
-
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
-  /// as well as all `CoreWorkerClient`s.
-  rpc::ClientCallManager client_call_manager_;
-
-  /// Pool of RPC client connections to core workers.
-  rpc::CoreWorkerClientPool worker_rpc_pool_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -758,6 +748,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Manage all runtime env locally
   RuntimeEnvManager runtime_env_manager_;
+
+  /// Next resource broadcast seq no. Non-incrementing sequence numbers
+  /// indicate network issues (dropped/duplicated/ooo packets, etc).
+  int64_t next_resource_seq_no_;
 };
 
 }  // namespace raylet

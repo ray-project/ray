@@ -163,11 +163,7 @@ class ModelV2:
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
-            info:
-                learner:
-                    model:
-                        key1: metric1
-                        key2: metric2
+        info.learner.[policy_id, e.g. "default_policy"].model.key1=metric1
 
         Returns:
             Dict[str, TensorType]: The custom metrics for this model.
@@ -210,7 +206,7 @@ class ModelV2:
             restored = input_dict.copy(shallow=True)
             # Backward compatibility.
             if seq_lens is None:
-                seq_lens = input_dict.get("seq_lens")
+                seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
             if not state:
                 state = []
                 i = 0
@@ -264,7 +260,8 @@ class ModelV2:
         while "state_in_{}".format(i) in input_dict:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        ret = self.__call__(input_dict, states,
+                            input_dict.get(SampleBatch.SEQ_LENS))
         return ret
 
     def import_from_h5(self, h5_file: str) -> None:

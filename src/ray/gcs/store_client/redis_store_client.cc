@@ -447,6 +447,8 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
+int RedisStoreClient::GetNextJobID() { return redis_client_->GetNextJobID(); }
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import RayTestTimeoutException, get_other_nodes
+from ray._private.test_utils import RayTestTimeoutException, get_other_nodes
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -29,6 +29,7 @@ def ray_start_workers_separate_multinode(request):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
 

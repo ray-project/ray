@@ -17,13 +17,13 @@ from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-import ray.test_utils
-from ray import resource_spec
+import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors)
+from ray._private.test_utils import (check_call_ray, wait_for_condition,
+                                     wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,6 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
-
-    # A driver/worker creates a temporary object during startup. Although the
-    # temporary object is freed immediately, in a rare case, we can still find
-    # the object ref in GCS because Raylet removes the object ref from GCS
-    # asynchronously.
-    # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.state.objects()` returns an empty dict. Here
-    # we just make sure `ray.state.objects()` succeeds.
-    assert len(ray.state.objects()) >= 0
 
     job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
@@ -756,7 +747,7 @@ def test_sync_job_config(shutdown_only):
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
-    job_config = ray.gcs_utils.JobConfig()
+    job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)

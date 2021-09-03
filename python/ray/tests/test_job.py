@@ -3,7 +3,8 @@ import os
 
 import ray
 from ray.job_config import JobConfig
-from ray.test_utils import (
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -55,11 +56,11 @@ _ = Actor.remote()
 def test_job_gc_with_detached_actor(call_ray_start):
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
     driver = """
 import ray
 
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 
 @ray.remote
 class Actor:
@@ -76,7 +77,7 @@ ray.get(_.value.remote())
 
     p = run_string_as_driver_nonblocking(driver)
     # Wait for actor to be created
-    wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
+    wait_for_num_actors(1, gcs_utils.ActorTableData.ALIVE)
 
     actor_table = ray.state.actors()
     assert len(actor_table) == 1
@@ -118,9 +119,14 @@ ray.shutdown()
     jobs = list(ray.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
 
-    # jobs[0] is the test case driver.
+    driver = jobs[0]
     finished = jobs[1]
     running = jobs[2]
+
+    # The initial driver timestamp/start time go down a different code path.
+    assert driver["Timestamp"] == driver["StartTime"]
+    assert finished["Timestamp"] == finished["EndTime"]
+    assert running["Timestamp"] == running["StartTime"]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]
@@ -141,6 +147,7 @@ ray.shutdown()
     prev_running = jobs[2]
 
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
+    assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
     assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
 

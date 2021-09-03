@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/gcs/accessor.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -31,9 +32,6 @@
 namespace ray {
 
 using rpc::HeartbeatTableData;
-
-// Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
@@ -51,7 +49,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources,
-      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr,
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -80,24 +79,18 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string) override;
 
-  /// Check whether a task request is feasible on a given node. A node is
+  /// Check whether a resource request is feasible on a given node. A node is
   /// feasible if it has the total resources needed to eventually execute the
   /// task, even if those resources are currently allocated.
   ///
-  /// \param shape The resource demand's shape.
-  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
-
-  /// Check whether a task request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
-  /// \param task_req Task request to be scheduled.
+  /// \param resource_request Resource request to be scheduled.
   /// \param resources Node's resources.
-  bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;
+  bool IsFeasible(const ResourceRequest &resource_request,
+                  const NodeResources &resources) const;
 
-  /// Check whether a task request can be scheduled given a node.
+  /// Check whether a resource request can be scheduled given a node.
   ///
-  ///  \param task_req: Task request to be scheduled.
+  ///  \param resource_request: Resource request to be scheduled.
   ///  \param node_id: ID of the node.
   ///  \param resources: Node's resources. (Note: Technically, this is
   ///     redundant, as we can get the node's resources from nodes_
@@ -109,10 +102,10 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///           least a hard constraints is violated.
   ///           >= 0, the number soft constraint violations. If 0, no
   ///           constraint is violated.
-  int64_t IsSchedulable(const TaskRequest &task_req, int64_t node_id,
+  int64_t IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
                         const NodeResources &resources) const;
 
-  ///  Find a node in the cluster on which we can schedule a given task request.
+  ///  Find a node in the cluster on which we can schedule a given resource request.
   ///
   ///  Ignoring soft constraints, this policy prioritizes nodes in the
   ///  following order:
@@ -134,54 +127,55 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  should queue the task and try again once resource availability has been
   ///  updated.
   ///
-  ///  \param task_request: Task to be scheduled.
+  ///  \param resource_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
   ///  local node.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
-  ///                     a node that can schedule task_req is found).
+  ///                     a node that can schedule resource_request is found).
   ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
-  ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNodeSimpleBinPack(const TaskRequest &task_request,
+  ///          return the ID of a node that can schedule the resource request.
+  int64_t GetBestSchedulableNodeSimpleBinPack(const ResourceRequest &resource_request,
                                               bool actor_creation, bool force_spillback,
                                               int64_t *violations, bool *is_infeasible);
 
-  ///  Find a node in the cluster on which we can schedule a given task request.
+  ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///  In legacy mode, see `GetBestSchedulableNodeLegacy` for a description of the policy.
   ///
-  ///  \param task_request: Task to be scheduled.
+  ///  \param resource_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
   ///  local node.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
-  ///                     a node that can schedule task_req is found).
+  ///                     a node that can schedule resource_request is found).
   ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
-  ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
-                                 bool force_spillback, int64_t *violations,
-                                 bool *is_infeasible);
+  ///          return the ID of a node that can schedule the resource request.
+  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
+                                 bool actor_creation, bool force_spillback,
+                                 int64_t *violations, bool *is_infeasible);
 
   /// Similar to
-  ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
+  ///    int64_t GetBestSchedulableNode(const ResourceRequest &resource_request, int64_t
   ///    *violations)
   /// but the return value is different:
   /// \return "", if no node can schedule the current request; otherwise,
   ///          return the ID in string format of a node that can schedule the
-  //           task request.
+  //           resource request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      bool force_spillback, int64_t *violations, bool *is_infeasible);
+      const std::unordered_map<std::string, double> &resource_request,
+      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -277,26 +271,25 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// (0., 0., 0., 0.)
   ///
   /// \param demand: The resource amount to be allocated.
-  /// \param soft: Specifies whether this demand has soft or hard constraints.
   /// \param available: List of available capacities of the instances of the resource.
   /// \param allocation: List of instance capacities allocated to satisfy the demand.
   /// This is a return parameter.
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(FixedPoint demand, bool soft,
-                                 std::vector<FixedPoint> &available,
+  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
                                  std::vector<FixedPoint> *allocation);
 
-  /// Allocate local resources to satisfy a given request (task_req).
+  /// Allocate local resources to satisfy a given request (resource_request).
   ///
-  /// \param task_req: Resources requested by a task.
-  /// \param task_allocation: Local resources allocated to satsify task_req demand.
+  /// \param resource_request: Resources requested by a task.
+  /// \param task_allocation: Local resources allocated to satsify resource_request
+  /// demand.
   ///
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
   bool AllocateTaskResourceInstances(
-      const TaskRequest &task_req,
+      const ResourceRequest &resource_request,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Free resources which were allocated with a task. The freed resources are
@@ -362,29 +355,29 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// capacities in gpu_instances.
   std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
 
-  /// Subtract the resources required by a given task request (task_req) from the
-  /// local node. This function also updates the local node resources
-  /// at the instance granularity.
+  /// Subtract the resources required by a given resource request (resource_request) from
+  /// the local node. This function also updates the local node resources at the instance
+  /// granularity.
   ///
-  /// \param task_req Task for which we allocate resources.
+  /// \param resource_request Task for which we allocate resources.
   /// \param task_allocation Resources allocated to the task at instance granularity.
   /// This is a return parameter.
   ///
-  /// \return True if local node has enough resources to satisfy the task request.
+  /// \return True if local node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateLocalTaskResources(
       const std::unordered_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  bool AllocateLocalTaskResources(const TaskRequest &task_request,
+  bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
                                   std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  /// Subtract the resources required by a given task request (task_req) from a given
-  /// remote node.
+  /// Subtract the resources required by a given resource request (resource_request) from
+  /// a given remote node.
   ///
   /// \param node_id Remote node whose resources we allocate.
-  /// \param task_req Task for which we allocate resources.
-  /// \return True if remote node has enough resources to satisfy the task request.
+  /// \param resource_request Task for which we allocate resources.
+  /// \return True if remote node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       const std::string &node_id,
@@ -411,6 +404,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
+  /// \return The total resource capacity of the node.
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
+
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///
@@ -418,28 +414,37 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  double GetLocalAvailableCpus() const override;
+
+  /// Serialize task resource instances to json string.
+  ///
+  /// \param task_allocation Allocated resource instances for a task.
+  /// \return The task resource instances json string
+  std::string SerializedTaskResourceInstances(
+      std::shared_ptr<TaskResourceInstances> task_allocation) const;
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
  private:
-  /// Decrease the available resources of a node when a task request is
+  /// Init the information about which resources are unit_instance.
+  void InitResourceUnitInstanceInfo();
+
+  /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
   ///
   /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_req: task request being scheduled.
+  /// \param resource_request: resource request being scheduled.
   ///
-  /// \return true, if task_req can be indeed scheduled on the node,
+  /// \return true, if resource_request can be indeed scheduled on the node,
   /// and false otherwise.
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
-                                            const TaskRequest &task_request);
+                                            const ResourceRequest &resource_request);
 
   /// Use the hybrid spillback policy.
   const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
-  const float hybrid_threshold_;
-  /// Feature lag between legacy scheduling algorithms. When loadbalance_spillback_ is
-  /// true, a node is chosen at uniform random from the possible nodes.
-  bool loadbalance_spillback_;
+  const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;
@@ -456,6 +461,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
+  /// Function to get whether the pull manager is at capacity.
+  std::function<bool(void)> get_pull_manager_at_capacity_;
+
+  // Specify predefine resources that consists of unit-size instances.
+  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
+
+  // Specify custom resources that consists of unit-size instances.
+  std::unordered_set<int64_t> custom_unit_instance_resources_{};
 };
 
 }  // end namespace ray

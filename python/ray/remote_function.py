@@ -1,3 +1,4 @@
+import uuid
 import logging
 import inspect
 from functools import wraps
@@ -24,6 +25,7 @@ DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
 # Normal tasks may be retried on failure this many times.
 # TODO(swang): Allow this to be set globally for an application.
 DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
+DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS = False
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,10 @@ class RemoteFunction:
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before exiting.
+        _max_retries: The number of times this task may be retried
+            on worker failure.
+        _retry_exceptions: Whether application-level errors should be retried.
+        _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
@@ -71,7 +77,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 accelerator_type, num_returns, max_calls, max_retries):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 retry_exceptions, runtime_env):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -98,12 +105,17 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
+        self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
+                                  if retry_exceptions is None else
+                                  retry_exceptions)
+        self._runtime_env = runtime_env
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
+        self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -128,7 +140,8 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                retry_exceptions=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -165,6 +178,7 @@ class RemoteFunction:
                     accelerator_type=accelerator_type,
                     resources=resources,
                     max_retries=max_retries,
+                    retry_exceptions=retry_exceptions,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
@@ -188,7 +202,8 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                retry_exceptions=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
@@ -208,6 +223,7 @@ class RemoteFunction:
                 accelerator_type=accelerator_type,
                 resources=resources,
                 max_retries=max_retries,
+                retry_exceptions=retry_exceptions,
                 placement_group=placement_group,
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
@@ -234,9 +250,8 @@ class RemoteFunction:
             # first driver. This is an argument for repickling the function,
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
-
             self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._pickled_function)
+                self._function, self._uuid)
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -248,14 +263,18 @@ class RemoteFunction:
             num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
+        if retry_exceptions is None:
+            retry_exceptions = self._retry_exceptions
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -269,15 +288,16 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        if runtime_env:
-            runtime_env_dict = runtime_support.RuntimeEnvDict(
-                runtime_env).get_parsed_dict()
-        else:
-            runtime_env_dict = {}
+        if runtime_env is None:
+            runtime_env = self._runtime_env
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.5.  Please use "
+                           "will be removed in Ray 1.6.  Please use "
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 
@@ -302,6 +322,7 @@ class RemoteFunction:
                 num_returns,
                 resources,
                 max_retries,
+                retry_exceptions,
                 placement_group.id,
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,

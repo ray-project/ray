@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import tempfile
+import warnings
 
 import torch
 import torch.nn as nn
@@ -14,12 +15,14 @@ from ray.util.sgd.torch.constants import (
     NUM_STEPS,
     SCHEDULER_STEP_BATCH,
 )
+from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
 logger = logging.getLogger(__name__)
 amp = None
+apex_amp = None
 
 try:
     from collections.abc import Iterable
@@ -27,12 +30,18 @@ except ImportError:
     from collections import Iterable
 
 try:
-    from apex import amp
+    from apex import amp as apex_amp
 except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
     logger.debug("apex is not installed.")
+    pass
+
+try:
+    from torch.cuda import amp
+except ImportError:
+    logger.debug("torch.cuda.amp is not available.")
     pass
 
 tqdm = None
@@ -133,7 +142,7 @@ class TrainingOperator:
         self._local_rank = local_rank
         self._config = config
         self._is_distributed = is_distributed
-        self._use_fp16 = use_fp16
+        self._use_fp16 = choose_amp_backend(use_fp16, amp, apex_amp)
         self._device = device
         self._use_gpu = use_gpu and torch.cuda.is_available()
         if tqdm is None and use_tqdm:
@@ -151,7 +160,7 @@ class TrainingOperator:
         """Passes in the timers from the Runner."""
         self.timers = timers
 
-    def _configure_amp(self, amp, models, optimizers, apex_args):
+    def _configure_apex_amp(self, amp, models, optimizers, apex_args):
         models, optimizers = amp.initialize(models, optimizers, **apex_args)
         return models, optimizers
 
@@ -206,8 +215,8 @@ class TrainingOperator:
         Calling register will perform the following steps in this order:
             1. If using GPU, Move model(s) and criterion to the corresponding
                 Cuda device.
-            2. If using fp16, initializes amp with model(s), optimizer(s),
-                and apex_args.
+            2. If using fp16, initializes amp (if using apex - with model(s),
+                optimizer(s), and apex_args).
             3. If using distributed training and wrap_ddp is True,
                 wraps model(s) with DistributedDataParallel.
 
@@ -260,6 +269,7 @@ class TrainingOperator:
                 By default, the models and optimizers are passed in.
                 Consider using "num_losses" if operating over multiple
                 models and optimizers.
+                Ignored if apex is not used for fp16.
 
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
@@ -310,14 +320,25 @@ class TrainingOperator:
         else:
             self._criterion = None
 
-        if self.use_fp16 and amp:
-            logger.debug("Setting up Apex.")
-            self._amp = amp
-            self._original_models, self._optimizers = self._configure_amp(
-                self._amp,
-                self._original_models,
-                self._optimizers,
-                apex_args=apex_args)
+        # using attributes instead of properties because those check
+        # for self._amp which has not been set yet
+        if self._use_fp16:
+            if self._use_fp16 == "apex":
+                if not apex_amp:
+                    raise ValueError("apex library must be installed to "
+                                     "use apex backend for fp16")
+                logger.debug("Setting up Apex.")
+                self._amp = apex_amp
+                self._original_models, self._optimizers = (
+                    self._configure_apex_amp(
+                        self._amp,
+                        self._original_models,
+                        self._optimizers,
+                        apex_args=apex_args))
+            else:
+                logger.debug("Setting up native amp.")
+                self._amp = amp
+                self._amp_scaler = amp.GradScaler()
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
@@ -584,23 +605,34 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
             optimizer.zero_grad()
-            if self.use_fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+            if self.use_fp16_apex:
+                with self._amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
+            elif self.use_fp16_native:
+                self._amp_scaler.scale(loss).backward()
             else:
                 loss.backward()
 
         # Call step of optimizer to update model params.
         with self.timers.record("apply"):
-            optimizer.step()
+            if self.use_fp16_native:
+                self._amp_scaler.step(optimizer)
+                self._amp_scaler.update()
+            else:
+                optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: target.size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
@@ -685,8 +717,13 @@ class TrainingOperator:
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
@@ -799,6 +836,13 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
+        warnings.warn(
+            "Ray SGD `LightningOperator` is no longer maintained. "
+            "Check out the Ray Lightning library "
+            "(https://github.com/ray-project/ray_lightning)"
+            "instead for distributed PyTorch Lightning Training on"
+            "Ray!",
+            category=FutureWarning)
         from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):
@@ -913,8 +957,21 @@ class TrainingOperator:
 
     @property
     def use_fp16(self):
-        """bool: Whether the model and optimizer have been FP16 enabled."""
-        return self._use_fp16
+        """bool: Whether FP16 has been enabled and is available."""
+        return self._use_fp16 and getattr(self, "_amp", None)
+
+    @property
+    def use_fp16_apex(self):
+        """bool: Whether FP16 is enabled and using Apex as a backend."""
+        # second condition is for backwards compatibility
+        return self.use_fp16 and (self._use_fp16 == "apex" or
+                                  (self._use_fp16
+                                   and hasattr(self._amp, "scale_loss")))
+
+    @property
+    def use_fp16_native(self):
+        """bool: Whether FP16 is enabled and using native PyTorch backend."""
+        return self.use_fp16 and self._use_fp16 != "apex"
 
     @property
     def use_tqdm(self):

@@ -118,6 +118,18 @@ parser.add_argument(
     type=int,
     default=0,
     help="The computed hash of the runtime env for this worker.")
+parser.add_argument(
+    "--worker-shim-pid",
+    required=False,
+    type=int,
+    default=0,
+    help="The PID of the process for setup worker runtime env.")
+parser.add_argument(
+    "--ray-debugger-external",
+    default=False,
+    action="store_true",
+    help="True if Ray debugger is made available externally.")
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
@@ -174,7 +186,12 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=mode, runtime_env_hash=args.runtime_env_hash)
+    ray.worker.connect(
+        node,
+        mode=mode,
+        runtime_env_hash=args.runtime_env_hash,
+        worker_shim_pid=args.worker_shim_pid,
+        ray_debugger_external=args.ray_debugger_external)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker

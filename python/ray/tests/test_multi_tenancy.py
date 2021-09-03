@@ -8,11 +8,10 @@ import pytest
 import numpy as np
 
 import ray
-import ray.test_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
+                                     run_string_as_driver_nonblocking)
 
 
 def get_workers():
@@ -234,7 +233,7 @@ ray.shutdown()
 
     # wait for a while to let workers register
     time.sleep(2)
-    wait_for_condition(lambda: len(get_workers()) == before)
+    wait_for_condition(lambda: len(get_workers()) <= before)
 
 
 def test_not_killing_workers_that_own_objects(shutdown_only):

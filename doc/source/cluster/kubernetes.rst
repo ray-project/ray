@@ -47,8 +47,8 @@ Installing the Ray Operator with Helm
 -------------------------------------
 Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
 
-Currently, the `Ray Helm chart`_ is available on the the master branch of the Ray GitHub repo.
-The chart will be published to a public Helm repo as part of each Ray release, starting with the upcoming Ray 1.4.0.
+The `Ray Helm chart`_ is available as part of the Ray GitHub repository.
+The chart will be published to a public Helm repository as part of a future Ray release.
 
 Preparation
 ~~~~~~~~~~~
@@ -133,6 +133,8 @@ To view autoscaling logs, run a ``kubectl logs`` command on the operator pod:
     $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
     | tail -n 100
 
+.. _ray-k8s-dashboard:
+
 The :ref:`Ray dashboard<ray-dashboard>` can be accessed on the Ray head node at port ``8265``.
 
 .. code-block:: shell
@@ -154,8 +156,8 @@ on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``
 
   Connecting with Ray client requires using matching minor versions of Python (for example 3.7)
   on the server and client end, that is, on the Ray head node and in the environment where
-  ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
-  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=1.3.0>`_.
+  ``ray.init("ray://<host>:<port>")`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
+  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray>`_.
 
   Connecting with Ray client also requires matching Ray versions. To connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
 
@@ -174,7 +176,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
-The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
+The program in this example uses ``ray.init("ray://127.0.0.1:10001")`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -195,7 +197,7 @@ The following command submits a Job which executes an `example Ray program`_.
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
-``ray.util.connect("example-cluster-ray-head:10001")``.
+``ray.init("ray://example-cluster-ray-head:10001")``.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -219,12 +221,26 @@ then fetch its logs:
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
 
+.. tip::
+
+  Code dependencies for a given Ray task or actor must be installed on each Ray node that might run the task or actor.
+  Typically, this means that all Ray nodes need to have the same dependencies installed.
+  To achieve this, you can build a custom container image, using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
+  Alternatively, try out the experimental :ref:`Runtime Environments<runtime-environments>` API (latest Ray release version recommended.)
+
+.. _k8s-cleanup-basic:
+
 Cleanup
 -------
 
-To remove a Ray Helm release and the associated API resources, use `helm uninstall`_.
+To remove a Ray Helm release and the associated API resources, use `kubectl delete`_ and `helm uninstall`_.
+Note the order of the commands below.
 
 .. code-block:: shell
+
+  # First, delete the RayCluster custom resource.
+  $ kubectl -n ray delete raycluster example-cluster
+  raycluster.cluster.ray.io "example-cluster" deleted
 
   # Delete the Ray release.
   $ helm -n ray uninstall example-cluster
@@ -236,6 +252,8 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 
 Note that ``helm uninstall`` `does not delete`_ the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
+
+- :ref:`More details on resource cleanup<k8s-cleanup>`
 
 Next steps
 ----------
@@ -262,8 +280,11 @@ Questions or Issues?
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
+.. _`kubectl delete`: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#delete
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
 .. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/job_example.py
 .. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
+.. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
+.. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray

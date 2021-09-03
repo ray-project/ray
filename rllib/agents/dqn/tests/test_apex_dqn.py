@@ -17,6 +17,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
+        config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
@@ -31,6 +32,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
+        config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
@@ -43,7 +45,7 @@ class TestApexDQN(unittest.TestCase):
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
@@ -55,7 +57,7 @@ class TestApexDQN(unittest.TestCase):
             # Test again per-worker epsilon distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()

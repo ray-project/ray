@@ -33,7 +33,9 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::SendReplyCallback send_reply_callback) {
   rpc::JobTableData mutable_job_table_data;
   mutable_job_table_data.CopyFrom(request.data());
-  mutable_job_table_data.set_start_time(current_sys_time_ms());
+  auto time = current_sys_time_ms();
+  mutable_job_table_data.set_start_time(time);
+  mutable_job_table_data.set_timestamp(time);
   JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
@@ -159,6 +161,13 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   auto job_id = JobID::FromBinary(request.job_error().job_id());
   RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
                                      request.job_error().SerializeAsString(), nullptr));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+                                       rpc::GetNextJobIDReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  reply->set_job_id(gcs_table_storage_->GetNextJobID());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

@@ -131,14 +131,30 @@ class ClientAPI:
         """
         return self.worker.close()
 
-    def get_actor(self, name: str) -> "ClientActorHandle":
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> "ClientActorHandle":
         """Returns a handle to an actor by name.
 
         Args:
             name: The name passed to this actor by
               Actor.options(name="name").remote()
         """
-        return self.worker.get_actor(name)
+        return self.worker.get_actor(name, namespace)
+
+    def list_named_actors(self, all_namespaces: bool = False) -> List[str]:
+        """List all named actors in the system.
+
+        Actors must have been created with Actor.options(name="name").remote().
+        This works for both detached & non-detached actors.
+
+        By default, only actors in the current namespace will be returned
+        and the returned entries will simply be their name.
+
+        If `all_namespaces` is set to True, all actors in the cluster will be
+        returned regardless of namespace, and the retunred entries will be of
+        the form '<namespace>/<name>'.
+        """
+        return self.worker.list_named_actors(all_namespaces)
 
     def kill(self, actor: "ClientActorHandle", *, no_restart=True):
         """kill forcibly stops an actor running in the cluster
@@ -269,7 +285,10 @@ class ClientAPI:
 
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
-        return self.is_initialized()
+        # NOTE(edoakes): the kv is always initialized because we initialize it
+        # manually in the proxier with a GCS client if Ray hasn't been
+        # initialized yet.
+        return True
 
     def _internal_kv_exists(self, key: bytes) -> bool:
         """Hook for internal_kv._internal_kv_exists."""

@@ -22,8 +22,6 @@ Syntax
         :ref:`auth <cluster-configuration-auth-type>`
     :ref:`available_node_types <cluster-configuration-available-node-types>`:
         :ref:`node_types <cluster-configuration-node-types-type>`
-    :ref:`worker_nodes <cluster-configuration-worker-nodes>`:
-        :ref:`node_config <cluster-configuration-node-config-type>`
     :ref:`head_node_type <cluster-configuration-head-node-type>`: str
     :ref:`file_mounts <cluster-configuration-file-mounts>`:
         :ref:`file_mounts <cluster-configuration-file-mounts-type>`
@@ -137,7 +135,12 @@ Provider
 Node types
 ~~~~~~~~~~
 
-The nodes types object's keys represent the names of the different node types.
+The ``available_nodes_types`` object's keys represent the names of the different node types.
+
+Deleting a node type from ``available_node_types`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
+In particular, changing the key of a node type object will
+result in removal of nodes corresponding to the old key; nodes with the new key name will then be
+created according to cluster configuration and Ray resource demands.
 
 .. parsed-literal::
     <node_type_1_name>:
@@ -159,6 +162,11 @@ The nodes types object's keys represent the names of the different node types.
 
 Node config
 ~~~~~~~~~~~
+
+Cloud-specific configuration for nodes of a given node type.
+
+Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
+nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
 
 .. tabs::
     .. group-tab:: AWS
@@ -196,6 +204,8 @@ Resources
 
     :ref:`CPU <cluster-configuration-CPU>`: int
     :ref:`GPU <cluster-configuration-GPU>`: int
+    :ref:`object_store_memory <cluster-configuration-object-store-memory>`: int
+    :ref:`memory <cluster-configuration-memory>`: int
     <custom_resource1>: int
     <custom_resource2>: int
     ...
@@ -318,7 +328,7 @@ Authentication credentials that Ray will use to launch nodes.
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tells the autoscaler the allowed node types and the resources they provide.
-The key is the name of the node type, which is just for debugging purposes.
+Each node type is identified by a user-specified key.
 
 * **Required:** No
 * **Importance:** High
@@ -339,8 +349,6 @@ The key is the name of the node type, which is just for debugging purposes.
                         Ebs:
                             VolumeSize: 100
                 resources: {"CPU": 2}
-                min_workers: 0
-                max_workers: 0
             ray.worker.default:
                 node_config:
                   InstanceType: m5.large
@@ -356,23 +364,16 @@ The key is the name of the node type, which is just for debugging purposes.
 
 The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
 
+If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up<ray-up-doc>`, the currently running head node will
+be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new
+head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of the :ref:`node_type<cluster-configuration-node-types-type>` with key ``head_node_type`` will also result in cluster restart after a user prompt.
+
+
 
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
-
-.. _cluster-configuration-worker-nodes:
-
-``worker_nodes``
-~~~~~~~~~~~~~~~~
-
-The configuration to be used to launch worker nodes on the cloud service provider. Generally, node configs are set in the :ref:`node config of each node type <cluster-configuration-node-config>`. Setting this property allows propagation of a default value to all the node types when they launch as workers (e.g., using spot instances across all workers can be configured here so that it doesn't have to be set across all instance types).
-
-* **Required:** No
-* **Importance:** Low
-* **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
-* **Default:** ``{}``
 
 .. _cluster-configuration-file-mounts:
 
@@ -904,7 +905,7 @@ The user that Ray will authenticate with when launching new nodes.
 
         The globally unique project ID to use for deployment of the Ray cluster.
 
-        * **Required:** No
+        * **Required:** Yes
         * **Importance:** Low
         * **Type:** String
         * **Default:** ``null``
@@ -967,6 +968,8 @@ The minimum number of workers to maintain for this node type regardless of utili
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
+
+Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
 
 * **Required:** No
 * **Importance:** High
@@ -1047,6 +1050,66 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
+        
+.. _cluster-configuration-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for python worker heap memory on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        
+ .. _cluster-configuration-object-store-memory:
+
+``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        The memory in bytes allocated for the object store on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 30% of it for the object store.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+
+    .. group-tab:: Azure
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
+    .. group-tab:: GCP
+
+        The memory in bytes allocated for the object store on the node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
 
 .. _cluster-configuration-node-docker:
 
@@ -1081,7 +1144,7 @@ Minimal configuration
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-minimal.yaml
             :language: yaml
-
+            
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 
@@ -1099,4 +1162,18 @@ Full configuration
     .. group-tab:: GCP
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml
+
+TPU Configuration
+~~~~~~~~~~~~~~~~~
+
+It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, `TPU pods <https://cloud.google.com/tpu/docs/system-architecture-tpu-vm#pods>`_ (TPUs other than v2-8 and v3-8) are not supported.
+
+Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
+
+.. tabs::
+
+    .. group-tab:: GCP
+
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/tpu.yaml
             :language: yaml

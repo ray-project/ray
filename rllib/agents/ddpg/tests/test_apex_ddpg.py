@@ -31,7 +31,7 @@ class TestApexDDPG(unittest.TestCase):
 
             # Test per-worker scale distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             scale = [i["cur_scale"] for i in infos]
             expected = [
                 0.4**(1 + (i + 1) / float(config["num_workers"] - 1) * 7)
@@ -46,7 +46,7 @@ class TestApexDDPG(unittest.TestCase):
             # Test again per-worker scale distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_info())
+                lambda p, _: p.get_exploration_state())
             scale = [i["cur_scale"] for i in infos]
             check(scale, [0.0] + expected)
 

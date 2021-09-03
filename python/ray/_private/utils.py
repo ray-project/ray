@@ -21,10 +21,13 @@ import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
-import psutil
+
 import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -43,7 +46,11 @@ win32_AssignProcessToJobObject = None
 
 
 def get_user_temp_dir():
-    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+    if "RAY_TMPDIR" in os.environ:
+        return os.environ["RAY_TMPDIR"]
+    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
+        return os.environ["TMPDIR"]
+    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
         tempdir = os.path.join(os.sep, "tmp")
@@ -127,9 +134,9 @@ def push_error_to_driver_through_redis(redis_client,
     assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
-    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    error_data = gcs_utils.construct_error_message(job_id, error_type, message,
+                                                   time.time())
+    pubsub_msg = gcs_utils.PubSubMessage()
     pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
@@ -263,6 +270,9 @@ def set_cuda_visible_devices(gpu_ids):
     Args:
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
+
+    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+        return
 
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
@@ -592,29 +602,40 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_pickle(pickled, name, obj_type, worker):
-    """Send a warning message if the pickled object is too large.
+def check_oversized_function(pickled, name, obj_type, worker):
+    """Send a warning message if the pickled function is too large.
 
     Args:
-        pickled: the pickled object.
+        pickled: the pickled function.
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
-            'remote function', 'actor', or 'object'.
+            'remote function', or 'actor'.
         worker: the worker used to send warning message.
     """
     length = len(pickled)
-    if length <= ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+    if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
         return
-    warning_message = (
-        "Warning: The {} {} has size {} when pickled. "
-        "It will be stored in Redis, which could cause memory issues. "
-        "This may mean that its definition uses a large array or other object."
-    ).format(obj_type, name, length)
-    push_error_to_driver(
-        worker,
-        ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-        warning_message,
-        job_id=worker.current_job_id)
+    elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
+        warning_message = (
+            "The {} {} is very large ({} MiB). "
+            "Check that its definition is not implicitly capturing a large "
+            "array or other object in scope. Tip: use ray.put() to put large "
+            "objects in the Ray object store.").format(obj_type, name,
+                                                       length // (1024 * 1024))
+        push_error_to_driver(
+            worker,
+            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+            "Warning: " + warning_message,
+            job_id=worker.current_job_id)
+    else:
+        error = (
+            "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
+            " MiB). Check that its definition is not implicitly capturing a "
+            "large array or other object in scope. Tip: use ray.put() to "
+            "put large objects in the Ray object store.").format(
+                obj_type, name, length // (1024 * 1024),
+                ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD // (1024 * 1024))
+        raise ValueError(error)
 
 
 def is_main_thread():
@@ -1004,3 +1025,82 @@ def import_attr(full_path: str):
     module_name = full_path[:last_period_idx]
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
+
+
+def get_wheel_filename(
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Returns the filename used for the nightly Ray wheel.
+
+    Args:
+        sys_platform (str): The platform as returned by sys.platform. Examples:
+            "darwin", "linux", "win32"
+        ray_version (str): The Ray version as returned by ray.__version__ or
+            `ray --version`.  Examples: "2.0.0.dev0"
+        py_version (str):
+            The major and minor Python versions concatenated.  Examples: "36",
+            "37", "38", "39"
+    Returns:
+        The wheel file name.  Examples:
+            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    """
+    assert py_version in ["36", "37", "38", "39"], py_version
+
+    os_strings = {
+        "darwin": "macosx_10_15_x86_64"
+        if py_version in ["38", "39"] else "macosx_10_15_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    assert sys_platform in os_strings, sys_platform
+
+    wheel_filename = (
+        f"ray-{ray_version}-cp{py_version}-"
+        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"-{os_strings[sys_platform]}.whl")
+
+    return wheel_filename
+
+
+def get_master_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel from a specific commit."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+            f"{ray_commit}/{filename}")
+
+
+def get_release_wheel_url(
+        ray_commit: str = ray.__commit__,
+        sys_platform: str = sys.platform,
+        ray_version: str = ray.__version__,
+        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+) -> str:
+    """Return the URL for the wheel for a specific release."""
+    filename = get_wheel_filename(
+        sys_platform=sys_platform,
+        ray_version=ray_version,
+        py_version=py_version)
+    return (f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
+            f"{ray_version}/{ray_commit}/{filename}")
+    # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
+    # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
+    # 4_x86_64.whl
+
+
+def validate_namespace(namespace: str):
+    if not isinstance(namespace, str):
+        raise TypeError("namespace must be None or a string.")
+    elif namespace == "":
+        raise ValueError("\"\" is not a valid namespace. "
+                         "Pass None to not specify a namespace.")

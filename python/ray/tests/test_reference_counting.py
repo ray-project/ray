@@ -11,9 +11,10 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
-                            put_object, wait_for_condition,
-                            new_scheduler_enabled)
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
+    SignalActor, kill_actor_and_wait_for_failure, put_object,
+    wait_for_condition, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -539,10 +540,11 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 
 def _all_actors_dead():
-    return all(actor["State"] == ray.gcs_utils.ActorTableData.DEAD
+    return all(actor["State"] == gcs_utils.ActorTableData.DEAD
                for actor in list(ray.state.actors().values()))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_kill_actor_immediately_after_creation(ray_start_regular):
     @ray.remote
     class A:

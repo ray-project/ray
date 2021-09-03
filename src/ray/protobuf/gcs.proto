@@ -20,7 +20,7 @@ import "src/ray/protobuf/common.proto";
 
 option java_package = "io.ray.runtime.generated";
 
-// These indexes are mapped to strings in ray_redis_module.cc.
+// These indexes are mapped to table names in backend storage.
 enum TablePrefix {
   TABLE_PREFIX_MIN = 0;
   UNUSED = 1;
@@ -31,20 +31,19 @@ enum TablePrefix {
   ACTOR = 6;
   FUNCTION = 7;
   TASK_RECONSTRUCTION = 8;
-  HEARTBEAT = 9;
-  RESOURCE_USAGE_BATCH = 10;
-  JOB = 11;
-  PROFILE = 12;
-  TASK_LEASE = 13;
-  NODE_RESOURCE = 16;
-  DIRECT_ACTOR = 17;
+  RESOURCE_USAGE_BATCH = 9;
+  JOB = 10;
+  PROFILE = 11;
+  TASK_LEASE = 12;
+  NODE_RESOURCE = 13;
+  DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
-  WORKERS = 18;
-  INTERNAL_CONFIG = 29;
-  TABLE_PREFIX_MAX = 20;
-  PLACEMENT_GROUP_SCHEDULE = 21;
-  PLACEMENT_GROUP = 22;
-  KV = 23;
+  WORKERS = 15;
+  INTERNAL_CONFIG = 16;
+  TABLE_PREFIX_MAX = 17;
+  PLACEMENT_GROUP_SCHEDULE = 18;
+  PLACEMENT_GROUP = 19;
+  KV = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -56,14 +55,13 @@ enum TablePubsub {
   NODE_PUBSUB = 4;
   OBJECT_PUBSUB = 5;
   ACTOR_PUBSUB = 6;
-  HEARTBEAT_PUBSUB = 7;
-  RESOURCE_USAGE_BATCH_PUBSUB = 8;
-  TASK_LEASE_PUBSUB = 9;
-  JOB_PUBSUB = 10;
-  NODE_RESOURCE_PUBSUB = 11;
-  DIRECT_ACTOR_PUBSUB = 12;
-  WORKER_FAILURE_PUBSUB = 13;
-  TABLE_PUBSUB_MAX = 14;
+  RESOURCE_USAGE_BATCH_PUBSUB = 7;
+  TASK_LEASE_PUBSUB = 8;
+  JOB_PUBSUB = 9;
+  NODE_RESOURCE_PUBSUB = 10;
+  DIRECT_ACTOR_PUBSUB = 11;
+  WORKER_FAILURE_PUBSUB = 12;
+  TABLE_PUBSUB_MAX = 13;
 }
 
 enum GcsChangeMode {
@@ -283,9 +281,9 @@ message JobConfig {
   uint32 num_java_workers_per_process = 2;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 3;
-  // A list of directories or jar files that specify the search path for user
-  // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
-  // Python.
+  // A list of directories or files (jar files or dynamic libraries) that specify the
+  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
+  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
   repeated string code_search_path = 4;
   // Runtime environment to run the code
   RuntimeEnv runtime_env = 5;
@@ -391,6 +389,23 @@ message PubSubMessage {
   bytes data = 2;
 }
 
+// A notification that the resource table has changed.
+message ResourceUpdate {
+  oneof resource_change_or_data {
+    // The total resources on a node have changed.
+    NodeResourceChange change = 1;
+    // The available resources on a node have changed.
+    ResourcesData data = 2;
+  }
+}
+
+message ResourceUsageBroadcastData {
+  // An incrementing sequence number, used for correcting network errors.
+  int64 seq_no = 1;
+  // The changes to the state of the cluster.
+  repeated ResourceUpdate batch = 2;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
@@ -443,6 +458,15 @@ message ResourcesData {
   bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 10;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 11;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 12;
 }
 
 message ResourceUsageBatchData {
@@ -494,5 +518,7 @@ message PlacementGroupTableData {
   bool creator_actor_dead = 9;
   // Whether the placement group is persistent.
   bool is_detached = 10;
+  // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 11;
 }
 ///////////////////////////////////////////////////////////////////////////////

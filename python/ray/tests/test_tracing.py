@@ -4,9 +4,10 @@ import json
 import os
 import pytest
 import shutil
+from unittest.mock import patch
 
 import ray
-from ray.test_utils import check_call_ray
+from ray._private.test_utils import check_call_ray
 from ray.util.tracing.setup_local_tmp_tracing import spans_dir
 
 setup_tracing_path = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
@@ -200,6 +201,24 @@ def test_wrapping(ray_start_init_tracing):
     @ray.remote
     def f(**_kwargs):
         pass
+
+
+def test_deserialization_works_without_opentelemetry(ray_start_regular):
+    """
+    Test that if a function is serialized with opentelemetry, it can be
+    deserialized in a context without opentelemetry
+    """
+
+    @ray.remote
+    def f():
+        return 30
+
+    fn_bytes = ray.cloudpickle.dumps(f)
+    with patch.dict("sys.modules", opentelemetry=None):
+        # Ensure that opentelemetry cannot be imported
+        with pytest.raises(ModuleNotFoundError):
+            import opentelemetry.trace  # noqa: F401
+        ray.cloudpickle.loads(fn_bytes)
 
 
 if __name__ == "__main__":

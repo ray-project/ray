@@ -128,6 +128,8 @@ table RegisterClientRequest {
   worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The PID of the process for setup worker runtime env.
+  worker_shim_pid: long;
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // The hash of the runtime env for this worker.

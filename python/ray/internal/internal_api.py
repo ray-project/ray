@@ -1,7 +1,7 @@
 import ray
 import ray._private.services as services
 import ray.worker
-from ray import profiling
+import ray._private.profiling as profiling
 from ray import ray_constants
 from ray.state import GlobalState
 
@@ -105,13 +105,23 @@ def node_stats(node_manager_address=None,
 def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
+    # TODO(ekl) it would be nice if we could provide a full memory usage
+    # breakdown by type (e.g., pinned by worker, primary, etc.)
     store_summary += (
-        "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
+        "Plasma memory usage {} MiB, {} objects, {}% full, {}% "
+        "needed\n".format(
             int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
             reply.store_stats.num_local_objects,
             round(
                 100 * reply.store_stats.object_store_bytes_used /
+                reply.store_stats.object_store_bytes_avail, 2),
+            round(
+                100 * reply.store_stats.object_store_bytes_primary_copy /
                 reply.store_stats.object_store_bytes_avail, 2)))
+    if reply.store_stats.object_store_bytes_fallback > 0:
+        store_summary += ("Plasma filesystem mmap usage: {} MiB\n".format(
+            int(reply.store_stats.object_store_bytes_fallback /
+                (1024 * 1024))))
     if reply.store_stats.spill_time_total_s > 0:
         store_summary += (
             "Spilled {} MiB, {} objects, avg write throughput {} MiB/s\n".
@@ -129,8 +139,12 @@ def store_stats_summary(reply):
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
     if reply.store_stats.consumed_bytes > 0:
-        store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
+        store_summary += ("Objects consumed by Ray tasks: {} MiB.\n".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
+    if reply.store_stats.object_pulls_queued:
+        store_summary += (
+            "Object fetches queued, waiting for available memory.")
+
     return store_summary
 
 

@@ -146,6 +146,31 @@ Ray with cloud providers
             # Tear down the cluster
             $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
 
+    .. group-tab:: Aliyun
+
+        First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``). Obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__ and grant AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user. Finally, set the AccessKey pair in your cluster config file.
+
+        Once the above is done, you should be ready to launch your cluster. The provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ``ecs.n4.large`` head node (on-demand) configured to autoscale up to two ``ecs.n4.2xlarge`` nodes.
+
+        Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
+
+        Test that it works by running the following commands from your local machine:
+
+        .. code-block:: bash
+
+            # Create or update the cluster. When the command finishes, it will print
+            # out the command that can be used to SSH into the cluster head node.
+            $ ray up ray/python/ray/autoscaler/aliyun/example-full.yaml
+
+            # Get a remote screen on the head node.
+            $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
+            $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+            # Tear down the cluster.
+            $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
+
+        Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
+
     .. group-tab:: Custom
 
         Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
@@ -253,7 +278,7 @@ on each machine. To install Ray, follow the `installation instructions`_.
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On the head node (just choose some node to be the head node), run the following.
+On the head node (just choose one node to be the head node), run the following.
 If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
 random port.
 
@@ -269,6 +294,10 @@ random port.
 
 The command will print out the address of the Redis server that was started
 (the local node IP address plus the port number you specified).
+
+.. note::
+
+    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
@@ -388,6 +417,18 @@ To run a distributed Ray program, you'll need to execute your program on the sam
               <classname> <args>
 
     .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
+
+  .. group-tab:: C++
+
+    You need to add the ``RAY_ADDRESS`` env var to your command line (like ``RAY_ADDRESS=...``).
+
+    To connect your program to the Ray cluster, run it like this:
+
+        .. code-block:: bash
+
+            RAY_ADDRESS=<address> ./<binary> <args>
+
+    .. note:: Specifying ``auto`` as the address hasn't been implemented in C++ yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
 
 .. note:: A common mistake is setting the address to be a cluster node while running the script on your laptop. This will not work because the script needs to be started/executed on one of the Ray nodes.

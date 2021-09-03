@@ -26,10 +26,10 @@ class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
-        assert sum(train_batch["seq_lens"]) == 201
+        assert sum(train_batch[SampleBatch.SEQ_LENS]) == 201
         for k, v in train_batch.items():
             if k == "state_in_0":
-                assert len(v) == len(train_batch["seq_lens"])
+                assert len(v) == len(train_batch[SampleBatch.SEQ_LENS])
             else:
                 assert len(v) == 201
         current = None
@@ -218,7 +218,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
-        def policy_fn(agent_id):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
         config = {
@@ -269,7 +269,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                      {}),
         }
 
-        def policy_fn(agent_id):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
         config = {
@@ -309,7 +309,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "p0": (None, obs_space, action_space, {}),
                 "p1": (None, obs_space, action_space, {}),
             },
-            "policy_mapping_fn": lambda aid: "p{}".format(aid),
+            "policy_mapping_fn": lambda aid, **kwargs: "p{}".format(aid),
             "count_steps_by": "agent_steps",
         }
         tune.register_env(
@@ -403,7 +403,7 @@ def analyze_rnn_batch(batch, max_seq_len):
 
     # Check after seq-len 0-padding.
     cursor = 0
-    for i, seq_len in enumerate(batch["seq_lens"]):
+    for i, seq_len in enumerate(batch[SampleBatch.SEQ_LENS]):
         state_in_0 = batch["state_in_0"][i]
         state_in_1 = batch["state_in_1"][i]
         for j in range(seq_len):

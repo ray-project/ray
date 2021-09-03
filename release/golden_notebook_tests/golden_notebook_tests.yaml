@@ -1,0 +1,37 @@
+- name: dask_xgboost_test
+  cluster:
+    app_config: dask_xgboost_app_config.yaml
+    compute_template: compute_tpl.yaml
+
+  run:
+    use_connect: True
+    autosuspend_mins: 10
+    timeout: 600
+    script: python workloads/dask_xgboost_test.py
+
+- name: modin_xgboost_test
+  cluster:
+    app_config: modin_xgboost_app_config.yaml
+    compute_template: compute_tpl.yaml
+
+  run:
+    use_connect: True
+    autosuspend_mins: 10
+    timeout: 600
+    script: python workloads/modin_xgboost_test.py
+
+- name: torch_tune_serve_test
+  owner:
+    mail: "matt@anyscale.com"
+    slack: "@team_ml"
+
+  cluster:
+    app_config: torch_tune_serve_app_config.yaml
+    compute_template: gpu_tpl.yaml
+
+  run:
+    use_connect: True
+    autosuspend_mins: 10
+    timeout: 600
+    script: python workloads/torch_tune_serve_test.py
+

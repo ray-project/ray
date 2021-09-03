@@ -27,6 +27,7 @@ $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
 import argparse
 import importlib
 import json
+import numpy as np
 import os
 import subprocess
 import yaml
@@ -47,6 +48,11 @@ parser.add_argument(
     "--skip-install-ray",
     action="store_true",
     help="If set, do not attempt to re-build ray from source.")
+parser.add_argument(
+    "--num-samples",
+    type=int,
+    default=1,
+    help="The number of samples to run for the given experiment.")
 parser.add_argument(
     "--stop-iters",
     type=int,
@@ -122,8 +128,9 @@ if __name__ == "__main__":
     if args.framework:
         config["framework"] = args.framework
 
-    # Define stopping criteria.
-    stop = {}
+    # Define stopping criteria. From the yaml file ..
+    stop = experiment_config.get("stop", {})
+    # .. but override with command line provided ones.
     if args.stop_iters:
         stop["training_iteration"] = args.stop_iters
     if args.stop_timesteps:
@@ -133,40 +140,53 @@ if __name__ == "__main__":
     if args.stop_time:
         stop["time_total_s"] = args.stop_time
 
+    # Invalid pass criteria.
+    if stop.get("episode_reward_mean") is None and \
+            (stop.get("timesteps_total") is None or
+             stop.get("time_total_s") is None):
+        raise ValueError("Invalid pass criterium! Must use either "
+                         "(--stop-reward + optionally any other) OR "
+                         "(--stop-timesteps + --stop-time).")
+
     # - Stop ray.
-    # - Uninstall and re-install ray (from source) if required.
-    # - Start ray.
+    # Do this twice to make sure all processes are stopped (older versions of
+    # ray used to not kill everything the first time around).
     try:
-        subprocess.run(["ray", "stop"])
-        subprocess.run(["ray", "stop"])
+        subprocess.run("ray stop".split(" "))
+        subprocess.run("ray stop".split(" "))
     except Exception:
         pass
 
+    # - Uninstall and re-install ray (from source) if required.
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
-        subprocess.run(["sudo", "apt-get", "update"])
-        subprocess.run([
-            "sudo", "apt-get", "install", "-y", "build-essential", "curl",
-            "unzip", "psmisc"
-        ])
-        subprocess.run(["pip", "install", "cython==0.29.0", "pytest"])
+        subprocess.run("sudo apt-get update".split(" "))
+        subprocess.run("sudo apt-get install -y build-essential curl unzip "
+                       "psmisc".split(" "))
+        subprocess.run("pip install cython==0.29.0 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.
         try:
-            subprocess.run(["pip", "uninstall", "-y", "ray"])
+            subprocess.run("pip uninstall -y ray".split(" "))
         except Exception:
             pass
-        subprocess.run(["ci/travis/install-bazel.sh"])
+        subprocess.run("ci/travis/install-bazel.sh".split(" "))
         os.chdir("python")
-        subprocess.run(["pip", "install", "-e", ".", "--verbose"])
+        subprocess.run("pip install -e . --verbose".split(" "))
         os.chdir("../")
 
+    # - Start ray.
     try:
-        subprocess.run(
-            ["ray", "start", "--head", "--include-dashboard", "false"])
+        subprocess.run("ray start --head".split(" "))
     except Exception:
-        subprocess.run(["ray", "stop"])
-        subprocess.run(
-            ["ray", "start", "--head", "--include-dashboard", "false"])
+        try:
+            subprocess.run("ray stop".split(" "))
+            subprocess.run("ray stop".split(" "))
+        except Exception:
+            pass
+        try:
+            subprocess.run("ray start --head".split(" "))
+        except Exception as e:
+            print(f"ERROR: {e.args[0]}")
 
     # Run the training experiment.
     importlib.invalidate_caches()
@@ -176,28 +196,29 @@ if __name__ == "__main__":
     ray.init()
 
     results = tune.run(run, stop=stop, config=config)
+    last_results = [t.last_result for t in results.trials]
 
-    # Criterium is to have reached some min reward.
-    if args.stop_reward:
-        last_result = results.trials[0].last_result
-        avg_reward = last_result["episode_reward_mean"]
-        if avg_reward < args.stop_reward:
+    # Criterion is to have reached some min reward within given
+    # wall time, iters, or timesteps.
+    if stop.get("episode_reward_mean") is not None:
+        max_avg_reward = np.max(
+            [r["episode_reward_mean"] for r in last_results])
+        if max_avg_reward < stop["episode_reward_mean"]:
             raise ValueError("`stop-reward` of {} not reached!".format(
-                args.stop_reward))
-    # Criterium is to have run through n env timesteps in some wall time m.
-    elif args.stop_timesteps and args.stop_time:
-        last_result = results.trials[0].last_result
-        total_timesteps = last_result["timesteps_total"]
+                stop["episode_reward_mean"]))
+    # Criterion is to have run through n env timesteps in some wall time m
+    # (minimum throughput).
+    else:
+        total_timesteps = np.sum([r["timesteps_total"] for r in last_results])
+        total_time = np.sum([r["time_total_s"] for r in last_results])
+        desired_speed = stop["timesteps_total"] / stop["time_total_s"]
+        actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
-        if total_timesteps - 100 < args.stop_timesteps:
+        if actual_speed < desired_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
-                    args.stop_timesteps, args.stop_time))
-    else:
-        raise ValueError("Invalid pass criterium! Must use either "
-                         "(--stop-reward + optionally any other) OR "
-                         "(--stop-timesteps + --stop-time).")
+                    stop["timesteps_total"], stop["time_total_s"]))
 
     print("ok")
     ray.shutdown()

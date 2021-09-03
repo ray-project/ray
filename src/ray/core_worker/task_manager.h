@@ -24,11 +24,14 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
+
+  virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
   virtual bool PendingTaskFailed(
       const TaskID &task_id, rpc::ErrorType error_type, Status *status,
@@ -45,6 +48,8 @@ class TaskFinisherInterface {
       const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
 
+  virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
@@ -58,6 +63,9 @@ class TaskResubmissionInterface {
 
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
+using PushErrorCallback =
+    std::function<Status(const JobID &job_id, const std::string &type,
+                         const std::string &error_message, double timestamp)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -65,12 +73,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               std::shared_ptr<ReferenceCounter> reference_counter,
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
-              ReconstructObjectCallback reconstruct_object_callback)
+              ReconstructObjectCallback reconstruct_object_callback,
+              PushErrorCallback push_error_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
-        reconstruct_object_callback_(reconstruct_object_callback) {
+        reconstruct_object_callback_(reconstruct_object_callback),
+        push_error_callback_(push_error_callback) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
@@ -84,9 +94,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
-  /// \return Void.
-  void AddPendingTask(const rpc::Address &caller_address, const TaskSpecification &spec,
-                      const std::string &call_site, int max_retries = 0);
+  /// \return ObjectRefs returned by this task.
+  std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
+                                                   const TaskSpecification &spec,
+                                                   const std::string &call_site,
+                                                   int max_retries = 0);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -114,6 +126,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr) override;
+
+  bool RetryTaskIfPossible(const TaskID &task_id) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -158,7 +172,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
   std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
@@ -263,6 +277,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// recoverable).
   const ReconstructObjectCallback reconstruct_object_callback_;
 
+  // Called to push an error to the relevant driver.
+  const PushErrorCallback push_error_callback_;
+
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
 
@@ -287,4 +304,5 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 };
 
+}  // namespace core
 }  // namespace ray

@@ -1,5 +1,4 @@
 import os
-import psutil
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
 
@@ -10,6 +9,9 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -69,6 +71,7 @@ class DefaultCallbacks:
                         *,
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
@@ -78,6 +81,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
+            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
+                to policy objects. In single agent mode there will only be a
+                single "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -107,8 +113,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
-            policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
+                objects. In single agent mode there will only be a single
+                "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -142,7 +149,7 @@ class DefaultCallbacks:
             agent_id (str): Id of the current agent.
             policy_id (str): Id of the current policy for the agent.
             policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+                agent mode there will only be a single "default_policy".
             postprocessed_batch (SampleBatch): The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
@@ -212,8 +219,7 @@ class DefaultCallbacks:
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
-    """
-    MemoryTrackingCallbacks can be used to trace and track memory usage
+    """MemoryTrackingCallbacks can be used to trace and track memory usage
     in rollout workers.
 
     The Memory Tracking Callbacks uses tracemalloc and psutil to track
@@ -224,12 +230,13 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     can therefore be viewed in tensorboard
     (or in WandB etc..)
 
-    Warning: This class is meant for debugging and should not be used
-    in production code as tracemalloc incurs
-    a significant slowdown in execution speed.
-
     Add MemoryTrackingCallbacks callback to the tune config
     e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+
+    Note:
+        This class is meant for debugging and should not be used
+        in production code as tracemalloc incurs
+        a significant slowdown in execution speed.
     """
 
     def __init__(self):
@@ -268,18 +275,19 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
 
 class MultiCallbacks(DefaultCallbacks):
-    """
-    MultiCallback allows multiple callbacks to be registered at the same
-    time in the config of the environment
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
 
-    For example:
+    Example:
 
-    'callbacks': MultiCallbacks([
-        MyCustomStatsCallbacks,
-        MyCustomVideoCallbacks,
-        MyCustomTraceCallbacks,
-        ....
-    ])
+        .. code-block:: python
+
+            'callbacks': MultiCallbacks([
+                MyCustomStatsCallbacks,
+                MyCustomVideoCallbacks,
+                MyCustomTraceCallbacks,
+                ....
+            ])
     """
 
     def __init__(self, callback_class_list):
@@ -316,6 +324,7 @@ class MultiCallbacks(DefaultCallbacks):
                         *,
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
@@ -323,6 +332,7 @@ class MultiCallbacks(DefaultCallbacks):
             callback.on_episode_step(
                 worker=worker,
                 base_env=base_env,
+                policies=policies,
                 episode=episode,
                 env_index=env_index,
                 **kwargs)

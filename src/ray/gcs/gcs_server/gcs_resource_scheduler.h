@@ -66,8 +66,7 @@ class LeastResourceScorer : public NodeScorer {
   /// \param requested Quantity of one of the required resources.
   /// \param available Quantity of one of the available resources.
   /// \return Score of the node.
-  double Calculate(const FractionalResourceQuantity &requested,
-                   const FractionalResourceQuantity &available);
+  double Calculate(const FixedPoint &requested, const FixedPoint &available);
 };
 
 /// Gcs resource scheduler implementation.

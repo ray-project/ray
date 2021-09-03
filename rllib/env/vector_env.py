@@ -92,20 +92,26 @@ class VectorEnv:
         Returns:
             List[Env]: List of all underlying sub environments.
         """
-        raise NotImplementedError
+        return []
 
-    # Experimental method.
-    def try_render_at(self, index: Optional[int] = None) -> None:
+    # TODO: (sven) Experimental method. Make @PublicAPI at some point.
+    def try_render_at(self, index: Optional[int] = None) -> \
+            Optional[np.ndarray]:
         """Renders a single environment.
 
         Args:
             index (Optional[int]): An optional sub-env index to render.
+
+        Returns:
+            Optional[np.ndarray]: Either a numpy RGB image
+                (shape=(w x h x 3) dtype=uint8) or None in case
+                rendering is handled directly by this method.
         """
         pass
 
 
 class _VectorizedGymEnv(VectorEnv):
-    """Internal wrapper to translate any gym envs into a VectorEnv object.
+    """Internal wrapper to translate any gym.Envs into a VectorEnv object.
     """
 
     def __init__(

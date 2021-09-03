@@ -128,14 +128,13 @@ def test_override_environment_variables_multitenancy(shutdown_only,
 def test_override_environment_variables_complex(shutdown_only,
                                                 use_runtime_env):
     if use_runtime_env:
-        ray.init(
-            job_config=ray.job_config.JobConfig(runtime_env={
-                "env_vars": {
-                    "a": "job_a",
-                    "b": "job_b",
-                    "z": "job_z",
-                }
-            }))
+        ray.init(runtime_env={
+            "env_vars": {
+                "a": "job_a",
+                "b": "job_b",
+                "z": "job_z",
+            }
+        })
     else:
         ray.init(
             job_config=ray.job_config.JobConfig(worker_env={
@@ -165,17 +164,9 @@ def test_override_environment_variables_complex(shutdown_only,
             return ray.get(get_env.remote(key))
 
         def nested_get(self, key):
-            # There is a discrepancy here between the semantics of
-            # override_environment_variables and runtime_env["env_vars"].
-            # override_environment_variables are merged with the parent's
-            # override_environment_variables, but runtime_env["env_vars"]
-            # overwrites the parent's runtime_env["env_vars"].  So for this
-            # test, we include the parent's env_vars {"a": "b"}
-            # explicitly in the child's env_vars in the case use_runtime_env.
             if use_runtime_env:
                 aa = NestedEnvGetter.options(runtime_env={
                     "env_vars": {
-                        "a": "b",
                         "c": "e",
                         "d": "dd",
                     }
@@ -236,7 +227,7 @@ def test_override_environment_variables_complex(shutdown_only,
 
 @pytest.mark.parametrize("use_runtime_env", [True, False])
 def test_override_environment_variables_reuse(shutdown_only, use_runtime_env):
-    """Test that previously set env vars don't pollute newer calls."""
+    """Test that new tasks don't incorrectly reuse previous environments."""
     ray.init()
 
     env_var_name = "TEST123"

@@ -1,7 +1,5 @@
 cluster_name: long-running-distributed-tests
 
-max_workers: 3
-
 idle_timeout_minutes: 15
 
 docker:
@@ -29,10 +27,10 @@ available_node_types:
             TagSpecifications:
                 - ResourceType: "instance"
                   Tags:
-                - Key: anyscale-user
-                  Value: '{{env["ANYSCALE_USER"]}}'
-                - Key: anyscale-expiration
-                  Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+                    - Key: anyscale-user
+                      Value: '{{env["ANYSCALE_USER"]}}'
+                    - Key: anyscale-expiration
+                      Value: '{{env["ANSYCALE_EXPIRATION"]}}'
 
         resources: {"CPU": 32, "GPU": 2}
         min_workers: 3

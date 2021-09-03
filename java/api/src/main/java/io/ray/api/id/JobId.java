@@ -17,6 +17,11 @@ public class JobId extends BaseId implements Serializable {
     super(id);
   }
 
+  /** Create a JobId from byte array. */
+  public static JobId fromBytes(byte[] bytes) {
+    return new JobId(bytes);
+  }
+
   /** Create a JobId from a given hex string. */
   public static JobId fromHexString(String hex) {
     return new JobId(hexString2Bytes(hex));

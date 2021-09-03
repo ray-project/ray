@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import time
+from typing import List
 import unittest
 
 import skopt
@@ -16,7 +17,7 @@ from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
-from ray.test_utils import recursive_fnmatch
+from ray._private.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
@@ -24,12 +25,14 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.trial import Trial
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -185,6 +188,29 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 assert len(trials) == self.expected_trials
                 self._checked = True
 
+    class CheckTrialResourcesCallback(Callback):
+        """Checks if pending trials are requesting the right amount of
+        resources.
+
+        The check happens exactly once after `check_after` number of calls
+        to on_step_begin(). Note, we deliberately delay the check to after
+        `check_after` number of steps. This is because when we start a
+        tuning job from fresh (rather than restored), trial list is still
+        empty - any check now would be trivial and thus wasted.
+        """
+
+        def __init__(self, expected_cpu: int, check_after: int = 1):
+            self._expected_cpu = expected_cpu
+            self._checked = False
+            self._check_after = check_after
+
+        def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
+            if not self._checked and iteration >= self._check_after:
+                for trial in trials:
+                    if trial.status == Trial.PENDING:
+                        assert trial.resources.cpu == self._expected_cpu
+                self._checked = True
+
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
@@ -235,6 +261,38 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 9 for v in test_counter.values())
         test2_counter = Counter([t.config["test2"] for t in analysis.trials])
         assert all(v == 9 for v in test2_counter.values())
+
+    # Unfinished trials' resources should be updated.
+    def testResourceUpdateInResume(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
+        config = dict(
+            num_samples=3,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[
+                    self.FailureInjectorCallback(),
+                    self.CheckTrialResourcesCallback(1)
+                ],
+                **config)
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            resources_per_trial={"cpu": 2},
+            callbacks=[self.CheckTrialResourcesCallback(2)],
+            **config)
+        assert len(analysis.trials) == 27
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
@@ -535,6 +593,26 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg3, cost = self.set_basic_conf(analysis)
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
+
+
+class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "height": tune.uniform(-100, 100),
+            "width": tune.randint(0, 100),
+        }
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = CFO(
+            space=space,
+            metric="loss",
+            mode="min",
+            seed=20,
+        )
+
+        return search_alg, cost
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):

@@ -69,6 +69,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
 
+    def testLoadJson(self):
+        all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
+
+        self.ea.set_filetype("json")
+        all_dataframes_via_json = self.ea.fetch_trial_dataframes()
+
+        assert set(all_dataframes_via_csv) == set(all_dataframes_via_json)
+
+        with self.assertRaises(ValueError):
+            self.ea.set_filetype("bad")
+
+        self.ea.set_filetype("csv")
+        all_dataframes_via_csv2 = self.ea.fetch_trial_dataframes()
+        assert set(all_dataframes_via_csv) == set(all_dataframes_via_csv2)
+
     def testStats(self):
         assert self.ea.stats()
         assert self.ea.runner_data()

@@ -12,17 +12,17 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import Optional, Type
 
-from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
-    # === Exploration Settings (Experimental) ===
+    # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
         "type": "EpsilonGreedy",
@@ -63,11 +63,17 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
-    # Whether to LZ4 compress observations
-    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -93,7 +99,7 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Prevent iterations from going lower than this time span
+    # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
 })
 # __sphinx_doc_end__
@@ -114,11 +120,12 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return SimpleQTorchPolicy
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(trainer: Trainer, workers: WorkerSet,
+                   config: TrainerConfigDict, **kwargs) -> LocalIterator[dict]:
     """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
 
     Args:
+        trainer (Trainer): The Trainer object creating the execution plan.
         workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
             of the Trainer.
         config (TrainerConfigDict): The trainer's configuration dict.
@@ -133,6 +140,9 @@ def execution_plan(workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config["replay_sequence_length"])
+    # Assign to Trainer, so we can store the LocalReplayBuffer's
+    # data when we save checkpoints.
+    trainer.local_replay_buffer = local_replay_buffer
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -143,7 +153,7 @@ def execution_plan(workers: WorkerSet,
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
     else:
-        train_step_op = TrainTFMultiGPU(
+        train_step_op = MultiGPUTrainOneStep(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
@@ -165,8 +175,12 @@ def execution_plan(workers: WorkerSet,
     return StandardMetricsReporting(train_op, workers, config)
 
 
-SimpleQTrainer = DQNTrainer.with_updates(
+# Build a child class of `Trainer`, which uses the framework specific Policy
+# determined in `get_policy_class()` above.
+SimpleQTrainer = build_trainer(
+    name="SimpleQTrainer",
     default_policy=SimpleQTFPolicy,
     get_policy_class=get_policy_class,
     execution_plan=execution_plan,
-    default_config=DEFAULT_CONFIG)
+    default_config=DEFAULT_CONFIG,
+)

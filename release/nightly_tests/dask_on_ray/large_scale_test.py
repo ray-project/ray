@@ -15,6 +15,7 @@ import dask.array
 import xarray
 from ray.util.dask import ray_dask_get
 import math
+import json
 """
 We simulate a real-life usecase where we process a time-series
 data of 1 month, using Dask/Xarray on a Ray cluster.
@@ -27,22 +28,22 @@ Perform decimation to reduce data size.
 Perform decimation to reduce data size.
 
 (3) Segment the Xarray from (2) into 30-minute Xarrays;
-at this point, we have 43800 / 30 = 1460 Xarrays.
+at this point, we have 4380 / 30 = 146 Xarrays.
 
 (4) Trigger save to disk for each of the 30-minute Xarrays.
-This triggers Dask computations; there will be 1460 graphs.
+This triggers Dask computations; there will be 146 graphs.
 Since 1460 graphs is too much to process at once,
 we determine the batch_size based on script parameters.
 (e.g. if batch_size is 100, we'll have 15 batches).
 
 """
 
-MINUTES_IN_A_MONTH = 43800
+MINUTES_IN_A_MONTH = 500
 NUM_MINS_PER_OUTPUT_FILE = 30
-SAMPLING_RATE = 2000000
+SAMPLING_RATE = 1000000
 SECONDS_IN_A_MIN = 60
 INPUT_SHAPE = (3, SAMPLING_RATE * SECONDS_IN_A_MIN)
-PEAK_MEMORY_CONSUMPTION_IN_GB = 60
+PEAK_MEMORY_CONSUMPTION_IN_GB = 6
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -141,7 +142,7 @@ class LoadRoutines:
     def load_array_one_minute(test_spec: TestSpec) -> np.ndarray:
         """
         Load an array representing 1 minute of data. Each load consumes
-        ~1.44GB of memory (3 * 2000000 * 60 * 4 (bytes in a float)) = ~1.44
+        ~0.144GB of memory (3 * 200000 * 60 * 4 (bytes in a float)) = ~0.14GB
 
         In real life, this is loaded from cloud storage or disk.
         """
@@ -442,7 +443,8 @@ def main():
     # Connect to the Ray cluster
     ray.init(address="auto")
 
-    # Save all the Xarrays to disk; this will trigger Dask computations on Ray.
+    # Save all the Xarrays to disk; this will trigger
+    # Dask computations on Ray.
     logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
     SaveRoutines.save_all_xarrays(
         xarray_filename_pairs=xarray_filename_pairs,
@@ -450,6 +452,9 @@ def main():
         batch_size=test_spec.batch_size,
         ray_scheduler=ray_dask_get,
     )
+    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+        f.write(json.dumps({"success": 1}))
 
 
 if __name__ == "__main__":

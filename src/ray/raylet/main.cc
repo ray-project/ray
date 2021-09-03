@@ -23,6 +23,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -50,7 +51,9 @@ DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
+DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
+DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 #ifdef __linux__
@@ -94,7 +97,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
+  const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
+  const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -169,8 +174,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
-        node_manager_config.pull_based_resource_reporting =
-            RayConfig::instance().pull_based_resource_reporting();
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -192,21 +195,18 @@ int main(int argc, char *argv[]) {
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
         } else {
-          RAY_LOG(DEBUG) << "Agent command is empty.";
+          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
         }
 
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
-        node_manager_config.fair_queueing_enabled =
-            RayConfig::instance().fair_queueing_enabled();
-        node_manager_config.automatic_object_deletion_enabled =
-            RayConfig::instance().automatic_object_deletion_enabled();
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
+        node_manager_config.ray_debugger_external = ray_debugger_external;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
         node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
@@ -228,6 +228,7 @@ int main(int argc, char *argv[]) {
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
+        object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =
@@ -252,6 +253,12 @@ int main(int argc, char *argv[]) {
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
             redis_password, node_manager_config, object_manager_config, gcs_client,
             metrics_export_port));
+
+        // Initialize event framework.
+        if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir);
+        };
 
         raylet->Start();
       }));

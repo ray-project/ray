@@ -1,20 +1,18 @@
+import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
-import asyncio
-import concurrent.futures
 from dataclasses import dataclass
 import grpc
 import os
 import uuid
 import inspect
-from ray.util.inspect import is_cython
+from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
 from typing import Any
-from typing import Callable
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -33,8 +31,8 @@ GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 # 30 seconds because ELB timeout is 60 seconds
 GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 
-# 20 seconds (gRPC) default
-GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 20
+# Long timeout because we do not want gRPC ending a connection.
+GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
 GRPC_OPTIONS = [
     ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
@@ -43,96 +41,19 @@ GRPC_OPTIONS = [
     ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
     ("grpc.keepalive_permit_without_calls", 1),
     # Send an infinite number of pings
-    ("grpc.max_pings_without_data", 0),
-    ("grpc.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    ("grpc.http2.max_pings_without_data", 0),
+    ("grpc.http2.min_ping_interval_without_data_ms",
+     GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
-    ("grpc.max_ping_strikes", 0)
+    ("grpc.http2.max_ping_strikes", 0)
 ]
 
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-
-class ClientBaseRef:
-    def __init__(self, id: bytes):
-        self.id = None
-        if not isinstance(id, bytes):
-            raise TypeError("ClientRefs must be created with bytes IDs")
-        self.id: bytes = id
-        ray.call_retain(id)
-
-    def binary(self):
-        return self.id
-
-    def hex(self):
-        return self.id.hex()
-
-    def __eq__(self, other):
-        return isinstance(other, ClientBaseRef) and self.id == other.id
-
-    def __repr__(self):
-        return "%s(%s)" % (
-            type(self).__name__,
-            self.id.hex(),
-        )
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __del__(self):
-        if ray.is_connected() and self.id is not None:
-            ray.call_release(self.id)
-
-
-class ClientObjectRef(ClientBaseRef):
-    def __await__(self):
-        return self.as_future().__await__()
-
-    def as_future(self) -> asyncio.Future:
-        return asyncio.wrap_future(self.future())
-
-    def future(self) -> concurrent.futures.Future:
-        fut = concurrent.futures.Future()
-
-        def set_value(data: Any) -> None:
-            """Schedules a callback to set the exception or result
-            in the Future."""
-
-            if isinstance(data, Exception):
-                fut.set_exception(data)
-            else:
-                fut.set_result(data)
-
-        self._on_completed(set_value)
-
-        # Prevent this object ref from being released.
-        fut.object_ref = self
-        return fut
-
-    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
-        """Register a callback that will be called after Object is ready.
-        If the ObjectRef is already ready, the callback will be called soon.
-        The callback should take the result as the only argument. The result
-        can be an exception object in case of task error.
-        """
-        from ray.util.client.client_pickler import loads_from_server
-
-        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
-            """Converts from a GetResponse proto to a python object."""
-            obj = resp.get
-            data = None
-            if not obj.valid:
-                data = loads_from_server(resp.get.error)
-            else:
-                data = loads_from_server(resp.get.data)
-
-            py_callback(data)
-
-        ray._register_callback(self, deserialize_obj)
-
-
-class ClientActorRef(ClientBaseRef):
-    pass
+# Aliases for compatibility.
+ClientObjectRef = raylet.ClientObjectRef
+ClientActorRef = raylet.ClientActorRef
 
 
 class ClientStub:
@@ -241,7 +162,7 @@ class ClientActorClass(ClientStub):
         # Actually instantiate the actor
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -283,12 +204,38 @@ class ClientActorHandle(ClientStub):
           is a serialized version of the actual handle as an opaque token.
     """
 
-    def __init__(self, actor_ref: ClientActorRef):
+    def __init__(self,
+                 actor_ref: ClientActorRef,
+                 actor_class: Optional[ClientActorClass] = None):
         self.actor_ref = actor_ref
+        self._dir: Optional[List[str]] = None
+        if actor_class is not None:
+            self._dir = list(
+                dict(
+                    inspect.getmembers(actor_class.actor_cls,
+                                       is_function_or_method)).keys())
 
     def __del__(self) -> None:
+        if ray is None:
+            # The ray API stub might be set to None when the script exits.
+            # Should be safe to skip call_release in this case, since the
+            # client should have already disconnected at this point.
+            return
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
+
+    def __dir__(self) -> List[str]:
+        if self._dir is not None:
+            return self._dir
+        if ray.is_connected():
+
+            @ray.remote(num_cpus=0)
+            def get_dir(x):
+                return dir(x)
+
+            self._dir = ray.get(get_dir.remote(self))
+            return self._dir
+        return super().__dir__()
 
     @property
     def _actor_id(self):
@@ -313,19 +260,20 @@ class ClientRemoteMethod(ClientStub):
     """
 
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
-        self.actor_handle = actor_handle
-        self.method_name = method_name
+        self._actor_handle = actor_handle
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote method cannot be called directly. "
-                        f"Use {self._name}.remote() instead")
+        raise TypeError("Actor methods cannot be called directly. Instead "
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self.method_name,
-                                               self.actor_handle)
+        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
+                                               self._actor_handle)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -340,8 +288,8 @@ class ClientRemoteMethod(ClientStub):
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_ref.id
+        task.name = self._method_name
+        task.payload_id = self._actor_handle.actor_ref.id
         return task
 
 
@@ -366,7 +314,11 @@ class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]))
+        actor_class = None
+        if isinstance(self.remote_stub, ClientActorClass):
+            actor_class = self.remote_stub
+        return ClientActorHandle(
+            ClientActorRef(ref_ids[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
@@ -378,7 +330,8 @@ def set_task_options(task: ray_client_pb2.ClientTask,
 
     # If there's a non-null "placement_group" in `options`, convert the
     # placement group to a dict so that `options` can be passed to json.dumps.
-    if options.get("placement_group", None):
+    pg = options.get("placement_group", None)
+    if pg and pg != "default":
         options["placement_group"] = options["placement_group"].to_dict()
 
     options_str = json.dumps(options)

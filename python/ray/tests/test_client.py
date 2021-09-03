@@ -3,6 +3,7 @@ import pytest
 import time
 import sys
 import logging
+import queue
 import threading
 import _thread
 
@@ -12,7 +13,9 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.client_mode_hook import enable_client_mode
+from ray._private.test_utils import run_string_as_driver
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -48,6 +51,33 @@ def test_client_thread_safe(call_ray_stop_only):
         assert ray.get(fast.remote(), timeout=5) == "ok"
 
 
+# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# @pytest.mark.skip()
+def test_client_mode_hook_thread_safe(ray_start_regular_shared):
+    with ray_start_client_server():
+        with enable_client_mode():
+            assert client_mode_should_convert()
+            lock = threading.Lock()
+            lock.acquire()
+            q = queue.Queue()
+
+            def disable():
+                with disable_client_hook():
+                    q.put(client_mode_should_convert())
+                    lock.acquire()
+                q.put(client_mode_should_convert())
+
+            t = threading.Thread(target=disable)
+            t.start()
+            assert client_mode_should_convert()
+            lock.release()
+            t.join()
+            assert q.get(
+            ) is False, "Threaded disable_client_hook failed  to disable"
+            assert q.get(
+            ) is True, "Threaded disable_client_hook failed to re-enable"
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_interrupt_ray_get(call_ray_stop_only):
     import ray
@@ -78,6 +108,27 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
         # Assert we can still get new items after the interrupt.
         assert ray.get(fast.remote()) == "ok"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_get_list(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f():
+            return "OK"
+
+        assert ray.get([]) == []
+        assert ray.get([f.remote()]) == ["OK"]
+
+        refs = [f.remote() for _ in range(100)]
+        with ray.worker.data_client.lock:
+            req_id_before = ray.worker.data_client._req_id
+        assert ray.get(refs) == ["OK" for _ in range(100)]
+        # Only 1 RPC should be sent.
+        with ray.worker.data_client.lock:
+            assert ray.worker.data_client._req_id == req_id_before + 1, \
+                ray.worker.data_client._req_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -357,9 +408,11 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert ray.get(x) == "Foo"
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
-        assert len(logs_with_id) >= 2
-        assert any((msg.find("get") >= 0 for msg in logs_with_id))
-        assert any((msg.find("put") >= 0 for msg in logs_with_id))
+        assert len(logs_with_id) >= 2, logs_with_id
+        assert any(
+            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any(
+            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -577,6 +630,34 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
         else:
             assert client_mode_should_convert() is False
             assert ray.util.client.ray.is_connected() is False
+
+
+object_ref_cleanup_script = """
+import ray
+
+ray.init("ray://localhost:50051")
+
+@ray.remote
+def f():
+    return 42
+
+@ray.remote
+class SomeClass:
+    pass
+
+
+obj_ref = f.remote()
+actor_ref = SomeClass.remote()
+"""
+
+
+def test_object_ref_cleanup():
+    # Checks no error output when running the script in
+    # object_ref_cleanup_script
+    # See https://github.com/ray-project/ray/issues/17968 for details
+    with ray_start_client_server():
+        result = run_string_as_driver(object_ref_cleanup_script)
+        assert result == ""
 
 
 if __name__ == "__main__":

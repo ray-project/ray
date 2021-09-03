@@ -7,14 +7,10 @@ import json
 import logging
 import time
 import uuid
+import warnings
 from collections import defaultdict
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Tuple
-from typing import Optional
-from typing import TYPE_CHECKING
+import tempfile
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import grpc
 
@@ -25,18 +21,14 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.util.client.client_pickler import convert_to_arg
-from ray.util.client.client_pickler import dumps_from_client
-from ray.util.client.client_pickler import loads_from_server
-from ray.util.client.common import ClientStub
-from ray.util.client.common import ClientActorHandle
-from ray.util.client.common import ClientActorClass
-from ray.util.client.common import ClientRemoteFunc
-from ray.util.client.common import ClientActorRef
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_OPTIONS
+from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
+                                            loads_from_server)
+from ray.util.client.common import (ClientActorClass, ClientActorHandle,
+                                    ClientActorRef, ClientObjectRef,
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -50,7 +42,23 @@ MAX_TIMEOUT_SEC = 30
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
 # operations.
-MAX_BLOCKING_OPERATION_TIME_S = 2
+MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
+
+# If the total size (bytes) of all outbound messages to schedule tasks since
+# the connection began exceeds this value, a warning should be raised
+MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
+
+# If the number of tasks scheduled on the client side since the connection
+# began exceeds this value, a warning should be raised
+TASK_WARNING_THRESHOLD = 1000
+
+# Links to the Ray Design Pattern doc to use in the task overhead warning
+# message
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = \
+    "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.f7ins22n6nyl" # noqa E501
+
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = \
+    "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu" # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -135,6 +143,13 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            if log_once("ray_client_security_groups"):
+                warnings.warn(
+                    "Ray Client connection timed out. Ensure that "
+                    "the Ray Client port on the head node is reachable "
+                    "from your local machine. See https://docs.ray.io/en"
+                    "/latest/cluster/ray-client.html#step-2-check-ports for "
+                    "more information.")
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -146,6 +161,11 @@ class Worker:
         self.log_client.set_logstream_level(logging.INFO)
 
         self.closed = False
+
+        # Track these values to raise a warning if many tasks are being
+        # scheduled
+        self.total_num_tasks_scheduled = 0
+        self.total_outbound_message_size_bytes = 0
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
@@ -167,51 +187,49 @@ class Worker:
     def register_callback(
             self, ref: ClientObjectRef,
             callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
-        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
+        req = ray_client_pb2.GetRequest(ids=[ref.id], asynchronous=True)
         self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
-        to_get = []
-        single = False
         if isinstance(vals, list):
+            if not vals:
+                return []
             to_get = vals
         elif isinstance(vals, ClientObjectRef):
             to_get = [vals]
-            single = True
         else:
             raise Exception("Can't get something that's not a "
                             "list of IDs or just an ID: %s" % type(vals))
+
         if timeout is None:
-            timeout = 0
             deadline = None
         else:
             deadline = time.monotonic() + timeout
-        out = []
-        for obj_ref in to_get:
-            res = None
-            # Implement non-blocking get with a short-polling loop. This allows
-            # cancellation of gets via Ctrl-C, since we never block for long.
-            while True:
-                try:
-                    if deadline:
-                        op_timeout = min(
-                            MAX_BLOCKING_OPERATION_TIME_S,
-                            max(deadline - time.monotonic(), 0.001))
-                    else:
-                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
-                    res = self._get(obj_ref, op_timeout)
-                    break
-                except GetTimeoutError:
-                    if deadline and time.monotonic() > deadline:
-                        raise
-                    logger.debug("Internal retry for get {}".format(obj_ref))
-            out.append(res)
-        if single:
-            out = out[0]
-        return out
 
-    def _get(self, ref: ClientObjectRef, timeout: float):
-        req = ray_client_pb2.GetRequest(id=ref.id, timeout=timeout)
+        while True:
+            if deadline:
+                op_timeout = min(MAX_BLOCKING_OPERATION_TIME_S,
+                                 max(deadline - time.monotonic(), 0.001))
+            else:
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+            try:
+                res = self._get(to_get, op_timeout)
+                break
+            except GetTimeoutError:
+                if deadline and time.monotonic() > deadline:
+                    raise
+                logger.debug("Internal retry for get {}".format(to_get))
+        if len(to_get) != len(res):
+            raise Exception(
+                "Mismatched number of items in request ({}) and response ({})"
+                .format(len(to_get), len(res)))
+        if isinstance(vals, ClientObjectRef):
+            res = res[0]
+        return res
+
+    def _get(self, ref: List[ClientObjectRef], timeout: float):
+        req = ray_client_pb2.GetRequest(
+            ids=[r.id for r in ref], timeout=timeout)
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
@@ -219,7 +237,7 @@ class Worker:
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
             raise err
@@ -255,7 +273,7 @@ class Worker:
         if not resp.valid:
             try:
                 raise cloudpickle.loads(resp.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(resp.error))
                 raise
         return ClientObjectRef(resp.id)
@@ -316,10 +334,39 @@ class Worker:
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise
+        self.total_num_tasks_scheduled += 1
+        self.total_outbound_message_size_bytes += task.ByteSize()
+        if self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD and \
+                log_once("client_communication_overhead_warning"):
+            warnings.warn(
+                f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
+                "scheduled. This can be slow on Ray Client due to "
+                "communication overhead over the network. If you're running "
+                "many fine-grained tasks, consider running them in a single "
+                "remote function. See the section on \"Too fine-grained "
+                "tasks\" in the Ray Design Patterns document for more "
+                f"details: {DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK}",
+                UserWarning)
+        if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
+                and log_once("client_communication_overhead_warning"):
+            warnings.warn(
+                "More than 10MB of messages have been created to schedule "
+                "tasks on the server. This can be slow on Ray Client due to "
+                "communication overhead over the network. If you're running "
+                "many fine-grained tasks, consider running them inside a "
+                "single remote function. See the section on \"Too "
+                "fine-grained tasks\" in the Ray Design Patterns document for "
+                f"more details: {DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK}. If "
+                "your functions frequently use large objects, consider "
+                "storing the objects remotely with ray.put. An example of "
+                "this is shown in the \"Closure capture of large / "
+                "unserializable object\" section of the Ray Design Patterns "
+                "document, available here: "
+                f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
@@ -332,7 +379,7 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
-            logger.debug(f"Releasing {id}")
+            logger.debug(f"Releasing {id.hex()}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
@@ -341,18 +388,20 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
-        self.log_client.close()
         self.data_client.close()
+        self.log_client.close()
         if self.channel:
             self.channel.close()
             self.channel = None
         self.server = None
         self.closed = True
 
-    def get_actor(self, name: str) -> ClientActorHandle:
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> ClientActorHandle:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
+        task.namespace = namespace or ""
         ids = self._call_schedule_for_task(task)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
@@ -426,6 +475,13 @@ class Worker:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self.server.KVList(req, metadata=self.metadata).keys
 
+    def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
+        req = ray_client_pb2.ClientListNamedActorsRequest(
+            all_namespaces=all_namespaces)
+        return json.loads(
+            self.server.ListNamedActors(req,
+                                        metadata=self.metadata).actors_json)
+
     def is_initialized(self) -> bool:
         if self.server is not None:
             return self.get_cluster_info(
@@ -447,30 +503,38 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _server_init(self, job_config: JobConfig):
+    def _server_init(self,
+                     job_config: JobConfig,
+                     ray_init_kwargs: Optional[Dict[str, Any]] = None):
         """Initialize the server"""
+        if ray_init_kwargs is None:
+            ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest()
-                self.data_client.Init(init_req)
-                return
+                serialized_job_config = None
+            else:
+                # Generate and upload URIs for the working directory. This
+                # uses internal_kv to upload to the GCS.
+                import ray._private.runtime_env.working_dir as working_dir_pkg
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    (old_dir,
+                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
+                                                 tmp_dir)
+                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
+                    working_dir_pkg.upload_runtime_env_package_if_needed(
+                        job_config)
+                    working_dir_pkg.PKG_DIR = old_dir
 
-            import ray._private.runtime_env as runtime_env
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
-                # Generate the uri for runtime env
-                runtime_env.rewrite_runtime_env_uris(job_config)
-                init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config))
-                init_resp = self.data_client.Init(init_req)
-                if not init_resp.ok:
-                    logger.error("Init failed due to: ", init_resp.msg)
-                    raise IOError(init_resp.msg)
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
+                serialized_job_config = pickle.dumps(job_config)
+
+            response = self.data_client.Init(
+                ray_client_pb2.InitRequest(
+                    job_config=serialized_job_config,
+                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+            if not response.ok:
+                raise ConnectionAbortedError(
+                    f"Initialization failure from server:\n{response.msg}")
+
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 

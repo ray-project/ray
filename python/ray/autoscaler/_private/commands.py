@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -306,18 +307,26 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for providers
-    # other than AWS and Kubernetes will fail (the schema error will ask the
-    # user to manually fill the resources) as we currently support autofilling
-    # resources for AWS and Kubernetes only.
-    validate_config(config)
+    try:
+        # NOTE: if `resources` field is missing, validate_config for providers
+        # other than AWS and Kubernetes will fail (the schema error will ask
+        # the user to manually fill the resources) as we currently support
+        # autofilling resources for AWS and Kubernetes only.
+        validate_config(config)
+    except (ModuleNotFoundError, ImportError):
+        cli_logger.abort(
+            "Not all Ray autoscaler dependencies were found. "
+            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+            "only be usable via `pip install 'ray[default]'`. Please "
+            "update your install command.")
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
             config_cache = {
                 "_version": CONFIG_CACHE_VERSION,
-                "provider_log_info": try_get_log_state(config["provider"]),
+                "provider_log_info": try_get_log_state(
+                    resolved_config["provider"]),
                 "config": resolved_config
             }
             f.write(json.dumps(config_cache))
@@ -597,10 +606,12 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
-    head_node_config = copy.deepcopy(config["head_node"])
+    head_node_config = copy.deepcopy(config.get("head_node", {}))
+    # The above `head_node` field is deprecated in favor of per-node-type
+    # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
-    if "head_node_type" in config:
-        head_node_type = config["head_node_type"]
+    head_node_type = config.get("head_node_type")
+    if head_node_type:
         head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
         head_config = config["available_node_types"][head_node_type]
         head_node_config.update(head_config["node_config"])
@@ -610,23 +621,15 @@ def get_or_create_head_node(config: Dict[str, Any],
         head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
-    launching_new_head = False
-    if head_node is None or provider.node_tags(head_node).get(
-            TAG_RAY_LAUNCH_CONFIG) != launch_hash:
-        launching_new_head = True
+    creating_new_head = _should_create_new_head(head_node, launch_hash,
+                                                head_node_type, provider)
+    if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
                 CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
-                cli_logger.print(
-                    "Currently running head node is out-of-date with "
-                    "cluster configuration")
-                cli_logger.print(
-                    "hash is {}, expected {}",
-                    cf.bold(
-                        provider.node_tags(head_node)
-                        .get(TAG_RAY_LAUNCH_CONFIG)), cf.bold(launch_hash))
-                cli_logger.confirm(yes, "Relaunching it.", _abort=True)
+                cli_logger.confirm(
+                    yes, "Relaunching the head node.", _abort=True)
 
                 provider.terminate_node(head_node)
                 cli_logger.print("Terminated head node {}", head_node)
@@ -682,9 +685,9 @@ def get_or_create_head_node(config: Dict[str, Any],
             else:
                 setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
-        # If user passed in --no-restart and we're not launching a new head,
+        # If user passed in --no-restart and we're not creating a new head,
         # omit start commands.
-        elif no_restart and not launching_new_head:
+        elif no_restart and not creating_new_head:
             setup_commands = config["head_setup_commands"]
             ray_start_commands = []
         else:
@@ -753,6 +756,60 @@ def get_or_create_head_node(config: Dict[str, Any],
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
         cli_logger.print("  {}", remote_shell_str.strip())
+
+
+def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
+                            new_head_node_type: str,
+                            provider: NodeProvider) -> bool:
+    """Decides whether a new head node needs to be created.
+
+    We need a new head if at least one of the following holds:
+    (a) There isn't an existing head node
+    (b) The user-submitted head node_config differs from the existing head
+        node's node_config.
+    (c) The user-submitted head node_type key differs from the existing head
+        node's node_type.
+
+    Args:
+        head_node_id (Optional[str]): head node id if a head exists, else None
+        new_launch_hash (str): hash of current user-submitted head config
+        new_head_node_type (str): current user-submitted head node-type key
+
+    Returns:
+        bool: True if a new Ray head node should be launched, False otherwise
+    """
+    if not head_node_id:
+        # No head node exists, need to create it.
+        return True
+
+    # Pull existing head's data.
+    head_tags = provider.node_tags(head_node_id)
+    current_launch_hash = head_tags.get(TAG_RAY_LAUNCH_CONFIG)
+    current_head_type = head_tags.get(TAG_RAY_USER_NODE_TYPE)
+
+    # Compare to current head
+    hashes_mismatch = new_launch_hash != current_launch_hash
+    types_mismatch = new_head_node_type != current_head_type
+
+    new_head_required = hashes_mismatch or types_mismatch
+
+    # Warn user
+    if new_head_required:
+        with cli_logger.group(
+                "Currently running head node is out-of-date with cluster "
+                "configuration"):
+
+            if hashes_mismatch:
+                cli_logger.print("Current hash is {}, expected {}",
+                                 cf.bold(current_launch_hash),
+                                 cf.bold(new_launch_hash))
+
+            if types_mismatch:
+                cli_logger.print("Current head node type is {}, expected {}",
+                                 cf.bold(current_head_type),
+                                 cf.bold(new_head_node_type))
+
+    return new_head_required
 
 
 def _set_up_config_for_head_node(config: Dict[str, Any],
@@ -850,7 +907,7 @@ def attach_cluster(config_file: str,
         override_cluster_name=override_cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
-    )
+        _allow_uninitialized_state=True)
 
 
 def exec_cluster(config_file: str,
@@ -864,7 +921,8 @@ def exec_cluster(config_file: str,
                  override_cluster_name: Optional[str] = None,
                  no_config_cache: bool = False,
                  port_forward: Optional[Port_forward] = None,
-                 with_output: bool = False) -> str:
+                 with_output: bool = False,
+                 _allow_uninitialized_state: bool = False) -> str:
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -878,6 +936,8 @@ def exec_cluster(config_file: str,
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
         port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        _allow_uninitialized_state: whether to execute on an uninitialized head
+            node.
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
@@ -893,7 +953,11 @@ def exec_cluster(config_file: str,
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     head_node = _get_running_head_node(
-        config, config_file, override_cluster_name, create_if_needed=start)
+        config,
+        config_file,
+        override_cluster_name,
+        create_if_needed=start,
+        _allow_uninitialized_state=_allow_uninitialized_state)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     updater = NodeUpdaterThread(
@@ -916,8 +980,8 @@ def exec_cluster(config_file: str,
         docker_config=config.get("docker"))
     shutdown_after_run = False
     if cmd and stop:
-        cmd += "; ".join([
-            "ray stop",
+        cmd = "; ".join([
+            cmd, "ray stop",
             "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
         ])
         shutdown_after_run = True
@@ -987,6 +1051,7 @@ def rsync(config_file: str,
           use_internal_ip: bool = False,
           no_config_cache: bool = False,
           all_nodes: bool = False,
+          should_bootstrap: bool = True,
           _runner: ModuleType = subprocess) -> None:
     """Rsyncs files.
 
@@ -1001,6 +1066,7 @@ def rsync(config_file: str,
         use_internal_ip (bool): Whether the provided ip_address is
             public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
+        should_bootstrap: whether to bootstrap cluster config before syncing
     """
     if bool(source) != bool(target):
         cli_logger.abort(
@@ -1015,7 +1081,8 @@ def rsync(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config, no_config_cache=no_config_cache)
+    if should_bootstrap:
+        config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
     if source and target:
@@ -1127,12 +1194,27 @@ def _get_worker_nodes(config: Dict[str, Any],
     return provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
 
-def _get_running_head_node(config: Dict[str, Any],
-                           printable_config_file: str,
-                           override_cluster_name: Optional[str],
-                           create_if_needed: bool = False,
-                           _provider: Optional[NodeProvider] = None) -> str:
-    """Get a valid, running head node"""
+def _get_running_head_node(
+        config: Dict[str, Any],
+        printable_config_file: str,
+        override_cluster_name: Optional[str],
+        create_if_needed: bool = False,
+        _provider: Optional[NodeProvider] = None,
+        _allow_uninitialized_state: bool = False,
+) -> str:
+    """Get a valid, running head node.
+    Args:
+        config (Dict[str, Any]): Cluster Config dictionary
+        printable_config_file (str): Used for printing formatted CLI commands.
+        override_cluster_name (str): Passed to `get_or_create_head_node` to
+            override the cluster name present in `config`.
+        create_if_needed (bool): Create a head node if one is not present.
+        _provider (NodeProvider): [For testing], a Node Provider to use.
+        _allow_uninitialized_state (bool): Whether to return a head node that
+            is not 'UP TO DATE'. This is used to allow `ray attach` and
+            `ray exec` to debug a cluster in a bad state.
+
+    """
     provider = _provider or _get_node_provider(config["provider"],
                                                config["cluster_name"])
     head_node_tags = {
@@ -1140,11 +1222,13 @@ def _get_running_head_node(config: Dict[str, Any],
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
     head_node = None
+    _backup_head_node = None
     for node in nodes:
         node_state = provider.node_tags(node).get(TAG_RAY_NODE_STATUS)
         if node_state == STATUS_UP_TO_DATE:
             head_node = node
         else:
+            _backup_head_node = node
             cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
     if head_node is not None:
@@ -1157,12 +1241,25 @@ def _get_running_head_node(config: Dict[str, Any],
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
+        # NOTE: `_allow_uninitialized_state` is forced to False if
+        # `create_if_needed` is set to True. This is to ensure that the
+        # commands executed after creation occur on an actually running
+        # cluster.
         return _get_running_head_node(
             config,
             printable_config_file,
             override_cluster_name,
-            create_if_needed=False)
+            create_if_needed=False,
+            _allow_uninitialized_state=False)
     else:
+        if _allow_uninitialized_state and _backup_head_node is not None:
+            cli_logger.warning(
+                f"The head node being returned: {_backup_head_node} is not "
+                "`up-to-date`. If you are not debugging a startup issue "
+                "it is recommended to restart this head node with: {}",
+                cf.bold(f"  ray down  {printable_config_file}"))
+
+            return _backup_head_node
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
 
@@ -1173,7 +1270,8 @@ def get_local_dump_archive(stream: bool = False,
                            debug_state: bool = True,
                            pip: bool = True,
                            processes: bool = True,
-                           processes_verbose: bool = False) -> Optional[str]:
+                           processes_verbose: bool = False,
+                           tempfile: Optional[str] = None) -> Optional[str]:
     if stream and output:
         raise ValueError(
             "You can only use either `--output` or `--stream`, but not both.")
@@ -1185,7 +1283,7 @@ def get_local_dump_archive(stream: bool = False,
         processes=processes,
         processes_verbose=processes_verbose)
 
-    with Archive() as archive:
+    with Archive(file=tempfile) as archive:
         get_all_local_data(archive, parameters)
 
     tmp = archive.file
@@ -1197,7 +1295,7 @@ def get_local_dump_archive(stream: bool = False,
         return None
 
     target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
-    os.rename(tmp, target)
+    shutil.move(tmp, target)
     cli_logger.print(f"Created local data archive at {target}")
 
     return target
@@ -1214,7 +1312,8 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
                              debug_state: bool = True,
                              pip: bool = True,
                              processes: bool = True,
-                             processes_verbose: bool = False) -> Optional[str]:
+                             processes_verbose: bool = False,
+                             tempfile: Optional[str] = None) -> Optional[str]:
 
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
@@ -1279,7 +1378,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         processes=processes,
         processes_verbose=processes_verbose)
 
-    with Archive() as archive:
+    with Archive(file=tempfile) as archive:
         if local:
             create_archive_for_local_and_remote_nodes(
                 archive, remote_nodes=nodes, parameters=parameters)
@@ -1298,7 +1397,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
     else:
         output = os.path.expanduser(output)
 
-    os.rename(archive.file, output)
+    shutil.move(archive.file, output)
     return output
 
 

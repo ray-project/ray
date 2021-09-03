@@ -146,7 +146,7 @@ is generally the easiest way to run release tests.
 
 7. **K8s operator tests**
 
-   Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
+   Refer to ``kubernetes_tests/README.md``. These tests verify basic functionality of the Ray Operator and Helm chart.
 
 8. **Data processing tests**
 
@@ -207,7 +207,15 @@ Once Release Blockers are Resolved
 After all release blockers are resolved and testing complete, you are ready
 to proceed with the final stages of the release!
 
-1. **Create a GitHub release:** Create a `GitHub release`_. This should include
+1. **Update the Anyscale product Docker images:** The Anyscale product team
+   builds new Docker images using the latest release candidate wheels. This
+   image is then made available to Anyscale users in a new deployment.
+   This should happen before the release is published on open source,
+   as compatibility with Anyscale is a hard requirement. If this step fails
+   or is delayed, the rest of the release process is blocked until the
+   issues have been resolved.
+
+2. **Create a GitHub release:** Create a `GitHub release`_. This should include
    **release notes**. Copy the style and formatting used by previous releases.
    Create a draft of the release notes containing information about substantial
    changes/updates/bugfixes and their PR numbers. Once you have a draft, send it
@@ -231,7 +239,7 @@ to proceed with the final stages of the release!
         --prev-release-commit="<COMMIT_SHA>" \
         --curr-release-commit="<COMMIT_SHA>"
 
-2. **Download all the wheels:** Now the release is ready to begin final
+3. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
    branch. To download them, use ``util/download_wheels.sh``:
 
@@ -243,7 +251,7 @@ to proceed with the final stages of the release!
 
    This can be tested if you use the script source ./bin/download_wheels.sh
 
-3. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+4. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine``.
 
    .. code-block:: bash
@@ -278,7 +286,7 @@ to proceed with the final stages of the release!
    VM in the AWS console running the Deep Learning AMI, then install the correct
    version of Ray using the Anaconda prompt.
 
-4. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+5. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. **Be careful,
    it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release.
@@ -296,11 +304,11 @@ to proceed with the final stages of the release!
 
      pip install -U ray
 
-5. **Create a point release on readthedocs page:** Go to the `Ray Readthedocs version page`_.
+6. **Create a point release on readthedocs page:** Go to the `Ray Readthedocs version page`_.
    Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
    Message @richardliaw to add you if you don't have access.
 
-6. **Update 'Default Branch' on the readthedocs page:**
+7. **Update 'Default Branch' on the readthedocs page:**
    Go to the `Ray Readthedocs advanced settings page`_.
    In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
    Message @richardliaw to add you if you don't have access.
@@ -309,21 +317,26 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
-7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
+8. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow and Torch version as
+   minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
+   version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
+   versions. Ping @ijrsvt or @amogkam for assistance.
+
+9. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
    ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
    
    Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
-8. **Send out an email announcing the release** to the engineering@anyscale.com
+10. **Send out an email announcing the release** to the employees@anyscale.com
    Google group, and post a slack message in the Announcements channel of the
    Ray slack (message a team lead if you do not have permissions.)
 
-9. **Improve the release process:** Find some way to improve the release
-   process so that whoever manages the release next will have an easier time.
-   If you had to make any changes to tests or cluster configurations, make
-   sure they are contributed back! If you've noticed anything in the docs that
-   was out-of-date, please patch them.
+11. **Improve the release process:** Find some way to improve the release
+    process so that whoever manages the release next will have an easier time.
+    If you had to make any changes to tests or cluster configurations, make
+    sure they are contributed back! If you've noticed anything in the docs that
+    was out-of-date, please patch them.
 
 **You're done! Congratulations and good job!**
 

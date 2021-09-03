@@ -1,12 +1,82 @@
 import os
 import pytest
+import psutil
 import sys
 import time
 
 import ray
-from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
-                            run_string_as_driver_nonblocking,
-                            init_error_pubsub, get_error_message)
+from ray import ray_constants
+from ray._private.test_utils import (
+    RayTestTimeoutException, run_string_as_driver,
+    run_string_as_driver_nonblocking, init_error_pubsub, get_error_message,
+    object_memory_usage, wait_for_condition)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0",
+    ],
+    indirect=True)
+def test_cleanup_on_driver_exit(call_ray_start):
+    # This test will create a driver that creates a bunch of objects and then
+    # exits. The entries in the object table should be cleaned up.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a bunch of objects and exits.
+    driver_script = """
+import time
+import ray
+import numpy as np
+from ray._private.test_utils import object_memory_usage
+import os
+
+
+ray.init(address="{}")
+object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+              for i in range(1000)]
+start_time = time.time()
+while time.time() - start_time < 30:
+    if object_memory_usage() > 0:
+        break
+else:
+    raise Exception("Objects did not appear in object table.")
+
+@ray.remote
+def f():
+    time.sleep(1)
+
+print("success")
+# Submit some tasks without waiting for them to finish. Their workers should
+# still get cleaned up eventually, even if they get started after the driver
+# exits.
+[f.remote() for _ in range(10)]
+""".format(address)
+
+    out = run_string_as_driver(driver_script)
+    assert "success" in out
+
+    # Make sure the objects are removed from the object table.
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        if object_memory_usage() == 0:
+            break
+    else:
+        raise Exception("Objects were not all removed from object table.")
+
+    def all_workers_exited():
+        result = True
+        print("list of idle workers:")
+        for proc in psutil.process_iter():
+            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+                print(f"{proc}")
+                result = False
+        return result
+
+    # Check that workers are eventually cleaned up.
+    wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)
 
 
 def test_error_isolation(call_ray_start):
@@ -43,7 +113,7 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
-from ray.test_utils import (init_error_pubsub, get_error_message)
+from ray._private.test_utils import (init_error_pubsub, get_error_message)
 
 ray.init(address="{}")
 p = init_error_pubsub()
@@ -163,63 +233,18 @@ print("success")
         assert "success" in out
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    [
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.state.objects(), which only works with the
-        # GCS-based object directory
-        "{\"ownership_based_object_directory_enabled\":false}",
-    ],
-    indirect=True)
-def test_cleanup_on_driver_exit(call_ray_start):
-    # This test will create a driver that creates a bunch of objects and then
-    # exits. The entries in the object table should be cleaned up.
-    address = call_ray_start
-
-    ray.init(address=address)
-
-    # Define a driver that creates a bunch of objects and exits.
-    driver_script = """
-import time
-import ray
-import numpy as np
-ray.init(address="{}")
-object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-              for i in range(1000)]
-start_time = time.time()
-while time.time() - start_time < 30:
-    if len(ray.state.objects()) == 1000:
-        break
-else:
-    raise Exception("Objects did not appear in object table.")
-print("success")
-""".format(address)
-
-    run_string_as_driver(driver_script)
-
-    # Make sure the objects are removed from the object table.
-    start_time = time.time()
-    while time.time() - start_time < 30:
-        if len(ray.state.objects()) == 0:
-            break
-    else:
-        raise Exception("Objects were not all removed from object table.")
-
-
 def test_drivers_named_actors(call_ray_start):
     # This test will create some drivers that submit some tasks to the same
     # named actor.
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
 
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 @ray.remote
 class Counter:
     def __init__(self):
@@ -235,7 +260,7 @@ time.sleep(100)
     driver_script2 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 while True:
     try:
         counter = ray.get_actor("Counter")

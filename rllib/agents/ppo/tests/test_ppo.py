@@ -105,7 +105,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config):
-            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
@@ -132,39 +132,6 @@ class TestPPO(unittest.TestCase):
                         include_state=lstm)
                     trainer.stop()
 
-    def test_ppo_fake_multi_gpu_learning(self):
-        """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        # Mimic tuned_example for PPO CartPole.
-        config["num_workers"] = 1
-        config["lr"] = 0.0003
-        config["observation_filter"] = "MeanStdFilter"
-        config["num_sgd_iter"] = 6
-        config["vf_loss_coeff"] = 0.01
-        config["model"]["fcnet_hiddens"] = [32]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["vf_share_layers"] = True
-
-        # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-                if results["episode_reward_mean"] > 65.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
-            trainer.stop()
-
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -177,7 +144,7 @@ class TestPPO(unittest.TestCase):
             # Default Agent should be setup with StochasticSampling.
             trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_action(
+            a_ = trainer.compute_single_action(
                 obs,
                 explore=False,
                 prev_action=np.array(2),
@@ -190,7 +157,7 @@ class TestPPO(unittest.TestCase):
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
             for _ in range(50):
-                a = trainer.compute_action(
+                a = trainer.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -201,7 +168,7 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         obs,
                         prev_action=np.array(2),
                         prev_reward=np.array(1.0)))

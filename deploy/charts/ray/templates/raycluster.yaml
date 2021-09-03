@@ -19,8 +19,8 @@ spec:
   podTypes:
     {{- range $key, $val := .Values.podTypes }}
     - name: {{ $key }}
-      minWorkers: {{ $val.minWorkers }}
-      maxWorkers: {{ $val.maxWorkers }}
+      minWorkers: {{ $val.minWorkers | default 0}}
+      maxWorkers: {{ $val.maxWorkers | default 0}}
       {{- if $val.rayResources }}
       rayResources:
         {{- toYaml $val.rayResources | nindent 8 }}
@@ -61,10 +61,10 @@ spec:
               name: dshm
             resources:
               requests:
-                cpu: {{ .numCPU }}
+                cpu: {{ .CPU }}
                 memory: {{ .memory }}
               limits:
-                cpu: {{ .numCPU }}
+                cpu: {{ .CPU }}
                 # The maximum memory that this pod is allowed to use. The
                 # limit will be detected by ray and split to use 10% for
                 # redis, 30% for the shared memory object store, and the
@@ -73,12 +73,16 @@ spec:
                 # allocate a very large object store in each pod that may
                 # cause problems for other pods.
                 memory: {{ .memory }}
-                {{- if .numGPU }}
-                nvidia.com/gpu: {{ .numGPU }}
+                {{- if .GPU }}
+                nvidia.com/gpu: {{ .GPU }}
                 {{- end }}
           {{- if .nodeSelector }}
           nodeSelector:
-              {{- toYaml .nodeSelector | nindent 12 }}
+          {{- toYaml $val.nodeSelector | nindent 12 }}
+          {{- end }}
+          {{- if $val.tolerations }}
+          tolerations:
+          {{- toYaml $val.tolerations | nindent 10 }}
           {{- end }}
     {{- end }}
   # Commands to start Ray on the head node. You don't need to change this.

@@ -350,7 +350,7 @@ def memory_summary(state,
                    line_wrap=True,
                    unit="B",
                    num_entries=None) -> str:
-    from ray.new_dashboard.modules.stats_collector.stats_collector_head\
+    from ray.new_dashboard.modules.node.node_head\
          import node_stats_to_dict
 
     # Get terminal size
@@ -394,7 +394,7 @@ def memory_summary(state,
 | {:<4} | {:<14} | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<12}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
+        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
 {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
@@ -406,12 +406,11 @@ entries per group...\n\n\n"
         # Group summary
         summary = group["summary"]
         ref_size = track_reference_size(group)
-        for key in summary:
-            if key == "total_object_size":
-                summary[key] = str(summary[key] / units[unit]) + f" {unit}"
+        for k, v in summary.items():
+            if k == "total_object_size":
+                summary[k] = str(v / units[unit]) + f" {unit}"
             else:
-                summary[key] = str(
-                    summary[key]) + f", ({ref_size[key] / units[unit]} {unit})"
+                summary[k] = str(v) + f", ({ref_size[k] / units[unit]} {unit})"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
@@ -432,10 +431,13 @@ entries per group...\n\n\n"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22
-                entry["call_site"] = [
-                    entry["call_site"][i:i + call_site_length] for i in range(
-                        0, len(entry["call_site"]), call_site_length)
-                ]
+                if len(entry["call_site"]) == 0:
+                    entry["call_site"] = ["disabled"]
+                else:
+                    entry["call_site"] = [
+                        entry["call_site"][i:i + call_site_length] for i in
+                        range(0, len(entry["call_site"]), call_site_length)
+                    ]
                 num_lines = len(entry["call_site"])
             else:
                 mem += "\n"
@@ -455,5 +457,8 @@ entries per group...\n\n\n"
                     .format(*row)
             mem += "\n"
             n += 1
-        mem += "\n\n"
+
+    mem += "To record callsite information for each ObjectRef created, set " \
+           "env variable RAY_record_ref_creation_sites=1\n\n"
+
     return mem

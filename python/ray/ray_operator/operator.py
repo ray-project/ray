@@ -1,7 +1,7 @@
+import asyncio
 import logging
 import multiprocessing as mp
 import os
-import time
 import threading
 from typing import Any
 from typing import Callable
@@ -9,16 +9,14 @@ from typing import Dict
 from typing import Tuple
 from typing import Optional
 
-from kubernetes.client.exceptions import ApiException
+import kopf
 import yaml
 
 import ray.autoscaler._private.monitor as monitor
 from ray._private import services
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils
-from ray.ray_operator.operator_utils import AUTOSCALER_RETRIES_FIELD
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
-from ray.ray_operator.operator_utils import STATUS_ERROR
 from ray.ray_operator.operator_utils import STATUS_RUNNING
 from ray.ray_operator.operator_utils import STATUS_UPDATING
 from ray import ray_constants
@@ -26,10 +24,10 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 # Queue to process cluster status updates.
-cluster_status_q = mp.Queue()  # type: mp.Queue[Tuple[str, str, str]]
+cluster_status_q = mp.Queue()  # type: mp.Queue[Optional[Tuple[str, str, str]]]
 
 
-class RayCluster():
+class RayCluster:
     """Manages an autoscaling Ray cluster.
 
     Attributes:
@@ -46,27 +44,19 @@ class RayCluster():
         # Make directory for configs of clusters in the namespace,
         # if the directory doesn't exist already.
         namespace_dir = operator_utils.namespace_dir(self.namespace)
-        if not os.path.isdir(namespace_dir):
-            os.mkdir(namespace_dir)
+        os.makedirs(namespace_dir, exist_ok=True)
+
         self.config_path = operator_utils.config_path(
             cluster_namespace=self.namespace, cluster_name=self.name)
 
-        # Tracks metadata.generation field of associated custom resource.
-        # K8s increments this field whenever the spec of the custom resource is
-        # updated.
-        self._generation = 0
-        # Tracks metadata.labels.autoscalerRetries field of the CR.
-        # The operator increments this field whenever we attempt recovery from
-        # autoscaler failure.
-        self._num_retries = 0
-
         # Monitor subprocess
+        # self.subprocess is non-null iff there's an active monitor subprocess
+        # or a finished monitor subprocess in need of cleanup.
         self.subprocess = None  # type: Optional[mp.Process]
         # Monitor logs for this cluster will be prefixed by the monitor
         # subprocess name:
         self.subprocess_name = ",".join([self.name, self.namespace])
         self.monitor_stop_event = mp.Event()
-
         self.setup_logging()
 
     def create_or_update(self, restart_ray: bool = False) -> None:
@@ -107,7 +97,8 @@ class RayCluster():
             restart_only=False,
             yes=True,
             no_config_cache=True,
-            no_monitor_on_head=True)
+            no_monitor_on_head=True,
+        )
         # Write the resulting config for use by the autoscaling monitor:
         self.write_config()
 
@@ -116,21 +107,40 @@ class RayCluster():
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
         port = operator_utils.infer_head_port(self.config)
         redis_address = services.address(ray_head_pod_ip, port)
-        self.mtr = monitor.Monitor(
+        mtr = monitor.Monitor(
             redis_address=redis_address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
             prefix_cluster_info=True,
-            stop_event=self.monitor_stop_event)
-        self.mtr.run()
+            stop_event=self.monitor_stop_event,
+        )
+        mtr.run()
 
-    def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
+    def teardown(self) -> None:
+        """Attempt orderly tear-down of Ray processes before RayCluster
+        resource deletion."""
+        self.do_in_subprocess(self._teardown, args=(), block=True)
+
+    def _teardown(self) -> None:
+        commands.teardown_cluster(
+            self.config_path,
+            yes=True,
+            workers_only=False,
+            override_cluster_name=None,
+            keep_min_workers=False)
+
+    def do_in_subprocess(self,
+                         f: Callable[[], None],
+                         args: Tuple = (),
+                         block: bool = False) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
             name=self.subprocess_name, target=f, args=args, daemon=True)
         self.subprocess.start()
+        if block:
+            self.subprocess.join()
 
     def clean_up_subprocess(self):
         """
@@ -139,18 +149,25 @@ class RayCluster():
         Executed when CR for this cluster is "DELETED".
         Executed when Autoscaling monitor is restarted.
         """
-        if self.subprocess and self.subprocess.is_alive():
-            # Triggers graceful stop of the monitor loop.
-            self.monitor_stop_event.set()
-            self.subprocess.join()
-            # Clears the event for subsequent runs of the monitor.
-            self.monitor_stop_event.clear()
+
+        if self.subprocess is None:
+            # Nothing to clean.
+            return
+
+        # Triggers graceful stop of the monitor loop.
+        self.monitor_stop_event.set()
+        self.subprocess.join()
+        # Clears the event for subsequent runs of the monitor.
+        self.monitor_stop_event.clear()
+        # Signal completed cleanup.
+        self.subprocess = None
 
     def clean_up(self) -> None:
         """Executed when the CR for this cluster is "DELETED".
 
         The key thing is to end the monitoring subprocess.
         """
+        self.teardown()
         self.clean_up_subprocess()
         self.clean_up_logging()
         self.delete_config()
@@ -181,130 +198,36 @@ class RayCluster():
             yaml.dump(self.config, file)
 
     def delete_config(self) -> None:
-        os.remove(self.config_path)
-
-    def set_generation(self, generation: int) -> None:
-        self._generation = generation
-
-    def set_num_retries(self, num_retries: int) -> None:
-        self._num_retries = num_retries
-
-    def get_generation(self) -> int:
-        return self._generation
-
-    def get_num_retries(self) -> int:
-        return self._num_retries
+        try:
+            os.remove(self.config_path)
+        except OSError:
+            log_prefix = ",".join([self.name, self.namespace])
+            logger.warning(
+                f"{log_prefix}: config path does not exist {self.config_path}")
 
 
-# Maps ray cluster (name, namespace) pairs to RayCluster python objects.
-ray_clusters = {}  # type: Dict[Tuple[str, str], RayCluster]
+@kopf.on.startup()
+def start_background_worker(memo: kopf.Memo, **_):
+    memo.status_handler = threading.Thread(
+        target=status_handling_loop, args=(cluster_status_q, ))
+    memo.status_handler.start()
 
 
-def run_event_loop():
-    # Instantiate event stream.
-    if operator_utils.NAMESPACED_OPERATOR:
-        raycluster_cr_stream = operator_utils.namespaced_cr_stream(
-            namespace=operator_utils.OPERATOR_NAMESPACE)
-    else:
-        raycluster_cr_stream = operator_utils.cluster_scoped_cr_stream()
-
-    # Run control loop.
-    for event in raycluster_cr_stream:
-        cluster_cr = event["object"]
-        cluster_name = cluster_cr["metadata"]["name"]
-        cluster_namespace = cluster_cr["metadata"]["namespace"]
-        event_type = event["type"]
-        handle_event(event_type, cluster_cr, cluster_name, cluster_namespace)
+@kopf.on.cleanup()
+def stop_background_worker(memo: kopf.Memo, **_):
+    cluster_status_q.put(None)
+    memo.status_handler.join()
 
 
-def handle_event(event_type, cluster_cr, cluster_name, cluster_namespace):
-    # TODO: This only detects errors in the parent process and thus doesn't
-    # catch cluster-specific autoscaling failures. Fix that (perhaps at
-    # the same time that we eliminate subprocesses).
-    try:
-        cluster_action(event_type, cluster_cr, cluster_name, cluster_namespace)
-    except Exception:
-        log_prefix = ",".join(cluster_name, cluster_namespace)
-        if event_type in ["ADDED", "MODIFIED"]:
-            logger.exception(f"{log_prefix}: Error while updating RayCluster.")
-            cluster_status_q.put((cluster_name, cluster_namespace,
-                                  STATUS_ERROR))
-        elif event_type == "DELETED":
-            # Don't try to update CRD's status if the CRD is gone.
-            logger.exception(
-                f"Error while deleting RayCluster {cluster_name}.")
-
-
-def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
-                   cluster_name: str, cluster_namespace: str) -> None:
-
-    cluster_config = operator_utils.cr_to_config(cluster_cr)
-    cluster_identifier = (cluster_name, cluster_namespace)
-    log_prefix = ",".join(cluster_identifier)
-
-    if event_type == "ADDED":
-        operator_utils.check_redis_password_not_specified(
-            cluster_config, cluster_identifier)
-
-        cluster_status_q.put((cluster_name, cluster_namespace,
-                              STATUS_UPDATING))
-
-        ray_cluster = RayCluster(cluster_config)
-
-        # Track changes to the custom resource's spec field:
-        generation = cluster_cr["metadata"]["generation"]
-        ray_cluster.set_generation(generation)
-
-        logger.info(f"{log_prefix}: Launching cluster.")
-        ray_cluster.create_or_update()
-
-        ray_clusters[cluster_identifier] = ray_cluster
-
-        cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
-
-    elif event_type == "MODIFIED":
-        ray_cluster = ray_clusters[cluster_identifier]
-        # Check metadata.generation to determine if there's a spec change.
-        current_generation = cluster_cr["metadata"]["generation"]
-        # Check metadata.labels.autoscalerRetries to see if we need to restart
-        # Ray processes.
-        status = cluster_cr.get("status", {})
-        autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
-
-        # True if there's been a chamge to the spec of the custom resource,
-        # triggering an increment of metadata.generation:
-        spec_changed = current_generation > ray_cluster.get_generation()
-        # True if monitor has failed, triggering an increment of
-        # status.autoscalerRetries:
-        ray_restart_required = (autoscaler_retries >
-                                ray_cluster.get_num_retries())
-        if ray_restart_required:
-            logger.error(f"{log_prefix}: Failed, restarting cluster.")
-            ray_cluster.set_num_retries(autoscaler_retries)
-        if spec_changed:
-            logger.info(f"{log_prefix}: Updating cluster.")
-            ray_cluster.set_generation(current_generation)
-
-        # Update if there's been a change to the spec or if we're attempting
-        # recovery from autoscaler failure.
-        if spec_changed or ray_restart_required:
-            cluster_status_q.put((cluster_name, cluster_namespace,
-                                  STATUS_UPDATING))
-            ray_cluster.set_config(cluster_config)
-            # Trigger Ray restart only if there's been a failure.
-            ray_cluster.create_or_update(restart_ray=ray_restart_required)
-            cluster_status_q.put((cluster_name, cluster_namespace,
-                                  STATUS_RUNNING))
-
-    elif event_type == "DELETED":
-        ray_cluster = ray_clusters[cluster_identifier]
-        ray_cluster.clean_up()
-        del ray_clusters[cluster_identifier]
-
-
-def status_handling_loop():
+def status_handling_loop(queue: mp.Queue):
+    # TODO: Status will not be set if Operator restarts after `queue.put`
+    # but before `set_status`.
     while True:
-        cluster_name, cluster_namespace, phase = cluster_status_q.get()
+        item = queue.get()
+        if item is None:
+            break
+
+        cluster_name, cluster_namespace, phase = item
         try:
             operator_utils.set_status(cluster_name, cluster_namespace, phase)
         except Exception:
@@ -312,30 +235,96 @@ def status_handling_loop():
             logger.exception(f"{log_prefix}: Error setting RayCluster status.")
 
 
-def main() -> None:
-    # Run status-handling loop.
-    status_handler = threading.Thread(target=status_handling_loop, daemon=True)
-    status_handler.start()
+@kopf.on.create("rayclusters")
+@kopf.on.update("rayclusters")
+@kopf.on.resume("rayclusters")
+def create_or_update_cluster(body, name, namespace, logger, memo: kopf.Memo,
+                             **kwargs):
+    """
+    1. On creation of a RayCluster resource, create the Ray cluster.
+    2. On update of a RayCluster resource, update the cluster
+        without restarting Ray processes,
+        unless the Ray head's config is modified.
+    3. On operator restart ("resume"), rebuild operator memo state and restart
+        the Ray cluster's monitor process, without restarting Ray processes.
+    """
+    _create_or_update_cluster(body, name, namespace, memo, restart_ray=False)
 
-    # Make directory for Ray cluster configs
-    if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
-        os.mkdir(operator_utils.RAY_CONFIG_DIR)
 
-    while True:
-        # This outer loop waits for creation of a RayCluster CRD if it hasn't
-        # already been created.
-        try:
-            # Enter main event loop.
-            run_event_loop()
-        except ApiException as e:
-            if e.status == 404:
-                logger.warning("Waiting for creation of the RayCluster CRD")
-                time.sleep(5)
-            else:
-                logger.error("Failed to enter operator event loop.")
-                # Unforeseen startup error. Operator pod is
-                # likely to end up in a crash loop.
-                raise
+@kopf.on.field("rayclusters", field="status.autoscalerRetries")
+def restart_cluster(body, status, name, namespace, memo: kopf.Memo, **kwargs):
+    """On increment of status.autoscalerRetries, restart Ray processes.
+
+    Increment of autoscalerRetries happens when cluster's monitor fails,
+    for example due to Ray head failure.
+    """
+    # Don't act on initialization of status.autoscalerRetries from nil to 0.
+    if status.get("autoscalerRetries"):
+        # Restart the Ray cluster:
+        _create_or_update_cluster(
+            body, name, namespace, memo, restart_ray=True)
+
+
+def _create_or_update_cluster(cluster_cr_body,
+                              name,
+                              namespace,
+                              memo,
+                              restart_ray=False):
+    """Create, update, or restart the Ray cluster described by a RayCluster
+    resource.
+
+    Args:
+        cluster_cr_body: The body of the K8s RayCluster resources describing
+            a Ray cluster.
+        name: The name of the Ray cluster.
+        namespace: The K8s namespace in which the Ray cluster runs.
+        memo: kopf memo state for this Ray cluster.
+        restart_ray: Only restart cluster Ray processes if this is true.
+    """
+    # Convert the RayCluster custom resource to a Ray autoscaling config.
+    cluster_config = operator_utils.cr_to_config(cluster_cr_body)
+    # Verify the user didn't set a custom Redis password in Ray start commands.
+    # (custom Redis password is not supported by K8s operator.)
+    operator_utils.check_redis_password_not_specified(cluster_config, name,
+                                                      namespace)
+
+    # Fetch or create the RayCluster python object encapsulating cluster state.
+    ray_cluster = memo.get("ray_cluster")
+    if ray_cluster is None:
+        ray_cluster = RayCluster(cluster_config)
+        memo.ray_cluster = ray_cluster
+
+    # Indicate in status.phase that a "create-or-update" is in progress.
+    cluster_status_q.put((name, namespace, STATUS_UPDATING))
+
+    # Store the autoscaling config for use by the Ray autoscaler.
+    ray_cluster.set_config(cluster_config)
+
+    # Launch a the Ray cluster by SSHing into the pod and running
+    # the initialization commands. This will not restart the cluster
+    # unless there was a failure.
+    ray_cluster.create_or_update(restart_ray=restart_ray)
+
+    # Indicate in status.phase that the head is up and the monitor is running.
+    cluster_status_q.put((name, namespace, STATUS_RUNNING))
+
+
+@kopf.on.delete("rayclusters")
+def delete_fn(memo: kopf.Memo, **kwargs):
+    ray_cluster = memo.get("ray_cluster")
+    if ray_cluster is None:
+        return
+
+    ray_cluster.clean_up()
+
+
+def main():
+    if operator_utils.NAMESPACED_OPERATOR:
+        kwargs = {"namespaces": [operator_utils.OPERATOR_NAMESPACE]}
+    else:
+        kwargs = {"clusterwide": True}
+
+    asyncio.run(kopf.operator(**kwargs))
 
 
 if __name__ == "__main__":

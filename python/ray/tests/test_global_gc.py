@@ -9,14 +9,20 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
 
 def test_auto_local_gc(shutdown_only):
-    ray.init(num_cpus=2, _system_config={"local_gc_interval_s": 1})
+    ray.init(
+        num_cpus=2,
+        _system_config={
+            "local_gc_interval_s": 10,
+            "local_gc_min_interval_s": 5,
+            "global_gc_min_interval_s": 10
+        })
 
     class ObjectWithCyclicRef:
         def __init__(self):
@@ -54,8 +60,15 @@ def test_auto_local_gc(shutdown_only):
 
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=1, num_gpus=0)
+    cluster.add_node(
+        num_cpus=1,
+        num_gpus=0,
+        _system_config={
+            "local_gc_interval_s": 10,
+            "local_gc_min_interval_s": 5,
+            "global_gc_min_interval_s": 10
+        })
+    cluster.add_node(num_cpus=1, num_gpus=0)
     ray.init(address=cluster.address)
 
     class ObjectWithCyclicRef:

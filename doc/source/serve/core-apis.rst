@@ -114,7 +114,7 @@ Deployments can be updated simply by updating the code or configuration options 
 By default, each call to ``.deploy()`` will cause a redeployment, even if the underlying code and options didn't change.
 This could be detrimental if you have many deployments in a script and and only want to update one: if you re-run the script, all of the deployments will be redeployed, not just the one you updated.
 To prevent this, you may provide a ``version`` string for the deployment as a keyword argument in the decorator or ``Deployment.options()``.
-If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op."
+If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op.
 When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
 
 .. _configuring-a-deployment:
@@ -235,7 +235,7 @@ Dependency Management
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
-python dependencies.  For example, you can simultaneously serve one deployment
+Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
 Currently this is supported on Mac OS and Linux using `conda <https://docs.conda.io/en/latest/>`_
@@ -244,8 +244,9 @@ As with all other actor options, pass these in via ``ray_actor_options`` in
 your deployment.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes.  
-See :ref:`conda-environments-for-tasks-and-actors` for details.
+desired conda environment must be present on all nodes. Also, the Python patch version
+(e.g. 3.8.10) must be identical on all nodes (this is a requirement for any Ray cluster).
+See :ref:`runtime-environments` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
@@ -253,13 +254,6 @@ and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
 Python versions must be the same in both environments.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
-
-.. note::
-  If a conda environment is not specified, your deployment will be started in the
-  same conda environment as the client (the process creating the deployment) by
-  default.  (When using :ref:`ray-client`, your deployment will be started in the
-  conda environment that the Serve controller is running in, which by default is the
-  conda environment the remote Ray cluster was started in.)
 
 The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API

@@ -26,6 +26,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -60,7 +61,7 @@ class MockRayletClient : public PinObjectsInterface {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
     callbacks.push_back(callback);
   }
@@ -116,7 +117,6 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), publisher_.get(), subscriber_.get(),
-            /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
         manager_(rpc::Address(),
                  [&](const std::string &ip, int port) { return raylet_client_; },
@@ -136,7 +136,8 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
                        reinterpret_cast<const uint8_t *>(meta.data()));
                    auto meta_buffer =
                        std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-                   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+                   auto data = RayObject(nullptr, meta_buffer,
+                                         std::vector<rpc::ObjectReference>());
                    RAY_CHECK(memory_store_->Put(data, object_id));
                  },
                  /*lineage_reconstruction_enabled=*/true) {}
@@ -255,6 +256,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   }
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -6,7 +6,6 @@ import time
 from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
@@ -112,7 +111,6 @@ class Unity3DEnv(MultiAgentEnv):
         # Keep track of how many times we have called `step` so far.
         self.episode_timesteps = 0
 
-    @override(MultiAgentEnv)
     def step(
             self, action_dict: MultiAgentDict
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
@@ -181,7 +179,6 @@ class Unity3DEnv(MultiAgentEnv):
 
         return obs, rewards, dones, infos
 
-    @override(MultiAgentEnv)
     def reset(self) -> MultiAgentDict:
         """Resets the entire Unity3D scene (a single multi-agent episode)."""
         self.episode_timesteps = 0
@@ -313,7 +310,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces["Striker"], {}),
             }
 
-            def policy_mapping_fn(agent_id):
+            def policy_mapping_fn(agent_id, episode, **kwargs):
                 return "Striker" if "Striker" in agent_id else "Goalie"
 
         else:
@@ -322,7 +319,7 @@ class Unity3DEnv(MultiAgentEnv):
                             action_spaces[game_name], {}),
             }
 
-            def policy_mapping_fn(agent_id):
+            def policy_mapping_fn(agent_id, episode, **kwargs):
                 return game_name
 
         return policies, policy_mapping_fn

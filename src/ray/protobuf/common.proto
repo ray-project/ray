@@ -73,9 +73,8 @@ message PythonFunctionDescriptor {
 
 /// Function descriptor for C/C++.
 message CppFunctionDescriptor {
-  /// Dynamic library name which contains the remote function.
-  string lib_name = 1;
-  string function_name = 4;
+  /// Remote function name.
+  string function_name = 1;
 }
 
 // A union wrapper for various function descriptor types.
@@ -85,6 +84,17 @@ message FunctionDescriptor {
     PythonFunctionDescriptor python_function_descriptor = 2;
     CppFunctionDescriptor cpp_function_descriptor = 3;
   }
+}
+
+// Actor concurrency group is used to define a concurrent
+// unit to indicate how some methods are performed concurrently.
+message ConcurrencyGroup {
+  // The name of the method concurrency group.
+  string name = 1;
+  // The maximum concurrency of this group.
+  int32 max_concurrency = 2;
+  // Function descriptors of the actor methods that will run in this concurrency group.
+  repeated FunctionDescriptor function_descriptors = 3;
 }
 
 // This enum type is used as object's metadata to indicate the object's
@@ -116,8 +126,10 @@ enum ErrorType {
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
+  // Indicates that the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
+  // Indicates that the runtime_env failed to be created.
+  RUNTIME_ENV_SETUP_FAILED = 7;
 }
 
 /// The task exception encapsulates all information about task
@@ -199,6 +211,10 @@ message TaskSpec {
   bytes debugger_breakpoint = 23;
   // Serialized JSON string of the parsed runtime environment dict for this task.
   string serialized_runtime_env = 24;
+  // The concurrency group name in which this task will be performed.
+  string concurrency_group_name = 25;
+  // Whether application-level errors (exceptions) should be retried.
+  bool retry_exceptions = 26;
 }
 
 message Bundle {
@@ -238,6 +254,10 @@ message ObjectReference {
   bytes object_id = 1;
   // The address of the object's owner.
   Address owner_address = 2;
+  // Language call site of the object reference (i.e., file and line number).
+  // Used to print debugging information if there is an error retrieving the
+  // object.
+  string call_site = 3;
 }
 
 message ObjectReferenceCount {
@@ -274,7 +294,7 @@ message TaskArg {
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
-  repeated bytes nested_inlined_ids = 4;
+  repeated ObjectReference nested_inlined_refs = 4;
 }
 
 // Task spec of an actor creation task.
@@ -294,16 +314,22 @@ message ActorCreationTaskSpec {
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
   repeated string dynamic_worker_options = 5;
-  // The max number of concurrent calls for direct call actors.
+  // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;
   // Whether the actor is persistent.
   bool is_detached = 7;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
   string name = 8;
+  // The namespace of the actor. Should only be populated when is_detached is true.
+  string ray_namespace = 9;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 9;
+  bool is_asyncio = 10;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 10;
+  string extension_data = 11;
+  // Serialized bytes of the Handle to the actor that will be created by this task.
+  bytes serialized_actor_handle = 12;
+  // The concurrency groups of this actor.
+  repeated ConcurrencyGroup concurrency_groups = 13;
 }
 
 // Task spec of an actor task.
@@ -478,6 +504,8 @@ enum WorkerExitType {
   PLACEMENT_GROUP_REMOVED = 3;
   // Worker exit due to exceptions in creation task.
   CREATION_TASK_ERROR = 4;
+  // Worker killed by raylet if it has been idle for too long.
+  IDLE_EXIT = 5;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -501,3 +529,9 @@ enum PlacementStrategy {
   STRICT_SPREAD = 3;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+// Info about a named actor.
+message NamedActorInfo {
+  string ray_namespace = 1;
+  string name = 2;
+}

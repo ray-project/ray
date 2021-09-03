@@ -1,0 +1,19 @@
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: { }
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - modin
+    - s3fs
+    - fastapi
+    - uvicorn
+    - tblib
+  conda_packages: [ ]
+
+post_build_cmds:
+  - pip uninstall -y ray || true
+  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
