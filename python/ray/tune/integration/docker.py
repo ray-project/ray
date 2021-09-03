@@ -135,7 +135,7 @@ class DockerSyncClient(SyncClient):
         except click.ClickException:
             if log_once("docker_rsync_down_fail"):
                 logger.warning(
-                    "Rsync-up failed. Consider using a durable trainable "
+                    "Rsync-down failed. Consider using a durable trainable "
                     "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var.")
             raise
 
