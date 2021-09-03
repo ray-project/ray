@@ -240,10 +240,12 @@ class RayEvent {
 /// Ray Event initialization.
 ///
 /// This function is not thread-safe. We should use this function when main thread starts.
+/// This function could only be called once. Redundant calls don't take effect, except for
+/// the first time.
 /// \param source_type The type of current process.
 /// \param custom_fields The global custom fields.
 /// \param log_dir The log directory to generate event subdirectory.
-/// \param event_level The input event level. It should be one of "info", "warning",
+/// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \return void.
 void RayEventInit(rpc::Event_SourceType source_type,

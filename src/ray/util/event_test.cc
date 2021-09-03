@@ -409,14 +409,17 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
-  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+  ray::RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields);
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
   RAY_CHECK(1 > 0) << "correct test case";
 
   ASSERT_DEATH({ RAY_CHECK(1 < 0) << "incorrect test case"; }, "");
 
   std::vector<std::string> vc;
-  ReadEventFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
   json out_custom_fields;
   rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
 
@@ -426,6 +429,30 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
               testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
+
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, TEST_RAY_EVENT_INIT) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  auto custom_fields = std::unordered_map<std::string, std::string>();
+  custom_fields.emplace("node_id", "node 1");
+  custom_fields.emplace("job_id", "job 1");
+  custom_fields.emplace("task_id", "task 1");
+  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+
+  RAY_EVENT(FATAL, "label") << "test error event";
+
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  EXPECT_EQ((int)vc.size(), 1);
+  json out_custom_fields;
+  rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
+
+  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL", "label",
+                   "NULL");
 
   boost::filesystem::remove_all(log_dir.c_str());
 }

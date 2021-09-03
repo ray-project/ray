@@ -15,6 +15,7 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 
+#include "absl/base/call_once.h"
 #include "absl/time/time.h"
 
 namespace ray {
@@ -276,15 +277,19 @@ void RayEvent::SendMessage(const std::string &message) {
   EventManager::Instance().Publish(event, custom_fields_);
 }
 
+static absl::once_flag init_once_;
+
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir, const std::string &event_level) {
-  RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-  auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
-  ray::EventManager::Instance().AddReporter(
-      std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-  SetEventLevel(event_level);
-  RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+  absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
+    RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+    auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+    ray::EventManager::Instance().AddReporter(
+        std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+    SetEventLevel(event_level);
+    RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+  });
 }
 
 }  // namespace ray
