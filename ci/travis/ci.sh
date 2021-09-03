@@ -6,8 +6,6 @@
 set -eo pipefail
 if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi
 
-if [ "${OSTYPE}" = msys ]; then OUTDIR='--output_user_root=c:/tmp'; else OUTDIR=''; fi
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
@@ -131,7 +129,7 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  bazel ${OUTDIR} test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
+  bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
 }
 
 test_python() {
@@ -194,18 +192,18 @@ test_python() {
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046
-    bazel ${OUTDIR} test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
+    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
       "${args[@]}";
   fi
 }
 
 test_cpp() {
-  bazel ${OUTDIR} build --config=ci //cpp:all
+  bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel ${OUTDIR} test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel ${OUTDIR} test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
@@ -299,12 +297,12 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel ${OUTDIR} build "${target}"
+    bazel build "${target}"
   elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
     # bazel build --config asan "${target}"
     echo "Not needed"
   elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel ${OUTDIR} build --config debug "${target}"
+    bazel build --config debug "${target}"
   else
     echo "Invalid config given"
     exit 1
@@ -313,7 +311,7 @@ _bazel_build_before_install() {
 
 
 _bazel_build_protobuf() {
-  bazel ${OUTDIR} build "//:install_py_proto"
+  bazel build "//:install_py_proto"
 }
 
 install_ray() {
