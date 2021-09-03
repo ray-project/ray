@@ -555,20 +555,20 @@ def test_keyword_args(ray_start_shared_local_modes):
 
     # Make sure we get an exception if too many arguments are passed in.
     with pytest.raises(Exception):
-        f1.remote(3)
+        ray.get(f1.remote(3))
 
     with pytest.raises(Exception):
-        f1.remote(x=3)
+        ray.get(f1.remote(x=3))
 
     with pytest.raises(Exception):
-        f2.remote(0, w=0)
+        ray.get(f2.remote(0, w=0))
 
     with pytest.raises(Exception):
-        f2.remote(3, x=3)
+        ray.get(f2.remote(3, x=3))
 
     # Make sure we get an exception if too many arguments are passed in.
     with pytest.raises(Exception):
-        f2.remote(1, 2, 3, 4)
+        ray.get(f2.remote(1, 2, 3, 4))
 
     @ray.remote
     def f3(x):
@@ -588,7 +588,7 @@ def test_args_starkwargs(ray_start_shared_local_modes):
     def test_function(fn, remote_fn):
         assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
         with pytest.raises(TypeError):
-            remote_fn.remote(3)
+            ray.get(remote_fn.remote(3))
 
     remote_test_function = ray.remote(test_function)
 
@@ -622,7 +622,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
         assert fn(1) == ray.get(remote_fn.remote(1))
 
         with pytest.raises(TypeError):
-            remote_fn.remote(1, 2, x=3)
+            ray.get(remote_fn.remote(1, 2, x=3))
 
     remote_test_function = ray.remote(test_function)
 
@@ -653,10 +653,10 @@ def test_oversized_function(ray_start_shared_local_modes):
         return len(bar)
 
     with pytest.raises(ValueError):
-        f.remote()
+        ray.get(f.remote())
 
     with pytest.raises(ValueError):
-        Actor.remote()
+        Actor.remote()._actor_id.id
 
 
 def test_args_stars_after(ray_start_shared_local_modes):

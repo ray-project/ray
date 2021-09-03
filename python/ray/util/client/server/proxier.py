@@ -315,6 +315,9 @@ class ProxyManager():
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
                     if specific_server.poll() is not None:
+                        logger.info(
+                            f"Specific server {client_id} is no longer running"
+                            f", freeing its port {specific_server.port}")
                         del self.servers[client_id]
                         # Port is available to use again.
                         self._free_ports.append(specific_server.port)

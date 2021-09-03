@@ -347,8 +347,15 @@ class Worker:
                 for future in id_futures:
                     future.set_exception(ex)
                 return
-            assert len(ticket.return_ids) == num_returns, \
-                f"expected {num_returns} returns, actual {ticket.return_ids}"
+
+            if len(ticket.return_ids) != num_returns:
+                exc = ValueError(
+                    f"Expected {num_returns} returns but received "
+                    f"{len(ticket.return_ids)}")
+                for future, raw_id in zip(id_futures, ticket.return_ids):
+                    future.set_exception(exc)
+                return
+
             for future, raw_id in zip(id_futures, ticket.return_ids):
                 future.set_result(raw_id)
 

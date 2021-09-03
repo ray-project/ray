@@ -236,9 +236,10 @@ class ClientActorHandle(ClientStub):
             return self._method_num_returns.keys()
         return super().__dir__()
 
+    # For compatibility with core worker ActorHandle._actor_id -> ActorID
     @property
-    def _actor_id(self):
-        return self.actor_ref.id
+    def _actor_id(self) -> ClientActorRef:
+        return self.actor_ref
 
     def __getattr__(self, key):
         if self._method_num_returns is None:
@@ -328,7 +329,7 @@ class OptionWrapper:
     def _num_returns(self) -> int:
         if self.options:
             num = self.options.get("num_returns")
-            if num:
+            if num is not None:
                 return num
         return self.remote_stub._num_returns()
 

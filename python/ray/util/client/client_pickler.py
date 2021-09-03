@@ -83,7 +83,7 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="Actor",
                 client_id=self.client_id,
-                ref_id=obj._actor_id,
+                ref_id=obj._actor_id.id,
                 name=None,
                 baseline_options=None,
             )

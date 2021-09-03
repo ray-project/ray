@@ -355,12 +355,15 @@ def test_keyword_args(ray_start_regular_shared):
     # incorrectly.
     with pytest.raises(Exception):
         actor = Actor.remote()
+        assert not actor.actor_ref.is_nil()
 
     with pytest.raises(Exception):
         actor = Actor.remote(0, 1, 2, arg3=3)
+        assert not actor.actor_ref.is_nil()
 
     with pytest.raises(Exception):
         actor = Actor.remote(0, arg0=1)
+        assert not actor.actor_ref.is_nil()
 
     # Make sure we get an exception if the method is called incorrectly.
     actor = Actor.remote(1)
