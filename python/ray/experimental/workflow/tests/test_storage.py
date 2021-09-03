@@ -1,12 +1,14 @@
 import pytest
-import asyncio
 import ray
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
+from ray.experimental import workflow
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.workflow_storage import asyncio_run
+from ray.experimental.workflow.workflow_storage import asyncio_run, \
+    get_workflow_storage
 from ray.experimental.workflow.common import StepType
+import subprocess
 
 
 def some_func(x):
@@ -37,96 +39,10 @@ async def test_kv_storage(workflow_start_regular):
     # TODO(suquark): Test "delete" once fully implemented.
 
 
-@pytest.mark.asyncio
-async def test_raw_storage(workflow_start_regular):
-    raw_storage = workflow_storage._StorageImpl(storage.get_global_storage())
-    workflow_id = test_workflow_storage.__name__
-    step_id = "some_step"
-    input_metadata = {"2": "c"}
-    output_metadata = {"a": 1}
-    args = ([1, "2"], {"k": b"543"})
-    output = ["the_answer"]
-    object_resolved = 42
-    obj_ref = ray.put(object_resolved)
-    progress_metadata = {"step_id": "the_current_progress"}
-    # test creating normal objects
-    await asyncio.gather(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata),
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func),
-        raw_storage.save_step_args(workflow_id, step_id, args),
-        raw_storage.save_object_ref(workflow_id, obj_ref),
-        raw_storage.save_step_output_metadata(workflow_id, step_id,
-                                              output_metadata),
-        raw_storage.save_step_output(workflow_id, step_id, output),
-        raw_storage.save_workflow_progress(workflow_id, progress_metadata))
-
-    step_status = await raw_storage.get_step_status(workflow_id, step_id)
-    assert step_status.args_exists
-    assert step_status.output_object_exists
-    assert step_status.output_metadata_exists
-    assert step_status.input_metadata_exists
-    assert step_status.func_body_exists
-
-    (load_input_metadata, load_step_func_body, load_step_args, load_object_ref,
-     load_step_output_meta, load_step_output,
-     load_workflow_progress) = await asyncio.gather(
-         raw_storage.load_step_input_metadata(workflow_id, step_id),
-         raw_storage.load_step_func_body(workflow_id, step_id),
-         raw_storage.load_step_args(workflow_id, step_id),
-         raw_storage.load_object_ref(workflow_id, obj_ref.hex()),
-         raw_storage.load_step_output_metadata(workflow_id, step_id),
-         raw_storage.load_step_output(workflow_id, step_id),
-         raw_storage.load_workflow_progress(workflow_id))
-    assert load_input_metadata == input_metadata
-    assert load_step_func_body(33) == 34
-    assert load_step_args == args
-    assert ray.get(load_object_ref) == object_resolved
-    assert load_step_output_meta == output_metadata
-    assert load_step_output == output
-    assert load_workflow_progress == progress_metadata
-
-    # test overwrite
-    input_metadata = [input_metadata, "overwrite"]
-    output_metadata = [output_metadata, "overwrite"]
-    progress_metadata = {"step_id": "overwrite"}
-    args = (args, "overwrite")
-    output = (output, "overwrite")
-    object_resolved = (object_resolved, "overwrite")
-    obj_ref = ray.put(object_resolved)
-
-    await asyncio.gather(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata),
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func2),
-        raw_storage.save_step_args(workflow_id, step_id, args),
-        raw_storage.save_object_ref(workflow_id, obj_ref),
-        raw_storage.save_step_output_metadata(workflow_id, step_id,
-                                              output_metadata),
-        raw_storage.save_step_output(workflow_id, step_id, output),
-        raw_storage.save_workflow_progress(workflow_id, progress_metadata))
-    (load_input_metadata, load_step_func_body, load_step_args, load_object_ref,
-     load_step_output_meta, load_step_output,
-     load_workflow_progress) = await asyncio.gather(
-         raw_storage.load_step_input_metadata(workflow_id, step_id),
-         raw_storage.load_step_func_body(workflow_id, step_id),
-         raw_storage.load_step_args(workflow_id, step_id),
-         raw_storage.load_object_ref(workflow_id, obj_ref.hex()),
-         raw_storage.load_step_output_metadata(workflow_id, step_id),
-         raw_storage.load_step_output(workflow_id, step_id),
-         raw_storage.load_workflow_progress(workflow_id))
-    assert load_input_metadata == input_metadata
-    assert load_step_func_body(33) == 32
-    assert load_step_args == args
-    assert ray.get(load_object_ref) == object_resolved
-    assert load_step_output_meta == output_metadata
-    assert load_step_output == output
-    assert load_workflow_progress == progress_metadata
-
-
 def test_workflow_storage(workflow_start_regular):
-    raw_storage = workflow_storage._StorageImpl(storage.get_global_storage())
     workflow_id = test_workflow_storage.__name__
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
+                                                  storage.get_global_storage())
     step_id = "some_step"
     input_metadata = {
         "name": "test_basic_workflows.append1",
@@ -152,20 +68,24 @@ def test_workflow_storage(workflow_start_regular):
 
     # test basics
     asyncio_run(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata))
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
     asyncio_run(
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func))
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
     asyncio_run(
-        raw_storage.save_step_args(workflow_id, step_id, flattened_args))
-    asyncio_run(raw_storage.save_object_ref(workflow_id, obj_ref))
-    asyncio_run(
-        raw_storage.save_step_output_metadata(workflow_id, step_id,
-                                              output_metadata))
-    asyncio_run(raw_storage.save_step_output(workflow_id, step_id, output))
+        wf_storage._put(wf_storage._key_step_args(step_id), flattened_args))
 
-    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
-                                                  storage.get_global_storage())
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_obj_id(obj_ref.hex()), ray.get(obj_ref)))
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_output_metadata(step_id), output_metadata,
+            True))
+    asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
+
     assert wf_storage.load_step_output(step_id) == output
     assert wf_storage.load_step_args(step_id, [], [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
@@ -180,14 +100,18 @@ def test_workflow_storage(workflow_start_regular):
 
     step_id = "some_step2"
     asyncio_run(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata))
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
     asyncio_run(
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
+    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
     asyncio_run(
-        raw_storage.save_step_output_metadata(workflow_id, step_id,
-                                              output_metadata))
+        wf_storage._put(
+            wf_storage._key_step_output_metadata(step_id), output_metadata,
+            True))
+
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         output_step_id=output_metadata["dynamic_output_step_id"])
@@ -195,11 +119,13 @@ def test_workflow_storage(workflow_start_regular):
 
     step_id = "some_step3"
     asyncio_run(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata))
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
     asyncio_run(
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
+    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
@@ -213,10 +139,12 @@ def test_workflow_storage(workflow_start_regular):
 
     step_id = "some_step4"
     asyncio_run(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata))
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
     asyncio_run(
-        raw_storage.save_step_func_body(workflow_id, step_id, some_func))
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
@@ -229,8 +157,9 @@ def test_workflow_storage(workflow_start_regular):
 
     step_id = "some_step5"
     asyncio_run(
-        raw_storage.save_step_input_metadata(workflow_id, step_id,
-                                             input_metadata))
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
@@ -245,6 +174,35 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+def test_embedded_objectrefs(workflow_start_regular):
+    workflow_id = test_workflow_storage.__name__
+
+    class ObjectRefsWrapper:
+        def __init__(self, refs):
+            self.refs = refs
+
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
+                                                  storage.get_global_storage())
+    url = storage.get_global_storage().storage_url
+
+    wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
+
+    asyncio_run(wf_storage._put(["key"], wrapped))
+
+    # Be extremely explicit about shutting down. We want to make sure the
+    # `_get` call deserializes the full object and puts it in the object store.
+    # Shutting down the cluster should guarantee we don't accidently get the
+    # old object and pass the test.
+    ray.shutdown()
+    subprocess.check_output("ray stop --force", shell=True)
+
+    workflow.init(url)
+    storage2 = get_workflow_storage(workflow_id)
+
+    result = asyncio_run(storage2._get(["key"]))
+    assert ray.get(result.refs) == [1, 2]
 
 
 if __name__ == "__main__":

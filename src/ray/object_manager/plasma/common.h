@@ -27,6 +27,7 @@
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"
+#include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/util/macros.h"
 
@@ -81,8 +82,11 @@ struct Allocation {
       : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
 
   friend class PlasmaAllocator;
+  friend class DummyAllocator;
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(EvictionPolicyTest, Test);
+  friend struct GetRequestQueueTest;
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
@@ -103,12 +107,31 @@ class LocalObject {
 
   const Allocation &GetAllocation() const { return allocation; }
 
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+
+  void ToPlasmaObject(PlasmaObject *object, bool check_sealed) const {
+    RAY_DCHECK(object != nullptr);
+    if (check_sealed) {
+      RAY_DCHECK(Sealed());
+    }
+    object->store_fd = GetAllocation().fd;
+    object->data_offset = GetAllocation().offset;
+    object->metadata_offset = GetAllocation().offset + GetObjectInfo().data_size;
+    object->data_size = GetObjectInfo().data_size;
+    object->metadata_size = GetObjectInfo().metadata_size;
+    object->device_num = GetAllocation().device_num;
+    object->mmap_size = GetAllocation().mmap_size;
+  }
+
  private:
   friend class ObjectStore;
   friend class ObjectLifecycleManager;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+  friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(EvictionPolicyTest, Test);
+  friend struct GetRequestQueueTest;
 
   /// Allocation Info;
   Allocation allocation;

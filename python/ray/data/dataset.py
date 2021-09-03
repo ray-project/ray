@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
@@ -24,7 +23,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, WriteTask
+from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
+                                 NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -375,6 +375,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
+        See also: ``Dataset.split_at_indices``
+
         Args:
             n: Number of child datasets to return.
             equal: Whether to guarantee each split has an equal
@@ -522,10 +524,51 @@ class Dataset(Generic[T]):
             for actor in locality_hints
         ])
 
+    def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
+        """Split the dataset at the given indices (like np.split).
+
+        Examples:
+            >>> d1, d2, d3 = ray.data.range(10).split_at_indices([2, 5])
+            >>> d1.take()
+            [0, 1]
+            >>> d2.take()
+            [2, 3, 4]
+            >>> d3.take()
+            [5, 6, 7, 8, 9]
+
+        Time complexity: O(num splits)
+
+        See also: ``Dataset.split``
+
+        Args:
+            indices: List of sorted integers which indicate where the dataset
+                will be split. If an index exceeds the length of the dataset,
+                an empty dataset will be returned.
+
+        Returns:
+            The dataset splits.
+        """
+
+        if len(indices) < 1:
+            raise ValueError("indices must be at least of length 1")
+        if sorted(indices) != indices:
+            raise ValueError("indices must be sorted")
+        if indices[0] < 0:
+            raise ValueError("indices must be positive")
+
+        rest = self
+        splits = []
+        prev = 0
+        for i in indices:
+            first, rest = rest._split(i - prev, return_right_half=True)
+            prev = i
+            splits.append(first)
+        splits.append(rest)
+
+        return splits
+
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
-
-        Time complexity: O(1)
 
         Args:
             other: List of datasets to combine with this one. The datasets
@@ -617,32 +660,8 @@ class Dataset(Generic[T]):
             The truncated dataset.
         """
 
-        get_num_rows = cached_remote_fn(_get_num_rows)
-        truncate = cached_remote_fn(_truncate, num_returns=2)
-
-        count = 0
-        out_blocks = []
-        out_metadata = []
-        for b, m in zip(self._blocks, self._blocks.get_metadata()):
-            if m.num_rows is None:
-                num_rows = ray.get(get_num_rows.remote(b))
-            else:
-                num_rows = m.num_rows
-            if count + num_rows < limit:
-                out_blocks.append(b)
-                out_metadata.append(m)
-            elif count + num_rows == limit:
-                out_blocks.append(b)
-                out_metadata.append(m)
-                break
-            else:
-                new_block, new_metadata = truncate.remote(b, m, limit - count)
-                out_blocks.append(new_block)
-                out_metadata.append(ray.get(new_metadata))
-                break
-            count += num_rows
-
-        return Dataset(BlockList(out_blocks, out_metadata))
+        left, _ = self._split(limit, return_right_half=False)
+        return left
 
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
@@ -765,11 +784,11 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_parquet(self,
+                      path: str,
+                      *,
+                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                      **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -787,33 +806,22 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_parquet_args: Options to pass to
+                pyarrow.parquet.write_table(), which is used to write out each
+                block to a file.
         """
-        import pyarrow.parquet as pq
+        self.write_datasource(
+            ParquetDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_parquet_args)
 
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def parquet_write(write_path, block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow()
-            with pq.ParquetWriter(write_path, table.schema) as writer:
-                writer.write_table(table)
-
-        refs = [
-            parquet_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.parquet"),
-                block) for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
-
-    def write_json(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_json(self,
+                   path: str,
+                   *,
+                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                   **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -831,33 +839,23 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            pandas_json_args: These args will be passed to
+                pandas.DataFrame.to_json(), which we use under the hood to
+                write out each Datasets block. These
+                are dict(orient="records", lines=True) by default.
         """
+        self.write_datasource(
+            JSONDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **pandas_json_args)
 
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def json_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_json(write_path, orient="records", lines=True)
-
-        refs = [
-            json_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.json"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
-
-    def write_csv(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_csv(self,
+                  path: str,
+                  *,
+                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                  **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -875,28 +873,14 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def csv_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_csv(
-                write_path, mode="a", header=True, index=False)
-
-        refs = [
-            csv_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.csv"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            CSVDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_csv_args)
 
     def write_numpy(
             self,
@@ -921,23 +905,11 @@ class Dataset(Generic[T]):
                 files will be written to.
             filesystem: The filesystem implementation to write to.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def numpy_write(write_path: str, block: Block):
-            np.save(open(write_path, "wb"), block)
-
-        refs = [
-            numpy_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.npy"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            NumpyDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
@@ -953,19 +925,15 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks,
-                                               self._blocks.get_metadata(),
-                                               **write_args)
-        progress = ProgressBar("Write Progress", len(write_tasks))
-        remote_write = cached_remote_fn(_remote_write)
-
-        write_task_outputs = [remote_write.remote(w) for w in write_tasks]
+        write_results = datasource.do_write(self._blocks,
+                                            self._blocks.get_metadata(),
+                                            **write_args)
+        progress = ProgressBar("Write Progress", len(write_results))
         try:
-            progress.block_until_complete(write_task_outputs)
-            datasource.on_write_complete(write_tasks,
-                                         ray.get(write_task_outputs))
+            progress.block_until_complete(write_results)
+            datasource.on_write_complete(ray.get(write_results))
         except Exception as e:
-            datasource.on_write_failed(write_tasks, e)
+            datasource.on_write_failed(write_results, e)
             raise
         finally:
             progress.close()
@@ -1268,12 +1236,26 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
+        This works by first converting this dataset into a distributed set of
+        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
+        Then the individual dataframes are used to create the modin DataFrame
+        using
+        ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
+
+        from modin.distributed.dataframe.pandas.partitions import (
+            from_partitions)
+        pd_objs = self.to_pandas()
+        return from_partitions(pd_objs, axis=0)
 
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
@@ -1300,6 +1282,22 @@ class Dataset(Generic[T]):
 
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
+
+    def to_numpy(self) -> List[ObjectRef[np.ndarray]]:
+        """Convert this dataset into a distributed set of NumPy ndarrays.
+
+        This is only supported for datasets convertible to NumPy ndarrays.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A list of remote NumPy ndarrays created from this dataset.
+        """
+
+        block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        return [block_to_ndarray.remote(block) for block in self._blocks]
 
     def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
@@ -1460,6 +1458,48 @@ class Dataset(Generic[T]):
         """
         return list(self._blocks)
 
+    def _split(self, index: int,
+               return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
+        get_num_rows = cached_remote_fn(_get_num_rows)
+        split_block = cached_remote_fn(_split_block, num_returns=4)
+
+        count = 0
+        left_blocks = []
+        left_metadata = []
+        right_blocks = []
+        right_metadata = []
+        for b, m in zip(self._blocks, self._blocks.get_metadata()):
+            if m.num_rows is None:
+                num_rows = ray.get(get_num_rows.remote(b))
+            else:
+                num_rows = m.num_rows
+            if count >= index:
+                if not return_right_half:
+                    break
+                right_blocks.append(b)
+                right_metadata.append(m)
+            elif count + num_rows < index:
+                left_blocks.append(b)
+                left_metadata.append(m)
+            elif count + num_rows == index:
+                left_blocks.append(b)
+                left_metadata.append(m)
+            else:
+                b0, m0, b1, m1 = split_block.remote(b, m, index - count,
+                                                    return_right_half)
+                left_blocks.append(b0)
+                left_metadata.append(ray.get(m0))
+                right_blocks.append(b1)
+                right_metadata.append(ray.get(m1))
+            count += num_rows
+
+        left = Dataset(BlockList(left_blocks, left_metadata))
+        if return_right_half:
+            right = Dataset(BlockList(right_blocks, right_metadata))
+        else:
+            right = None
+        return left, right
+
     def __repr__(self) -> str:
         schema = self.schema()
         if schema is None:
@@ -1514,13 +1554,14 @@ def _get_sum(block: Block) -> int:
     return sum(block.iter_rows())
 
 
-def _remote_write(task: WriteTask) -> Any:
-    return task()
-
-
 def _block_to_df(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
+
+
+def _block_to_ndarray(block: Block):
+    block = BlockAccessor.for_block(block)
+    return block.to_numpy()
 
 
 def _block_to_arrow(block: Block):
@@ -1533,15 +1574,27 @@ def _check_is_arrow(block: Block) -> bool:
     return isinstance(block, pyarrow.Table)
 
 
-def _truncate(block: Block, meta: BlockMetadata,
-              count: int) -> (Block, BlockMetadata):
+def _split_block(
+        block: Block, meta: BlockMetadata, count: int, return_right_half: bool
+) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
-    new_block = block.slice(0, count, copy=True)
-    accessor = BlockAccessor.for_block(new_block)
-    new_meta = BlockMetadata(
-        num_rows=accessor.num_rows(),
-        size_bytes=accessor.size_bytes(),
+    b0 = block.slice(0, count, copy=True)
+    a0 = BlockAccessor.for_block(b0)
+    m0 = BlockMetadata(
+        num_rows=a0.num_rows(),
+        size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files)
-    return new_block, new_meta
+    if return_right_half:
+        b1 = block.slice(count, block.num_rows(), copy=True)
+        a1 = BlockAccessor.for_block(b1)
+        m1 = BlockMetadata(
+            num_rows=a1.num_rows(),
+            size_bytes=a1.size_bytes(),
+            schema=meta.schema,
+            input_files=meta.input_files)
+    else:
+        b1 = None
+        m1 = None
+    return b0, m0, b1, m1

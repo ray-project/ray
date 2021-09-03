@@ -23,16 +23,13 @@
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/stats_collector.h"
 
 namespace plasma {
 
-// ObjectLifecycleManager allocates LocalObjects from the allocator.
-// It tracks object’s lifecycle states such as reference count or object states
-// (created/sealed). It lazily garbage collects objects when running out of space.
-class ObjectLifecycleManager {
+class IObjectLifecycleManager {
  public:
-  ObjectLifecycleManager(IAllocator &allocator,
-                         ray::DeleteObjectCallback delete_object_callback);
+  virtual ~IObjectLifecycleManager() = default;
 
   /// Create a new object given object's info. Object creation might
   /// fail if runs out of space; or an object with the same id exists.
@@ -44,15 +41,15 @@ class ObjectLifecycleManager {
   ///   - pointer to created object and PlasmaError::OK when succeeds.
   ///   - nullptr and error message, including ObjectExists/OutOfMemory
   /// TODO(scv119): use RAII instead of pointer for returned object.
-  std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
+  virtual std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
       const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
-      bool fallback_allocator);
+      bool fallback_allocator) = 0;
 
   /// Get object by id.
   /// \return
   ///   - nullptr if such object doesn't exist.
   ///   - otherwise, pointer to the object.
-  const LocalObject *GetObject(const ObjectID &object_id) const;
+  virtual const LocalObject *GetObject(const ObjectID &object_id) const = 0;
 
   /// Seal created object by id.
   ///
@@ -60,7 +57,7 @@ class ObjectLifecycleManager {
   /// \return
   ///   - nulltpr if such object doesn't exist, or the object has already been sealed.
   ///   - otherise, pointer to the sealed object.
-  const LocalObject *SealObject(const ObjectID &object_id);
+  virtual const LocalObject *SealObject(const ObjectID &object_id) = 0;
 
   /// Abort object creation by id. It deletes the object regardless of reference
   /// counting.
@@ -70,7 +67,7 @@ class ObjectLifecycleManager {
   ///  - PlasmaError::OK, if the object was aborted successfully.
   ///  - PlasmaError::ObjectNonexistent, if ths object doesn't exist.
   ///  - PlasmaError::ObjectSealed, if ths object has already been sealed.
-  flatbuf::PlasmaError AbortObject(const ObjectID &object_id);
+  virtual flatbuf::PlasmaError AbortObject(const ObjectID &object_id) = 0;
 
   /// Delete a specific object by object_id. The object is delete immediately
   /// if it's been sealed and reference counting is zero. Otherwise it will be
@@ -83,18 +80,43 @@ class ObjectLifecycleManager {
   ///  - PlasmaError::ObjectNotsealed, if ths object is created but not sealed.
   ///  - PlasmaError::ObjectInUse, if the object is in use; it will be deleted
   ///  once it's no longer used (ref count becomes 0).
-  flatbuf::PlasmaError DeleteObject(const ObjectID &object_id);
+  virtual flatbuf::PlasmaError DeleteObject(const ObjectID &object_id) = 0;
 
   /// Bump up the reference count of the object.
   ///
   /// \return true if object exists, false otherise.
-  bool AddReference(const ObjectID &object_id);
+  virtual bool AddReference(const ObjectID &object_id) = 0;
 
   /// Decrese the reference count of the object. When reference count
   /// drop to zero the object becomes evictable.
   ///
   /// \return true if object exists and reference count is greater than 0, false otherise.
-  bool RemoveReference(const ObjectID &object_id);
+  virtual bool RemoveReference(const ObjectID &object_id) = 0;
+};
+
+// ObjectLifecycleManager allocates LocalObjects from the allocator.
+// It tracks object’s lifecycle states such as reference count or object states
+// (created/sealed). It lazily garbage collects objects when running out of space.
+class ObjectLifecycleManager : public IObjectLifecycleManager {
+ public:
+  ObjectLifecycleManager(IAllocator &allocator,
+                         ray::DeleteObjectCallback delete_object_callback);
+
+  std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
+      const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
+      bool fallback_allocator) override;
+
+  const LocalObject *GetObject(const ObjectID &object_id) const override;
+
+  const LocalObject *SealObject(const ObjectID &object_id) override;
+
+  flatbuf::PlasmaError AbortObject(const ObjectID &object_id) override;
+
+  flatbuf::PlasmaError DeleteObject(const ObjectID &object_id) override;
+
+  bool AddReference(const ObjectID &object_id) override;
+
+  bool RemoveReference(const ObjectID &object_id) override;
 
   /// Ask it to evict objects until we have at least size of capacity
   /// available.
@@ -136,8 +158,11 @@ class ObjectLifecycleManager {
 
  private:
   friend struct ObjectLifecycleManagerTest;
+  friend struct ObjectStatsCollectorTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
+  friend struct GetRequestQueueTest;
+  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 
   std::unique_ptr<IObjectStore> object_store_;
   std::unique_ptr<IEvictionPolicy> eviction_policy_;
@@ -149,6 +174,8 @@ class ObjectLifecycleManager {
 
   // Total bytes of the objects whose references are greater than 0.
   int64_t num_bytes_in_use_;
+
+  ObjectStatsCollector stats_collector_;
 };
 
 }  // namespace plasma

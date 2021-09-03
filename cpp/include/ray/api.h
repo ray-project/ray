@@ -138,6 +138,25 @@ template <typename T>
 inline static boost::optional<ActorHandle<T>> GetActorInternal(
     bool global, const std::string &actor_name);
 
+/// Create a placement group on remote nodes.
+///
+/// \param[in] create_options Creation options of the placement group.
+/// \return A PlacementGroup to the created placement group.
+PlacementGroup CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options);
+
+/// Remove a placement group by id.
+///
+/// \param[in] placement_group_id Id of the placement group.
+void RemovePlacementGroup(const std::string &placement_group_id);
+
+/// Wait for the placement group to be ready within the specified time.
+///
+/// \param[in] id Id of the placement group.
+/// \param[in] timeout_seconds Timeout in seconds.
+/// \return True if the placement group is created. False otherwise.
+bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds);
+
 // --------- inline implementation ------------
 
 template <typename T>
@@ -249,6 +268,19 @@ boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
   return GetActorInternal<T>(false, actor_name);
+}
+
+inline PlacementGroup CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
+}
+
+inline void RemovePlacementGroup(const std::string &placement_group_id) {
+  return ray::internal::GetRayRuntime()->RemovePlacementGroup(placement_group_id);
+}
+
+inline bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds) {
+  return ray::internal::GetRayRuntime()->WaitPlacementGroupReady(id, timeout_seconds);
 }
 
 }  // namespace ray

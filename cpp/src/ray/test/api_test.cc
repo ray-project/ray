@@ -256,3 +256,13 @@ TEST(RayApiTest, CompareWithFuture) {
   EXPECT_EQ(rt3, 2);
   t.join();
 }
+
+TEST(RayApiTest, CreateAndRemovePlacementGroup) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+  ray::internal::PlacementGroupCreationOptions options1{
+      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+  auto first_placement_group = ray::CreatePlacementGroup(options1);
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+}

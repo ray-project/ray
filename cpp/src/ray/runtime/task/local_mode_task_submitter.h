@@ -40,6 +40,10 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ActorID GetActor(bool global, const std::string &actor_name) const;
 
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::internal::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+
  private:
   ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
   JobID GetCurrentJobID() const;
@@ -54,6 +58,8 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
+
+  std::unordered_map<std::string, ray::PlacementGroup> placement_groups_;
 };
 }  // namespace internal
 }  // namespace ray
