@@ -221,7 +221,7 @@ class ProxyManager():
         # Set up the working_dir for the server.
         # TODO(edoakes): this should go be unified with the worker setup code
         # by going through the runtime_env agent.
-        context = RuntimeEnvContext()
+        context = RuntimeEnvContext(env_vars=runtime_env.get("env_vars"))
         working_dir_pkg.setup_working_dir(runtime_env, context)
 
         proc = start_ray_client_server(

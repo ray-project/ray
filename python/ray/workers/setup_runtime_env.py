@@ -32,7 +32,8 @@ def setup_worker(input_args):
         runtime_env_context = RuntimeEnvContext.deserialize(
             args.serialized_runtime_env_context)
     else:
-        runtime_env_context = RuntimeEnvContext()
+        runtime_env_context = RuntimeEnvContext(
+            env_vars=runtime_env.get("env_vars"))
 
     # Ray client server setups runtime env by itself instead of agent.
     if args.from_ray_client:

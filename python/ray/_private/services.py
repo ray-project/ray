@@ -1916,7 +1916,7 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         server_type (str): Whether to start the proxy version of Ray Client.
-        serialized_runtime_env_context (str|None): If specified, the serialized
+        serialized_runtime_env (str|None): If specified, the serialized
             runtime_env to start the client server in.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
