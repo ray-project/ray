@@ -18,6 +18,7 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.callback import Callback
 from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
@@ -700,34 +701,42 @@ class TrainableFunctionApiTest(unittest.TestCase):
     # Test rerunning rllib trials with ERRORED_ONLY.
     def testRerunRlLib(self):
         class TestEnv(gym.Env):
-            def __init__(self, should_fail=True):
+            counter = 0
+
+            def __init__(self, config):
                 self.observation_space = gym.spaces.Discrete(1)
                 self.action_space = gym.spaces.Discrete(1)
-                self.should_fail = should_fail
+                TestEnv.counter += 1
 
             def reset(self):
                 return 0
 
             def step(self, act):
-                if self.should_fail:
-                    raise Exception()
-                else:
-                    return [0, 1, True, {}]
+                return [0, 1, True, {}]
+
+        class FailureInjectionCallback(Callback):
+            def on_trial_start(self, trials, **info):
+                raise RuntimeError
 
         with self.assertRaises(Exception):
             tune.run(
                 "PPO",
                 config={
                     "env": TestEnv,
-                    "framework": "torch"
+                    "framework": "torch",
+                    "num_workers": 0,
                 },
+                name="my_experiment",
+                callbacks=[FailureInjectionCallback()],
                 stop={"training_iteration": 1})
         trials = tune.run(
             "PPO",
             config={
-                "env": TestEnv(should_fail=False),
-                "framework": "torch"
+                "env": TestEnv,
+                "framework": "torch",
+                "num_workers": 0,
             },
+            name="my_experiment",
             resume="ERRORED_ONLY",
             stop={
                 "training_iteration": 1
