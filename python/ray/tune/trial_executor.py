@@ -23,17 +23,27 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
     return ray.cluster_resources()
 
 
+def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
+    cpu = trial.resources.cpu + trial.resources.extra_cpu
+    gpu = trial.resources.gpu + trial.resources.extra_gpu
+    if trial.placement_group_factory is not None:
+        cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
+        gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
+    return {"CPU": cpu, "GPU": gpu}
+
+
 def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
     """Calculates if there is enough resources for a PENDING trial.
 
     For no autoscaler case.
     """
     assert trial.status == Trial.PENDING
-    total_cpu = trial.resources.cpu + trial.resources.extra_cpu
-    total_gpu = trial.resources.gpu + trial.resources.extra_gpu
-    return total_cpu <= _get_cluster_resources_no_autoscaler().get(
-        "CPU", 0) and total_gpu <= _get_cluster_resources_no_autoscaler().get(
-            "GPU", 0)
+    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
+
+    return trial_cpu_gpu["CPU"] <= _get_cluster_resources_no_autoscaler().get(
+        "CPU", 0
+    ) and trial_cpu_gpu["GPU"] <= _get_cluster_resources_no_autoscaler().get(
+        "GPU", 0)
 
 
 @lru_cache()
@@ -59,8 +69,8 @@ def _get_insufficient_resources_warning_msg() -> str:
             f" seconds. "
             f"This could be due to the cluster not having enough "
             f"resources available to start the next trial. Please stop the "
-            f"tuning job and readjust resources_per_trial argument passed "
-            f"into tune.run() as well as max_workers and worker_nodes "
+            f"tuning job and adjust `resources_per_trial` or `num_workers`"
+            f"(for rllib) as well as max_workers and worker_nodes "
             f"InstanceType specified in cluster.yaml.")
     else:
         return (f"No trial is running and no new trial has been started within"
@@ -68,20 +78,21 @@ def _get_insufficient_resources_warning_msg() -> str:
                 f"{_get_insufficient_resources_warning_threshold()} seconds. "
                 f"This could be due to the cluster not having enough "
                 f"resources available to start the next trial. Please stop "
-                f"the tuning job and readjust resources_per_trial argument "
-                f"passed into tune.run() and/or start a cluster with more "
-                f"resources.")
+                f"the tuning job and adjust `resources_per_trial` or "
+                f"`num_workers`(for rllib) and/or start a cluster with more"
+                f" resources.")
 
 
 # A beefed up version when Tune Error is raised.
-def _get_insufficient_resources_error_msg(trial_resources: Resources) -> str:
-    return (f"You ask for {trial_resources.cpu} cpu and {trial_resources.gpu} "
-            f"gpu per trial, but the cluster only has "
+def _get_insufficient_resources_error_msg(trial: Trial) -> str:
+    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
+    return (f"You asked for {trial_cpu_gpu['CPU']} cpu and "
+            f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
             f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
             f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu."
             f"The cluster does not have enough resources available to "
-            f"start the next trial. Please stop the tuning job and readjust "
-            f"resources_per_trial argument passed into tune.run() "
+            f"start the next trial. Please stop the tuning job and adjust "
+            f"`resources_per_trial` or `num_workers`(for rllib) "
             f"and/or start a cluster with more resources.")
 
 
@@ -294,8 +305,7 @@ class TrialExecutor(metaclass=ABCMeta):
                         if (trial.status is Trial.PENDING
                                 and not _can_fulfill_no_autoscaler(trial)):
                             raise TuneError(
-                                _get_insufficient_resources_error_msg(
-                                    trial.resources))
+                                _get_insufficient_resources_error_msg(trial))
                 else:
                     # TODO(xwjiang): Output a more helpful msg for autoscaler.
                     # https://github.com/ray-project/ray/issues/17799

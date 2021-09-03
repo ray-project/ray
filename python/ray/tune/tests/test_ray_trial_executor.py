@@ -44,11 +44,11 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                     "cpu": 5,  # more than what the cluster can offer.
                     "gpu": 3,
                 })
-        msg = ("You ask for 5 cpu and 3 gpu per trial, "
+        msg = ("You asked for 5.0 cpu and 3.0 gpu per trial, "
                "but the cluster only has 4.0 cpu and 2.0 gpu."
                "The cluster does not have enough resources available to start "
-               "the next trial. Please stop the tuning job and readjust "
-               "resources_per_trial argument passed into tune.run() "
+               "the next trial. Please stop the tuning job and adjust "
+               "`resources_per_trial` or `num_workers`(for rllib) "
                "and/or start a cluster with more resources.")
         assert str(cm._excinfo[1]) == msg
 
