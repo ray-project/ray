@@ -1,8 +1,9 @@
 from gym import wrappers
 import os
-import re
 
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils import add_mixins
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
@@ -96,12 +97,12 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         path_ = record_env if isinstance(record_env, str) else log_dir
         # Relative path: Add logdir here, otherwise, this would
         # not work for non-local workers.
-        if not re.search("[/\\\]", path_):
+        if not os.path.isabs(path_):
             path_ = os.path.join(log_dir, path_)
         print(f"Setting the path for recording to {path_}")
-        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
             else wrappers.Monitor
+        wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
             path_,
