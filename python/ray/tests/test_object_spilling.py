@@ -14,7 +14,8 @@ from ray.tests.conftest import (file_system_object_spilling_config,
                                 mock_distributed_fs_object_spilling_config)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
+from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
 
@@ -32,6 +33,8 @@ def is_dir_empty(temp_folder,
     # new directory path.
     num_files = 0
     temp_folder = temp_folder / append_path
+    if not temp_folder.exists():
+        return True
     for path in temp_folder.iterdir():
         num_files += 1
     return num_files == 0
@@ -108,11 +111,7 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100
         })
     assert "object_spilling_config" not in ray.worker._global_node._config
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        run_basic_workload()
-    else:
-        with pytest.raises(ray.exceptions.ObjectStoreFullError):
-            run_basic_workload()
+    run_basic_workload()
     ray.shutdown()
 
     # Make sure when we use a different config, it is reflected.
@@ -167,12 +166,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
         })
     arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
     ref = ray.get(ray.put(arr))  # noqa
-    # Since the ref exists, it should raise OOM.
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        ref2 = ray.put(arr)  # noqa
-    else:
-        with pytest.raises(ray.exceptions.ObjectStoreFullError):
-            ref2 = ray.put(arr)  # noqa
+    ref2 = ray.put(arr)  # noqa
 
     wait_for_condition(lambda: is_dir_empty(temp_folder))
     assert_no_thrashing(address["redis_address"])
@@ -445,9 +439,13 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             obj = ray.get(x)
         print(obj.shape)
         del obj
+
+    # In CI, Mac.metal suffers from EBS code start problem. Increase
+    # the timeout to 90.
+    timeout_seconds = 90 if platform.system() == "Darwin" else 30
     duration = datetime.now() - start
     assert duration <= timedelta(
-        seconds=30
+        seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 
@@ -603,6 +601,48 @@ def test_pull_spilled_object_failure(object_spilling_config,
 
     hash_value1 = ray.get(get_object.remote(ref))
     assert hash_value == hash_value1
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
+    object_spilling_config, temp_folder = object_spilling_config
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"object_spilling_config": object_spilling_config})
+    ray.init(address=cluster.address)
+    node2 = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+
+    # This task will run on node 2 because node 1 has no CPU resource
+    @ray.remote(num_cpus=1)
+    def run_workload():
+        ids = []
+        for _ in range(2):
+            arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            ids.append(ray.put(arr))
+        return ids
+
+    ids = ray.get(run_workload.remote())
+    assert not is_dir_empty(temp_folder)
+
+    # Kill node 2
+    cluster.remove_node(node2)
+
+    # Verify that the spill folder is not empty
+    assert not is_dir_empty(temp_folder)
+
+    # Start a new node
+    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+
+    # Verify that the spill folder is now cleaned up
+    assert is_dir_empty(temp_folder)
+
+    # We hold the object refs to prevent them from being deleted
+    del ids
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

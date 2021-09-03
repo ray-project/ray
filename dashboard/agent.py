@@ -10,11 +10,6 @@ import json
 import time
 import traceback
 
-import aiohttp
-import aiohttp.web
-import aiohttp_cors
-import psutil
-from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -26,6 +21,15 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     create_task = asyncio.create_task
@@ -47,12 +51,13 @@ class DashboardAgent(object):
                  temp_dir=None,
                  session_dir=None,
                  runtime_env_dir=None,
-                 runtime_env_setup_hook=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
+                 listen_port=0,
                  object_store_name=None,
-                 raylet_name=None):
+                 raylet_name=None,
+                 logging_params=None):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
@@ -61,13 +66,14 @@ class DashboardAgent(object):
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
-        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
+        self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
@@ -86,6 +92,8 @@ class DashboardAgent(object):
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
             f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -163,7 +171,7 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, self.ip, 0)
+        site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
         await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
@@ -236,6 +244,12 @@ if __name__ == "__main__":
         default=None,
         help="The socket name of the plasma store")
     parser.add_argument(
+        "--listen-port",
+        required=False,
+        type=int,
+        default=0,
+        help="Port for HTTP server to listen on")
+    parser.add_argument(
         "--raylet-name",
         required=True,
         type=str,
@@ -307,23 +321,17 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the resource directory used by runtime_env.")
-    parser.add_argument(
-        "--runtime-env-setup-hook",
-        required=True,
-        type=str,
-        default=None,
-        help="The module path to a Python function that"
-        "will be imported and run to set up the runtime env.")
 
     args = parser.parse_args()
     try:
-        setup_component_logger(
+        logging_params = dict(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
+        setup_component_logger(**logging_params)
 
         # The dashboard is currently broken on Windows.
         # https://github.com/ray-project/ray/issues/14026.
@@ -343,12 +351,13 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
-            runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
+            listen_port=args.listen_port,
             object_store_name=args.object_store_name,
-            raylet_name=args.raylet_name)
+            raylet_name=args.raylet_name,
+            logging_params=logging_params)
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

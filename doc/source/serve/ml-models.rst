@@ -51,7 +51,7 @@ stacking or ensembles.
 To define a higher-level composed model you need to do three things:
 
 1. Define your underlying models (the ones that you will compose together) as
-   Ray Serve backends
+   Ray Serve deployments.
 2. Define your composed model, using the handles of the underlying models
    (see the example below).
 3. Define an endpoint representing this composed model and query it!
@@ -90,7 +90,8 @@ class will allow you to load a model using its MLflow `Model URI`:
           df = pd.read_csv(csv_text)
           return self.model.predict(df)
 
-  MLflowDeployment.deploy()
+  model_uri = "model:/my_registered_model/Production"
+  MLflowDeployment.deploy(model_uri)
 
 .. tip:: 
 

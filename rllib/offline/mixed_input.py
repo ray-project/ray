@@ -1,11 +1,13 @@
-import numpy as np
+from types import FunctionType
+from typing import Dict
 
+import numpy as np
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.offline.io_context import IOContext
+from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
-from typing import Dict
+from ray.tune.registry import registry_get_input, registry_contains_input
 
 
 @DeveloperAPI
@@ -36,6 +38,11 @@ class MixedInput(InputReader):
         for k, v in dist.items():
             if k == "sampler":
                 self.choices.append(ioctx.default_sampler_input())
+            elif isinstance(k, FunctionType):
+                self.choices.append(k(ioctx))
+            elif isinstance(k, str) and registry_contains_input(k):
+                input_creator = registry_get_input(k)
+                self.choices.append(input_creator(ioctx))
             else:
                 self.choices.append(JsonReader(k, ioctx))
             self.p.append(v)

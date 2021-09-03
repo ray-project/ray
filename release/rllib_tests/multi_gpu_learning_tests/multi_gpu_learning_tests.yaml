@@ -1,0 +1,233 @@
+
+a2c-cartpole-v0:
+    env: CartPole-v0
+    run: A2C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        lr: 0.001
+
+appo-cartpole-v0-no-vtrace:
+    env: CartPole-v0
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        vtrace: false
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+appo-cartpole-v0-vtrace:
+    env: CartPole-v0
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+ddpg-repeat-after-me-env:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: DDPG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: -50.0
+        timesteps_total: 8000
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                continuous: true
+                repeat_delay: 0
+
+        num_gpus: 2
+        num_workers: 0
+        # Double batch size (2 GPUs).
+        train_batch_size: 512
+
+dqn-cartpole-v0:
+    env: CartPole-v0
+    run: DQN
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 50000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 0
+        # Double batch size (2 GPUs).
+        train_batch_size: 64
+        # Mimic tuned_example for DQN CartPole.
+        n_step: 3
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+
+impala-cartpole-v0:
+    env: CartPole-v0
+    run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+pg-cartpole-v0:
+    env: CartPole-v0
+    run: PG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 130.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 400
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+
+ppo-cartpole-v0:
+    env: CartPole-v0
+    run: PPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 300000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 8000
+
+sac-repeat-after-me-env:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: SAC
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 40.0
+        timesteps_total: 4500
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                repeat_delay: 0
+        num_gpus: 2
+        num_workers: 0
+        initial_alpha: 0.001
+        prioritized_replay: true
+
+        # Double batch size (2 GPUs).
+        train_batch_size: 512
+
+sac-repeat-after-me-env-continuous:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: SAC
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: -50.0
+        timesteps_total: 4500
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                continuous: true
+                repeat_delay: 0
+        num_gpus: 2
+        num_workers: 0
+        initial_alpha: 0.001
+        prioritized_replay: true
+
+        # Double batch size (2 GPUs).
+        train_batch_size: 512
+
+simpleq-cartpole-v0:
+    env: CartPole-v0
+    run: SimpleQ
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 85000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 0
+
+td3-repeat-after-me-env:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: TD3
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: -50.0
+        timesteps_total: 25000
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                continuous: true
+                repeat_delay: 0
+
+        num_gpus: 2
+        num_workers: 0
+        # Double batch size (2 GPUs).
+        train_batch_size: 200

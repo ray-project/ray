@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -182,10 +181,15 @@ def run(args, parser):
             inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            abs_inputs = [
-                str(rllib_dir.absolute().joinpath(i))
-                if not os.path.exists(i) else i for i in inputs
-            ]
+
+            def patch_path(path):
+                if os.path.exists(path):
+                    return path
+                else:
+                    abs_path = str(rllib_dir.absolute().joinpath(path))
+                    return abs_path if os.path.exists(abs_path) else path
+
+            abs_inputs = list(map(patch_path, inputs))
             if not isinstance(input_, list):
                 abs_inputs = abs_inputs[0]
 
@@ -218,6 +222,9 @@ def run(args, parser):
             verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
+        # Import this only here so that train.py also works with
+        # older versions (and user doesn't use `--ray-num-nodes`).
+        from ray.cluster_utils import Cluster
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
@@ -252,7 +259,11 @@ def run(args, parser):
     ray.shutdown()
 
 
-if __name__ == "__main__":
+def main():
     parser = create_parser()
     args = parser.parse_args()
     run(args, parser)
+
+
+if __name__ == "__main__":
+    main()

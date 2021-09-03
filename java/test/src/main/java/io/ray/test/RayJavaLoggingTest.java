@@ -33,13 +33,15 @@ public class RayJavaLoggingTest extends BaseTest {
   public void testJavaLoggingRotate() {
     ActorHandle<HeavyLoggingActor> loggingActor =
         Ray.actor(HeavyLoggingActor::new)
-            .setJvmOptions(ImmutableList.of("-Dray.logging.max-file-size=1MB"))
+            .setJvmOptions(
+                ImmutableList.of(
+                    "-Dray.logging.max-file-size=1MB", "-Dray.logging.max-backup-files=3"))
             .remote();
     Assert.assertTrue(loggingActor.task(HeavyLoggingActor::log).remote().get());
     final int pid = loggingActor.task(HeavyLoggingActor::getPid).remote().get();
     final JobId jobId = Ray.getRuntimeContext().getCurrentJobId();
     String currLogDir = "/tmp/ray/session_latest/logs";
-    for (int i = 1; i < 8; ++i) {
+    for (int i = 1; i <= 3; ++i) {
       File rotatedFile =
           new File(String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
       Assert.assertTrue(rotatedFile.exists());

@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -15,8 +28,14 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
+using ray::core::WorkerContext;
+
+class RayIntentionalSystemExitException : public RayException {
+ public:
+  RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
+};
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
@@ -24,6 +43,8 @@ class AbstractRayRuntime : public RayRuntime {
   void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
 
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
+
+  void Put(ray::rpc::ErrorType type, const ObjectID &object_id);
 
   std::string Put(std::shared_ptr<msgpack::sbuffer> data);
 
@@ -35,17 +56,32 @@ class AbstractRayRuntime : public RayRuntime {
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                   std::vector<ray::api::TaskArg> &args);
+                   std::vector<ray::internal::TaskArg> &args,
+                   const CallOptions &task_options);
 
   std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                          std::vector<ray::api::TaskArg> &args);
+                          std::vector<ray::internal::TaskArg> &args,
+                          const ActorCreationOptions &create_options);
 
   std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                        const std::string &actor, std::vector<ray::api::TaskArg> &args);
+                        const std::string &actor,
+                        std::vector<ray::internal::TaskArg> &args,
+                        const CallOptions &call_options);
 
   void AddLocalReference(const std::string &id);
 
   void RemoveLocalReference(const std::string &id);
+
+  std::string GetActorId(bool global, const std::string &actor_name);
+
+  void KillActor(const std::string &str_actor_id, bool no_restart);
+
+  void ExitActor();
+
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::internal::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+  bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
 
   const TaskID &GetCurrentTaskId();
 
@@ -54,6 +90,9 @@ class AbstractRayRuntime : public RayRuntime {
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
+
+  static void DoShutdown();
 
  protected:
   std::unique_ptr<WorkerContext> worker_;
@@ -63,13 +102,7 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::shared_ptr<AbstractRayRuntime> DoInit();
-
-  static void DoShutdown();
-
   void Execute(const TaskSpecification &task_spec);
-
-  friend class Ray;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

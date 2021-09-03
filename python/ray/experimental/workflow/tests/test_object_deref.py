@@ -1,18 +1,29 @@
 from typing import List, Dict
 
+from ray.tests.conftest import *  # noqa
+
 import pytest
 
 import numpy as np
-import ray
-from ray.experimental import workflow
 
-# alias because the original type is too long
-RRef = ray.ObjectRef
+import ray
+from ray import ObjectRef
+from ray.experimental import workflow
 
 
 @ray.remote
 def nested_ref():
     return ray.put(42)
+
+
+@workflow.step
+def return_objectrefs() -> List[ObjectRef]:
+    return [ray.put(x) for x in range(5)]
+
+
+@workflow.step
+def nested_ref_workflow():
+    return nested_ref.remote()
 
 
 @workflow.step
@@ -24,12 +35,13 @@ def nested_workflow(n: int):
 
 
 @workflow.step
-def deref_check(u: int, v: "RRef[int]", w: "List[RRef[RRef[int]]]", x: str,
-                y: List[str], z: List[Dict[str, str]]):
+def deref_check(u: int, v: "ObjectRef[int]",
+                w: "List[ObjectRef[ObjectRef[int]]]", x: str, y: List[str],
+                z: List[Dict[str, str]]):
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
-                and x == "nested" and y[0] == "nested"
-                and z[0]["output"] == "nested")
+                and x == "nested" and y[0] == "nested" and
+                z[0]["output"] == "nested"), f"{u}, {v}, {w}, {x}, {y}, {z}"
     except Exception:
         return False
 
@@ -67,20 +79,26 @@ def receive_data(data: np.ndarray):
     return data
 
 
-def test_object_deref():
-    ray.init()
+def test_objectref_inputs(workflow_start_regular_shared):
+    output, s = deref_check.step(
+        ray.put(42), nested_ref.remote(), [nested_ref.remote()],
+        nested_workflow.step(10), [nested_workflow.step(9)], [{
+            "output": nested_workflow.step(7)
+        }]).run()
+    assert output is True, s
 
-    output = workflow.run(
-        deref_check.step(
-            ray.put(42), nested_ref.remote(), [nested_ref.remote()],
-            nested_workflow.step(10), [nested_workflow.step(9)], [{
-                "output": nested_workflow.step(7)
-            }]), )
-    assert ray.get(output)
 
+def test_objectref_outputs(workflow_start_regular_shared):
+    single = nested_ref_workflow.step().run()
+    assert single == 42
+
+    multi = return_objectrefs.step().run()
+    assert ray.get(multi) == list(range(5))
+
+
+def test_object_deref(workflow_start_regular_shared):
     x = empty_list.step()
-    output = workflow.run(deref_shared.step(x, x))
-    assert ray.get(output)
+    assert deref_shared.step(x, x).run()
 
     # test we are forbidden from directly passing workflow to Ray.
     x = empty_list.step()
@@ -93,7 +111,10 @@ def test_object_deref():
 
     # test return object ref
     obj = return_data.step()
-    arr: np.ndarray = ray.get(workflow.run(receive_data.step(obj)))
+    arr: np.ndarray = receive_data.step(obj).run()
     assert np.array_equal(arr, np.ones(4096))
 
-    ray.shutdown()
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

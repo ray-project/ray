@@ -29,7 +29,12 @@ DOCKER_HUB_DESCRIPTION = {
         "https://hub.docker.com/repository/docker/rayproject/ray-ml")
 }
 
-PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
+PY_MATRIX = {
+    "-py36": "3.6.12",
+    "-py37": "3.7.7",
+    "-py38": "3.8.5",
+    "-py39": "3.9.5"
+}
 
 
 def _get_branch():
@@ -85,11 +90,16 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
-                            f"{minor_version_number}*-manylinux*")
+        matches = [
+            file for file in glob.glob(
+                f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
+                f"{minor_version_number}*-manylinux*")
+            if "+" not in file  # Exclude dbg, asan  builds
+        ]
         assert len(matches) == 1, (
-            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*' instead of 1")
+            f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
+            f"{minor_version_number}*-manylinux*' instead of 1.\n"
+            f"wheel matches: {matches}")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
@@ -113,6 +123,14 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         for py_name, py_version in PY_MATRIX.items():
+            # TODO(https://github.com/ray-project/ray/issues/16599):
+            # remove below after supporting ray-ml images with Python 3.9
+            if image_name in ["ray-ml", "autoscaler"
+                              ] and py_version.startswith("3.9"):
+                print(f"{image_name} image is currently unsupported with "
+                      "Python 3.9")
+                continue
+
             build_args = {}
             build_args["PYTHON_VERSION"] = py_version
             # I.e. "-py36"[-1] == 6
@@ -126,9 +144,12 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
                 build_args["GPU"] = f"{py_name}{gpu}"
 
-            if image_name in ["ray", "ray-deps", "ray-nest-container"]:
+            if image_name in ["ray", "ray-deps", "ray-worker-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
+                # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
+                # can be found.
+                build_args["FIND_LINKS_PATH"] = ".whl"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
@@ -142,24 +163,30 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                     nocache=no_cache,
                     buildargs=build_args)
 
-                full_output = ""
+                cmd_output = []
                 try:
                     start = datetime.datetime.now()
                     current_iter = start
                     for line in output:
+                        cmd_output.append(line.decode("utf-8"))
                         if datetime.datetime.now(
                         ) - current_iter >= datetime.timedelta(minutes=5):
                             current_iter = datetime.datetime.now()
                             elapsed = datetime.datetime.now() - start
                             print(f"Still building {tagged_name} after "
                                   f"{elapsed.seconds} seconds")
-                        full_output += line.decode("utf-8")
+                            if elapsed >= datetime.timedelta(minutes=15):
+                                print("Additional build output:")
+                                print(*cmd_output, sep="\n")
+                                # Clear cmd_output after printing, so the next
+                                # iteration will not print out the same lines.
+                                cmd_output = []
                 except Exception as e:
                     print(f"FAILURE with error {e}")
 
                 if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
-                    print(f"ERROR building: {tagged_name} & error below:")
-                    print(full_output)
+                    print(f"ERROR building: {tagged_name}. Output below:")
+                    print(*cmd_output, sep="\n")
                     if (i == 1):
                         raise Exception("FAILED TO BUILD IMAGE")
                     print("TRYING AGAIN")
@@ -181,14 +208,14 @@ def copy_wheels(human_build):
         source = os.path.join(root_dir, ".whl", wheel)
         ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
         ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
-        ray_nest_container_dst = os.path.join(
-            root_dir, "docker/ray-nest-container/.whl/")
+        ray_worker_container_dst = os.path.join(
+            root_dir, "docker/ray-worker-container/.whl/")
         os.makedirs(ray_dst, exist_ok=True)
         shutil.copy(source, ray_dst)
         os.makedirs(ray_dep_dst, exist_ok=True)
         shutil.copy(source, ray_dep_dst)
-        os.makedirs(ray_nest_container_dst, exist_ok=True)
-        shutil.copy(source, ray_nest_container_dst)
+        os.makedirs(ray_worker_container_dst, exist_ok=True)
+        shutil.copy(source, ray_worker_container_dst)
 
 
 def build_or_pull_base_images(rebuild_base_images: bool = True) -> List[str]:
@@ -231,6 +258,9 @@ def build_ray_ml():
         f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True)
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+    # Install atari roms script
+    shutil.copy(f"{_get_root_dir()}/rllib/utils/install_atari_roms.sh",
+                os.path.join(root_dir, "docker/ray-ml/"))
     ray_ml_images = _build_cpu_gpu_images("ray-ml")
     for img in ray_ml_images:
         tag = img.split(":")[-1]
@@ -244,8 +274,8 @@ def _get_docker_creds() -> Tuple[str, str]:
     return DOCKER_USERNAME, docker_password
 
 
-def build_ray_nest_container():
-    return _build_cpu_gpu_images("ray-nest-container")
+def build_ray_worker_container():
+    return _build_cpu_gpu_images("ray-worker-container")
 
 
 # For non-release builds, push "nightly" & "sha"
@@ -291,17 +321,25 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         image_list.extend(["base-deps", "ray-deps"])
 
     for image in image_list:
-        for py_version in PY_MATRIX.keys():
+        for py_name, py_version in PY_MATRIX.items():
+            # TODO(https://github.com/ray-project/ray/issues/16599):
+            # remove below after supporting ray-ml images with Python 3.9
+            if image in ["ray-ml", "autoscaler"
+                         ] and py_version.startswith("3.9"):
+                print(
+                    f"{image} image is currently unsupported with Python 3.9")
+                continue
+
             full_image = f"rayproject/{image}"
 
             # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
-                image=f"{full_image}:nightly{py_version}-cpu",
+                image=f"{full_image}:nightly{py_name}-cpu",
                 repository=full_image,
-                tag=f"nightly{py_version}")
+                tag=f"nightly{py_name}")
 
             for arch_tag in ["-cpu", "-gpu", ""]:
-                full_arch_tag = f"nightly{py_version}{arch_tag}"
+                full_arch_tag = f"nightly{py_name}{arch_tag}"
 
                 # Tag and push rayproject/<image>:nightly<py_tag><arch_tag>
                 docker_push(full_image, full_arch_tag)
@@ -317,7 +355,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                     tag=specific_tag)
                 docker_push(full_image, specific_tag)
 
-                if "-py37" in py_version:
+                if "-py37" in py_name:
                     non_python_specific_tag = specific_tag.replace("-py37", "")
                     DOCKER_CLIENT.api.tag(
                         image=f"{full_image}:{full_arch_tag}",
@@ -382,10 +420,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--py-versions",
-        choices=["PY36", "PY37", "PY38"],
+        choices=["PY36", "PY37", "PY38", "PY39"],
         default="PY37",
         nargs="*",
-        help="Which python versions to build. Must be in (PY36, PY37, PY38)")
+        help="Which python versions to build. "
+        "Must be in (PY36, PY37, PY38, PY39)")
     parser.add_argument(
         "--build-type",
         choices=BUILD_TYPES,
@@ -399,11 +438,11 @@ if __name__ == "__main__":
     parser.add_argument("--no-build-base", dest="base", action="store_false")
     parser.set_defaults(base=True)
     parser.add_argument(
-        "--only-build-nest-container",
-        dest="only_build_nest_container",
+        "--only-build-worker-container",
+        dest="only_build_worker_container",
         action="store_true",
-        help="Whether only to build ray-nest-container")
-    parser.set_defaults(only_build_nest_container=False)
+        help="Whether only to build ray-worker-container")
+    parser.set_defaults(only_build_worker_container=False)
 
     args = parser.parse_args()
     py_versions = args.py_versions
@@ -440,9 +479,9 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
-        if args.only_build_nest_container:
-            build_ray_nest_container()
-            # TODO Currently don't push ray_nest_container
+        if args.only_build_worker_container:
+            build_ray_worker_container()
+            # TODO Currently don't push ray_worker_container
         else:
             build_ray()
             build_ray_ml()

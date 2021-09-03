@@ -17,6 +17,8 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -81,8 +83,14 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered, restart it.";
+            std::ostringstream error_message;
+            error_message << "Agent process with pid " << child.GetId()
+                          << " has not registered, restart it.";
+            RAY_LOG(WARNING) << error_message.str();
+            RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
+                    .WithField("ip", agent_ip_address_)
+                    .WithField("pid", agent_pid_)
+                << error_message.str();
             child.Kill();
           }
         },
@@ -91,29 +99,39 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
 
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code;
+    std::ostringstream error_message;
+    error_message << "Agent process with pid " << child.GetId() << " exit, return value "
+                  << exit_code;
+    RAY_LOG(WARNING) << error_message.str();
+    RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
+            .WithField("ip", agent_ip_address_)
+            .WithField("pid", agent_pid_)
+        << error_message.str();
     RAY_UNUSED(delay_executor_([this] { StartAgent(); },
                                RayConfig::instance().agent_restart_interval_ms()));
   });
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
+void AgentManager::CreateRuntimeEnv(const JobID &job_id,
+                                    const std::string &serialized_runtime_env,
                                     CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
-    delay_executor_([this, serialized_runtime_env,
-                     callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+    delay_executor_(
+        [this, job_id, serialized_runtime_env, callback] {
+          CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
+        },
+        RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
+  request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, serialized_runtime_env, callback](
+      request, [this, job_id, serialized_runtime_env, callback](
                    Status status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
@@ -130,8 +148,8 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
-              [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnv(serialized_runtime_env, callback);
+              [this, job_id, serialized_runtime_env, callback] {
+                CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }

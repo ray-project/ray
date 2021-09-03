@@ -49,6 +49,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
+RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -67,7 +69,9 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -140,6 +144,7 @@ DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
+EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
@@ -203,6 +208,13 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
+# Autoscaler events are denoted by the ":event_summary:" magic token.
+LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Actor names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_ACTOR_NAME = ":actor_name:"
+# Task names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_TASK_NAME = ":task_name:"
+
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
 # type of the object (see types below) or an integer, which is interpreted
@@ -235,10 +247,6 @@ REDIS_DEFAULT_PASSWORD = "5241590000000000"
 # The default module path to a Python function that sets up the worker env.
 DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
 
-# The default module path to a Python function that sets up runtime envs.
-DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
-    "ray.workers.setup_runtime_env.setup_runtime_env"
-
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -260,3 +268,7 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "

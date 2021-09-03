@@ -21,7 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.resource_spec import ResourceSpec
+from ray._private.resource_spec import ResourceSpec
+from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -39,6 +40,24 @@ def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
     result = None
     for i in range(num_retries):
         result = redis_client.get(key)
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            time.sleep(2)
+    if not result:
+        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                           "Has redis started correctly on the head node?")
+    return result
+
+
+def _hget_with_retry(redis_client,
+                     key,
+                     field,
+                     num_retries=NUM_REDIS_GET_RETRIES):
+    result = None
+    for i in range(num_retries):
+        result = redis_client.hget(key, field)
         if result is not None:
             break
         else:
@@ -182,16 +201,16 @@ class Node:
                     or self._ray_params.node_manager_port is None):
                 # Get the address info of the processes to connect to
                 # from Redis.
-                address_info = (
-                    ray._private.services.get_address_info_from_redis(
+                node_info = (
+                    ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
-                self._plasma_store_socket_name = address_info[
-                    "object_store_address"]
-                self._raylet_socket_name = address_info["raylet_socket_name"]
-                self._ray_params.node_manager_port = address_info[
-                    "node_manager_port"]
+                self._plasma_store_socket_name = (
+                    node_info.object_store_socket_name)
+                self._raylet_socket_name = node_info.raylet_socket_name
+                self._ray_params.node_manager_port = (
+                    node_info.node_manager_port)
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -230,7 +249,7 @@ class Node:
             self.start_head_processes()
             redis_client = self.create_redis_client()
             redis_client.set("session_name", self.session_name)
-            redis_client.set("session_dir", self._session_dir)
+            redis_client.hset("session_dir", "value", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
@@ -250,13 +269,11 @@ class Node:
                     "The current node has not been updated within 30 "
                     "seconds, this could happen because of some of "
                     "the Ray processes failed to startup.")
-            address_info = (ray._private.services.get_address_info_from_redis(
+            node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
-                log_warning=False))
-            self._ray_params.node_manager_port = address_info[
-                "node_manager_port"]
+                redis_password=self.redis_password))
+            self._ray_params.node_manager_port = node_info.node_manager_port
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -290,7 +307,8 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = _get_with_retry(redis_client, "session_dir")
+            session_dir = _hget_with_retry(redis_client, "session_dir",
+                                           "value")
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
@@ -309,8 +327,7 @@ class Node:
         self._resource_dir = os.path.join(self._session_dir,
                                           "runtime_resources")
         try_to_create_directory(self._resource_dir)
-        import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._resource_dir
+        working_dir_pkg.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -676,10 +693,12 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-        for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(
-                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+        redis_log_files = []
+        if self._ray_params.external_addresses is None:
+            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
+            for i in range(self._ray_params.num_redis_shards):
+                redis_log_files.append(
+                    self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(
@@ -752,6 +771,7 @@ class Node:
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -790,7 +810,6 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.worker_setup_hook,
-            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,
@@ -805,6 +824,8 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
+            dashboard_agent_listen_port=self._ray_params.
+            dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
@@ -816,7 +837,9 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job)
+            start_initial_python_workers_for_first_job,
+            ray_debugger_external=self._ray_params.ray_debugger_external,
+        )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -889,6 +912,23 @@ class Node:
         """Start all of the processes on the node."""
         logger.debug(f"Process STDOUT and STDERR is being "
                      f"redirected to {self._logs_dir}.")
+
+        # Clean up external storage in case a previous Raylet instance crashed
+        # on this node and spilled objects remain on disk.
+        if not self.head:
+            # Get the system config from GCS first if this is a non-head node.
+            global_state = ray.state.GlobalState()
+            global_state._initialize_global_state(
+                self.redis_address, redis_password=self.redis_password)
+            new_config = global_state.get_system_config()
+            assert self._config.items() <= new_config.items(), (
+                "The system config from GCS is not a superset of the local"
+                " system config. There might be a configuration inconsistency"
+                " issue between the head node and non-head nodes."
+                f" Local system config: {self._config},"
+                f" GCS system config: {new_config}")
+            self._config = new_config
+        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.

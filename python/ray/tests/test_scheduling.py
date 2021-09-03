@@ -10,12 +10,13 @@ import numpy as np
 import pytest
 
 import ray
+from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore, object_memory_usage)
+from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
+                                     Semaphore, object_memory_usage,
+                                     SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -37,39 +38,6 @@ def attempt_to_load_balance(remote_function,
             break
         attempts += 1
     assert attempts < num_attempts
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_many_args(ray_start_cluster):
-    # This test ensures that a task will run where its task dependencies are
-    # located, even when those objects are borrowed.
-    cluster = ray_start_cluster
-    object_size = int(1e6)
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
-    for _ in range(4):
-        cluster.add_node(
-            num_cpus=1, object_store_memory=(4 * object_size * 25))
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(i, *args):
-        print(i)
-        return
-
-    @ray.remote
-    def put():
-        return np.zeros(object_size, dtype=np.uint8)
-
-    xs = [put.remote() for _ in range(100)]
-    ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    tasks = []
-    for i in range(100):
-        args = [np.random.choice(xs) for _ in range(25)]
-        tasks.append(f.remote(i, *args))
-
-    ray.get(tasks, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
@@ -475,6 +443,80 @@ def test_lease_request_leak(shutdown_only):
     ray.get(tasks)
 
     wait_for_condition(lambda: object_memory_usage() == 0)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_many_args(ray_start_cluster):
+    cluster = ray_start_cluster
+    object_size = int(1e6)
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            # Lower this to prevent excessive delays in pull retries.
+            "object_manager_pull_timeout_ms": 100,
+            "debug_dump_period_milliseconds": 1000,
+        },
+        object_store_memory=int(1e8))
+    for _ in range(3):
+        cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(i, *args):
+        print(i)
+        return
+
+    @ray.remote
+    def put():
+        return np.zeros(object_size, dtype=np.uint8)
+
+    xs = [put.remote() for _ in range(200)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    num_tasks_submitted_before, num_leases_requested_before = (
+        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    tasks = []
+    for i in range(100):
+        args = [np.random.choice(xs) for _ in range(10)]
+        tasks.append(f.remote(i, *args))
+    ray.get(tasks, timeout=30)
+
+    num_tasks_submitted, num_leases_requested = (
+        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    num_tasks_submitted -= num_tasks_submitted_before
+    num_leases_requested -= num_leases_requested_before
+    print("submitted:", num_tasks_submitted, "leases requested:",
+          num_leases_requested)
+    assert num_tasks_submitted == 100
+    assert num_leases_requested <= 10 * num_tasks_submitted
+
+
+def test_pull_manager_at_capacity_reports(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=int(1e8))
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
+
+    object_size = int(1e7)
+    refs = []
+    for _ in range(20):
+        refs.append(ray.put(np.zeros(object_size, dtype=np.uint8)))
+
+    def fetches_queued():
+        return "fetches queued" in memory_summary(stats_only=True)
+
+    assert not fetches_queued()
+
+    @ray.remote
+    def f(s, ref):
+        ray.get(s.wait.remote())
+
+    signal = SignalActor.remote()
+    xs = [f.remote(signal, ref) for ref in refs]
+    wait_for_condition(fetches_queued)
+
+    signal.send.remote()
+    ray.get(xs)
+    wait_for_condition(lambda: not fetches_queued())
 
 
 if __name__ == "__main__":

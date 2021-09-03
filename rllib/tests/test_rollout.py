@@ -1,4 +1,3 @@
-from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
@@ -38,7 +37,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   ", \"timesteps_per_iteration\": 5,\"min_iter_time_s\": 0.1, "
                   "\"model\": {\"fcnet_hiddens\": [10]}"
                   "}' --stop='{\"training_iteration\": 1}'" +
-                  " --env={}".format(env))
+                  " --env={} --no-ray-ui".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_000001/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
@@ -88,7 +87,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                       rllib_dir, tmp_dir, algo) +
                   "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
-                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 150.0}\"" +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 100.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
@@ -126,7 +125,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 150.0
+        assert mean_reward >= 100.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -150,9 +149,6 @@ def learn_test_multi_agent_plus_rollout(algo):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
-        observation_space = Box(float("-inf"), float("inf"), (4, ))
-        action_space = Discrete(2)
-
         config = {
             "num_gpus": 0,
             "num_workers": 1,
@@ -162,14 +158,11 @@ def learn_test_multi_agent_plus_rollout(algo):
             "framework": fw,
             "env": MultiAgentCartPole,
             "multiagent": {
-                "policies": {
-                    "pol0": (None, observation_space, action_space, {}),
-                    "pol1": (None, observation_space, action_space, {}),
-                },
+                "policies": {"pol0", "pol1"},
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 150.0}
+        stop = {"episode_reward_mean": 100.0}
         tune.run(
             algo,
             config=config,
@@ -218,7 +211,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 150.0
+        assert mean_reward >= 100.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()

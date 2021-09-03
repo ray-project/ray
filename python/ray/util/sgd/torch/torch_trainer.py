@@ -167,6 +167,10 @@ class TorchTrainer:
             data_loader_args=None,
             apex_args=None,
     ):
+        if num_workers <= 0:
+            raise ValueError("The number of workers must be greater than 0. "
+                             f"Received num_workers={num_workers}")
+
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
             raise DeprecationWarning(
@@ -412,8 +416,9 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
-            dataset (Dataset): Optional dataset to train with. If specified,
-                the dataloader passed in via data_creator will be ignored.
+            dataset (sgd.Dataset): Optional dataset to train with. If
+                specified, the dataloader passed in via data_creator will be
+                ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.

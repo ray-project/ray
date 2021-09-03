@@ -1,13 +1,13 @@
 import concurrent.futures
 from functools import partial
 import logging
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
@@ -34,7 +34,7 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         train_op = train_op.for_each(TrainOneStep(workers))
     else:
         train_op = train_op.for_each(
-            TrainTFMultiGPU(
+            MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config.get("sgd_minibatch_size",
                                               config["train_batch_size"]),
@@ -63,9 +63,14 @@ def build_trainer(
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
-        execution_plan: Optional[Callable[[
-            WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan) -> Type[Trainer]:
+        execution_plan: Optional[Union[Callable[
+            [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
+                Trainer, WorkerSet, TrainerConfigDict
+            ], Iterable[ResultDict]]]] = default_execution_plan,
+        allow_unknown_configs: bool = False,
+        allow_unknown_subkeys: Optional[List[str]] = None,
+        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
+) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -106,6 +111,15 @@ def build_trainer(
         execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
             Iterable[ResultDict]]]): Optional callable that sets up the
             distributed execution workflow.
+        allow_unknown_configs (bool): Whether to allow unknown top-level config
+            keys.
+        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+            with value=dict, for which new sub-keys are allowed to be added to
+            the value dict. Appends to Trainer class defaults.
+        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
+            level keys with value=dict, for which we always override the entire
+            value (dict), iff the "type" key in that value dict changes.
+            Appends to Trainer class defaults.
 
     Returns:
         Type[Trainer]: A Trainer sub-class configured by the specified args.
@@ -121,6 +135,16 @@ def build_trainer(
 
         def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
+
+        @override(base)
+        def setup(self, config: PartialTrainerConfigDict):
+            if allow_unknown_subkeys is not None:
+                self._allow_unknown_subkeys += allow_unknown_subkeys
+            self._allow_unknown_configs = allow_unknown_configs
+            if override_all_subkeys_if_type_changes is not None:
+                self._override_all_subkeys_if_type_changes += \
+                    override_all_subkeys_if_type_changes
+            super().setup(config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
@@ -151,7 +175,19 @@ def build_trainer(
                 config=config,
                 num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
-            self.train_exec_impl = execution_plan(self.workers, config)
+            try:
+                self.train_exec_impl = execution_plan(self, self.workers,
+                                                      config)
+            except TypeError as e:
+                # Keyword error: Try old way w/o kwargs.
+                if "() takes 2 positional arguments but 3" in e.args[0]:
+                    self.train_exec_impl = execution_plan(self.workers, config)
+                    logger.warning(
+                        "`execution_plan` functions should accept "
+                        "`trainer`, `workers`, and `config` as args!")
+                # Other error -> re-raise.
+                else:
+                    raise e
 
             if after_init:
                 after_init(self)

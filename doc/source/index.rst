@@ -1,8 +1,6 @@
 What is Ray?
 ============
 
-.. tip:: Please take 5 minutes to take the `Ray Pulse Community Survey <https://www.surveymonkey.com/r/ray-community-pulse-2021>`_!
-
 .. include:: ray-overview/basics.rst
 
 Getting Started with Ray
@@ -114,35 +112,33 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
           }
         }
 
-  .. group-tab:: C++ (EXPERIMENTAL)
+  .. group-tab:: C++
 
     | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     | Run the following commands to get started:
-    | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
-    | - Modify and build `cpp/example/example.cc`.
+
+    | - Install ray with C++ API support and generate a bazel project with the ray command.
 
     .. code-block:: shell
 
-      pip install -e python --verbose
-      bazel build //cpp/example:example
+      pip install ray[cpp]
+      mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
-    | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
-
-    .. code-block:: shell
-
-      ray stop
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so
-
-    | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
+    | - The project template comes with a simple example application. You can try this example out in 2 ways:
+    | - 1. Run the example application directly, which will start a Ray cluster locally.
 
     .. code-block:: shell
 
-      ray stop
-      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
-      ./bazel-bin/cpp/example/example --ray-dynamic-library-path=bazel-bin/cpp/example/example.so --ray-address=127.0.0.1:6379
+      cd ray-template && sh run.sh
 
-    .. literalinclude:: ../../cpp/example/example.cc
-       :language: cpp
+    | - 2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
+
+    .. code-block:: shell
+
+      ray start --head
+      RAY_ADDRESS=127.0.0.1:6379 sh run.sh
+
+    | - Now you can build your own Ray C++ application based on this project template.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
@@ -278,6 +274,31 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Data
+
+   data/dataset.rst
+   data/dataset-pipeline.rst
+   data/package-ref.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -291,7 +312,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
@@ -314,20 +335,8 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_dataset.rst
-   raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Data Processing
-
-   modin/index.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   raydp.rst
 
 .. toctree::
    :hidden:
@@ -336,14 +345,15 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   iter.rst
    xgboost-ray.rst
+   lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst

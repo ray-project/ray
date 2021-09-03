@@ -2,15 +2,16 @@ import gym
 from gym.spaces import Tuple, Dict
 import numpy as np
 import tree  # pip install dm_tree
+from typing import List
 
 
-def flatten_space(space):
+def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
     Primitive components are any non Tuple/Dict spaces.
 
     Args:
-        space(gym.Space): The gym.Space to flatten. This may be any
+        space (gym.Space): The gym.Space to flatten. This may be any
             supported type (including nested Tuples and Dicts).
 
     Returns:
@@ -156,9 +157,11 @@ def clip_action(action, action_space):
 def unsquash_action(action, action_space_struct):
     """Unsquashes all components in `action` according to the given Space.
 
+    Inverse of `normalize_action()`. Useful for mapping policy action
+    outputs (normalized between -1.0 and 1.0) to an env's action space.
     Unsquashing results in cont. action component values between the
     given Space's bounds (`low` and `high`). This only applies to Box
-    components within the action space.
+    components within the action space, whose dtype is float32 or float64.
 
     Args:
         action (Any): The action to be unsquashed. This could be any complex
@@ -189,8 +192,10 @@ def unsquash_action(action, action_space_struct):
 def normalize_action(action, action_space_struct):
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
-    This only applies to Box components, whose dtype is float32 or float64,
-    within the action space.
+    Inverse of `unsquash_action()`. Useful for mapping an env's action
+    (arbitrary bounded values) to a [-1.0, 1.0] interval.
+    This only applies to Box components within the action space, whose
+    dtype is float32 or float64.
 
     Args:
         action (Any): The action to be normalized. This could be any complex

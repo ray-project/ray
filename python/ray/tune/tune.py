@@ -9,6 +9,8 @@ import sys
 import time
 
 import ray
+from ray.util.annotations import PublicAPI
+
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -20,7 +22,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
-from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -62,6 +64,7 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+@PublicAPI
 def run(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
@@ -75,8 +78,8 @@ def run(
             float, int, Mapping]], PlacementGroupFactory] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,
-        search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
-        scheduler: Optional[TrialScheduler] = None,
+        search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
+        scheduler: Optional[Union[TrialScheduler, str]] = None,
         keep_checkpoints_num: Optional[int] = None,
         checkpoint_score_attr: Optional[str] = None,
         checkpoint_freq: int = 0,
@@ -98,6 +101,7 @@ def run(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
+        max_concurrent_trials: Optional[int] = None,
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
         ray_auto_init: Optional = None,
@@ -115,6 +119,11 @@ def run(
     When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
     will gracefully shut down and checkpoint the latest experiment state.
     Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
+
+    Many aspects of Tune, such as the frequency of global checkpointing,
+    maximum pending placement group trials and the path of the result
+    directory be configured through environment variables. Refer to
+    :ref:`tune-env-vars` for a list of environment variables available.
 
     Examples:
 
@@ -189,12 +198,13 @@ def run(
             samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        search_alg (Searcher|SearchAlgorithm): Search algorithm for
-            optimization.
-        scheduler (TrialScheduler): Scheduler for executing
+        search_alg (Searcher|SearchAlgorithm|str): Search algorithm for
+            optimization. You can also use the name of the algorithm.
+        scheduler (TrialScheduler|str): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options.
+            ray.tune.schedulers for more options. You can also use the
+            name of the scheduler.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -247,9 +257,10 @@ def run(
         server_port (int): Port number for launching TuneServer.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
             or bool. LOCAL/True restores the checkpoint from the
-            local_checkpoint_dir, determined
-            by `name` and `local_dir`. REMOTE restores the checkpoint
-            from remote_checkpoint_dir. PROMPT provides CLI feedback.
+            local experiment directory, determined
+            by ``name`` and ``local_dir``. REMOTE restores the checkpoint
+            from ``upload_dir`` (as passed to ``sync_config``).
+            PROMPT provides CLI feedback.
             False forces a new experiment. ERRORED_ONLY resets and reruns
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
@@ -270,6 +281,12 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
+        max_concurrent_trials (int): Maximum number of trials to run
+            concurrently. Must be non-negative. If None or 0, no limit will
+            be applied. This is achieved by wrapping the ``search_alg`` in
+            a :class:`ConcurrencyLimiter`, and thus setting this argument
+            will raise an exception if the ``search_alg`` is already a
+            :class:`ConcurrencyLimiter`. Defaults to None.
         _remote (bool): Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
@@ -396,6 +413,7 @@ def run(
                 local_dir=local_dir,
                 upload_dir=sync_config.upload_dir,
                 sync_to_driver=sync_config.sync_to_driver,
+                sync_to_cloud=sync_config.sync_to_cloud,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
@@ -418,11 +436,57 @@ def run(
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
-    if issubclass(type(search_alg), Searcher):
-        search_alg = SearchGenerator(search_alg)
+    if isinstance(search_alg, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.suggest import create_searcher
+        search_alg = create_searcher(search_alg)
+
+    # if local_mode=True is set during ray.init().
+    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+
+    if is_local_mode:
+        max_concurrent_trials = 1
+
+    if isinstance(scheduler, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.schedulers import create_scheduler
+        scheduler = create_scheduler(scheduler)
 
     if not search_alg:
-        search_alg = BasicVariantGenerator()
+        search_alg = BasicVariantGenerator(
+            max_concurrent=max_concurrent_trials or 0)
+    elif max_concurrent_trials:
+        if isinstance(search_alg, ConcurrencyLimiter):
+            if search_alg.max_concurrent != max_concurrent_trials:
+                raise ValueError(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter` with `max_concurrent="
+                    f"{search_alg.max_concurrent}. FIX THIS by setting "
+                    "`max_concurrent_trials=None`.")
+            else:
+                logger.warning(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter`. `max_concurrent_trials` "
+                    "will be ignored.")
+        else:
+            if max_concurrent_trials < 1:
+                raise ValueError(
+                    "`max_concurrent_trials` must be greater or equal than 1, "
+                    f"got {max_concurrent_trials}.")
+            if isinstance(search_alg, Searcher):
+                search_alg = ConcurrencyLimiter(
+                    search_alg, max_concurrent=max_concurrent_trials)
+            elif not is_local_mode:
+                logger.warning(
+                    "You have passed a `SearchGenerator` instance as the "
+                    "`search_alg`, but `max_concurrent_trials` requires a "
+                    "`Searcher` instance`. `max_concurrent_trials` "
+                    "will be ignored.")
+
+    if isinstance(search_alg, Searcher):
+        search_alg = SearchGenerator(search_alg)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
@@ -463,7 +527,10 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info("TrialRunner resumed, ignoring new add_experiment.")
+        logger.info("TrialRunner resumed, ignoring new add_experiment but "
+                    "updating trial resources.")
+        if resources_per_trial:
+            runner.update_pending_trial_resources(resources_per_trial)
 
     progress_reporter = progress_reporter or detect_reporter()
 
@@ -474,6 +541,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
+
+    # Calls setup on callbacks
+    runner.setup_experiments(
+        experiments=experiments, total_num_samples=search_alg.total_samples)
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -525,7 +596,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
-    runner.cleanup_trials()
+    runner.cleanup()
 
     incomplete_trials = []
     for trial in runner.get_trials():
@@ -557,6 +628,7 @@ def run(
         default_mode=mode)
 
 
+@PublicAPI
 def run_experiments(
         experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
                                                                Mapping]]],

@@ -249,13 +249,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
+  // Mark the scheduling done firstly.
+  MarkSchedulingDone();
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
 
-        MarkSchedulingDone();
         SchedulePendingPlacementGroups();
 
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
@@ -572,6 +573,8 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     const JobID &job_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorJobId() != job_id) {
@@ -579,13 +582,19 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
+  }
+
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
   }
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     const ActorID &actor_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorActorId() != actor_id) {
@@ -593,8 +602,12 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
     placement_group->MarkCreatorActorDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
+  }
+
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
   }
 }
 
@@ -673,6 +686,8 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
          << ", WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
+         << ", GetNamedPlacementGroup request count: "
+         << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
          << ", Named placement group count: " << num_pgs
          << ", Pending placement groups count: " << pending_placement_groups_.size()

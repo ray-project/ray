@@ -9,9 +9,10 @@ import pytest
 import redis
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.new_dashboard.modules.actor import actor_consts
-from ray.test_utils import (
+from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
@@ -216,7 +217,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
 
     p = client.pubsub(ignore_subscribe_messages=True)
-    p.psubscribe(ray.gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+    p.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
 
     @ray.remote
     class DummyActor:
@@ -233,9 +234,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             if msg is None:
                 time.sleep(0.01)
                 continue
-            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-            actor_data = ray.gcs_utils.ActorTableData.FromString(
-                pubsub_msg.data)
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            actor_data = gcs_utils.ActorTableData.FromString(pubsub_msg.data)
             msgs.append(actor_data)
 
     msgs = []
@@ -274,7 +274,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
-                "state", "address", "timestamp", "pid", "creationTaskException"
+                "state", "address", "timestamp", "pid",
+                "creationTaskException", "rayNamespace"
             }
         else:
             raise Exception("Unknown state: {}".format(

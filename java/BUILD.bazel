@@ -12,6 +12,7 @@ exports_files([
 all_modules = [
     "api",
     "runtime",
+    "serve",
     "test",
     "performance_test",
 ]
@@ -91,7 +92,6 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
         "@maven//:org_yaml_snakeyaml",
-        "@maven//:redis_clients_jedis",
     ],
 )
 
@@ -134,6 +134,36 @@ define_java_module(
     ],
 )
 
+define_java_module(
+    name = "serve",
+    additional_srcs = [
+        ":serve_java_proto",
+    ],
+    define_test_lib = True,
+    exclude_srcs = [
+        "serve/src/main/java/io/ray/serve/generated/*.java",
+    ],
+    test_deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        ":io_ray_ray_serve",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
 java_binary(
     name = "all_tests",
     args = ["java/testng.xml"],
@@ -142,6 +172,7 @@ java_binary(
     runtime_deps = [
         ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
+        ":io_ray_ray_serve_test",
         ":io_ray_ray_test",
     ],
 )
@@ -154,6 +185,11 @@ java_proto_compile(
 java_proto_compile(
     name = "gcs_java_proto",
     deps = ["@//src/ray/protobuf:gcs_proto"],
+)
+
+java_proto_compile(
+    name = "serve_java_proto",
+    deps = ["@//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
@@ -179,6 +215,7 @@ genrule(
     srcs = [
         ":all_java_proto",
         ":copy_pom_file",
+        ":serve_java_proto",
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
@@ -187,6 +224,10 @@ genrule(
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
+        done
+        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
+        for f in $(locations //java:serve_java_proto); do
+            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
         done
         date > $@
     """,
@@ -237,6 +278,7 @@ genrule(
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
+        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
         date > $@
     """,
     local = 1,
@@ -251,8 +293,7 @@ java_binary(
     runtime_deps = [
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
-        "//streaming/java:io_ray_ray_streaming-api",
-        "//streaming/java:io_ray_ray_streaming-runtime",
+        "//java:io_ray_ray_serve",
     ],
 )
 
@@ -261,7 +302,6 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
-        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

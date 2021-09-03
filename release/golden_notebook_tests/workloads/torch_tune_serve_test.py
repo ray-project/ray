@@ -1,4 +1,7 @@
 import argparse
+import json
+import os
+import time
 
 import ray
 import requests
@@ -7,11 +10,14 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune
+from ray.tune.utils import force_on_current_node
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import override
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
+
+from utils.utils import is_anyscale_connect
 
 
 def load_mnist_data(train: bool, download: bool):
@@ -82,8 +88,19 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         checkpoint_at_end=True)
 
 
-def get_best_model(best_model_checkpoint_path):
-    model_state = torch.load(best_model_checkpoint_path)
+def get_remote_model(remote_model_checkpoint_path):
+    if ray.util.client.ray.is_connected():
+        remote_load = ray.remote(get_model)
+        remote_load = force_on_current_node(remote_load)
+        return ray.get(remote_load.remote(remote_model_checkpoint_path))
+    else:
+        get_best_model_remote = ray.remote(get_model)
+        return ray.get(
+            get_best_model_remote.remote(remote_model_checkpoint_path))
+
+
+def get_model(model_checkpoint_path):
+    model_state = torch.load(model_checkpoint_path)
 
     model = ResNet18(None)
     model.conv1 = nn.Conv2d(
@@ -167,6 +184,8 @@ def test_predictions(test_mode=False):
     print("Labels = {}. Predictions = {}. {} out of {} are correct.".format(
         list(labels), predictions, correct, num_to_test))
 
+    return correct / float(num_to_test)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -177,7 +196,15 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     args = parser.parse_args()
 
-    ray.client("anyscale://").connect()
+    start = time.time()
+
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
+    if is_anyscale_connect(addr):
+        client = ray.init(address=addr, job_name=job_name)
+    else:
+        client = ray.init(address="auto")
+
     num_workers = 2
     use_gpu = True
 
@@ -186,12 +213,22 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint
-    model_id = get_best_model(best_checkpoint)
+    model_id = get_remote_model(best_checkpoint)
 
     print("Setting up Serve.")
     setup_serve(model_id)
 
     print("Testing Prediction Service.")
-    test_predictions(args.smoke_test)
+    accuracy = test_predictions(args.smoke_test)
+
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+        "accuracy": accuracy,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/torch_tune_serve_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
     print("Test Successful!")

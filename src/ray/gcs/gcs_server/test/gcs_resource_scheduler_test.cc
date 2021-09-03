@@ -26,7 +26,8 @@ using ::testing::_;
 class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr);
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
   }

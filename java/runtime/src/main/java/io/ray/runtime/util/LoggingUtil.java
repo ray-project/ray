@@ -3,6 +3,7 @@ package io.ray.runtime.util;
 import com.typesafe.config.Config;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Common.WorkerType;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.ConsoleAppender;
@@ -33,7 +34,7 @@ public class LoggingUtil {
       ConfigurationBuilder<BuiltConfiguration> builder =
           ConfigurationBuilderFactory.newConfigurationBuilder();
 
-      builder.setStatusLevel(Level.DEBUG);
+      builder.setStatusLevel(Level.INFO);
       builder.setConfigurationName("DefaultLogger");
 
       // create a console appender
@@ -45,11 +46,10 @@ public class LoggingUtil {
           builder
               .newLayout("PatternLayout")
               .addAttribute("pattern", config.getString("ray.logging.pattern")));
-      RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.DEBUG);
+      RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO);
       rootLogger.add(builder.newAppenderRef("Console"));
 
       builder.add(appenderBuilder);
-      rootLogger.add(builder.newAppenderRef("LogToRollingFile"));
       builder.add(rootLogger);
       Configurator.reconfigure(builder.build());
 
@@ -60,10 +60,18 @@ public class LoggingUtil {
           rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".log";
       String rollingLogPath =
           rayConfig.logDir + "/java-worker-" + jobIdHex + "-" + SystemUtil.pid() + ".%i.log";
+      String maxFileSize = System.getenv("RAY_ROTATION_MAX_BYTES");
+      if (StringUtils.isEmpty(maxFileSize)) {
+        maxFileSize = rayConfig.getInternalConfig().getString("ray.logging.max-file-size");
+      }
+      String maxBackupFiles = System.getenv("RAY_ROTATION_BACKUP_COUNT");
+      if (StringUtils.isEmpty(maxBackupFiles)) {
+        maxBackupFiles = rayConfig.getInternalConfig().getString("ray.logging.max-backup-files");
+      }
 
       ConfigurationBuilder<BuiltConfiguration> builder =
           ConfigurationBuilderFactory.newConfigurationBuilder();
-      builder.setStatusLevel(Level.DEBUG);
+      builder.setStatusLevel(Level.INFO);
       builder.setConfigurationName("DefaultLogger");
 
       // TODO(qwang): We can use rayConfig.logLevel instead.
@@ -81,16 +89,17 @@ public class LoggingUtil {
               .addComponent(
                   builder
                       .newComponent("SizeBasedTriggeringPolicy")
-                      .addAttribute(
-                          "size",
-                          rayConfig.getInternalConfig().getString("ray.logging.max-file-size")));
+                      .addAttribute("size", maxFileSize));
+      ComponentBuilder rolloverStrategy =
+          builder.newComponent("DefaultRolloverStrategy").addAttribute("max", maxBackupFiles);
       AppenderComponentBuilder appenderBuilder =
           builder
               .newAppender("LogToRollingFile", "RollingFile")
               .addAttribute("fileName", logPath)
               .addAttribute("filePattern", rollingLogPath)
               .add(layoutBuilder)
-              .addComponent(triggeringPolicy);
+              .addComponent(triggeringPolicy)
+              .addComponent(rolloverStrategy);
       builder.add(appenderBuilder);
       rootLogger.add(builder.newAppenderRef("LogToRollingFile"));
       builder.add(rootLogger);

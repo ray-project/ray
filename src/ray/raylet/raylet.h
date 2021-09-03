@@ -66,6 +66,8 @@ class Raylet {
   /// Destroy the NodeServer.
   ~Raylet();
 
+  NodeID GetNodeId() const { return self_node_id_; }
+
  private:
   /// Register GCS client.
   ray::Status RegisterGcs();

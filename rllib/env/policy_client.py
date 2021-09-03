@@ -15,6 +15,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
@@ -339,6 +340,11 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     kwargs = kwargs.copy()
     del kwargs["input_creator"]
 
+    # Since the server also acts as an output writer, we might have to reset
+    # the output config to the default, i.e. "output": None, otherwise a
+    # local rollout worker might write to an unknown output directory
+    del kwargs["output_creator"]
+
     # If server has no env (which is the expected case):
     # Generate a dummy ExternalEnv here using RandomEnv and the
     # given observation/action spaces.
@@ -349,7 +355,7 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
             "action_space": kwargs["policy_config"]["action_space"],
             "observation_space": kwargs["policy_config"]["observation_space"],
         }
-        is_ma = kwargs["policy_config"]["multiagent"].get("policies")
+        _, is_ma = check_multi_agent(kwargs["policy_config"])
         kwargs["env_creator"] = _auto_wrap_external(
             lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(config))
         kwargs["policy_config"]["env"] = True

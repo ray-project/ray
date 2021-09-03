@@ -14,6 +14,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
@@ -32,25 +33,24 @@ class TargetNetworkMixin:
     master learner.
     """
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, config: TrainerConfigDict):
-        def do_update():
-            # Update_target_fn will be called periodically to copy Q network to
-            # target Q network.
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), \
-                (self.q_func_vars, self.target_q_func_vars)
-            self.target_q_model.load_state_dict(self.model.state_dict())
+    def __init__(self):
+        # Hard initial update from Q-net(s) to target Q-net(s).
+        self.update_target()
 
-        self.update_target = do_update
+    def update_target(self):
+        # Update_target_fn will be called periodically to copy Q network to
+        # target Q networks.
+        state_dict = self.model.state_dict()
+        for target in self.target_models.values():
+            target.load_state_dict(state_dict)
 
-        def set_weights(weights):
-            # Makes sure that whenever we restore weights for this policy's
-            # model, we sync the target network (from the main model)
-            # at the same time.
-            TorchPolicy.set_weights(self, weights)
-            self.update_target()
-
-        self.set_weights = set_weights
+    @override(TorchPolicy)
+    def set_weights(self, weights):
+        # Makes sure that whenever we restore weights for this policy's
+        # model, we sync the target network (from the main model)
+        # at the same time.
+        TorchPolicy.set_weights(self, weights)
+        self.update_target()
 
 
 def build_q_model_and_distribution(
@@ -74,10 +74,12 @@ def build_q_losses(policy: Policy, model, dist_class,
     Returns:
         TensorType: A single loss tensor.
     """
+    target_model = policy.target_models[model]
+
     # q network evaluation
     q_t = compute_q_values(
         policy,
-        policy.model,
+        model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
         is_training=True)
@@ -85,7 +87,7 @@ def build_q_losses(policy: Policy, model, dist_class,
     # target q network evalution
     q_tp1 = compute_q_values(
         policy,
-        policy.target_q_model,
+        target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
         is_training=True)
@@ -134,7 +136,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 SimpleQTorchPolicy = build_policy_class(

@@ -25,6 +25,11 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+yum install libasan-4.8.5-44.el7.x86_64 -y
+yum install libubsan-7.3.1-5.10.el7.x86_64 -y
+yum install devtoolset-8-libasan-devel.x86_64 -y
+
+
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -84,8 +89,12 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
+    # build ray wheel
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    # build ray-cpp wheel
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd

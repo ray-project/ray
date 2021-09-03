@@ -23,7 +23,7 @@ runtime_env = {
 # __runtime_env_conda_def_end__
 
 # __ray_init_start__
-ray.init(job_config=ray.job_config.JobConfig(runtime_env=runtime_env))
+ray.init(runtime_env=runtime_env)
 # __ray_init_end__
 
 @ray.remote

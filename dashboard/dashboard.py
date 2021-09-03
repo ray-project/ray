@@ -1,12 +1,5 @@
 import sys
 
-try:
-    import aiohttp.web
-except ImportError:
-    print("The dashboard requires aiohttp to run.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
-
 import argparse
 import asyncio
 import errno
@@ -24,6 +17,11 @@ import ray._private.services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -213,6 +211,10 @@ if __name__ == "__main__":
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir)
+        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
+        # asynchronous and will lead to low performance. ray disconnect()
+        # will be hang when the ray.state is connected and the GCS is exit.
+        # Please refer to: https://github.com/ray-project/ray/issues/16328
         service_discovery = PrometheusServiceDiscoveryWriter(
             args.redis_address, args.redis_password, args.temp_dir)
         # Need daemon True to avoid dashboard hangs at exit.

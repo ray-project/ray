@@ -22,8 +22,10 @@ options = {
     "max_retries": (int, lambda x: x >= -1,
                     "The keyword 'max_retries' only accepts 0, -1 "
                     "or a positive integer"),
+    "retry_exceptions": (),
     "max_concurrency": (),
     "name": (),
+    "namespace": (),
     "lifetime": (),
     "memory": (),
     "object_store_memory": (),

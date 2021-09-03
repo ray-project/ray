@@ -9,10 +9,14 @@ atari-impala:
             - QbertNoFrameskip-v4
             - SpaceInvadersNoFrameskip-v4
     run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 40.0
+        timesteps_total: 45000000
     stop:
-        timesteps_total: 30000000
-        time_total_s: 6000
+        time_total_s: 3600
     config:
+        num_gpus: 1
         num_cpus_for_driver: 0
         rollout_fragment_length: 50
         train_batch_size: 500

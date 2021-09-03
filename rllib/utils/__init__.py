@@ -3,8 +3,7 @@ from functools import partial
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
-from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
-    renamed_class, renamed_function
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
@@ -16,15 +15,21 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 from ray.tune.utils import merge_dicts, deep_update
 
 
-def add_mixins(base, mixins):
+def add_mixins(base, mixins, reversed=False):
     """Returns a new class with mixins applied in priority order."""
 
     mixins = list(mixins or [])
 
     while mixins:
+        if reversed:
 
-        class new_base(mixins.pop(), base):
-            pass
+            class new_base(base, mixins.pop()):
+                pass
+
+        else:
+
+            class new_base(mixins.pop(), base):
+                pass
 
         base = new_base
 
@@ -83,9 +88,6 @@ __all__ = [
     "one_hot",
     "override",
     "relu",
-    "renamed_function",
-    "renamed_agent",
-    "renamed_class",
     "sigmoid",
     "softmax",
     "try_import_tf",

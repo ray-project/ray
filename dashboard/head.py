@@ -1,19 +1,26 @@
+import os
 import sys
 import socket
 import asyncio
 import logging
 import ipaddress
 
-import aiohttp
-import aiohttp.web
-from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray import ray_constants
+from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataOrganizer
+from ray.new_dashboard.utils import async_loop_forever
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -24,6 +31,10 @@ aiogrpc.init_grpc_aio()
 class DashboardHead:
     def __init__(self, http_host, http_port, http_port_retries, redis_address,
                  redis_password, log_dir):
+        # HeartbeatInfoGcsService
+        self._gcs_heartbeat_info_stub = None
+        self._gcs_check_alive_seq = 0
+        self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
         # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
         self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
@@ -36,10 +47,46 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
+
+    @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
+    async def _gcs_check_alive(self):
+        try:
+            self._gcs_check_alive_seq += 1
+            request = gcs_service_pb2.CheckAliveRequest(
+                seq=self._gcs_check_alive_seq)
+            reply = await self._gcs_heartbeat_info_stub.CheckAlive(
+                request, timeout=2)
+            if reply.status.code != 0:
+                raise Exception(
+                    f"Failed to CheckAlive: {reply.status.message}")
+            self._gcs_rpc_error_counter = 0
+        except aiogrpc.AioRpcError:
+            logger.exception(
+                "Got AioRpcError when checking GCS is alive, seq=%s.",
+                self._gcs_check_alive_seq)
+            self._gcs_rpc_error_counter += 1
+            if self._gcs_rpc_error_counter > \
+                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR:
+                logger.error(
+                    "Dashboard exiting because it received too many GCS RPC "
+                    "errors count: %s, threshold is %s.",
+                    self._gcs_rpc_error_counter,
+                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR)
+                # TODO(fyrestone): Do not use ray.state in
+                # PrometheusServiceDiscoveryWriter.
+                # Currently, we use os._exit() here to avoid hanging at the ray
+                # shutdown(). Please refer to:
+                # https://github.com/ray-project/ray/issues/16328
+                os._exit(-1)
+        except Exception:
+            logger.exception("Error checking GCS is alive, seq=%s.",
+                             self._gcs_check_alive_seq)
 
     def _load_modules(self):
         """Load dashboard head modules."""
@@ -86,10 +133,15 @@ class DashboardHead:
             except Exception as ex:
                 logger.error("Connect to GCS failed: %s, retry...", ex)
                 await asyncio.sleep(
-                    dashboard_consts.CONNECT_GCS_INTERVAL_SECONDS)
+                    dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
             else:
                 self.aiogrpc_gcs_channel = channel
                 break
+
+        # Create a HeartbeatInfoGcsServiceStub.
+        self._gcs_heartbeat_info_stub = \
+            gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+                self.aiogrpc_gcs_channel)
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -148,6 +200,7 @@ class DashboardHead:
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
+            self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
             DataOrganizer.organize(),

@@ -1,25 +1,20 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from ray.job_config import JobConfig
+from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
+                                           _explicitly_enable_client_mode)
 import os
 import sys
 import logging
 import json
-
+import threading
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-05-20"
+CURRENT_PROTOCOL_VERSION = "2021-08-26"
 
 
-class RayAPIStub:
-    """This class stands in as the replacement API for the `import ray` module.
-
-    Much like the ray module, this mostly delegates the work to the
-    _client_worker. As parts of the ray API are covered, they are piped through
-    here or on the client worker API.
-    """
-
+class _ClientContext:
     def __init__(self):
         from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
@@ -36,7 +31,9 @@ class RayAPIStub:
                 connection_retries: int = 3,
                 namespace: str = None,
                 *,
-                ignore_version: bool = False) -> Dict[str, Any]:
+                ignore_version: bool = False,
+                ray_init_kwargs: Optional[Dict[str, Any]] = None
+                ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
@@ -53,7 +50,6 @@ class RayAPIStub:
         """
         # Delay imports until connect to avoid circular imports.
         from ray.util.client.worker import Worker
-        import ray._private.client_mode_hook
         if self.client_worker is not None:
             if self._connected_with_init:
                 return
@@ -62,7 +58,7 @@ class RayAPIStub:
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
-            ray._private.client_mode_hook._explicitly_enable_client_mode()
+            _explicitly_enable_client_mode()
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
@@ -71,8 +67,7 @@ class RayAPIStub:
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "
-                               "install the environment before ray.connect() "
-                               "returns.")
+                               "install the environment before Ray connects.")
         try:
             self.client_worker = Worker(
                 conn_str,
@@ -80,7 +75,7 @@ class RayAPIStub:
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
-            self.client_worker._server_init(job_config)
+            self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
             self._register_serializers()
@@ -143,10 +138,14 @@ class RayAPIStub:
         return self.api.remote(*args, **kwargs)
 
     def __getattr__(self, key: str):
-        if not self.is_connected():
+        if self.is_connected():
+            return getattr(self.api, key)
+        elif key in ["is_initialized", "_internal_kv_initialized"]:
+            # Client is not connected, thus Ray is not considered initialized.
+            return lambda: False
+        else:
             raise Exception("Ray Client is not connected. "
                             "Please connect by calling `ray.connect`.")
-        return getattr(self.api, key)
 
     def is_connected(self) -> bool:
         if self.client_worker is None:
@@ -174,7 +173,108 @@ class RayAPIStub:
         self._server = None
 
 
+# All connected context will be put here
+# This struct will be guarded by a lock for thread safety
+_all_contexts = set()
+_lock = threading.Lock()
+
+# This is the default context which is used when allow_multiple is not True
+_default_context = _ClientContext()
+
+
+class RayAPIStub:
+    """This class stands in as the replacement API for the `import ray` module.
+
+    Much like the ray module, this mostly delegates the work to the
+    _client_worker. As parts of the ray API are covered, they are piped through
+    here or on the client worker API.
+    """
+
+    def __init__(self):
+        self._cxt = threading.local()
+        self._cxt.handler = _default_context
+        self._inside_client_test = False
+
+    def get_context(self):
+        try:
+            return self._cxt.__getattribute__("handler")
+        except AttributeError:
+            self._cxt.handler = _default_context
+            return self._cxt.handler
+
+    def set_context(self, cxt):
+        old_cxt = self.get_context()
+        if cxt is None:
+            self._cxt.handler = _ClientContext()
+        else:
+            self._cxt.handler = cxt
+        return old_cxt
+
+    def is_default(self):
+        return self.get_context() == _default_context
+
+    def connect(self, *args, **kw_args):
+        self.get_context()._inside_client_test = self._inside_client_test
+        conn = self.get_context().connect(*args, **kw_args)
+        global _lock, _all_contexts
+        with _lock:
+            _all_contexts.add(self._cxt.handler)
+        return conn
+
+    def disconnect(self, *args, **kw_args):
+        global _lock, _all_contexts, _default_context
+        with _lock:
+            if _default_context == self.get_context():
+                for cxt in _all_contexts:
+                    cxt.disconnect(*args, **kw_args)
+                _all_contexts = set()
+            else:
+                self.get_context().disconnect(*args, **kw_args)
+            if self.get_context() in _all_contexts:
+                _all_contexts.remove(self.get_context())
+            if len(_all_contexts) == 0:
+                _explicitly_disable_client_mode()
+
+    def remote(self, *args, **kwargs):
+        return self.get_context().remote(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return self.get_context().__getattr__(name)
+
+    def is_connected(self, *args, **kwargs):
+        return self.get_context().is_connected(*args, **kwargs)
+
+    def init(self, *args, **kwargs):
+        ret = self.get_context().init(*args, **kwargs)
+        global _lock, _all_contexts
+        with _lock:
+            _all_contexts.add(self._cxt.handler)
+        return ret
+
+    def shutdown(self, *args, **kwargs):
+        global _lock, _all_contexts
+        with _lock:
+            if _default_context == self.get_context():
+                for cxt in _all_contexts:
+                    cxt.shutdown(*args, **kwargs)
+                _all_contexts = set()
+            else:
+                self.get_context().shutdown(*args, **kwargs)
+            if self.get_context() in _all_contexts:
+                _all_contexts.remove(self.get_context())
+            if len(_all_contexts) == 0:
+                _explicitly_disable_client_mode()
+
+
 ray = RayAPIStub()
+
+
+def num_connected_contexts():
+    """Return the number of client connections active."""
+    global _lock, _all_contexts
+    with _lock:
+        return len(_all_contexts)
+
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of

@@ -95,6 +95,24 @@ def test_get_context_dict(ray_start_regular):
     ray.get(task.remote(context_dict["node_id"], context_dict["job_id"]))
 
 
+def test_current_actor(ray_start_regular):
+    @ray.remote
+    class Echo:
+        def __init__(self):
+            pass
+
+        def echo(self, s):
+            self_actor = ray.get_runtime_context().current_actor
+            return self_actor.echo2.remote(s)
+
+        def echo2(self, s):
+            return s
+
+    e = Echo.remote()
+    obj = e.echo.remote("hello")
+    assert ray.get(ray.get(obj)) == "hello"
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

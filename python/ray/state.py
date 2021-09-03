@@ -5,10 +5,12 @@ import os
 
 import ray
 
-from ray import gcs_utils
+import ray._private.gcs_utils as gcs_utils
+from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
+from ray._private.resource_spec import NODE_ID_PREFIX
 
 from ray._raylet import GlobalStateAccessor
 
@@ -48,7 +50,7 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") == "1":
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
                 ray.client().connect()
                 # Retry connect!
                 return self._check_connected()
@@ -371,9 +373,9 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+            if state == gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+            elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
             else:
                 return "REMOVED"
@@ -672,14 +674,14 @@ class GlobalState:
 
         Args:
             worker_id: ID of this worker. Type is bytes.
-            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
-                ray.gcs_utils.WORKER.
+            worker_type: Type of this worker. Value is gcs_utils.DRIVER or
+                gcs_utils.WORKER.
             worker_info: Info of this worker. Type is dict{str: str}.
 
         Returns:
              Is operation success
         """
-        worker_data = ray.gcs_utils.WorkerTableData()
+        worker_data = gcs_utils.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
@@ -723,7 +725,7 @@ class GlobalState:
         all_available_resources = \
             self.global_state_accessor.get_all_available_resources()
         for available_resource in all_available_resources:
-            message = ray.gcs_utils.AvailableResources.FromString(
+            message = gcs_utils.AvailableResources.FromString(
                 available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
@@ -767,6 +769,19 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        """Get the node to connect for a Ray driver."""
+        self._check_connected()
+        node_info_str = (self.global_state_accessor.
+                         get_node_to_connect_for_driver(node_ip_address))
+        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -795,6 +810,7 @@ def next_job_id():
     return state.next_job_id()
 
 
+@DeveloperAPI
 @client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
@@ -824,7 +840,7 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return (ray.resource_spec.NODE_ID_PREFIX + ray.util.get_node_ip_address())
+    return NODE_ID_PREFIX + ray.util.get_node_ip_address()
 
 
 def node_ids():
@@ -840,7 +856,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX):
                 node_ids.append(k)
     return node_ids
 
@@ -858,6 +874,7 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
+@DeveloperAPI
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
@@ -899,6 +916,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@DeveloperAPI
 @client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
@@ -913,6 +931,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@DeveloperAPI
 @client_mode_hook
 def available_resources():
     """Get the current available cluster resources.

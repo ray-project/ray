@@ -78,13 +78,13 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
 }
 
 template <typename KeyIdType>
-SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
+void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
     const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
-    return nullptr;
+    return;
   }
 
   const auto channel_type = pub_message.channel_type();
@@ -95,13 +95,17 @@ SubscriptionCallback SubscriberChannel<KeyIdType>::GetCallbackForPubMessage(
 
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
   cum_published_messages_++;
-  if (maybe_subscription_callback.has_value()) {
-    cum_processed_messages_++;
-    // If the object id is still subscribed, return a subscribe callback.
-    return std::move(maybe_subscription_callback.value());
-  } else {
-    return nullptr;
+  if (!maybe_subscription_callback.has_value()) {
+    return;
   }
+  cum_processed_messages_++;
+  // If the object id is still subscribed, run a callback to the callback io service.
+  const auto &channel_name =
+      rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+  callback_service_->post(
+      [subscription_callback = std::move(maybe_subscription_callback.value()),
+       msg = std::move(pub_message)]() { subscription_callback(msg); },
+      "Subscriber.HandlePublishedMessage_" + channel_name);
 }
 
 template <typename KeyIdType>
@@ -118,12 +122,9 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   std::vector<std::string> key_ids_to_unsubscribe;
   for (const auto &key_id_it : subscription_callback_map) {
     const auto &key_id = key_id_it.first;
-    key_ids_to_unsubscribe.push_back(key_id.Binary());
-
-    auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
-    if (maybe_failure_callback.has_value()) {
-      const auto &failure_callback = maybe_failure_callback.value();
-      failure_callback(key_ids_to_unsubscribe.back());
+    auto unsubscribe_needed = HandlePublisherFailureInternal(publisher_address, key_id);
+    if (unsubscribe_needed) {
+      key_ids_to_unsubscribe.push_back(key_id.Binary());
     }
   }
 
@@ -137,10 +138,43 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
 }
 
 template <typename KeyIdType>
+void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
+    const rpc::Address &publisher_address, const std::string &key_id_binary) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto &subscription_it = subscription_map_.find(publisher_id);
+  // If there's no more subscription, do nothing.
+  if (subscription_it == subscription_map_.end()) {
+    return;
+  }
+  const auto key_id = KeyIdType::FromBinary(key_id_binary);
+  auto unsubscribe_needed = HandlePublisherFailureInternal(publisher_address, key_id);
+  if (unsubscribe_needed) {
+    RAY_CHECK(Unsubscribe(publisher_address, key_id_binary))
+        << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+  }
+}
+
+template <typename KeyIdType>
+bool SubscriberChannel<KeyIdType>::HandlePublisherFailureInternal(
+    const rpc::Address &publisher_address, const KeyIdType &key_id) {
+  auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
+  if (maybe_failure_callback.has_value()) {
+    const auto &channel_name =
+        rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+    callback_service_->post([failure_callback = std::move(maybe_failure_callback.value()),
+                             key_id]() { failure_callback(key_id.Binary()); },
+                            "Subscriber.HandleFailureCallback_" + channel_name);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+template <typename KeyIdType>
 std::string SubscriberChannel<KeyIdType>::DebugString() const {
   std::stringstream result;
   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-  std::string channel_name = descriptor->FindValueByNumber(channel_type_)->name();
+  const auto &channel_name = descriptor->FindValueByNumber(channel_type_)->name();
   result << "Channel " << channel_name;
   result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
   result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
@@ -242,28 +276,19 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
+      const auto &key_id = msg.key_id();
       // If the published message is a failure message, the publisher indicates
       // this key id is failed. Invoke the failure callback. At this time, we should not
       // unsubscribe the publisher because there are other entries that subscribe from the
       // publisher.
       if (msg.has_failure_message()) {
         RAY_LOG(DEBUG) << "Failure message has published from a channel " << channel_type;
-        Channel(channel_type)->HandlePublisherFailure(publisher_address);
+        Channel(channel_type)->HandlePublisherFailure(publisher_address, key_id);
         continue;
       }
 
-      // Otherwise, register the subscription callback.
-      const auto subscription_callback =
-          Channel(channel_type)->GetCallbackForPubMessage(publisher_address, msg);
-      // Post to the provided io service so that the callback is
-      // always running on the io service thread.
-      if (!subscription_callback) {
-        continue;
-      }
-
-      callback_service_->post([subscription_callback = std::move(subscription_callback),
-                               msg = std::move(msg)]() { subscription_callback(msg); },
-                              "Subscriber.HandleLongPollingResponse");
+      // Otherwise, invoke the subscribe callback.
+      Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
     }
   }
 

@@ -11,17 +11,17 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from click.exceptions import ClickException
 
-from ray.autoscaler._private.azure.config import (_configure_key_pair as
-                                                  _azure_configure_key_pair)
+from ray.autoscaler._private._azure.config import (_configure_key_pair as
+                                                   _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
-    _get_default_config, merge_setup_commands
+    _get_default_config, merge_setup_commands, fill_node_type_min_max_workers
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
-from ray.test_utils import load_test_config, recursive_fnmatch
+from ray._private.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
@@ -197,15 +197,14 @@ class AutoscalingConfigTest(unittest.TestCase):
                 }
             }]
         }
-        boto3_mock = Mock()
         describe_instance_types_mock = Mock()
         describe_instance_types_mock.describe_instance_types = MagicMock(
             return_value=boto3_dict)
-        boto3_mock.client = MagicMock(
+        client_cache_mock = MagicMock(
             return_value=describe_instance_types_mock)
         with patch.multiple(
                 "ray.autoscaler._private.aws.node_provider",
-                boto3=boto3_mock,
+                client_cache=client_cache_mock,
         ):
             new_config = prepare_config(new_config)
             importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])
@@ -417,7 +416,8 @@ class AutoscalingConfigTest(unittest.TestCase):
     def testExampleFull(self):
         """
         Test that example-full yamls are unmodified by prepared_config,
-        except possibly by having setup_commands merged.
+        except possibly by having setup_commands merged and
+        default per-node max/min workers set.
         """
         providers = ["aws", "gcp", "azure"]
         for provider in providers:
@@ -426,6 +426,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             config = yaml.safe_load(open(path).read())
             config_copy = copy.deepcopy(config)
             merge_setup_commands(config_copy)
+            fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
 
     @pytest.mark.skipif(
@@ -600,6 +601,25 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert config_subnets_no_type_configured_post["available_node_types"][
             "ray_head_default"]["node_config"][
                 "networkInterfaces"] == default_interfaces
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testFaultyResourceValidation(self):
+        """Checks that schema validation catches invalid node type resource
+        field.
+
+        Demonstrates a fix in https://github.com/ray-project/ray/pull/16691."""
+        path = os.path.join(RAY_PATH, "autoscaler", "aws", "example-full.yaml")
+        config = yaml.safe_load(open(path).read())
+        node_type = config["available_node_types"]["ray.head.default"]
+        # Invalid `resources` field, say user entered `resources: `.
+        node_type["resources"] = None
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
+        # Invalid value in resource dict.
+        node_type["resources"] = {"CPU": "a string is not valid here"}
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
 
 
 if __name__ == "__main__":

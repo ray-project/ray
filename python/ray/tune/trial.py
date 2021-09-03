@@ -1,17 +1,18 @@
-from typing import Callable, Dict, Sequence, Union
+from collections import deque
+import copy
 import json
+import logging
+from numbers import Number
+import os
+import platform
+import re
+import shutil
+import time
+from typing import Callable, Dict, Sequence, Union
+import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from collections import deque
-import copy
-import logging
-import platform
-import shutil
-import uuid
-import time
-import os
-from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -27,6 +28,7 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -49,6 +51,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -57,6 +60,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +74,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -112,11 +116,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -125,6 +135,15 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
+
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
 
 
 def create_logdir(dirname, local_dir):
@@ -140,6 +159,7 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -187,6 +207,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
+                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -283,6 +304,7 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
+        self.sync_to_cloud = sync_to_cloud
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -296,6 +318,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -434,6 +457,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner
@@ -631,7 +656,8 @@ class Trial:
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
-        return generated_dirname.replace("/", "_")
+        # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
+        return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
         self._state_valid = False

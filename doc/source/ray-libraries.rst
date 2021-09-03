@@ -5,12 +5,14 @@ Community Integrations
 
 This page lists libraries that have integrations with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
-Ray also comes packaged with several built-in machine learning libraries:
+Ray also comes packaged with several libraries solving problems in the machine learning space:
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`
+- :ref:`datasets` (alpha)
+- :ref:`workflows` (alpha)
 
 Airflow |airflow|
 -----------------
@@ -143,6 +145,12 @@ XGBoost is a popular gradient boosting library for classification and regression
 
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
 
+LightGBM |lightgbm|
+-------------------
+LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
+
+[`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
+
 
 .. |airflow| image:: images/airflow.png
     :class: inline-figure
@@ -209,6 +217,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |xgboost| image:: images/xgboost_logo.png
+    :class: inline-figure
+    :height: 30
+
+.. |lightgbm| image:: images/lightgbm_logo.png
     :class: inline-figure
     :height: 30
 

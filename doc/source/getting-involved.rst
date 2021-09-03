@@ -85,10 +85,17 @@ Even though we have hooks to run unit tests automatically for each pull request,
 we recommend you to run unit tests locally beforehand to reduce reviewers’
 burden and speedup review process.
 
+If you are running tests for the first time, you can install the required dependencies with:
 
 .. code-block:: shell
 
-    pytest ray/python/ray/tests/
+    pip install -r python/requirements.txt
+
+To run all Python tests:
+
+.. code-block:: shell
+
+    pytest python/ray/tests/
 
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
@@ -143,11 +150,13 @@ Lint and Formatting
 .. note:: Python 3.7 is recommended. You will run into flake8 `issues <https://github.com/ray-project/ray/pull/11588>`_ with Python 3.8.
 
 We also have tests for code formatting and linting that need to pass before merge.
-Install ``yapf==0.23, flake8, flake8-quotes``.
 
-* `yapf <https://github.com/google/yapf>`_ version ``0.23.0`` (``pip install yapf==0.23.0``)
-* `flake8 <https://flake8.pycqa.org/en/latest/>`_ version ``3.7.7`` (``pip install flake8==3.7.7``)
-* `flake8-quotes <https://github.com/zheller/flake8-quotes>`_ (``pip install flake8-quotes``)
+* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements_linters.txt>`_ first with:
+
+.. code-block:: shell
+
+  pip install -r python/requirements_linters.txt
+
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 
@@ -210,6 +219,37 @@ check recent tests known to be flaky.
 
 .. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
 
+API stability
+-------------
+
+Ray provides stability guarantees for its public APIs in Ray core and libraries. The level of stability provided depends on how the API is annotated.
+
+.. autofunction:: ray.util.annotations.PublicAPI
+.. autofunction:: ray.util.annotations.DeveloperAPI
+.. autofunction:: ray.util.annotations.Deprecated
+
+Undecorated functions can be generally assumed to not be part of the Ray public API.
+
+API compatibility style guide
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It's hard to fully capture the semantics of API compatibility into a single annotation (for example, public APIs may have "experimental" arguments). For more granular stability contracts, those can be noted in the pydoc (e.g., "the ``random_shuffle`` option is experimental"). When possible, experimental arguments should also be prefixed by underscores in Python (e.g., `_owner=`).
+
+**Other recommendations**:
+
+In Python APIs, consider forcing the use of kwargs instead of positional arguments (with the ``*`` operator). Kwargs are easier to keep backwards compatible than positional arguments, e.g. imagine if you needed to deprecate "opt1" below, it's easier with forced kwargs:
+
+.. code-block:: python
+
+    def foo_bar(file, *, opt1=x, opt2=y)
+        pass
+
+For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward compatibility placeholder" in case more args need to be passed to the callback in the future, e.g.:
+ 
+.. code-block:: python
+
+    def tune_user_callback(model, score, **future_kwargs):
+        pass
 
 Becoming a Reviewer
 -------------------

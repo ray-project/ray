@@ -16,8 +16,17 @@ DEFAULT_HTTP_PORT = 8000
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# How often to call the control loop on the controller.
+CONTROL_LOOP_PERIOD_S = 0.1
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
+
+#: Max retry count for allowing failures in replica constructor.
+#: If no replicas at target version is running by the time we're at
+#: max construtor retry count, deploy() is considered failed.
+#: By default we set threshold as min(num_replicas * 3, this value)
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -38,13 +47,7 @@ DEFAULT_LATENCY_BUCKET_MS = [
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
 
-#: Internally reserved version tag that cannot be used by applications.
-# TODO(edoakes): this should be removed when we remove the old codepath.
-RESERVED_VERSION_TAG = "__serve_version__"
+SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
-#: All defined HTTP methods.
-# https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-ALL_HTTP_METHODS = [
-    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
-    "PATCH"
-]
+#: Number of historically deleted deployments to store in the checkpoint.
+MAX_NUM_DELETED_DEPLOYMENTS = 1000

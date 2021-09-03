@@ -4,6 +4,7 @@ import logging
 import os
 
 from ray._private.utils import import_attr
+
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(
@@ -21,12 +22,45 @@ parser.add_argument(
     type=str,
     help="the serialized parsed runtime env dict")
 
+parser.add_argument(
+    "--allocated-instances-serialized-json",
+    type=str,
+    help="the worker allocated resource")
+
 
 def get_tmp_dir(remaining_args):
     for arg in remaining_args:
         if arg.startswith("--temp-dir="):
             return arg[11:]
     return None
+
+
+def parse_allocated_resource(allocated_instances_serialized_json):
+    container_resource_args = []
+    allocated_resource = json.loads(allocated_instances_serialized_json)
+    if "CPU" in allocated_resource.keys():
+        cpu_resource = allocated_resource["CPU"]
+        if isinstance(cpu_resource, list):
+            # cpuset: because we may split one cpu core into some pieces,
+            # we need set cpuset.cpu_exclusive=0 and set cpuset-cpus
+            cpu_ids = []
+            cpu_shares = 0
+            for idx, val in enumerate(cpu_resource):
+                if val > 0:
+                    cpu_ids.append(idx)
+                    cpu_shares += val
+            container_resource_args.append("--cpu-shares=" +
+                                           str(int(cpu_shares / 10000 * 1024)))
+            container_resource_args.append("--cpuset-cpus=" + ",".join(
+                str(e) for e in cpu_ids))
+        else:
+            # cpushare
+            container_resource_args.append(
+                "--cpu-shares=" + str(int(cpu_resource / 10000 * 1024)))
+    if "memory" in allocated_resource.keys():
+        container_resource_args.append(
+            "--memory=" + str(int(allocated_resource["memory"] / 10000)))
+    return container_resource_args
 
 
 def start_worker_in_container(container_option, args, remaining_args):
@@ -65,6 +99,8 @@ def start_worker_in_container(container_option, args, remaining_args):
     container_command.append("RAY_RAYLET_PID=" + str(os.getppid()))
     if container_option.get("run_options"):
         container_command.extend(container_option.get("run_options"))
+    container_command.extend(
+        parse_allocated_resource(args.allocated_instances_serialized_json))
 
     container_command.append("--entrypoint")
     container_command.append("python")
@@ -77,7 +113,7 @@ def start_worker_in_container(container_option, args, remaining_args):
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-    container_option = runtime_env.get("container_option")
+    container_option = runtime_env.get("container")
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
