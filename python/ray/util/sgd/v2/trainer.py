@@ -70,8 +70,8 @@ class Trainer:
             argument.
         resources_per_worker (Optional[Dict]): If specified, the resources
             defined in this Dict will be reserved for each worker. The
-            ``CPU`` and ``GPU`` keys can be defined to override the number of
-            CPU/GPUs used by each worker.
+            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            override the number of CPU/GPUs used by each worker.
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
@@ -107,7 +107,6 @@ class Trainer:
 
         if resources_per_worker:
             # Override CPU and GPU resources and remove from dict.
-            # TODO: case-sensitive? Ray uses capital, RayTune uses lower
             num_cpus = resources_per_worker.pop("CPU", num_cpus)
             num_gpus = resources_per_worker.pop("GPU", num_gpus)
             if not use_gpu and num_gpus > 0:
