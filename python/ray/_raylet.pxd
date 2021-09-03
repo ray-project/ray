@@ -81,6 +81,7 @@ cdef class ObjectRef(BaseID):
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
+        c_string call_site_data
 
     cdef CObjectID native(self)
 
