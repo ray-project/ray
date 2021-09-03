@@ -3,6 +3,8 @@ import json
 import os
 import random
 import string
+import logging
+logger = logging.getLogger(__name__)
 
 cgroup_v1_root = "/sys/fs/cgroup"
 ray_parent_cgroup_name = "ray"
@@ -10,7 +12,8 @@ ray_parent_cgroup_name = "ray"
 
 # The parent cgroup can help to limit the resource all ray workers can use
 def create_ray_parent_cgroup(controller):
-    ray_parent_cgroup = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name)
+    ray_parent_cgroup = os.path.join(cgroup_v1_root, controller,
+                                     ray_parent_cgroup_name)
     try:
         os.mkdir(ray_parent_cgroup)
         if controller == "cpuset":
@@ -26,7 +29,8 @@ def create_ray_parent_cgroup(controller):
 
 
 def create_ray_cgroup(controller, cgroup_name):
-    ray_cgroup = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name, cgroup_name)
+    ray_cgroup = os.path.join(cgroup_v1_root, controller,
+                              ray_parent_cgroup_name, cgroup_name)
     os.mkdir(ray_cgroup)
     return ray_cgroup
 
@@ -49,7 +53,6 @@ def delete_cgroup_path(cgroup_path):
 
 
 def create_cgroup_for_worker(resource_json):
-    # todo add timestampe?
     cgroup_name = "ray-" + "".join(
         random.sample(string.ascii_letters + string.digits, 8))
     allocated_resource = json.loads(resource_json)
@@ -67,31 +70,39 @@ def create_cgroup_for_worker(resource_json):
                     cpu_shares += val
             create_ray_parent_cgroup("cpuset")
             cgroup_path = create_ray_cgroup("cpuset", cgroup_name)
-            set_ray_cgroup_property(cgroup_path, "cpuset.cpus", ",".join(str(v) for v in cpu_ids))
-            set_ray_cgroup_property(cgroup_path, "cpuset.mems", ",".join(str(v) for v in cpu_ids))
+            set_ray_cgroup_property(cgroup_path, "cpuset.cpus", ",".join(
+                str(v) for v in cpu_ids))
+            set_ray_cgroup_property(cgroup_path, "cpuset.mems", ",".join(
+                str(v) for v in cpu_ids))
             cgroup_nodes.append(cgroup_path)
         else:
             cpu_shares = cpu_resource
         # cpushare
         create_ray_parent_cgroup("cpu")
         cgroup_path = create_ray_cgroup("cpu", cgroup_name)
-        set_ray_cgroup_property(cgroup_path, "cpu.shares", str(int(cpu_shares / 10000 * 1024)))
+        set_ray_cgroup_property(cgroup_path, "cpu.shares",
+                                str(int(cpu_shares / 10000 * 1024)))
         cgroup_nodes.append(cgroup_path)
     if "memory" in allocated_resource.keys():
         create_ray_parent_cgroup("memory")
         cgroup_path = create_ray_cgroup("memory", cgroup_name)
-        set_ray_cgroup_property(cgroup_path, "memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
+        set_ray_cgroup_property(cgroup_path, "memory.limit_in_bytes",
+                                str(int(allocated_resource["memory"] / 10000)))
         cgroup_nodes.append(cgroup_path)
     return cgroup_nodes
 
 
 def start_worker_in_cgroup(worker_func, resource_json):
-    child_pid = os.fork()
     cgroup_nodes = create_cgroup_for_worker(resource_json)
+    child_pid = os.fork()
+    # todo (chenk008): clean cgroup if fork failed
     if child_pid != 0:
         # the parent process is responsible for cleaning cgroup after
         # the worker process exit.
         os.wait()
+        logger.warning(
+            "Process {} child process {} exited, clean cgroup:{}".format(
+                os.getpid(), child_pid, cgroup_nodes))
         for idx, node in enumerate(cgroup_nodes):
             delete_cgroup_path(node)
     else:
