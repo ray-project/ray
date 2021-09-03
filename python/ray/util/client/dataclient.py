@@ -102,9 +102,10 @@ class DataClient:
                     except grpc.RpcError:
                         ping_succeeded = False
                     if not ping_succeeded:
-                        logger.exception(
-                            "The data channel has failed with the following "
-                            "exception. Attempting to reconnect.")
+                        logger.warning(
+                            "Encountered connection issues in the data "
+                            "channel. Attempting to reconnect.")
+                        logger.debug(e)
                         try:
                             self.client_worker._connect_channel(
                                 reconnecting=True)
