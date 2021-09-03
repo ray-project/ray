@@ -24,7 +24,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
@@ -763,6 +763,7 @@ class Trainer(Trainable):
                 # `in_evaluation` flag.
                 evaluation_config.update({
                     "batch_mode": "complete_episodes",
+                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -908,16 +909,24 @@ class Trainer(Trainable):
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
                               self.config["evaluation_num_workers"]))
-                num_workers = len(self.evaluation_workers.remote_workers())
-                num_episodes = num_rounds * num_workers
-                for i in range(num_rounds):
-                    logger.info("Running round {} of parallel evaluation "
-                                "({}/{} episodes)".format(
-                                    i, (i + 1) * num_workers, num_episodes))
-                    ray.get([
-                        w.sample.remote()
-                        for w in self.evaluation_workers.remote_workers()
+                num_episodes = self.config["evaluation_num_episodes"]
+                num_episodes_done = 0
+                for round_ in range(num_rounds):
+                    left_to_do = num_episodes - num_episodes_done
+                    batches = ray.get([
+                        w.sample.remote() for i, w in enumerate(
+                            self.evaluation_workers.remote_workers())
+                        if i < left_to_do
                     ])
+                    if SampleBatch.EPS_ID in batches[0]:
+                        for b in batches:
+                            num_episodes_done += len(
+                                set(b[SampleBatch.EPS_ID]))
+                    logger.info(
+                        f"Ran round {round_} of parallel evaluation "
+                        f"({num_episodes_done}/{num_episodes} episodes done)")
+                    if num_episodes_done >= num_episodes:
+                        break
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),

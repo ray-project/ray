@@ -1,6 +1,7 @@
 import argparse
 import os
 
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -36,6 +37,20 @@ parser.add_argument(
     default=100.0,
     help="Reward at which we stop training.")
 
+
+class AssertNumEvalEpisodesCallback(DefaultCallbacks):
+    def on_train_result(self, *, trainer, result, **kwargs):
+        # Make sure we always run exactly n evaluation episodes,
+        # no matter what the other settings are (such as
+        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
+        if "evaluation" in result:
+            hist_stats = result["evaluation"]["hist_stats"]
+            assert len(hist_stats["episode_lengths"]) == \
+                trainer.config["evaluation_num_episodes"]
+            print("Number of evaluation episodes is exactly "
+                  f"{trainer.config['evaluation_num_episodes']} (ok)!")
+
+
 if __name__ == "__main__":
     import ray
     from ray import tune
@@ -55,7 +70,8 @@ if __name__ == "__main__":
         # Run with tracing enabled for tfe/tf2.
         "eager_tracing": args.framework in ["tfe", "tf2"],
         # Parallel evaluation+training config.
-        # Use two evaluation workers.
+        # Use two evaluation workers (must be >0, otherwise,
+        # evaluation will run on a local worker and block).
         "evaluation_num_workers": 2,
         # Evaluate every other training iteration (together
         # with every other call to Trainer.train()).
@@ -63,9 +79,13 @@ if __name__ == "__main__":
         # Run for 50 episodes (25 per eval worker and per
         # evaluation round). The longer it takes to evaluate, the more
         # sense it makes to use `evaluation_parallel_to_training=True`.
-        "evaluation_num_episodes": 10,
+        "evaluation_num_episodes": 13,
         # Switch on evaluation in parallel with training.
         "evaluation_parallel_to_training": True,
+
+        # Use a custom callback that asserts that we are running the
+        # configured exact number of episodes per evaluation.
+        "callbacks": AssertNumEvalEpisodesCallback,
     }
 
     stop = {
