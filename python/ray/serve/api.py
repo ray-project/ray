@@ -122,7 +122,7 @@ class Client:
 
     @property
     def root_url(self):
-        return self._http_config.root_url
+        return ray.get(self._controller.get_root_url.remote())
 
     def __del__(self):
         if not self._detached:
