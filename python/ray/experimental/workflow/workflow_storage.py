@@ -77,8 +77,8 @@ class StepInspectResult:
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
-                or (self.args_valid
-                    and self.workflows is not None and self.func_body_valid))
+                or (self.args_valid and self.workflows is not None
+                    and self.func_body_valid))
 
 
 class WorkflowStorage:

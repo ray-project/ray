@@ -11,17 +11,21 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow import serialization
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import (
     get_or_create_management_actor, get_management_actor)
 from ray.experimental.workflow.common import (
-    Workflow, WorkflowStatus, WorkflowOutputType, WorkflowExecutionResult,
-    StepType, StepID, WorkflowData, )
+    Workflow,
+    WorkflowStatus,
+    WorkflowOutputType,
+    WorkflowExecutionResult,
+    StepType,
+    StepID,
+    WorkflowData,
+)
 
 if TYPE_CHECKING:
-    from ray.experimental.workflow.common import (StepID, WorkflowRef,
-                                                  WorkflowInputs)
+    from ray.experimental.workflow.common import (WorkflowRef, WorkflowInputs)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -184,8 +188,8 @@ def execute_workflow(
     return result
 
 
-async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage, step_id: StepID,
-                                inputs: WorkflowData) -> None:
+async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
+                             step_id: StepID, inputs: WorkflowData) -> None:
     """Save workflow inputs."""
     metadata = inputs.to_metadata()
     with serialization_context.workflow_args_keeping_context():
@@ -193,8 +197,10 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage, step_
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
     save_tasks = [
-        wf_storage._put(wf_storage._key_step_input_metadata(step_id), metadata, True),
-        wf_storage._put(wf_storage._key_step_function_body(step_id), inputs.func_body),
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), metadata, True),
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), inputs.func_body),
         wf_storage._put(wf_storage._key_step_args(step_id), args_obj)
     ]
     await asyncio.gather(*save_tasks)
@@ -405,8 +411,7 @@ class _BakedWorkflowInputs:
         workflow_outputs = [
             execute_workflow(w).persisted_output for w in inputs.workflows
         ]
-        return cls(inputs.args, workflow_outputs,
-                   inputs.workflow_refs)
+        return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
 
     def __reduce__(self):
         return _BakedWorkflowInputs, (self.args, self.workflow_outputs,

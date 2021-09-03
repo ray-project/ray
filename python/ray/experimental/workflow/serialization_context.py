@@ -19,8 +19,7 @@ def _resolve_workflow_refs(index: int) -> Any:
 
 @contextlib.contextmanager
 def workflow_args_serialization_context(
-        workflows: List[Workflow],
-        workflow_refs: List[WorkflowRef]) -> None:
+        workflows: List[Workflow], workflow_refs: List[WorkflowRef]) -> None:
     """
     This serialization context reduces workflow input arguments to three
     parts:
@@ -49,7 +48,6 @@ def workflow_args_serialization_context(
         workflow_refs: Workflow reference output list.
     """
     workflow_deduplicator: Dict[Workflow, int] = {}
-    objectref_deduplicator: Dict[ray.ObjectRef, int] = {}
     workflowref_deduplicator: Dict[WorkflowRef, int] = {}
 
     def workflow_serializer(workflow):
@@ -143,9 +141,6 @@ def workflow_args_keeping_context() -> None:
     def _keep_workflow_outputs(index: int):
         return _KeepWorkflowOutputs(index)
 
-    def _keep_objectrefs(index: int):
-        return _KeepObjectRefs(index)
-
     def _keep_workflow_refs(index: int):
         return _KeepWorkflowRefs(index)
 
@@ -162,8 +157,7 @@ def workflow_args_keeping_context() -> None:
 def make_workflow_inputs(args_list: List[Any]) -> WorkflowInputs:
     workflows: List[Workflow] = []
     workflow_refs: List[WorkflowRef] = []
-    with workflow_args_serialization_context(workflows,
-                                             workflow_refs):
+    with workflow_args_serialization_context(workflows, workflow_refs):
         # NOTE: When calling 'ray.put', we trigger python object
         # serialization. Under our serialization context,
         # Workflows are separated from the arguments,
@@ -173,5 +167,4 @@ def make_workflow_inputs(args_list: List[Any]) -> WorkflowInputs:
         # semantics. See "tests/test_variable_mutable.py" as
         # an example.
         input_placeholder: ray.ObjectRef = ray.put(args_list)
-    return WorkflowInputs(input_placeholder, workflows,
-                          workflow_refs)
+    return WorkflowInputs(input_placeholder, workflows, workflow_refs)

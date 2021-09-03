@@ -182,7 +182,8 @@ class WorkflowManagementActor:
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        logger.info("run_or_resume: ", workflow_id, step_id, result.persisted_output)
+        logger.info("run_or_resume: ", workflow_id, step_id,
+                    result.persisted_output)
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(
