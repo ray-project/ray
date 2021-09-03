@@ -411,8 +411,12 @@ def postprocess_nstep_and_prio(policy: Policy,
                                episode=None) -> SampleBatch:
     # N-step Q adjustments.
     if policy.config["n_step"] > 1:
+        #TEST
+        batch[SampleBatch.NEXT_OBS][0][0] = -100.0
+        print(batch[SampleBatch.OBS][1][0])
+        #END TEST
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
-                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                      batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS],
                       batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
                       batch[SampleBatch.DONES])
 
@@ -422,7 +426,7 @@ def postprocess_nstep_and_prio(policy: Policy,
     # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (np.abs(convert_to_numpy(td_errors)) +

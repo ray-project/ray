@@ -245,6 +245,9 @@ class _AgentCollector:
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
         batch = SampleBatch(batch_data)
+        #TODO
+        print(f"built-batch: {batch}")
+        np.testing.assert_equal(batch["obs"][1:], batch["new_obs"][:-1])
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
