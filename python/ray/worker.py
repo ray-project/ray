@@ -31,6 +31,7 @@ import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
+from ray.util.debug import log_once
 import ray
 import colorama
 import setproctitle
@@ -495,10 +496,11 @@ def get_gpu_ids():
     worker.check_connected()
 
     if worker.mode != WORKER_MODE:
-        logger.warning(
-            "`ray.get_gpu_ids()` will always return the empty list when "
-            "called from the driver. This is because Ray does not manage "
-            "GPU allocations to the driver process.")
+        if log_once("worker_get_gpu_ids_empty_from_driver"):
+            logger.warning(
+                "`ray.get_gpu_ids()` will always return the empty list when "
+                "called from the driver. This is because Ray does not manage "
+                "GPU allocations to the driver process.")
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()

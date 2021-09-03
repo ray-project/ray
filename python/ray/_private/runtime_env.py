@@ -550,8 +550,10 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig):
     Args:
         job_config (JobConfig): The job config of driver.
     """
-    assert _internal_kv_initialized()
     pkg_uris = job_config.get_runtime_env_uris()
+    if len(pkg_uris) == 0:
+        return  # Return early to avoid internal kv check in this case.
+    assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
         if not package_exists(pkg_uri):
             file_path = _get_local_path(pkg_uri)
@@ -598,23 +600,26 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
 
 def override_task_or_actor_runtime_env(
         runtime_env: Optional[Dict[str, Any]],
-        job_config: ray.job_config.JobConfig) -> Dict[str, Any]:
+        parent_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
     if runtime_env:
         if runtime_env.get("working_dir"):
             raise NotImplementedError(
                 "Overriding working_dir for actors is not supported. "
                 "Please use ray.init(runtime_env={'working_dir': ...}) "
                 "to configure per-job environment instead.")
+        # NOTE(edoakes): this is sort of hacky, but we manually add the right
+        # working_dir here so the relative path to a requirements.txt file
+        # works. The right solution would be to merge the runtime_env with the
+        # parent runtime env before validation.
+        if parent_runtime_env.get("working_dir"):
+            runtime_env["working_dir"] = parent_runtime_env["working_dir"]
         runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
     else:
         runtime_env_dict = {}
 
     # If per-actor URIs aren't specified, override them with those in the
     # job config.
-    if "uris" not in runtime_env_dict:
-        if job_config.runtime_env.uris:
-            runtime_env_dict["uris"] = [
-                str(uri) for uri in job_config.runtime_env.uris
-            ]
+    if "uris" not in runtime_env_dict and "uris" in parent_runtime_env:
+        runtime_env_dict["uris"] = parent_runtime_env.get("uris")
 
     return runtime_env_dict

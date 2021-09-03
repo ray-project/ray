@@ -91,7 +91,7 @@ def gen_new_backend_executor(special_f):
             super().__init__(*args, **kwargs)
             self._has_failed = False
 
-        def start_training(self, train_func, checkpoint, checkpoint_strategy):
+        def start_training(self, *args, **kwargs):
             special_execute = gen_execute_single_async_special(special_f)
             if not self._has_failed:
                 self.worker_group.should_fail = True
@@ -100,8 +100,7 @@ def gen_new_backend_executor(special_f):
                 self.worker_group.should_fail = False
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func, checkpoint,
-                                       checkpoint_strategy)
+                super().start_training(*args, **kwargs)
 
     return TestBackendExecutor
 

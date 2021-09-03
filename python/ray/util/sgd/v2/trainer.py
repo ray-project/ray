@@ -1,6 +1,8 @@
+from datetime import datetime
 import functools
 import inspect
 import logging
+import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
     Type, Iterator
@@ -12,18 +14,18 @@ from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
+from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
+    TUNE_CHECKPOINT_FILE_NAME
 
 # Ray SGD should be usable even if Tune is not installed.
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.utils import construct_path
 
-try:
-    TUNE_INSTALLED = True
+if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import Trainable
     from ray.tune import PlacementGroupFactory
     from ray.tune.function_runner import wrap_function
-except ImportError:
-    TUNE_INSTALLED = False
+else:
     tune = PlacementGroupFactory = Trainable = object
 
     def noop():
@@ -45,6 +47,14 @@ BACKEND_NAME_TO_CONFIG_CLS = {
 
 class Trainer:
     """A class for enabling seamless distributed deep learning.
+
+    Directory structure:
+    - A logdir is created during instantiation. This will hold all the
+    results/checkpoints for the lifetime of the Trainer. By default, it will be
+    of the form ``~/ray_results/sgd_<datestring>``.
+    - A run_dir is created for each ``run`` call. This will
+    hold the checkpoints and results for a single ``trainer.run()`` or
+    ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
 
     Args:
         backend (Union[str, BackendConfig]): The backend used for
@@ -79,6 +89,11 @@ class Trainer:
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
 
+        # Incremental unique run ID.
+        self._run_id = 0
+
+        self.logdir = self.create_logdir(logdir)
+
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
@@ -86,8 +101,30 @@ class Trainer:
             raise NotImplementedError("`resources_per_worker` argument is not "
                                       "supported yet.")
 
-        self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu), logdir, max_retries)
+        self._executor = BackendExecutor(
+            backend_config=backend_config,
+            num_workers=num_workers,
+            num_cpus_per_worker=1,
+            num_gpus_per_worker=int(use_gpu),
+            max_retries=max_retries)
+
+    def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
+        """Create logdir for the Trainer."""
+        # Create directory for logs.
+        log_dir = Path(log_dir) if log_dir else None
+        if not log_dir:
+            # Initialize timestamp for identifying this SGD training execution.
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            log_dir = Path(f"sgd_{timestr}")
+        log_dir = construct_path(log_dir, DEFAULT_RESULTS_DIR)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trainer logs will be logged in: {log_dir}")
+        return log_dir
+
+    def create_run_dir(self):
+        """Create rundir for the particular training run."""
+        self.latest_run_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
@@ -170,19 +207,27 @@ class Trainer:
             list corresponds to the output of the training function from
             each worker.
         """
+        # Create new log directory for this run.
+        self._run_id += 1
+        self.create_run_dir()
+
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.logdir)
+            callback.start_training(logdir=self.latest_run_dir)
+
+        train_func = self._get_train_func(train_func, config)
 
         try:
-            iterator = self.run_iterator(
+            iterator = SGDIterator(
+                backend_executor=self._executor,
                 train_func=train_func,
-                config=config,
                 checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy)
+                checkpoint_strategy=checkpoint_strategy,
+                run_dir=self.latest_run_dir,
+            )
             for intermediate_result in iterator:
                 for callback in callbacks:
                     callback.handle_result(intermediate_result)
@@ -197,7 +242,7 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            checkpoint: Optional[Dict] = None,
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
     ) -> Iterator[List[Dict]]:
         """Same as ``run`` except returns an iterator over the results.
@@ -230,22 +275,31 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
+            checkpoint (Optional[Dict|Path|str]): The checkpoint data that
+                should be loaded onto each worker and accessed by the
+                training function via ``sgd.load_checkpoint()``. If this is a
+                ``str`` or ``Path`` then the value is expected to be a path
+                to a file that contains a serialized checkpoint dict. If this
+                is ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
 
         Returns:
             An Iterator over the intermediate results from ``sgd.report()``.
         """
+        # Create new log directory for this run.
+        self._run_id += 1
+        self.create_run_dir()
+
         train_func = self._get_train_func(train_func, config)
 
         return SGDIterator(
             backend_executor=self._executor,
             train_func=train_func,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy)
+            checkpoint_strategy=checkpoint_strategy,
+            run_dir=self.latest_run_dir,
+        )
 
     def _get_train_func(
             self,
@@ -276,17 +330,16 @@ class Trainer:
             return train_func
 
     @property
-    def logdir(self) -> Path:
-        """Path to this Trainer's log directory."""
-        return self._executor.logdir
-
-    @property
     def latest_run_dir(self) -> Optional[Path]:
         """Path to the log directory for the latest call to ``run()``.
 
         Returns ``None`` if ``run()`` has not been called.
         """
-        return self._executor.latest_run_dir
+        if self._run_id > 0:
+            run_dir = Path(f"run_{self._run_id:03d}")
+            return construct_path(run_dir, self.logdir)
+        else:
+            return None
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
@@ -354,12 +407,14 @@ class SGDIterator:
     def __init__(
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            checkpoint: Optional[Dict],
-            checkpoint_strategy: Optional[CheckpointStrategy]):
+            checkpoint: Optional[Union[Dict, str, Path]],
+            checkpoint_strategy: Optional[CheckpointStrategy], run_dir: Path):
         self._executor = backend_executor
         self._train_func = train_func
         self._checkpoint_strategy = checkpoint_strategy
-        self._start_training(train_func, checkpoint, checkpoint_strategy)
+        self._run_dir = run_dir
+        self._start_training(
+            train_func, checkpoint, checkpoint_strategy, run_dir=run_dir)
 
         self._final_results = None
         self._finished_training = False
@@ -367,12 +422,20 @@ class SGDIterator:
     def __iter__(self):
         return self
 
-    def _start_training(self, train_func, checkpoint, checkpoint_strategy):
+    def _start_training(self,
+                        train_func,
+                        checkpoint,
+                        checkpoint_strategy,
+                        run_dir,
+                        latest_checkpoint_id=None):
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
                 checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy)
+                checkpoint_strategy=checkpoint_strategy,
+                run_dir=run_dir,
+                latest_checkpoint_id=latest_checkpoint_id
+            )
         )
 
     def _run_with_error_handling(self, func: Callable):
@@ -380,9 +443,12 @@ class SGDIterator:
             return func()
         except TrainingWorkerError:
             # Workers have already been restarted.
-            self._start_training(self._train_func,
-                                 self._executor.latest_checkpoint,
-                                 self._checkpoint_strategy)
+            self._start_training(
+                self._train_func,
+                self._executor.latest_checkpoint,
+                self._checkpoint_strategy,
+                run_dir=self._run_dir,
+                latest_checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
@@ -451,7 +517,6 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
     This function populates class attributes and methods.
     """
 
-    # TODO(amog): Implement checkpointing for Tune.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
             backend=backend,
@@ -461,7 +526,14 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
         trainer.start()
 
-        iterator = trainer.run_iterator(train_func, config)
+        if checkpoint_dir is not None:
+            checkpoint_path = os.path.join(checkpoint_dir,
+                                           TUNE_CHECKPOINT_FILE_NAME)
+        else:
+            checkpoint_path = None
+
+        iterator = trainer.run_iterator(
+            train_func, config, checkpoint=checkpoint_path)
 
         for results in iterator:
             first_worker_results = results[0]
