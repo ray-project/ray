@@ -201,10 +201,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*owner_client_pool=*/&worker_rpc_pool_,
           /*max_object_report_batch_size=*/
           RayConfig::instance().max_object_report_batch_size(),
+          /*mark_as_failed*/
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
-            MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+            object_manager_.MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           })),
       object_manager_(
           io_service, self_node_id, object_manager_config, object_directory_.get(),
@@ -242,11 +243,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
             std::unique_ptr<RayObject> result;
-            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+            if (object_manager_.GetObjectsFromPlasma(object_ids, &results) &&
+                results.size() > 0) {
               result = std::move(results[0]);
             }
             return result;
-          }),
+          },
+          gcs_client),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -325,9 +328,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
       worker_pool_, leased_workers_,
+      /*get_task_arguments*/
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
-        return GetObjectsFromPlasma(object_ids, results);
+        return object_manager_.GetObjectsFromPlasma(object_ids, results);
       },
       max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
@@ -343,7 +347,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             self_node_id_, resource_names, nullptr));
       });
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
@@ -1728,40 +1731,6 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::MarkObjectsAsFailed(
-    const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
-    const JobID &job_id) {
-  const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &ref : objects_to_fail) {
-    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
-                   << error_type;
-    std::shared_ptr<Buffer> data;
-    Status status;
-    status = store_client_.TryCreateImmediately(
-        object_id, ref.owner_address(), 0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data,
-        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
-    if (status.ok()) {
-      status = store_client_.Seal(object_id);
-    }
-    if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
-      // If we failed to save the error code, log a warning and push an error message
-      // to the driver.
-      std::ostringstream stream;
-      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
-      std::string error_message = stream.str();
-      RAY_LOG(ERROR) << error_message;
-      auto error_data_ptr =
-          gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    }
-  }
-}
-
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
   if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
@@ -2053,35 +2022,6 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                                       std::vector<std::unique_ptr<RayObject>> *results) {
-  // Pin the objects in plasma by getting them and holding a reference to
-  // the returned buffer.
-  // NOTE: the caller must ensure that the objects already exist in plasma before
-  // sending a PinObjectIDs request.
-  std::vector<plasma::ObjectBuffer> plasma_results;
-  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
-  // block when serving the request. However, if the plasma store is under
-  // heavy load, then this request can still block the NodeManager event loop
-  // since we must wait for the plasma store's reply. We should consider using
-  // an `AsyncGet` instead.
-  if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
-           .ok()) {
-    return false;
-  }
-
-  for (const auto &plasma_result : plasma_results) {
-    if (plasma_result.data == nullptr) {
-      results->push_back(nullptr);
-    } else {
-      results->emplace_back(std::unique_ptr<RayObject>(
-          new RayObject(plasma_result.data, plasma_result.metadata, {})));
-    }
-  }
-  return true;
-}
-
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -2092,7 +2032,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   std::vector<std::unique_ptr<RayObject>> results;
-  if (!GetObjectsFromPlasma(object_ids, &results)) {
+  if (!object_manager_.GetObjectsFromPlasma(object_ids, &results)) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
            "objects may have been evicted while there are still references in scope.";

@@ -168,7 +168,8 @@ class ObjectManager : public ObjectManagerInterface,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   ~ObjectManager();
 
@@ -232,6 +233,25 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param local_only Whether keep this request with local object store
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Mark the specified objects as failed with the given error type.
+  ///
+  /// \param error_type The type of the error that caused this task to fail.
+  /// \param object_ids The object ids to store error messages into.
+  /// \param job_id The optional job to push errors to if the writes fail.
+  void MarkObjectsAsFailed(const rpc::ErrorType &error_type,
+                           const std::vector<rpc::ObjectReference> object_ids,
+                           const JobID &job_id);
+
+  /// Get pointers to objects stored in plasma. They will be
+  /// released once the returned references go out of scope.
+  ///
+  /// \param[in] object_ids The objects to get.
+  /// \param[out] results The pointers to objects stored in
+  /// plasma.
+  /// \return Whether the request was successful.
+  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                            std::vector<std::unique_ptr<RayObject>> *results);
 
   /// Returns debug string for class.
   ///
@@ -512,6 +532,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  /// Plasma client pool.
+  plasma::PlasmaClient store_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 };
 
 }  // namespace ray

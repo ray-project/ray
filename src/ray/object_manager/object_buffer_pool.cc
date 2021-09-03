@@ -19,12 +19,9 @@
 
 namespace ray {
 
-ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
+ObjectBufferPool::ObjectBufferPool(plasma::PlasmaClient &store_client,
                                    uint64_t chunk_size)
-    : default_chunk_size_(chunk_size) {
-  store_socket_name_ = store_socket_name;
-  RAY_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
-}
+    : store_client_(store_client), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
   // Abort everything in progress.
@@ -33,7 +30,6 @@ ObjectBufferPool::~ObjectBufferPool() {
     AbortCreate(pair.first);
   }
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_CHECK_OK(store_client_.Disconnect());
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {

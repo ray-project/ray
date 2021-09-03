@@ -189,15 +189,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// object ids.
   void TriggerGlobalGC();
 
-  /// Mark the specified objects as failed with the given error type.
-  ///
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \param object_ids The object ids to store error messages into.
-  /// \param job_id The optional job to push errors to if the writes fail.
-  void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> object_ids,
-                           const JobID &job_id);
-
   /// Stop this node manager.
   void Stop();
 
@@ -248,10 +239,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
-
-  /// Flush objects that are out of scope in the application. This will attempt
-  /// to eagerly evict all plasma copies of the object from the cluster.
-  void FlushObjectsToFree();
 
   /// Handler for a resource usage notification from the GCS.
   ///
@@ -574,16 +561,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task RayTask that is infeasible
   void PublishInfeasibleTaskError(const RayTask &task) const;
 
-  /// Get pointers to objects stored in plasma. They will be
-  /// released once the returned references go out of scope.
-  ///
-  /// \param[in] object_ids The objects to get.
-  /// \param[out] results The pointers to objects stored in
-  /// plasma.
-  /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                            std::vector<std::unique_ptr<RayObject>> *results);
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -630,10 +607,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unique_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
-  /// A Plasma object store client. This is used for creating new objects in
-  /// the object store (e.g., for actor tasks that can't be run because the
-  /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClient store_client_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.

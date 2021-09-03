@@ -17,6 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
@@ -56,7 +57,8 @@ ObjectManager::ObjectManager(
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback,
     AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
-    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object)
+    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+    std::shared_ptr<gcs::GcsClient> &gcs_client)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -85,7 +87,7 @@ ObjectManager::ObjectManager(
                 },
                 "ObjectManager.ObjectDeleted");
           }),
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
+      buffer_pool_(store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
@@ -94,7 +96,8 @@ ObjectManager::ObjectManager(
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,
-                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
+                        boost::posix_time::milliseconds(config.timer_freq_ms)),
+      gcs_client_(gcs_client) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
@@ -127,9 +130,14 @@ ObjectManager::ObjectManager(
                                       pin_object, get_spilled_object_url));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
+
+  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
-ObjectManager::~ObjectManager() { StopRpcService(); }
+ObjectManager::~ObjectManager() {
+  store_client_.Disconnect();
+  StopRpcService();
+}
 
 void ObjectManager::Stop() { plasma::plasma_store_runner->Stop(); }
 
@@ -798,6 +806,70 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         },
         "ObjectManager.FreeObjects");
   }
+}
+
+void ObjectManager::MarkObjectsAsFailed(
+    const rpc::ErrorType &error_type,
+    const std::vector<rpc::ObjectReference> objects_to_fail, const JobID &job_id) {
+  const std::string meta = std::to_string(static_cast<int>(error_type));
+  for (const auto &ref : objects_to_fail) {
+    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
+    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
+                   << error_type;
+    std::shared_ptr<Buffer> data;
+    Status status;
+    status = store_client_.TryCreateImmediately(
+        object_id, ref.owner_address(), 0,
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data,
+        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
+    if (status.ok()) {
+      status = store_client_.Seal(object_id);
+    }
+    if (!status.ok() && !status.IsObjectExists()) {
+      RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
+      // If we failed to save the error code, log a warning and push an error message
+      // to the driver.
+      std::ostringstream stream;
+      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
+             << " error code to object " << object_id << ". Anyone who's getting this"
+             << " object may hang forever.";
+      std::string error_message = stream.str();
+      RAY_LOG(ERROR) << error_message;
+      auto error_data_ptr =
+          gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+    }
+  }
+}
+
+bool ObjectManager::GetObjectsFromPlasma(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::unique_ptr<RayObject>> *results) {
+  // Pin the objects in plasma by getting them and holding a reference to
+  // the returned buffer.
+  // NOTE: the caller must ensure that the objects already exist in plasma before
+  // sending a PinObjectIDs request.
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+  // block when serving the request. However, if the plasma store is under
+  // heavy load, then this request can still block the NodeManager event loop
+  // since we must wait for the plasma store's reply. We should consider using
+  // an `AsyncGet` instead.
+  if (!store_client_
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .ok()) {
+    return false;
+  }
+
+  for (const auto &plasma_result : plasma_results) {
+    if (plasma_result.data == nullptr) {
+      results->push_back(nullptr);
+    } else {
+      results->emplace_back(std::unique_ptr<RayObject>(
+          new RayObject(plasma_result.data, plasma_result.metadata, {})));
+    }
+  }
+  return true;
 }
 
 void ObjectManager::SpreadFreeObjectsRequest(

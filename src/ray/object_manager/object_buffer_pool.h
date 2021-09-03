@@ -57,7 +57,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(plasma::PlasmaClient &store_client_, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -166,6 +166,8 @@ class ObjectBufferPool {
   /// Returned when GetChunk or CreateChunk fails.
   const ChunkInfo errored_chunk_ = {0, nullptr, 0, nullptr};
 
+  /// Plasma client pool.
+  plasma::PlasmaClient &store_client_;
   /// Mutex on public methods for thread-safe operations on
   /// get_buffer_state_, create_buffer_state_, and store_client_.
   mutable std::mutex pool_mutex_;
@@ -173,11 +175,6 @@ class ObjectBufferPool {
   const uint64_t default_chunk_size_;
   /// The state of a buffer that's currently being used.
   std::unordered_map<ray::ObjectID, CreateBufferState> create_buffer_state_;
-
-  /// Plasma client pool.
-  plasma::PlasmaClient store_client_;
-  /// Socket name of plasma store.
-  std::string store_socket_name_;
 };
 
 }  // namespace ray
