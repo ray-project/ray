@@ -27,15 +27,13 @@ class WorkflowNotResumableError(Exception):
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(input_object_refs: List[str],
+def _recover_workflow_step(
                            input_workflows: List[Any],
                            input_workflow_refs: List[WorkflowRef],
                            instant_workflow_inputs: Dict[int, StepID]):
     """A workflow step that recovers the output of an unfinished step.
 
     Args:
-        input_object_refs: The object refs in the argument of
-            the (original) step.
         input_workflows: The workflows in the argument of the (original) step.
             They are resolved into physical objects (i.e. the output of the
             workflows) here. They come from other recover workflows we
@@ -51,11 +49,10 @@ def _recover_workflow_step(input_object_refs: List[str],
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
-    input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
     args, kwargs = reader.load_step_args(
-        step_id, input_workflows, input_object_refs, input_workflow_refs)
+        step_id, input_workflows, input_workflow_refs)
     return func(*args, **kwargs)
 
 
@@ -81,9 +78,11 @@ def _construct_resume_workflow_from_step(
     if isinstance(result.output_step_id, str):
         return _construct_resume_workflow_from_step(reader,
                                                     result.output_step_id)
+    print("8888888888888888888888888888888888888888888888")
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
+    print("9999999999999999999999999999999999999999999999")
     input_workflows = []
     instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
@@ -97,7 +96,7 @@ def _construct_resume_workflow_from_step(
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
-        **result.ray_options).step(result.object_refs, input_workflows,
+        **result.ray_options).step(input_workflows,
                                    workflow_refs, instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     recovery_workflow.data.step_type = result.step_type
@@ -109,6 +108,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
                                    store_url: str, current_output: [
                                        ray.ObjectRef
                                    ]) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
+    print("5555555555555555555555555555555555555555555555")
     # TODO (yic): We need better dependency management for virtual actor
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
@@ -119,9 +119,11 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
                 ref = ray.get(ref)
         except Exception:
             pass
+    print("6666666666666666666666666666666666666666666666")
     try:
         store = storage.create_storage(store_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        print("7777777777777777777777777777777777777777777777")
         r = _construct_resume_workflow_from_step(wf_store, step_id)
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
@@ -131,6 +133,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
                                                     store.storage_url):
             from ray.experimental.workflow.step_executor import (
                 execute_workflow)
+            print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
             result = execute_workflow(r, last_step_of_workflow=True)
             return result.persisted_output, result.volatile_output
     assert isinstance(r, StepID)
@@ -159,6 +162,7 @@ def resume_workflow_step(
     else:
         current_output = [current_output]
 
+    print("4444444444444444444444444444444444444444444444")
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
         workflow_id, step_id, store_url, current_output)
     return WorkflowExecutionResult(persisted_output, volatile_output)

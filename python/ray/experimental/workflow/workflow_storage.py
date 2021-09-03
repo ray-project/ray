@@ -5,7 +5,7 @@ workflows.
 
 import asyncio
 from collections import ChainMap
-from typing import Dict, List, Optional, Any, Callable, Tuple, Union
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union, IO
 from dataclasses import dataclass
 import io
 
@@ -60,8 +60,6 @@ class StepInspectResult:
     args_valid: bool = False
     # The step function body checkpoint exists and valid.
     func_body_valid: bool = False
-    # The object refs in the inputs of the workflow.
-    object_refs: Optional[List[str]] = None
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
     # The dynamically referenced workflows in the input of the workflow.
@@ -79,7 +77,7 @@ class StepInspectResult:
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
-                or (self.args_valid and self.object_refs is not None
+                or (self.args_valid
                     and self.workflows is not None and self.func_body_valid))
 
 
@@ -192,7 +190,6 @@ class WorkflowStorage:
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],
-            object_refs: List[ray.ObjectRef],
             workflow_refs: List[WorkflowRef]) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
@@ -208,7 +205,7 @@ class WorkflowStorage:
             Args and kwargs.
         """
         with serialization_context.workflow_args_resolving_context(
-                workflows, object_refs, workflow_refs):
+                workflows, workflow_refs):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
             # dereference arguments like Ray remote functions
@@ -329,7 +326,6 @@ class WorkflowStorage:
             return StepInspectResult(
                 args_valid=(STEP_ARGS in keys),
                 func_body_valid=(STEP_FUNC_BODY in keys),
-                object_refs=metadata["object_refs"],
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
                 max_retries=metadata.get("max_retries"),
@@ -339,48 +335,16 @@ class WorkflowStorage:
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )
         except Exception:
-            return StepInspectResult(
-                args_valid=(STEP_ARGS in keys),
-                func_body_valid=(STEP_FUNC_BODY in keys),
-                step_raised_exception=(STEP_EXCEPTION in keys),
-            )
+            raise
+            # return StepInspectResult(
+            #     args_valid=(STEP_ARGS in keys),
+            #     func_body_valid=(STEP_FUNC_BODY in keys),
+            #     step_raised_exception=(STEP_EXCEPTION in keys),
+            # )
 
     async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
-        # TODO (Alex): We should do this in a remote task to exploit locality.
         data = await obj_ref
         await self._put(self._key_obj_id(identifier), data)
-
-    async def _write_step_inputs(self, step_id: StepID,
-                                 inputs: WorkflowData) -> None:
-        """Save workflow inputs."""
-        metadata = inputs.to_metadata()
-        with serialization_context.workflow_args_keeping_context():
-            # TODO(suquark): in the future we should write to storage directly
-            # with plasma store object in memory.
-            args_obj = ray.get(inputs.inputs.args)
-        save_tasks = [
-            self._put(self._key_step_input_metadata(step_id), metadata, True),
-            self._put(self._key_step_function_body(step_id), inputs.func_body),
-            self._put(self._key_step_args(step_id), args_obj)
-        ]
-        save_tasks.extend(
-            self._save_object_ref(obj_id, ref) for obj_id, ref in zip(
-                metadata["object_refs"], inputs.inputs.object_refs))
-        await asyncio.gather(*save_tasks)
-
-    def save_subworkflow(self, workflow: Workflow) -> None:
-        """Save the DAG and inputs of the sub-workflow.
-
-        Args:
-            workflow: A sub-workflow. Could be a nested workflow inside
-                a workflow step.
-        """
-        assert not workflow.executed
-        tasks = [
-            self._write_step_inputs(w.step_id, w.data)
-            for w in workflow.iter_workflows_in_dag()
-        ]
-        asyncio_run(asyncio.gather(*tasks))
 
     def load_actor_class_body(self) -> type:
         """Load the class body of the virtual actor.
@@ -605,6 +569,10 @@ class WorkflowStorage:
 
     def _key_num_steps_with_name(self, name):
         return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
+
+    def open(self, *args, **kwargs) -> IO:
+        # TODO
+        pass
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

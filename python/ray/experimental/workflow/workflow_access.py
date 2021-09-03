@@ -168,6 +168,7 @@ class WorkflowManagementActor:
         Returns:
             Workflow execution result that contains the state and output.
         """
+        print("11111111111111111111111111111111111111111111")
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")
@@ -177,8 +178,10 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
+            print("22222222222222222222222222222222222222222222222")
         result = recovery.resume_workflow_step(
             workflow_id, step_id, self._store.storage_url, current_output)
+        print("33333333333333333333333333333333333333333333333")
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output

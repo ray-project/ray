@@ -1,5 +1,5 @@
 import base64
-import cloudpickle
+from ray import cloudpickle
 from collections import deque
 from enum import Enum, unique
 import hashlib
@@ -74,8 +74,6 @@ class StepType(str, Enum):
 class WorkflowInputs:
     # The object ref of the input arguments.
     args: ObjectRef
-    # The object refs in the arguments.
-    object_refs: List[ObjectRef]
     # TODO(suquark): maybe later we can replace it with WorkflowData.
     # The workflows in the arguments.
     workflows: "List[Workflow]"
@@ -127,21 +125,11 @@ class WorkflowData:
     # name of the step
     name: str
 
-    # Cache the intended locations of object refs. These are expensive
-    # calculations since they require computing the hash over a large value.
-    _cached_refs: List[ObjectRef] = None
-    _cached_locs: List[str] = None
-
     def to_metadata(self) -> Dict[str, Any]:
-        if self._cached_refs != self.inputs.object_refs:
-            self._cached_refs = self.inputs.object_refs
-            self._cached_locs = calculate_identifiers(self._cached_refs)
-
         f = self.func_body
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
-            "object_refs": self._cached_locs,
             "workflows": [w.step_id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],

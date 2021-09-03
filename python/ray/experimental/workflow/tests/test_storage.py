@@ -87,7 +87,7 @@ def test_workflow_storage(workflow_start_regular):
     asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
 
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], [], []) == args
+    assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(
         obj_ref.hex())) == object_resolved
