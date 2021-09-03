@@ -43,11 +43,12 @@ class LogstreamClient:
         reconnecting = False
         while not self.client_worker._in_shutdown:
             if reconnecting:
-                log_once(
-                    "lost_reconnect_logs",
-                    "Log channel is reconnecting. Logs produced while the "
-                    "connection was down can be found on the head node of "
-                    "the cluster in `ray_client_server_[port].out`")
+                if log_once("lost_reconnect_logs"):
+                    logger.warning(
+                        "Log channel is reconnecting. Logs produced while "
+                        "the connection was down can be found on the head "
+                        "node of the cluster in "
+                        "`ray_client_server_[port].out`")
                 # Refresh queue and retry last request
                 self.request_queue = queue.Queue()
                 if self.last_req:

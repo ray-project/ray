@@ -96,7 +96,6 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.SHUTDOWN
         self._converted: Dict[str, ClientStub] = {}
-        self._session_ended = False
         self._secure = secure
         self._conn_str = conn_str
         self._connection_retries = connection_retries
@@ -106,7 +105,8 @@ class Worker:
         else:
             self._reconnect_grace_period = reconnect_grace_period
 
-        # Set to True when close() is called
+        # Set to True when the connection cannot be recovered and reconnect
+        # attempts should be stopped
         self._in_shutdown = False
 
         self._connect_channel()
@@ -165,9 +165,13 @@ class Worker:
         timeout = INITIAL_TIMEOUT_SEC
         service_ready = False
         while conn_attempts < max(self._connection_retries, 1) or reconnecting:
+            if self._in_shutdown:
+                # User manually closed the worker before connection finished
+                break
             conn_attempts += 1
             elapsed_time = time.time() - start_time
             if reconnecting and elapsed_time > self._reconnect_grace_period:
+                self._in_shutdown = True
                 raise ConnectionError(
                     "Failed to reconnect within the reconnection grace period "
                     f"({self._reconnect_grace_period}s)")
@@ -208,6 +212,7 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            self._in_shutdown = True
             if log_once("ray_client_security_groups"):
                 warnings.warn(
                     "Ray Client connection timed out. Ensure that "
@@ -599,7 +604,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return not self._session_ended
+        return not self._in_shutdown
 
     def _server_init(self,
                      job_config: JobConfig,

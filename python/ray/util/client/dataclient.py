@@ -60,12 +60,13 @@ class DataClient:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
 
     def _data_main(self) -> None:
-        reconnecting = "False"
+        reconnecting = False
         try:
             while not self.client_worker._in_shutdown:
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(
                     self.client_worker.channel)
-                metadata = self._metadata + [("reconnecting", reconnecting)]
+                metadata = self._metadata + \
+                    [("reconnecting", str(reconnecting))]
                 resp_stream = stub.Datapath(
                     iter(self.request_queue.get, None),
                     metadata=metadata,
@@ -95,7 +96,7 @@ class DataClient:
                     if not self.client_worker._can_reconnect(e):
                         logger.info("Unrecoverable error in data channel.")
                         return
-                    reconnecting = "True"
+                    reconnecting = True
                     try:
                         ping_succeeded = self.client_worker.ping_server(
                             timeout=5)
