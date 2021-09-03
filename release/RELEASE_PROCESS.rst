@@ -96,10 +96,9 @@ these tests right after branch cut in order to identify any regressions early.
 Release tests are run on the Anyscale product using our automatic release
 test tool on `Buildkite <https://buildkite.com/ray-project/periodic-ci>`__.
 
-Release tests are added and maintained by the respective teams. Since the
-branch cut should only happen after all tests passed,
+Release tests are added and maintained by the respective teams.
 
-1. **Kicking off the tests on the release branch**. Even if all tests passed
+1. **Kick off the tests on the release branch**. Even if all tests passed
    on master, we still want to make sure they also pass on the release branch.
 
    a. Navigate to the `buildkite periodic CI pipeline <https://buildkite.com/ray-project/periodic-ci>`__
@@ -110,10 +109,10 @@ branch cut should only happen after all tests passed,
    b. Wait a couple of seconds (usually less than two minutes) until Buildkite
       asks you for input ("Input required: Specify tests to run")
 
-   c. Enter the required information:
+   c. Click the button and enter the required information:
 
       - Specify the **branch** (second field): ``releases/1.x.0``
-      - Specify the **version** (third field): ``1.6.0``
+      - Specify the **version** (third field): ``1.x.0``
       - Select one of the release test suites (core-nightly, nightly, or weekly)
 
    d. Hit on "Continue". The tests will now be run.
@@ -145,7 +144,9 @@ branch cut should only happen after all tests passed,
    saved to S3. If you're logged in in AWS (as the ``anyscale-dev-ossci`` user), you
    can download the results e.g. like this:
 
-   ``aws s3 cp s3://ray-release-automation-results/dev/microbenchmark_1630573490/microbenchmark/output.log microbenchmark.txt``
+   .. code-block:: bash
+
+       aws s3 cp s3://ray-release-automation-results/dev/microbenchmark_1630573490/microbenchmark/output.log microbenchmark.txt
 
    Clean up the output logfile (e.g. remove TQDM progress bars) before committing the
    release test results.
@@ -303,28 +304,28 @@ to proceed with the final stages of the release!
 
 10. **Release the Java packages to Maven**.
 
-   As a prerequisite, you'll need GPG installed and configured.
-   `You can download GPG here <https://gpgtools.org/>`_. After setting up
-   your key, make sure to publish it to a server so users can validate it.
+    As a prerequisite, you'll need GPG installed and configured.
+    `You can download GPG here <https://gpgtools.org/>`_. After setting up
+    your key, make sure to publish it to a server so users can validate it.
 
-   You'll also need java 8 and maven set up. On MacOS e.g. via:
+    You'll also need java 8 and maven set up. On MacOS e.g. via:
 
-   .. code-block:: bash
+    .. code-block:: bash
 
-       brew install openjdk@8
-       brew install maven
+        brew install openjdk@8
+        brew install maven
 
-   Make sure that the Java version strings in the release branch
-   have been updated to the current version.
+    Make sure that the Java version strings in the release branch
+    have been updated to the current version.
 
-   You'll need to obtain the Maven credentials. These can be found in the
-   shared Anyscale 1password (search for "Maven").
+    You'll need to obtain the Maven credentials. These can be found in the
+    shared Anyscale 1password (search for "Maven").
 
-   Also look up the latest commit hash for the release branch. Then, run
-   the following script to generate the multiplatform jars and publish
-   them on Maven:
+    Also look up the latest commit hash for the release branch. Then, run
+    the following script to generate the multiplatform jars and publish
+    them on Maven:
 
-   .. code-block:: bash
+    .. code-block:: bash
 
         # Make sure you are under the Ray root source directory.
         export RELEASE_VERSION=1.x.0  # Set the release version
@@ -339,17 +340,17 @@ to proceed with the final stages of the release!
         cd streaming/java && mvn versions:set -DnewVersion=${RELEASE_VERSION} && cd -
         sh java/build-jar-multiplatform.sh deploy_jars
 
-   After that, `log into Sonatype <https://oss.sonatype.org/>`_ and log in
-   using the same Maven credentials. Click on "Staging repositories", select
-   the respective staging repository, click on "Close" and after that has
-   been processed, click on "Release". This will publish the release
-   onto the main Maven repository.
+    After that, `log into Sonatype <https://oss.sonatype.org/>`_ and log in
+    using the same Maven credentials. Click on "Staging repositories", select
+    the respective staging repository, click on "Close" and after that has
+    been processed, click on "Release". This will publish the release
+    onto the main Maven repository.
 
-   You can check the releases on `mvnrepository.com <https://mvnrepository.com/artifact/io.ray/ray-api>`_.
+    You can check the releases on `mvnrepository.com <https://mvnrepository.com/artifact/io.ray/ray-api>`_.
 
 11. **Send out an email announcing the release** to the employees@anyscale.com
-   Google group, and post a slack message in the Announcements channel of the
-   Ray slack (message a team lead if you do not have permissions.)
+    Google group, and post a slack message in the Announcements channel of the
+    Ray slack (message a team lead if you do not have permissions.)
 
 12. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
