@@ -44,17 +44,9 @@ class VisionNetwork(TFModelV2):
 
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
-        self.traj_view_framestacking = False
 
-        # Perform Atari framestacking via traj. view API.
-        if model_config.get("num_framestacks") != "auto" and \
-                model_config.get("num_framestacks", 0) > 1:
-            input_shape = obs_space.shape + (model_config["num_framestacks"], )
-            self.data_format = "channels_first"
-            self.traj_view_framestacking = True
-        else:
-            input_shape = obs_space.shape
-            self.data_format = "channels_last"
+        input_shape = obs_space.shape
+        self.data_format = "channels_last"
 
         inputs = tf.keras.layers.Input(shape=input_shape, name="observations")
         last_layer = inputs
@@ -217,20 +209,6 @@ class VisionNetwork(TFModelV2):
 
         self.base_model = tf.keras.Model(inputs, [logits_out, value_out])
 
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = model_config["num_framestacks"] - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-                used_for_compute_actions=False,
-            )
-
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
@@ -287,18 +265,8 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
         post_fcnet_activation = get_activation_fn(
             post_fcnet_activation, framework="tf")
 
-        self.traj_view_framestacking = False
-
-        # Perform Atari framestacking via traj. view API.
-        num_framestacks = kwargs.get("num_framestacks")
-        if num_framestacks != "auto" and num_framestacks and \
-                num_framestacks > 1:
-            input_shape = input_space.shape + (num_framestacks, )
-            self.data_format = "channels_first"
-            self.traj_view_framestacking = True
-        else:
-            input_shape = input_space.shape
-            self.data_format = "channels_last"
+        input_shape = input_space.shape
+        self.data_format = "channels_last"
 
         inputs = tf.keras.layers.Input(shape=input_shape, name="observations")
         last_layer = inputs
@@ -453,20 +421,6 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [logits_out, value_out])
-
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = num_framestacks - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-                used_for_compute_actions=False,
-            )
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):

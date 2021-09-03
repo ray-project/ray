@@ -45,7 +45,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=3)
+    ray.init(num_cpus=3, local_mode=True)#TODO
 
     ModelCatalog.register_custom_model(
         "frame_stack_model", FrameStackingCartPoleModel

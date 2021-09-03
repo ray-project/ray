@@ -131,18 +131,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
-    # Which framestacking size to use for Atari envs.
-    # "auto": Use a value of 4, but only if the env is an Atari env.
-    # > 1: Use the trajectory view API via the default VisionNets to request
-    #      last n observations (single, grayscaled 84x84 image frames) as
-    #      inputs. The time axis in the so provided observation tensors
-    #      will come right after the batch axis (channels first format),
-    #      e.g. BxTx84x84, where T=num_framestacks.
-    # 0 or 1: No framestacking used.
-    # Use the (deprecated) `framestack=True`, to disable the above behavior
-    # and to enable legacy stacking behavior (w/o using trajectory view API)
-    # instead.
-    "num_framestacks": 0,
+    # Set to True to enable 4x stacking behavior.
+    "framestack": True,
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -167,8 +157,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
-    # Use `num_framestacks` (int) instead.
-    "framestack": True,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -808,10 +796,6 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
-        # disabled.
-        num_framestacks = model_config.get("num_framestacks", "auto")
-
         # Tuple space, where at least one sub-space is image.
         # -> Complex input model.
         space_to_check = input_space if not hasattr(
@@ -825,8 +809,7 @@ class ModelCatalog:
         # Single, flattenable/one-hot-able space -> Simple FCNet.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
-                len(input_space.shape) == 2 and (
-                num_framestacks == "auto" or num_framestacks <= 1)):
+                len(input_space.shape) == 2):
             # Keras native requested AND no auto-rnn-wrapping.
             if model_config.get("_use_default_native_models") and Keras_FCNet:
                 return Keras_FCNet
@@ -887,10 +870,3 @@ class ModelCatalog:
             elif config.get("use_lstm"):
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
-
-        if config.get("framestack") != DEPRECATED_VALUE:
-            # deprecation_warning(
-            #     old="framestack", new="num_framestacks (int)", error=False)
-            # If old behavior is desired, disable traj. view-style
-            # framestacking.
-            config["num_framestacks"] = 0

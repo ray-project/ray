@@ -486,26 +486,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
-                # Deprecated way of framestacking is used.
-                use_old_framestack = model_config.get("framestack") is True
-                # framestacking via trajectory view API is enabled.
-                num_framestacks = model_config.get("num_framestacks", 0)
-
-                # num_framestacks=auto:
-                # Only stack traj. view based if `framestack=[invalid value]`.
-                if num_framestacks == "auto":
-                    if not use_old_framestack:
-                        model_config["num_framestacks"] = num_framestacks = 4
-                    else:
-                        model_config["num_framestacks"] = num_framestacks = 0
-                framestack_traj_view = num_framestacks > 1
+                # Framestacking is used.
+                use_framestack = model_config.get("framestack") is True
 
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=use_old_framestack,
-                        framestack_via_traj_view_api=framestack_traj_view)
+                        framestack=use_framestack)
                     env = record_env_wrapper(env, record_env, log_dir,
                                              policy_config)
                     return env
