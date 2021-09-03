@@ -8,10 +8,17 @@ cgroup_v1_root = "/sys/fs/cgroup"
 ray_parent_cgroup_name = "ray"
 
 
+# The parent cgroup can help to limit the resource all ray workers can use
 def create_ray_parent_cgroup(controller):
     ray_parent_cgroup = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name)
     try:
         os.mkdir(ray_parent_cgroup)
+        if controller == "cpuset":
+            cpuset_root = os.path.join(cgroup_v1_root, controller)
+            cpus = get_ray_cgroup_property(cpuset_root, "cpuset.cpus")
+            mems = get_ray_cgroup_property(cpuset_root, "cpuset.mems")
+            set_ray_cgroup_property(ray_parent_cgroup, "cpuset.cpus", cpus)
+            set_ray_cgroup_property(ray_parent_cgroup, "cpuset.mems", mems)
         return ray_parent_cgroup
     except OSError as e:
         if e.errno != errno.EEXIST:
@@ -30,6 +37,12 @@ def set_ray_cgroup_property(cgroup_path, property, data):
         return f.write(str(data))
 
 
+def get_ray_cgroup_property(cgroup_path, property):
+    filename = os.path.join(cgroup_path, property)
+    with open(filename) as f:
+        return f.read().strip()
+
+
 def delete_cgroup_path(cgroup_path):
     if os.path.exists(cgroup_path):
         os.rmdir(cgroup_path)
@@ -46,7 +59,7 @@ def create_cgroup_for_worker(resource_json):
         cpu_shares = 0
         if isinstance(cpu_resource, list):
             # cpuset: because we may split one cpu core into some pieces,
-            # we need set cpuset.cpu_exclusive=0 and set cpuset-cpus
+            # we need set cpuset.cpu_exclusive=0 and set cpuset.cpus
             cpu_ids = []
             for idx, val in enumerate(cpu_resource):
                 if val > 0:
