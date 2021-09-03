@@ -21,12 +21,14 @@ def test_replica_name_from_str():
     assert replica_name.replica_tag == replica_tag
     assert str(replica_tag) == replica_tag
 
+
 def test_invalid_name_from_str():
     replica_suffix = get_random_letters()
     replica_tag = f"DeploymentA##{replica_suffix}"
 
     with pytest.raises(AssertionError):
         ReplicaName.from_str(replica_tag)
+
 
 if __name__ == "__main__":
     import sys
