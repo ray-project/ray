@@ -582,10 +582,8 @@ class ExecutableTrainer:
         # Create a class with the same methods as `train_cls`, but the
         # implementation runs the method on the worker group.
         class ExecutableWrapper:
-            def __init__(self, method_name: str, execute_args: Dict,
-                         execute_kwargs: Dict):
+            def __init__(self, method_name: str, execute_kwargs: Dict):
                 self.method_name = method_name
-                self.execute_args = execute_args
                 self.execute_kwargs = execute_kwargs
 
         train_cls_methods = get_method_names(train_cls)
@@ -603,11 +601,7 @@ class ExecutableTrainer:
                 # For example, worker_group.execute_single(worker_index=0,
                 # lambda w, *args, **kwargs: w.train(*args, **kwargs))
                 return getattr(wg, self.method_name)(
-                    *self.execute_args,
-                    *args,
-                    func=execute_func,
-                    **self.execute_kwargs,
-                    **kwargs)
+                    *args, func=execute_func, **self.execute_kwargs, **kwargs)
 
             return impl
 
@@ -629,10 +623,9 @@ def make_impl(method_name: str):
 
     # Create a new method with the same name and docstring as `delegate`.
     @functools.wraps(delegate)
-    def impl(self, *args, **kwargs):
+    def impl(self, **kwargs):
         # Return a object of type `ExecutableWrapper`.
-        return self.wrapper_cls(
-            method_name, execute_args=args, execute_kwargs=kwargs)
+        return self.wrapper_cls(method_name, execute_kwargs=kwargs)
 
     return impl
 
