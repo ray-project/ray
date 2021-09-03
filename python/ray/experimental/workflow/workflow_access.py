@@ -367,19 +367,23 @@ def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
     store = storage.get_global_storage()
     try:
+        print("trying to get actor management actor...")
         workflow_manager = get_management_actor()
         storage_url = ray.get(workflow_manager.get_storage_url.remote())
         if storage_url != store.storage_url:
             raise RuntimeError("The workflow is using a storage "
                                f"({store.storage_url}) different from the "
                                f"workflow manager({storage_url}).")
-    except ValueError:
+    except ValueError as e:
+        print("Couldn't get it: ", e)
         logger.info("Initializing workflow manager...")
         # the actor does not exist
-        WorkflowManagementActor.options(
+        actor = WorkflowManagementActor.options(
             name=MANAGEMENT_ACTOR_NAME,
             namespace=MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached").remote(store)
+        # No-op to ensure the actor is created before the driver exits.
+        ray.get(actor.get_storage_url.remote())
 
 
 def get_management_actor() -> "ActorHandle":
