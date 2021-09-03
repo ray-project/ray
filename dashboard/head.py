@@ -52,7 +52,7 @@ class GCSHealthCheckThread(threading.Thread):
         self.aiogrpc_gcs_channel = None
         self.gcs_heartbeat_info_stub = None
 
-        async def startup_task():
+        async def on_startup():
             aiogrpc.init_grpc_aio()
             self.aiogrpc_gcs_channel = await (
                 make_gcs_grpc_channel(redis_client))
@@ -60,7 +60,7 @@ class GCSHealthCheckThread(threading.Thread):
                 gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
                     self.aiogrpc_gcs_channel))
 
-        self.startup_task = self.thread_local_loop.create_task(startup_task)
+        self.startup_task = self.thread_local_loop.create_task(on_startup())
 
         super().__init__(daemon=True)
 
@@ -80,10 +80,13 @@ class GCSHealthCheckThread(threading.Thread):
 
     async def check_once(self) -> bool:
         # Make sure startup is complete
-        await self.startup_task
+        if not self.startup_task.done():
+            return False
         # Make the grpc call inside the thread loop so it's not blocked by
         # potentially busy main loop.
-        return await self.thread_local_loop.create_task(self._check_once())
+        return await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(self._check_once(),
+                                             self.thread_local_loop))
 
     def run(self) -> None:
         self.thread_local_loop.run_forever()
