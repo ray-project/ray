@@ -538,7 +538,7 @@ def log_results_and_artifacts(result: Dict):
     if artifacts:
         msg = "Saved the following artifacts:\n\n"
 
-        for key, val in results.items():
+        for key, val in artifacts.items():
             msg += f"  {key} = {val}\n"
     else:
         msg = "Did not find any artifacts."
