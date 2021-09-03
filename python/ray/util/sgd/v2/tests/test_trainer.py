@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -862,7 +863,7 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
         lambda: ray.available_resources().get(resource, 0) == original)
 
 
-def test_gpu_requests(ray_start_2_cpus):
+def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
@@ -880,25 +881,44 @@ def test_gpu_requests(ray_start_2_cpus):
             use_gpu=True,
             resources_per_worker={"GPU": 0})
 
+    def get_resources():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
     # 0 GPUs will be requested and should not raise an error.
-    Trainer(TestConfig(), num_workers=2, use_gpu=False)
+    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=False)
+    trainer.start()
+    result = trainer.run(get_resources)
+    assert result == ["", ""]
+    trainer.shutdown()
 
     # 1 GPU will be requested and should not raise an error.
-    Trainer(TestConfig(), num_workers=2, use_gpu=True)
+    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=True)
+    trainer.start()
+    result = trainer.run(get_resources)
+    assert result == ["0,1", "0,1"]
+    trainer.shutdown()
 
     # Partial GPUs should not raise an error.
-    Trainer(
+    trainer = Trainer(
         TestConfig(),
         num_workers=2,
         use_gpu=True,
         resources_per_worker={"GPU": 0.1})
+    trainer.start()
+    result = trainer.run(get_resources)
+    assert result == ["0", "0"]
+    trainer.shutdown()
 
     # Multiple GPUs should not raise an error.
-    Trainer(
+    trainer = Trainer(
         TestConfig(),
         num_workers=2,
         use_gpu=True,
         resources_per_worker={"GPU": 2})
+    trainer.start()
+    result = trainer.run(get_resources)
+    assert result == ["0,1,2,3", "0,1,2,3"]
+    trainer.shutdown()
 
 
 if __name__ == "__main__":
