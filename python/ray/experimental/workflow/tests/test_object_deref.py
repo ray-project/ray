@@ -17,6 +17,11 @@ def nested_ref():
 
 
 @workflow.step
+def return_objectrefs() -> List[ObjectRef]:
+    return [ray.put(x) for x in range(5)]
+
+
+@workflow.step
 def nested_ref_workflow():
     return nested_ref.remote()
 
@@ -84,8 +89,11 @@ def test_objectref_inputs(workflow_start_regular_shared):
 
 
 def test_objectref_outputs(workflow_start_regular_shared):
-    output = nested_ref_workflow.step().run()
-    assert output == 42
+    single = nested_ref_workflow.step().run()
+    assert single == 42
+
+    multi = return_objectrefs.step().run()
+    assert ray.get(multi) == list(range(5))
 
 
 def test_object_deref(workflow_start_regular_shared):

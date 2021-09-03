@@ -27,15 +27,12 @@ class WorkflowNotResumableError(Exception):
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(input_object_refs: List[str],
-                           input_workflows: List[Any],
+def _recover_workflow_step(input_workflows: List[Any],
                            input_workflow_refs: List[WorkflowRef],
                            instant_workflow_inputs: Dict[int, StepID]):
     """A workflow step that recovers the output of an unfinished step.
 
     Args:
-        input_object_refs: The object refs in the argument of
-            the (original) step.
         input_workflows: The workflows in the argument of the (original) step.
             They are resolved into physical objects (i.e. the output of the
             workflows) here. They come from other recover workflows we
@@ -51,11 +48,10 @@ def _recover_workflow_step(input_object_refs: List[str],
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
-    input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
-    args, kwargs = reader.load_step_args(
-        step_id, input_workflows, input_object_refs, input_workflow_refs)
+    args, kwargs = reader.load_step_args(step_id, input_workflows,
+                                         input_workflow_refs)
     return func(*args, **kwargs)
 
 
@@ -97,8 +93,8 @@ def _construct_resume_workflow_from_step(
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
-        **result.ray_options).step(result.object_refs, input_workflows,
-                                   workflow_refs, instant_workflow_outputs)
+        **result.ray_options).step(input_workflows, workflow_refs,
+                                   instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     recovery_workflow.data.step_type = result.step_type
     return recovery_workflow

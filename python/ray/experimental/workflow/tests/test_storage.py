@@ -47,7 +47,6 @@ def test_workflow_storage(workflow_start_regular):
     input_metadata = {
         "name": "test_basic_workflows.append1",
         "step_type": StepType.FUNCTION,
-        "object_refs": ["abc"],
         "workflows": ["def"],
         "workflow_refs": ["some_ref"],
         "max_retries": 1,
@@ -87,7 +86,7 @@ def test_workflow_storage(workflow_start_regular):
     asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
 
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], [], []) == args
+    assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(
         obj_ref.hex())) == object_resolved
@@ -131,7 +130,6 @@ def test_workflow_storage(workflow_start_regular):
         step_type=StepType.FUNCTION,
         args_valid=True,
         func_body_valid=True,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -149,7 +147,6 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
         func_body_valid=True,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -163,7 +160,6 @@ def test_workflow_storage(workflow_start_regular):
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -177,7 +173,7 @@ def test_workflow_storage(workflow_start_regular):
 
 
 def test_embedded_objectrefs(workflow_start_regular):
-    workflow_id = test_workflow_storage.__name__
+    workflow_id = test_embedded_objectrefs.__name__
 
     class ObjectRefsWrapper:
         def __init__(self, refs):
