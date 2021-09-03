@@ -162,7 +162,7 @@ Release tests are added and maintained by the respective teams.
 5. **Repeating release tests**. If one or more tests failed and you need to run
    them again, follow the instructions from the first bullet point. Instead of
    running the full suite, you can use the last two fields to filter the name
-   the test file or the name of the test. This is a simple `[str] in name`
+   the test file or the name of the test. This is a simple ``if filter in name``
    filter, and only matching tests will be included in the run.
 
    For instance, if you just want to kick off the ``benchmark_tests/many_actors``
