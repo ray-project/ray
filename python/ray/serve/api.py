@@ -272,8 +272,7 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.update_backend_config.remote(
-                    backend_tag,
-                    config_options.to_proto_bytes(update_only=True))))
+                    backend_tag, config_options)))
 
     @_ensure_connected
     def get_backend_config(self, backend_tag: str) -> BackendConfig:
@@ -282,9 +281,7 @@ class Client:
         Args:
             backend_tag(str): A registered backend.
         """
-        return BackendConfig.from_proto_bytes(
-            ray.get(
-                self._controller.get_backend_config_bytes.remote(backend_tag)))
+        return ray.get(self._controller.get_backend_config.remote(backend_tag))
 
     @_ensure_connected
     def create_backend(
@@ -344,8 +341,7 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config.to_proto_bytes(),
-                    replica_config)))
+                    backend_tag, backend_config, replica_config)))
 
     @_ensure_connected
     def deploy(self,
@@ -390,10 +386,10 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config,
-                python_methods, version, prev_version, route_prefix,
-                ray.get_runtime_context().job_id))
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, python_methods,
+                                           version, prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -1465,8 +1461,7 @@ def get_deployment(name: str) -> Deployment:
     return Deployment(
         cloudpickle.loads(backend_info.replica_config.serialized_backend_def),
         name,
-        BackendConfig.from_proto_bytes(
-            backend_info.backend_config_proto_bytes),
+        backend_info.backend_config,
         version=backend_info.version,
         init_args=backend_info.replica_config.init_args,
         route_prefix=route_prefix,

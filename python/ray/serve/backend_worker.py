@@ -18,7 +18,7 @@ from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray._private.utils import import_attr
-from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
+from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
@@ -41,7 +41,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config_proto: BackendConfigProto,
+                           backend_config: BackendConfig,
                            controller_name: str):
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
@@ -81,7 +81,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
-            self.backend = RayServeReplica(_callable, backend_config_proto,
+            self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
 
         @ray.method(num_returns=2)
@@ -99,8 +99,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def reconfigure(self, serialized_user_config: bytes) -> None:
-            user_config = pickle.loads(serialized_user_config)
+        async def reconfigure(self, user_config: Any) -> None:
             await self.backend.reconfigure(user_config)
 
         async def drain_pending_queries(self):
@@ -130,15 +129,14 @@ def wrap_to_ray_error(function_name: str,
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, _callable: Callable,
-                 backend_config_proto: BackendConfigProto, is_function: bool,
-                 controller_handle: ActorHandle) -> None:
+    def __init__(self, _callable: Callable, backend_config: BackendConfig,
+                 is_function: bool, controller_handle: ActorHandle) -> None:
         self.backend_tag = ray.serve.api.get_replica_context().deployment
         self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function
 
-        self.config: BackendConfigProto = backend_config_proto
+        self.config = backend_config
 
         self.num_ongoing_requests = 0
 
@@ -279,7 +277,7 @@ class RayServeReplica:
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
 
-    def _update_backend_configs(self, new_config: BackendConfigProto) -> None:
+    def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
 
     async def handle_request(self, request: Query) -> asyncio.Future:
