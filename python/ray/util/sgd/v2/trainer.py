@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 from pathlib import Path
@@ -13,6 +14,8 @@ from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 
 # Ray SGD should be usable even if Tune is not installed.
+from ray.util.sgd.v2.worker_group import WorkerGroup
+
 try:
     TUNE_INSTALLED = True
     from ray import tune
@@ -125,7 +128,7 @@ class Trainer:
         self._executor.start(initialization_hook)
 
     def run_executable(self, train_cls: Optional[S], *args, **kwargs) -> \
-        ClassTrainer:
+        "ExecutableTrainer":
         """
 
         Args:
@@ -134,9 +137,7 @@ class Trainer:
             args, kwargs: The arguments to pass into ``train_cls.__init__``.
         """
 
-        return ClassTrainer(train_cls, *args, *8kwargs)
-
-
+        return ExecutableTrainer(self._executor)
 
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
@@ -273,36 +274,6 @@ class Trainer:
             return lambda: train_func(config)
         else:  # num_params == 0
             return train_func
-
-    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
-        """Executes a function for all instances of ``self.train_cls``.
-
-        Args:
-            func (Callable): The function that should be executed.
-                The first argument should be an instance of
-                ``self.train_cls``.
-            args, kwargs: The arguments to pass into ``func``.
-
-        Returns:
-            A list of results from ``func``. Each value in the
-            list corresponds to the output of ``func`` from
-            each worker.
-        """
-        raise NotImplementedError
-
-    def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
-        """Executes a function on a single instance of ``self.train_cls``.
-
-        Args:
-            func (Callable): The function that should be executed.
-                The first argument should be an instance of
-                ``self.train_cls``.
-            args, kwargs: The arguments to pass into ``func``.
-
-        Returns:
-            The output of ``func`` from a single worker.
-        """
-        raise NotImplementedError
 
     @property
     def logdir(self) -> Path:
@@ -519,3 +490,35 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return SgdTrainable
+
+
+
+class ExecutableTrainer:
+    """"""
+    def __init__(self, backend_executor: BackendExecutor, train_cls: type,
+                 *args, **kwargs):
+        self.executor = backend_executor
+        self.executor.worker_group.start_executables(train_cls,
+                                                     *args, **kwargs)
+
+
+# Add the following methods to ExecutableTrainer. The implementation
+# for these methods are all just calling the corresponding method on
+# the WorkerGroup.
+OPS = ["execute", "execute_single", "execute_async",
+       "execute_single_async"]
+
+
+def make_impl(method_name: str):
+    delegate = getattr(WorkerGroup, method_name)
+
+    @functools.wraps(delegate)
+    def impl(self, *args, **kwargs):
+        wg = self.executor.worker_group
+        return getattr(wg, method_name)(*args, **kwargs)
+
+    return impl
+
+
+for method_name in OPS:
+    setattr(ExecutableTrainer, method_name, make_impl(method_name))

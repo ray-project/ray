@@ -10,22 +10,39 @@ logger = logging.getLogger(__name__)
 
 
 class BaseWorker:
-    _executable_class = None
+    """A class to execute arbitrary functions.
 
-    """A class to execute arbitrary functions. Does not hold any state."""
+    By default workers are stateless. To hold, state an executable class
+    should be set via ``start_executable``.
+
+    """
+    _executable = None
+
+    def start_executable(self, executable_class: type, *args, **kwargs):
+        """Set the executable class and instantiate it.
+
+        Args:
+            executable_class (type): Class of object to be created on all
+                workers.
+            *args, **kwargs: Arguments to be passed into the
+                ``executable_class`` object constructor.
+        """
+
+        self._executable = executable_class(*args, **kwargs)
+
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
-        If an executable_class is set, then pass it in as the first argument
+        If an executable is set, then pass it in as the first argument
         to func.
 
         Args:
             func (Callable): The function to execute.
             args, kwargs: The arguments to pass into func.
         """
-        if self._executable_class:
-            return func(self._executable_class, *args, **kwargs)
+        if self._executable:
+            return func(self._executable, *args, **kwargs)
         else:
             return func(*args, **kwargs)
 
@@ -123,6 +140,22 @@ class WorkerGroup:
 
         logger.debug("Shutdown successful.")
         self.workers = []
+
+    def start_executable(self, executable_class: type, *args, **kwargs):
+        """Set the executable class for each worker.
+
+        This is useful to run stateful operations on the worker group.
+
+        Args:
+            executable_class (type): Class of object to be created on all
+                workers.
+            *args, **kwargs: Arguments to be passed into the
+                ``executable_class`` object constructor.
+        """
+
+        ray.get([w.start_executable.remote(executable_class, *args, **kwargs)
+                 for w in
+                self.workers])
 
     def execute_async(self, func: Callable[..., T], *args,
                       **kwargs) -> List[ObjectRef]:
