@@ -215,7 +215,8 @@ class ProxyManager():
         output, error = self.node.get_log_file_handles(
             f"ray_client_server_{specific_server.port}", unique=True)
 
-        runtime_env = json.loads(job_config.get_serialized_runtime_env())
+        serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env = json.loads(serialized_runtime_env)
 
         # Set up the working_dir for the server.
         # TODO(edoakes): this should go be unified with the worker setup code
@@ -231,6 +232,7 @@ class ProxyManager():
             stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
+            serialized_runtime_env=serialized_runtime_env,
             serialized_runtime_env_context=context.serialize(),
             redis_password=self._redis_password)
 
