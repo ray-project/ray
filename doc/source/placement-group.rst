@@ -239,7 +239,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
 .. note::
 
-  When using placement groups, users should ensure that their placement groups are ready (by calling ``ray.get(pg.ready())``)
+  When using placement groups, it is recommended to verify that their placement groups are ready (by calling ``ray.get(pg.ready())``)
   and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
   print a warning about infeasible tasks.
 

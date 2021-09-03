@@ -28,6 +28,7 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         self._handler = ray.get_actor(
             env_config.get("param_server", "param-server"))
         self.rng_seed = None
+        self.np_random, _ = seeding.np_random(self.rng_seed)
 
     def seed(self, rng_seed: int = None):
         if not rng_seed:

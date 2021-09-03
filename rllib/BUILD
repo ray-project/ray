@@ -1303,6 +1303,13 @@ sh_test(
 )
 
 py_test(
+    name = "env/tests/test_record_env_wrapper",
+    tags = ["team:ml", "env"],
+    size = "small",
+    srcs = ["env/tests/test_record_env_wrapper.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_unity3d_env",
     tags = ["team:ml", "env"],
     size = "small",

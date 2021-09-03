@@ -3,10 +3,8 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
-import os
 import queue
 import pickle
-import sys
 
 import threading
 from typing import Any
@@ -87,6 +85,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         f"failed with: {e}")
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
+
+        # NOTE(edoakes): this code should not be necessary anymore because we
+        # only allow a single client/job per server. There is an existing test
+        # that tests the behavior of multiple clients with the same job config
+        # connecting to one server (test_client_init.py::test_num_clients),
+        # so I'm leaving it here for now.
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -100,15 +104,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 f"request one {job_config.runtime_env.uris} "
                 f"current one {current_job_config.runtime_env.uris}")
         return ray_client_pb2.InitResponse(ok=True)
-
-    def PrepRuntimeEnv(self, request,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
-        try:
-            self._prepare_runtime_env(job_config.runtime_env)
-        except Exception as e:
-            raise grpc.RpcError(f"Prepare runtime env failed with {e}")
-        return ray_client_pb2.PrepRuntimeEnvResponse()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -516,20 +511,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         for k in kwarg_map:
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
-
-    def _prepare_runtime_env(self, job_runtime_env):
-        """Download runtime environment to local node"""
-        uris = job_runtime_env.uris
-        from ray._private import runtime_env
-        with disable_client_hook():
-            working_dir = runtime_env.ensure_runtime_env_setup(uris)
-            if working_dir:
-                os.chdir(working_dir)
-                # NOTE(edoakes): we need to insert into the sys.path here
-                # because the working_dir gets set up *after* we go through
-                # the usual worker setup process. We should unify these
-                # codepaths.
-                sys.path.insert(0, working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
