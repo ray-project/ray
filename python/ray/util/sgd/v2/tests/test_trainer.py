@@ -23,6 +23,8 @@ from ray.util.sgd.v2.examples.train_linear import train_func as \
 
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func
+from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
+    TrainClass as HorovodTrainClass
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -599,6 +601,26 @@ def test_horovod_torch_mnist(ray_start_2_cpus):
         assert worker_result[num_epochs - 1] < worker_result[0]
 
 
+def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
+    num_workers = 2
+    num_epochs = 2
+    trainer = Trainer("horovod", num_workers)
+    trainer.start()
+    executor = trainer.run_executable(
+        HorovodTrainClass, config={
+            "num_epochs": num_epochs,
+            "lr": 1e-3
+        })
+    results = []
+    for epoch in range(num_epochs):
+        results.append(executor.execute().train(epoch=epoch))
+    trainer.shutdown()
+
+    assert len(results) == num_epochs
+    for i in range(num_workers):
+        assert results[num_epochs - 1][i] < results[0][i]
+
+
 @pytest.mark.skipif(
     torch.cuda.device_count() < 2,
     reason="Only run if multiple GPUs are available.")
@@ -918,13 +940,27 @@ def test_run_executable(ray_start_2_cpus):
     class Incrementer:
         def __init__(self, starting=0):
             self.count = starting
+
         def increment(self):
             self.count += 1
+
         def get_count(self):
             return self.count
 
     executor = trainer.run_executable(Incrementer, starting=2)
-    assert executor.execute(lambda w: w.get_count()) == [2, 2]
+    assert executor.execute().get_count() == [2, 2]
+
+    executor.execute().increment()
+    assert executor.execute().get_count() == [3, 3]
+
+    ray.get(executor.execute_async().increment())
+    assert executor.execute().get_count() == [4, 4]
+
+    executor.execute_single(worker_index=0).increment()
+    executor.execute().get_count() == [5, 4]
+
+    ray.get(executor.execute_single_async(worker_index=1).increment())
+    executor.execute().get_count() == [5, 5]
 
 
 if __name__ == "__main__":

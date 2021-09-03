@@ -110,3 +110,20 @@ def update_env_vars(env_vars: Dict[str, Any]):
     """
     sanitized = {k: str(v) for k, v in env_vars.items()}
     os.environ.update(sanitized)
+
+
+def get_method_names(cls: type) -> List[str]:
+    """Returns the names of methods for the provided class."""
+    method_list = []
+
+    # attribute is a string representing the attribute name
+    for attribute in dir(cls):
+        # Get the attribute value
+        attribute_value = getattr(cls, attribute)
+        # Check that it is callable
+        if callable(attribute_value):
+            # Filter all dunder (__ prefix) methods
+            if not attribute.startswith("__"):
+                method_list.append(attribute)
+
+    return method_list

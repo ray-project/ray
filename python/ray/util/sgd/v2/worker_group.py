@@ -30,7 +30,6 @@ class BaseWorker:
 
         self._executable = executable_class(*args, **kwargs)
 
-
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
@@ -153,9 +152,10 @@ class WorkerGroup:
                 ``executable_class`` object constructor.
         """
 
-        ray.get([w.start_executable.remote(executable_class, *args, **kwargs)
-                 for w in
-                self.workers])
+        ray.get([
+            w.start_executable.remote(executable_class, *args, **kwargs)
+            for w in self.workers
+        ])
 
     def execute_async(self, func: Callable[..., T], *args,
                       **kwargs) -> List[ObjectRef]:

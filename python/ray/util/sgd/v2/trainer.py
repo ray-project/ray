@@ -5,7 +5,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
-    Type, Iterator
+    Type
 
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
@@ -17,10 +17,10 @@ from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
     TUNE_CHECKPOINT_FILE_NAME
 
-# Ray SGD should be usable even if Tune is not installed.
-from ray.util.sgd.v2.utils import construct_path
+from ray.util.sgd.v2.utils import construct_path, get_method_names
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
+# Ray SGD should be usable even if Tune is not installed.
 if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import Trainable
@@ -154,8 +154,7 @@ class Trainer:
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
-    def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
 
         Args:
@@ -166,7 +165,7 @@ class Trainer:
         self._executor.start(initialization_hook)
 
     def run_executable(self, train_cls: Optional[S], *args, **kwargs) -> \
-        "ExecutableTrainer":
+            "ExecutableTrainer":
         """
 
         Args:
@@ -565,7 +564,6 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
     return SgdTrainable
 
 
-
 class ExecutableTrainer:
     """A class for stateful execution on an executable class.
 
@@ -575,30 +573,70 @@ class ExecutableTrainer:
     This should not be instantiated directly and instead should be used only
     from the output of ``trainer.run_executable``.
     """
+
     def __init__(self, backend_executor: BackendExecutor, train_cls: type,
                  *args, **kwargs):
         self.executor = backend_executor
-        self.executor.worker_group.start_executables(train_cls,
-                                                     *args, **kwargs)
+        self.executor.worker_group.start_executable(train_cls, *args, **kwargs)
+
+        # Create a class with the same methods as `train_cls`, but the
+        # implementation runs the method on the worker group.
+        class ExecutableWrapper:
+            def __init__(self, method_name: str, execute_args: Dict,
+                         execute_kwargs: Dict):
+                self.method_name = method_name
+                self.execute_args = execute_args
+                self.execute_kwargs = execute_kwargs
+
+        train_cls_methods = get_method_names(train_cls)
+
+        def make_impl(method_name: str):
+            delegate = getattr(train_cls, method_name)
+
+            @functools.wraps(delegate)
+            def impl(self, *args, **kwargs):
+                wg = backend_executor.worker_group
+
+                def execute_func(o, *args, **kwargs):
+                    return getattr(o, method_name)(*args, **kwargs)
+
+                # For example, worker_group.execute_single(worker_index=0,
+                # lambda w, *args, **kwargs: w.train(*args, **kwargs))
+                return getattr(wg, self.method_name)(
+                    *self.execute_args,
+                    *args,
+                    func=execute_func,
+                    **self.execute_kwargs,
+                    **kwargs)
+
+            return impl
+
+        for method_name in train_cls_methods:
+            setattr(ExecutableWrapper, method_name, make_impl(method_name))
+
+        self.wrapper_cls = ExecutableWrapper
 
 
 # Add the following methods to ExecutableTrainer. The implementation
 # for these methods are all just calling the corresponding method on
 # the WorkerGroup.
-OPS = ["execute", "execute_single", "execute_async",
-       "execute_single_async"]
+OPS = ["execute", "execute_single", "execute_async", "execute_single_async"]
 
 
 def make_impl(method_name: str):
+    # Get the method object from `WorkerGroup`
     delegate = getattr(WorkerGroup, method_name)
 
+    # Create a new method with the same name and docstring as `delegate`.
     @functools.wraps(delegate)
     def impl(self, *args, **kwargs):
-        wg = self.executor.worker_group
-        return getattr(wg, method_name)(*args, **kwargs)
+        # Return a object of type `ExecutableWrapper`.
+        return self.wrapper_cls(
+            method_name, execute_args=args, execute_kwargs=kwargs)
 
     return impl
 
 
+# Add the methods to the `ExecutableTrainer` class.
 for method_name in OPS:
     setattr(ExecutableTrainer, method_name, make_impl(method_name))
