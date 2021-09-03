@@ -1845,7 +1845,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=20"]
+    args = ["--as-test", "--stop-reward=60"]
 )
 
 py_test(
@@ -1854,7 +1854,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=20", "--framework torch"]
+    args = ["--as-test", "--stop-reward=60", "--framework torch"]
 )
 
 py_test(
