@@ -80,24 +80,32 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner, runner_ip, trial):
-    """Returns a checkpoint deleter callback for a runner."""
-    if not runner:
-        return lambda checkpoint: None
+class CheckpointDeleter:
+    """Checkpoint deleter callback for a runner."""
 
-    def delete(checkpoint):
+    def __init__(self, trial_id, runner, runner_ip, node_ip):
+        self.trial_id = trial_id
+        self.runner = runner
+        self.runner_ip = runner_ip
+        self.node_ip = node_ip
+
+    def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
             checkpoint (Checkpoint): Checkpoint to delete.
         """
+        if not self.runner:
+            return
+
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
                          checkpoint.value)
             checkpoint_path = checkpoint.value
 
             # Delete local copy, if any exists.
-            if runner_ip != trial.node_ip and os.path.exists(checkpoint_path):
+            if self.runner_ip != self.node_ip and os.path.exists(
+                    checkpoint_path):
                 try:
                     checkpoint_dir = TrainableUtil.find_checkpoint_dir(
                         checkpoint_path)
@@ -106,9 +114,7 @@ def checkpoint_deleter(trial_id, runner, runner_ip, trial):
                     logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
-            runner.delete_checkpoint.remote(checkpoint.value)
-
-    return delete
+            self.runner.delete_checkpoint.remote(checkpoint.value)
 
 
 class TrialInfo:
@@ -314,8 +320,8 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner,
-                               self.runner_ip, self))
+            CheckpointDeleter(self._trainable_name(), self.runner,
+                              self.runner_ip, self))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -467,14 +473,15 @@ class Trial:
         self.runner = runner
         self.runner_ip = ray.get(
             runner.get_current_ip.remote()) if runner else None
-        self.checkpoint_manager.delete = checkpoint_deleter(
-            self._trainable_name(), runner, self.runner_ip, self)
+        self.checkpoint_manager.delete = CheckpointDeleter(
+            self._trainable_name(), runner, self.runner_ip, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
