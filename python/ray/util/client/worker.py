@@ -36,10 +36,10 @@ if TYPE_CHECKING:
     from ray.actor import ActorClass
     from ray.remote_function import RemoteFunction
 
+logger = logging.getLogger(__name__)
+
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
-
-logger = logging.getLogger(__name__)
 
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
@@ -87,11 +87,13 @@ class Worker:
               ray server if it doesn't respond immediately. Setting to 0 tries
               at least once.  For infinite retries, catch the ConnectionError
               exception.
+            reconnection_grace_period: The time in seconds that the client
+              has to reconnect to the server after a gRPC error before the
+              server will cleanup the connection.
         """
         self._client_id = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
                                                             metadata else [])
-        self.channel_lock = threading.Lock()
         self.channel = None
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.SHUTDOWN
@@ -108,8 +110,11 @@ class Worker:
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
         self._in_shutdown = False
+        # Set to True after initial connection succeeds
+        self._has_connected = False
 
         self._connect_channel()
+        self._has_connected = True
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self, self._client_id, self.metadata)
@@ -129,21 +134,12 @@ class Worker:
         self._req_id_lock = threading.Lock()
         self._req_id = 0
 
-    def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        if self._in_shutdown:
-            # Channel is being shutdown, don't try to reconnect
-            return False
-        if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED,
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        grpc.StatusCode.NOT_FOUND,
-                        grpc.StatusCode.FAILED_PRECONDITION):
-            # Unrecoverable error -- These errors are specifically raised
-            # by the server's application logic
-            return False
-        # All other errors can be treated as recoverable
-        return True
-
-    def _connect_channel(self, reconnecting=False):
+    def _connect_channel(self, reconnecting=False) -> None:
+        """
+        Attempts to connect to the server specified by conn_str. If
+        reconnecting after an RPC error, cleans up the old channel and
+        continues to attempt to connect until the grace period is over.
+        """
         if self.channel:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
@@ -222,10 +218,29 @@ class Worker:
                     "more information.")
             raise ConnectionError("ray client connection timeout")
 
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
+        """
+        Returns True if the RPC error can be recovered from and a retry is
+        appropriate, false otherwise.
+        """
+        if self._in_shutdown:
+            # Channel is being shutdown, don't try to reconnect
+            return False
+        if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED,
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        grpc.StatusCode.NOT_FOUND,
+                        grpc.StatusCode.FAILED_PRECONDITION):
+            # Unrecoverable error -- These errors are specifically raised
+            # by the server's application logic
+            return False
+        # All other errors can be treated as recoverable
+        return True
+
     def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
         """
-        Calls the stub specified by stub_name, and retries on grpc internal
-        errors
+        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        If a recoverable error occurrs while calling the stub, attempts to
+        retry the RPC.
         """
         while not self._in_shutdown:
             try:
@@ -604,7 +619,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return not self._in_shutdown
+        return not self._in_shutdown and self._has_connected
 
     def _server_init(self,
                      job_config: JobConfig,
@@ -632,8 +647,8 @@ class Worker:
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,
-                    reconnect_grace_period=self._reconnect_grace_period,
-                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+                    ray_init_kwargs=json.dumps(ray_init_kwargs),
+                    reconnect_grace_period=self._reconnect_grace_period))
             if not response.ok:
                 raise ConnectionAbortedError(
                     f"Initialization failure from server:\n{response.msg}")

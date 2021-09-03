@@ -467,10 +467,29 @@ class ReplayCache:
         self.cv = threading.Condition()
         self.cache: Dict[int, Tuple[int, Any]] = {}
 
-    def check_cache(self, thread_id, request_id) -> Optional[Any]:
+    def check_cache(self, thread_id: int, request_id: int) -> Optional[Any]:
         """
         Check the cache for a given thread, and see if the entry in the cache
-        matches the current request_id.
+        matches the current request_id. Returns None if the request_id has
+        not been seen yet, otherwise returns the cached result.
+
+        Throws an error if the placeholder in the cache doesn't match the
+        request_id -- this means that a new request evicted the old value in
+        the cache, and that the RPC for `request_id` is redundant and the
+        result can be discarded, i.e.:
+
+        1. Request A is sent (A1)
+        2. Channel disconnects
+        3. Request A is resent (A2)
+        4. A1 is received
+        5. A2 is received, waits for A1 to finish
+        6. A1 finishes and is sent back to client
+        7. Request B is sent
+        8. Request B overwrites cache entry
+        9. A2 wakes up extremely late, but cache is now invalid
+
+        In practice this is VERY unlikely to happen, but the error can at
+        least serve as a sanity check/catch invalid request id's.
         """
         with self.cv:
             if thread_id in self.cache:
@@ -492,20 +511,27 @@ class ReplayCache:
                     return cached_resp
                 if not _should_replace_cache(request_id, cached_request_id):
                     raise RuntimeError(
-                        "Attempting to replace newer entry in with older "
+                        "Attempting to replace newer cache entry with older "
                         "one. This might happen if this request was received "
                         "out of order. The result of the caller is no "
                         f"longer needed. ({request_id} != {cached_request_id}")
             self.cache[thread_id] = (request_id, None)
         return None
 
-    def update_cache(self, thread_id, request_id, response) -> None:
+    def update_cache(self, thread_id: int, request_id: int,
+                     response: Any) -> None:
+        """
+        Inserts `response` into the cache for `request_id`.
+        """
         with self.cv:
             self.cv.notify_all()
             cached_request_id, cached_resp = self.cache[thread_id]
             if cached_request_id != request_id or cached_resp is not None:
                 # The cache was overwritten by a newer requester between
-                # our call to check_cache and our call to update it
+                # our call to check_cache and our call to update it.
+                # This can't happen if the assumption that the cached requests
+                # are all blocking on the client side, so if you encounter
+                # this check if any async requests are being cached.
                 raise RuntimeError(
                     "Attempting to update the cache, but placeholder's have "
                     "do not match the current request_id. This might happen "

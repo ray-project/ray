@@ -494,6 +494,7 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
         self.num_clients = 0
+        # dictionary mapping client_id's to the last time they connected
         self.clients_last_seen: Dict[str, float] = {}
         self.reconnect_grace_periods: Dict[str, float] = {}
         self.clients_lock = Lock()
@@ -536,15 +537,15 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     return
                 self.clients_last_seen[client_id] = start_time
             server = self.proxy_manager._get_server_for_client(client_id)
-        else:
-            # Create Placeholder *before* reading the first request.
-            server = self.proxy_manager.create_specific_server(client_id)
-            with self.clients_lock:
-                self.clients_last_seen[client_id] = start_time
-                self.num_clients += 1
+            channel = self.proxy_manager.get_channel(client_id)
 
         try:
             if not reconnecting:
+                # Create Placeholder *before* reading the first request.
+                server = self.proxy_manager.create_specific_server(client_id)
+                with self.clients_lock:
+                    self.clients_last_seen[client_id] = start_time
+                    self.num_clients += 1
                 logger.info(f"New data connection from client {client_id}: ")
                 init_req = next(request_iterator)
                 with self.clients_lock:
@@ -580,14 +581,13 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     yield init_resp
                     return None
 
-            channel = self.proxy_manager.get_channel(client_id)
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
             resp_stream = stub.Datapath(
                 request_iterator, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 resp_type = resp.WhichOneof("type")
                 if resp_type == "connection_cleanup":
-                    # Dataclient is delaying cleanup, proxier should as well
+                    # Specific server is delaying cleanup, proxier should too
                     cleanup_requested = True
                 yield self.modify_connection_info_resp(resp)
         except Exception:

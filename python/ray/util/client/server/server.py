@@ -43,15 +43,26 @@ TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
 
 
 def _use_replay_cache(func):
+    """
+    Decorator for gRPC stubs. Before calling the real stubs, checks if there's
+    an existing entry in the caches. If there is, then return the cached
+    entry. Otherwise, call the real function and use the real cache
+    """
+
     @functools.wraps(func)
     def wrapper(self, request, context):
+        # Get relevant IDs to check cache
         client_id = _get_client_id_from_context(context, logger)
-        replay_cache = self.replay_caches[client_id]
         thread_id = request.thread_id
         req_id = request.req_id
+
+        # Check if response already cached
+        replay_cache = self.replay_caches[client_id]
         cached_entry = replay_cache.check_cache(thread_id, req_id)
         if cached_entry is not None:
             return cached_entry
+
+        # Response wasn't cached, call underlying stub and cache result
         resp = func(self, request, context)
         replay_cache.update_cache(thread_id, req_id, resp)
         return resp
@@ -78,7 +89,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self.named_actors = set()
         self.state_lock = threading.Lock()
-        self.state_cv = threading.Condition(lock=self.state_lock)
         self.ray_connect_handler = ray_connect_handler
         self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
 
@@ -475,8 +485,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
-                "Can't run an actor the server doesn't have a handle "
-                f"for ({task.payload_id})")
+                "Can't run an actor the server doesn't have a handle")
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
         method = getattr(actor_handle, task.name)
         opts = decode_options(task.options)

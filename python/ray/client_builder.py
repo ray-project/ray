@@ -87,6 +87,8 @@ class ClientBuilder:
         # Whether to allow connections to multiple clusters"
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
+        # How long client has to reconnect after a gRPC error before the
+        # server cleans up connection. Defaults to 30 seconds
         self._reconnect_grace_period = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":

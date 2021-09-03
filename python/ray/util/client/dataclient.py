@@ -73,57 +73,76 @@ class DataClient:
                     wait_for_ready=True)
                 try:
                     for response in resp_stream:
-                        if response.req_id == 0:
-                            # This is not being waited for.
-                            logger.debug(f"Got unawaited response {response}")
-                            continue
-                        if response.req_id in self.asyncio_waiting_data:
-                            callback = self.asyncio_waiting_data.pop(
-                                response.req_id)
-                            try:
-                                if callback:
-                                    callback(response)
-                            except Exception:
-                                logger.exception("Callback error:")
-                            if response.req_id in self.outstanding_requests:
-                                del self.outstanding_requests[response.req_id]
-                        else:
-                            with self.cv:
-                                self.ready_data[response.req_id] = response
-                                self.cv.notify_all()
+                        self._process_response(response)
                     return
                 except grpc.RpcError as e:
-                    if not self.client_worker._can_reconnect(e):
-                        logger.info("Unrecoverable error in data channel.")
-                        return
-                    reconnecting = True
-                    try:
-                        ping_succeeded = self.client_worker.ping_server(
-                            timeout=5)
-                    except grpc.RpcError:
-                        ping_succeeded = False
-                    if not ping_succeeded:
-                        logger.warning(
-                            "Encountered connection issues in the data "
-                            "channel. Attempting to reconnect.")
-                        logger.debug(e)
-                        try:
-                            self.client_worker._connect_channel(
-                                reconnecting=True)
-                        except ConnectionError:
-                            logger.warning(
-                                "Failed to reconnect the data channel")
-                            return
-                        logger.info("Reconnection succeeded!")
-                    self.request_queue = queue.Queue()
-                    with self.outstanding_requests_lock:
-                        for request in self.outstanding_requests.values():
-                            # Resend outstanding requests
-                            self.request_queue.put(request)
-                    continue
+                    reconnecting = self._process_rpc_error(e)
+                    if not reconnecting:
+                        break
         finally:
             logger.info("Shutting down data channel")
             self._shutdown()
+
+    def _process_response(self, response: Any) -> None:
+        """
+        Process responses from the data servicer.
+        """
+        if response.req_id == 0:
+            # This is not being waited for.
+            logger.debug(f"Got unawaited response {response}")
+        elif response.req_id in self.asyncio_waiting_data:
+            # Async response. Check for callback and update outstanding
+            # requests.
+            callback = self.asyncio_waiting_data.pop(response.req_id)
+            try:
+                if callback:
+                    callback(response)
+            except Exception:
+                logger.exception("Callback error:")
+            if response.req_id in self.outstanding_requests:
+                del self.outstanding_requests[response.req_id]
+        else:
+            # Blocking response. Populate ready data and wake up waiting
+            # threads.
+            with self.cv:
+                self.ready_data[response.req_id] = response
+                self.cv.notify_all()
+
+    def _process_rpc_error(self, e: grpc.RpcError) -> bool:
+        """
+        Processes RPC errors that occur while reading from data stream.
+        Returns True if the error can be recovered from, False otherwise.
+        """
+        if not self.client_worker._can_reconnect(e):
+            logger.info("Unrecoverable error in data channel.")
+            return False
+
+        # Ping the server to see if the current channel is reuseable
+        try:
+            ping_succeeded = self.client_worker.ping_server(timeout=5)
+        except grpc.RpcError:
+            ping_succeeded = False
+
+        if not ping_succeeded:
+            # Ping failed, try refreshing the data channel
+            logger.warning(
+                "Encountered connection issues in the data channel. "
+                "Attempting to reconnect.")
+            logger.debug(e)
+            try:
+                self.client_worker._connect_channel(reconnecting=True)
+            except ConnectionError:
+                logger.warning("Failed to reconnect the data channel")
+                return False
+            logger.info("Reconnection succeeded!")
+
+        # Recreate the request queue, and resend outstanding requests
+        self.request_queue = queue.Queue()
+        with self.outstanding_requests_lock:
+            for request in self.outstanding_requests.values():
+                # Resend outstanding requests
+                self.request_queue.put(request)
+        return True
 
     def _shutdown(self):
         with self.cv:
@@ -132,6 +151,8 @@ class DataClient:
 
     def close(self) -> None:
         if self.request_queue is not None:
+            # Intentional shutdown, tell server it can clean up the connection
+            # immediately and ignore the reconnect grace period.
             cleanup_request = ray_client_pb2.DataRequest(
                 connection_cleanup=ray_client_pb2.ConnectionCleanupRequest())
             self.request_queue.put(cleanup_request)

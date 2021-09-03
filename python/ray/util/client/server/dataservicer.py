@@ -73,15 +73,19 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.clients_lock = Lock()
         self.clients_cv = threading.Condition(lock=self.clients_lock)
         self.num_clients = 0  # guarded by self.clients_lock
-        self.client_last_seen: Dict[str, float] = {
-        }  # guarded by self.clients_lock
+        # dictionary mapping client_id's to the last time they connected
+        self.client_last_seen: Dict[str, float] = {}
+        # dictionary mapping client_id's to their reconnect grace periods
         self.reconnect_grace_periods: Dict[str, float] = {}
+        # dictionary mapping client_id's to their replay cache
         self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
+        # stopped event, useful for signally that the server is shut down
         self.stopped = threading.Event()
 
     def Datapath(self, request_iterator, context):
-        cleanup_requested = False
         start_time = time.time()
+        # set to True if client shuts down gracefully
+        cleanup_requested = False
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata.get("client_id") or ""
         if client_id == "":
@@ -114,9 +118,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 thread_id = req.thread_id
 
                 if not _is_async(req):
+                    # Check cache for request if it isn't blocking
                     cached_result = replay_cache.check_cache(thread_id, req_id)
                     if cached_result is not None:
                         yield cached_result
+                        continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
                 resp = None
@@ -172,6 +178,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp.req_id = req.req_id
 
                 if not _is_async(req):
+                    # Update cache if the response isn't async
                     replay_cache.update_cache(thread_id, req_id, resp)
 
                 yield resp
