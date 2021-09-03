@@ -283,10 +283,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
-def wrap_deepmind(
-        env,
-        dim=84,
-        framestack=True):
+def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.

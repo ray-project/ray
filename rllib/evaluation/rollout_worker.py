@@ -1481,8 +1481,7 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
     msg = f"Validating sub-env at vector index={env_context.vector_index} ..."
 
     allowed_types = [
-        gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
-        ray.actor.ActorHandle
+        gym.Env, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle
     ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
         # Allow this as a special case (assumed gym.Env).
