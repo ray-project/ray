@@ -8,7 +8,6 @@ import re
 import subprocess
 import stat
 import sys
-import platform
 
 from collections import defaultdict, OrderedDict
 
