@@ -420,12 +420,22 @@ def setup_working_dir(runtime_env: dict,
     # TODO(edoakes): we should be able to remove this by refactoring the
     # working_dir setup code into a class instead of using global vars.
     global _logger, PKG_DIR
-    prev_logger = _logger
+    if logger:
+        prev_logger = _logger
+        _logger = logger
     prev_pkg_dir = PKG_DIR
-    _logger = logger
-    PKG_DIR = context.session_dir
+    PKG_DIR = context.resources_dir
 
-    context.working_dir = ensure_runtime_env_setup(runtime_env["uris"])
+    working_dir = ensure_runtime_env_setup(runtime_env["uris"])
+    context.command_prefix += [f"cd {working_dir}"]
+
+    # Insert the working_dir as the first entry in PYTHONPATH. This is
+    # compatible with users providing their own PYTHONPATH in env_vars.
+    python_path = working_dir
+    if "PYTHONPATH" in context.env_vars:
+        python_path += os.pathsep + runtime_env["PYTHONPATH"]
+    context.env_vars["PYTHONPATH"] = python_path
 
     PKG_DIR = prev_pkg_dir
-    _logger = prev_logger
+    if logger:
+        _logger = prev_logger

@@ -77,7 +77,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
-                context = RuntimeEnvContext(self._runtime_env_dir)
+                context = RuntimeEnvContext(
+                    resources_dir=self._runtime_env_dir)
                 setup_conda_or_pip(runtime_env, context, logger=per_job_logger)
                 setup_working_dir(runtime_env, context, logger=per_job_logger)
                 return context
