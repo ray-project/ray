@@ -129,7 +129,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{});
+                                                           ray::rpc::Address{},
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }

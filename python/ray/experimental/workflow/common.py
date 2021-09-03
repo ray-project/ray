@@ -125,7 +125,16 @@ class WorkflowData:
     # name of the step
     name: str
 
+    # Cache the intended locations of object refs. These are expensive
+    # calculations since they require computing the hash over a large value.
+    _cached_refs: List[ObjectRef] = None
+    _cached_locs: List[str] = None
+
     def to_metadata(self) -> Dict[str, Any]:
+        if self._cached_refs != self.inputs.object_refs:
+            self._cached_refs = self.inputs.object_refs
+            self._cached_locs = calculate_identifiers(self._cached_refs)
+
         f = self.func_body
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),
