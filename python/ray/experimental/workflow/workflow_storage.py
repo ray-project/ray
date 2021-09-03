@@ -335,12 +335,11 @@ class WorkflowStorage:
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )
         except Exception:
-            raise
-            # return StepInspectResult(
-            #     args_valid=(STEP_ARGS in keys),
-            #     func_body_valid=(STEP_FUNC_BODY in keys),
-            #     step_raised_exception=(STEP_EXCEPTION in keys),
-            # )
+            return StepInspectResult(
+                args_valid=(STEP_ARGS in keys),
+                func_body_valid=(STEP_FUNC_BODY in keys),
+                step_raised_exception=(STEP_EXCEPTION in keys),
+            )
 
     async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
         data = await obj_ref

@@ -96,19 +96,19 @@ def test_basic_workflows(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     assert simple_sequential.step().run() == "[source1][append1][append2]"
 
-    # wf = simple_sequential_with_input.step("start:")
-    # assert wf.run() == "start:[append1][append2]"
+    wf = simple_sequential_with_input.step("start:")
+    assert wf.run() == "start:[append1][append2]"
 
-    # wf = loop_sequential.step(3)
-    # assert wf.run() == "[source1]" + "[append1]" * 3 + "[append2]"
+    wf = loop_sequential.step(3)
+    assert wf.run() == "[source1]" + "[append1]" * 3 + "[append2]"
 
-    # wf = nested.step("nested:")
-    # assert wf.run() == "nested:~[nested]~[append1][append2]"
+    wf = nested.step("nested:")
+    assert wf.run() == "nested:~[nested]~[append1][append2]"
 
-    # wf = fork_join.step()
-    # assert wf.run() == "join([source1][append1], [source1][append2])"
+    wf = fork_join.step()
+    assert wf.run() == "join([source1][append1], [source1][append2])"
 
-    # assert factorial.step(10).run() == 3628800
+    assert factorial.step(10).run() == 3628800
 
 
 def test_async_execution(workflow_start_regular_shared):
