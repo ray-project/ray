@@ -162,14 +162,14 @@ Release tests are added and maintained by the respective teams.
 5. **Repeating release tests**. If one or more tests failed and you need to run
    them again, follow the instructions from the first bullet point. Instead of
    running the full suite, you can use the last two fields to filter the name
-   the test file or the name of the test. This is a simple ``if filter in name``
+   of the test file or the name of the test itself. This is a simple ``if filter in name``
    filter, and only matching tests will be included in the run.
 
    For instance, if you just want to kick off the ``benchmark_tests/many_actors``
    test, you could specify ``benchmark`` in the test file filter and ``actors``
    in the test name filter.
 
-   As another example, if you jsut want to kick off all nightly RLLib tests,
+   As another example, if you just want to kick off all nightly RLLib tests,
    select the respective test suite and specify ``rllib`` in the test file filter.
 
 Identify and Resolve Release Blockers
