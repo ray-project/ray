@@ -222,8 +222,7 @@ class ProxyManager():
         # by going through the runtime_env agent.
         context = RuntimeEnvContext(
             resources_dir=self.node.get_session_dir_path())
-        if runtime_env.get("uris"):
-            working_dir_pkg.setup_working_dir(runtime_env["uris"], context)
+        working_dir_pkg.setup_working_dir(runtime_env, context)
 
         proc = start_ray_client_server(
             self.redis_address,

@@ -29,8 +29,8 @@ class RuntimeEnvContext:
 
     def exec_worker(self, passthrough_args: List[str]):
         os.environ.update(self.env_vars)
-        command_str = "&&".join(self.command_prefix +
-                                f"exec {self.py_executable}" +
+        exec_command = " ".join([f"exec {self.py_executable}"] +
                                 passthrough_args)
+        command_str = " && ".join(self.command_prefix + [exec_command])
         logger.info(f"Exec'ing worker with command: {command_str}")
         os.execvp("bash", ["bash", "-c", command_str])
