@@ -204,8 +204,8 @@ Prefect API Comparison
 
 The original source of these comparisons can be `found here <https://docs.prefect.io/core/advanced_tutorials/task-looping.html>`__.
 
-Looping Workflow
-^^^^^^^^^^^^^^^^
+Looping
+^^^^^^^
 
 .. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/prefect/compute_fib_prefect.py.txt
    :caption: Prefect version:
@@ -220,8 +220,8 @@ AirFlow API Comparison
 
 The original source of these comparisons can be `found here <https://airflow.apache.org/docs/apache-airflow/stable/tutorial_taskflow_api.html>`__.
 
-Looping Workflow
-^^^^^^^^^^^^^^^^
+ETL Workflow
+^^^^^^^^^^^^
 
 .. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/airflow/etl_airflow.py.txt
    :caption: AirFlow version:
