@@ -4,8 +4,6 @@ from time import sleep, perf_counter
 import json
 import ray
 
-ray.init(address="auto")
-
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     @ray.remote(num_cpus=cpus_per_actor)
@@ -27,13 +25,15 @@ def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpus-per-actor", type=float, default=0.1)
     parser.add_argument("--total-actors", type=int, default=20000)
-    parser.add_argument("--no-report", type=bool, default=False)
-    parser.add_argument("--fail", type=bool, default=False)
+    parser.add_argument("--no-report", default=False, action='store_true')
+    parser.add_argument("--fail", default=False, action='store_true')
     return parser.parse_known_args()
 
 
 def main():
     args, unknown = parse_script_args()
+
+    ray.init(address="auto")
 
     actor_launch_start = perf_counter()
     actors = test_max_actors_launch(args.cpus_per_actor, args.total_actors)

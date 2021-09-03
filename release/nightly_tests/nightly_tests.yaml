@@ -324,8 +324,5 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 500 5400
-    script:
-      - python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000
-      - python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report
-      - python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
+    prepare: python wait_cluster.py 32 5400
+    script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=100 && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=100 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=100 --no-report
