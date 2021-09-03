@@ -1,11 +1,19 @@
 # coding: utf-8
+import os
 import sys
 
-import cgroupspy.trees
-import cgroupspy.controllers
 import pytest
 
 import ray
+
+cgroup_v1_root = "/sys/fs/cgroup"
+ray_parent_cgroup_name = "ray"
+
+
+def get_ray_cgroup_path_property(cgroup_path, property, data):
+    filename = os.path.join(cgroup_path, property)
+    with open(filename) as f:
+        return f.read().strip()
 
 
 @pytest.mark.skipif(
@@ -17,7 +25,7 @@ def test_resource_limit_without_container(shutdown_only):
         for line in open("/proc/self/cgroup"):
             cgroup_info = line.split(":")
             if cgroup_info[1] == "memory":
-                return cgroup_info[2].rstrip()
+                return os.path.basename(cgroup_info[2].rstrip())
         return ""
 
     def _get_cpu_cgroup_name():
@@ -25,7 +33,7 @@ def test_resource_limit_without_container(shutdown_only):
             cgroup_info = line.split(":")
             for cgroup_name in cgroup_info[1].split(","):
                 if cgroup_name == "cpu":
-                    return cgroup_info[2].rstrip()
+                    return os.path.basename(cgroup_info[2].rstrip())
         return ""
 
     @ray.remote
@@ -39,18 +47,14 @@ def test_resource_limit_without_container(shutdown_only):
     @ray.remote
     def get_memory_cgroup_value():
         cgroup_name = _get_memory_cgroup_name()
-        t = cgroupspy.trees.Tree()
-        memory_cset = t.get_node_by_path("/memory" + cgroup_name)
-        ctl = cgroupspy.controllers.Controller(memory_cset)
-        return ctl.get_property(b"memory.limit_in_bytes")
+        cgroup_path = os.path.join(cgroup_v1_root, "memory", ray_parent_cgroup_name, cgroup_name)
+        return get_ray_cgroup_path_property(cgroup_path, "memory.limit_in_bytes")
 
     @ray.remote
     def get_cpu_cgroup_value():
         cgroup_name = _get_cpu_cgroup_name()
-        t = cgroupspy.trees.Tree()
-        cpu_cset = t.get_node_by_path("/cpu" + cgroup_name)
-        ctl = cgroupspy.controllers.Controller(cpu_cset)
-        return ctl.get_property(b"cpu.shares")
+        cgroup_path = os.path.join(cgroup_v1_root, "cpu", ray_parent_cgroup_name, cgroup_name)
+        return get_ray_cgroup_path_property(cgroup_path, "cpu.shares")
 
     memory_cgroup_name = ray.get(
         get_memory_cgroup_name.options(
@@ -102,7 +106,7 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
         for line in open("/proc/self/cgroup"):
             cgroup_info = line.split(":")
             if cgroup_info[1] == "cpuset":
-                return cgroup_info[2].rstrip()
+                return os.path.basename(cgroup_info[2].rstrip())
         return ""
 
     @ray.remote
@@ -112,10 +116,8 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
     @ray.remote
     def get_cpuset_cgroup_value():
         cgroup_name = _get_cpuset_cgroup_name()
-        t = cgroupspy.trees.Tree()
-        cpu_cset = t.get_node_by_path("/cpuset" + cgroup_name)
-        ctl = cgroupspy.controllers.Controller(cpu_cset)
-        return ctl.get_property(b"cpuset.cpus")
+        cgroup_path = os.path.join(cgroup_v1_root, "cpuset", ray_parent_cgroup_name, cgroup_name)
+        return get_ray_cgroup_path_property(cgroup_path, "cpuset.cpus")
 
     cpuset_cgroup_name = ray.get(
         get_cpuset_cgroup_name.options(

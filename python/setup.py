@@ -182,7 +182,6 @@ if setup_spec.type == SetupType.RAY:
             "gpustat",  # noqa
             "opencensus",  # noqa
             "prometheus_client >= 0.7.1",  # noqa
-            "cgroupspy",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],

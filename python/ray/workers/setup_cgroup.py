@@ -1,14 +1,46 @@
+import errno
 import json
 import os
 import random
 import string
 
-import cgroupspy.trees
-import cgroupspy.controllers
+cgroup_v1_root = "/sys/fs/cgroup"
+ray_parent_cgroup_name = "ray"
+
+
+def create_ray_parent_cgroup(controller):
+    ray_parent_cgroup = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name)
+    try:
+        os.mkdir(ray_parent_cgroup)
+        return ray_parent_cgroup
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+
+def create_ray_cgroup(controller, cgroup_name):
+    ray_cgroup = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name, cgroup_name)
+    os.mkdir(ray_cgroup)
+    return ray_cgroup
+
+
+def set_ray_cgroup_property(controller, cgroup_name, property, data):
+    filename = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name, cgroup_name)
+    set_ray_cgroup_path_property(filename, property, data)
+
+
+def set_ray_cgroup_path_property(cgroup_path, property, data):
+    filename = os.path.join(cgroup_path, property)
+    with open(filename, "w") as f:
+        return f.write(str(data))
+
+
+def delete_cgroup_path(cgroup_path):
+    if os.path.exists(cgroup_path):
+        os.rmdir(cgroup_path)
 
 
 def create_cgroup_for_worker(resource_json):
-    t = cgroupspy.trees.Tree()
     # todo add timestampe?
     cgroup_name = "ray-" + "".join(
         random.sample(string.ascii_letters + string.digits, 8))
@@ -25,27 +57,23 @@ def create_cgroup_for_worker(resource_json):
                 if val > 0:
                     cpu_ids.append(idx)
                     cpu_shares += val
-            cpu_cset = t.get_node_by_path("/cpuset")
-            worker_cpuset_cset = cpu_cset.create_cgroup(cgroup_name)
-            ctl = cgroupspy.controllers.Controller(worker_cpuset_cset)
-            ctl.set_property(b"cpuset.cpus", ",".join(str(v) for v in cpu_ids))
-            ctl.set_property(b"cpuset.mems", ",".join(str(v) for v in cpu_ids))
-            cgroup_nodes.append(worker_cpuset_cset)
+            create_ray_parent_cgroup("cpuset")
+            cgroup_path = create_ray_cgroup("cpuset", cgroup_name)
+            set_ray_cgroup_property("cpuset.cpus", ",".join(str(v) for v in cpu_ids))
+            set_ray_cgroup_property("cpuset.mems", ",".join(str(v) for v in cpu_ids))
+            cgroup_nodes.append(cgroup_path)
         else:
             cpu_shares = cpu_resource
         # cpushare
-        cpu_cset = t.get_node_by_path("/cpu")
-        worker_cpu_cset = cpu_cset.create_cgroup(cgroup_name)
-        ctl = cgroupspy.controllers.Controller(worker_cpu_cset)
-        ctl.set_property(b"cpu.shares", str(int(cpu_shares / 10000 * 1024)))
-        cgroup_nodes.append(worker_cpu_cset)
+        create_ray_parent_cgroup("cpu")
+        cgroup_path = create_ray_cgroup("cpu", cgroup_name)
+        set_ray_cgroup_property("cpu.shares", str(int(cpu_shares / 10000 * 1024)))
+        cgroup_nodes.append(cgroup_path)
     if "memory" in allocated_resource.keys():
-        memory_cset = t.get_node_by_path("/memory")
-        worker_memory_cset = memory_cset.create_cgroup(cgroup_name)
-        ctl = cgroupspy.controllers.Controller(worker_memory_cset)
-        ctl.set_property(b"memory.limit_in_bytes",
-                         str(int(allocated_resource["memory"] / 10000)))
-        cgroup_nodes.append(worker_memory_cset)
+        create_ray_parent_cgroup("memory")
+        cgroup_path = create_ray_cgroup("memory", cgroup_name)
+        set_ray_cgroup_property("memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
+        cgroup_nodes.append(cgroup_path)
     return cgroup_nodes
 
 
@@ -57,10 +85,9 @@ def start_worker_in_cgroup(worker_func, resource_json):
         # the worker process exit.
         os.wait()
         for idx, node in enumerate(cgroup_nodes):
-            node.parent.delete_cgroup(str(node.name))
+            delete_cgroup_path(node)
     else:
         current_pid = os.getpid()
         for idx, node in enumerate(cgroup_nodes):
-            ctl = cgroupspy.controllers.Controller(node)
-            ctl.set_property(b"cgroup.procs", current_pid)
+            set_ray_cgroup_path_property(node, "cgroup.procs", current_pid)
         worker_func()
