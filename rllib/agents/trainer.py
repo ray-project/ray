@@ -684,9 +684,6 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
-        update_global_seed_if_necessary(
-            config.get("framework"), config.get("seed"))
-
         env = self._env_id
         if env:
             config["env"] = env
@@ -723,6 +720,11 @@ class Trainer(Trainable):
                 self.config["framework"] != "torch":
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
+
+        # Set Trainer's seed after we have - if necessary - enabled
+        # tf eager-execution.
+        update_global_seed_if_necessary(
+            config.get("framework"), config.get("seed"))
 
         self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
