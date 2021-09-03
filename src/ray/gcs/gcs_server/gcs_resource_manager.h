@@ -208,6 +208,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Max batch size for broadcasting
   size_t max_broadcasting_batch_size_;
+  uint64_t v_ = 0;
 
   /// Debug info.
   enum CountType {

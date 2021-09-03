@@ -107,6 +107,7 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
                                           const rpc::ResourcesData &resource_data) {
   auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
+    RAY_LOG(ERROR) << "[Sang] shouldn't happen";
     return false;
   }
 
@@ -116,6 +117,10 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
       string_to_int_map_, resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
+  // RAY_LOG(INFO) << "Resource broadcasted for real from gcs: " << node_resources.DebugString(string_to_int_map_);
+  // RAY_LOG(INFO) << "Resource broadcasted for real local view: " << local_view.DebugString(string_to_int_map_);
+  // RAY_LOG(INFO) << "Total changed size: " <<  resource_data.resources_total_size();
+  // RAY_LOG(INFO) << "available changed size: " << resource_data.resources_available_changed();
 
   if (resource_data.resources_total_size() > 0) {
     for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
@@ -640,7 +645,7 @@ std::string ClusterResourceScheduler::SerializedTaskResourceInstances(
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_;
-  buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
+  // buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
   for (auto &node : nodes_) {
     buffer << "node id: " << node.first;
     buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
@@ -1081,6 +1086,7 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
+    // RAY_LOG(INFO) << "Update " << label << " Capacity avail: " << capacity.available.Double() << " Last capacity avail: " << last_capacity.available.Double();
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data.set_resources_available_changed(true);

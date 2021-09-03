@@ -382,6 +382,7 @@ message NodeResourceChange {
   map<string, double> updated_resources = 2;
   // Labels of the resources that were deleted.
   repeated string deleted_resources = 3;
+  uint64 v = 4;
 }
 
 message PubSubMessage {
@@ -476,6 +477,7 @@ message ResourceUsageBatchData {
   ResourceLoad resource_load_by_shape = 2;
   // The pending list of placement groups.
   PlacementGroupLoad placement_group_load = 3;
+  uint64 v = 4;
 }
 
 message PlacementGroupLoad {

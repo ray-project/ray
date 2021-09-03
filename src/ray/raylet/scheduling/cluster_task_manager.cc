@@ -88,7 +88,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
       if (node_id_string.empty()) {
-        RAY_LOG(DEBUG) << "No node found to schedule a task "
+        RAY_LOG(INFO) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
         break;

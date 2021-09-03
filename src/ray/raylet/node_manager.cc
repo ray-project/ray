@@ -399,7 +399,10 @@ ray::Status NodeManager::RegisterGcs() {
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));
+            RAY_LOG(INFO) << "Resource subscription version: " << resource_notification.v() << " from node id " << id;
             ResourceCreateUpdated(id, resource_set);
+          } else {
+            RAY_LOG(INFO) << "Emtpy resource subscription version: " << resource_notification.v();;
           }
 
           if (resource_notification.deleted_resources_size() != 0) {
@@ -864,6 +867,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
+    RAY_LOG(INFO) << "Update a resource " << resource_label;
     cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
                                                         new_resource_capacity);
   }
@@ -922,6 +926,7 @@ void NodeManager::ResourceUsageBatchReceived(
       // Skip messages from self.
       continue;
     }
+    RAY_LOG(INFO) << "Resource usage update received node id: " << node_id << " version: " << resource_usage_batch.v();
     UpdateResourceUsage(node_id, resource_usage);
   }
 }

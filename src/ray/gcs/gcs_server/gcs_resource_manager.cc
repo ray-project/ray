@@ -77,6 +77,7 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
     for (const auto &entry : *changed_resources) {
+      RAY_LOG(INFO) << "version " << v_ << " Resource changed " << entry.first;
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
@@ -85,9 +86,12 @@ void GcsResourceManager::HandleUpdateResources(
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.set_v(v_);
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
       if (redis_broadcast_enabled_) {
+        RAY_LOG(INFO) << "New broadcast by resource change" << v_;
+        v_++;
         RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                            node_resource_change.SerializeAsString(),
                                            nullptr));
@@ -140,10 +144,13 @@ void GcsResourceManager::HandleDeleteResources(
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
+      node_resource_change.set_v(v_);
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
       if (redis_broadcast_enabled_) {
+        RAY_LOG(INFO) << "New broadcast by resource change (delete)" << v_;
+        v_++;
         RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                            node_resource_change.SerializeAsString(),
                                            nullptr));
@@ -192,6 +199,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
         resources_data->resources_available_changed()) {
       const auto &resource_changed =
           MapFromProtobuf(resources_data->resources_available());
+
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }
@@ -315,6 +323,7 @@ const absl::flat_hash_map<NodeID, SchedulingResources>
 
 void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
                                                const ResourceSet &resources) {
+  // RAY_LOG(INFO) << "Resource changes updated: " << resources.ToString() << " node id: " << node_id;
   cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));
 }
 
@@ -414,7 +423,10 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   absl::MutexLock guard(&resource_buffer_mutex_);
   rpc::ResourceUsageBatchData batch;
   GetResourceUsageBatchForBroadcast_Locked(batch);
+  batch.set_v(v_);
   if (batch.ByteSizeLong() > 0) {
+    RAY_LOG(INFO) << "New broadcast by heartbeat" << v_;
+    v_++;
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch.SerializeAsString(), nullptr));
     stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
