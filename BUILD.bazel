@@ -1308,8 +1308,8 @@ cc_test(
         "src/ray/rpc/test/grpc_server_client_test.cc",
     ],
     deps = [
-        ":test_service_cc_grpc",
         ":grpc_common_lib",
+        ":test_service_cc_grpc",
     ],
 )
 
