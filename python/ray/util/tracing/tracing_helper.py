@@ -356,7 +356,7 @@ def _tracing_actor_creation(method):
     def _invocation_actor_class_remote_span(
             self,
             args: Any = tuple(),  # from tracing
-            kwargs: MutableMapping[Any, Any] = {},  # from tracing
+            kwargs: MutableMapping[Any, Any] = None,  # from tracing
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ):
@@ -364,8 +364,9 @@ def _tracing_actor_creation(method):
             kwargs = {}
 
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled() or self._is_cross_language:
-            kwargs["_ray_trace_ctx"] = None
+        if not is_tracing_enabled():
+            if not self._is_cross_language:
+                kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
