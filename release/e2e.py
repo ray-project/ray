@@ -523,6 +523,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
     )
 
 
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
+
+
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
     if session_id:
         # Just trigger a request. No need to wait until session shutdown.
@@ -1694,6 +1716,8 @@ def run_test_config(
         result = {"status": "timeout", "last_logs": "Test timed out."}
 
     logger.info(f"Final results: {result}")
+
+    log_results_and_artifacts(result)
 
     shutil.rmtree(temp_dir)
 
