@@ -24,12 +24,7 @@ def create_ray_cgroup(controller, cgroup_name):
     return ray_cgroup
 
 
-def set_ray_cgroup_property(controller, cgroup_name, property, data):
-    filename = os.path.join(cgroup_v1_root, controller, ray_parent_cgroup_name, cgroup_name)
-    set_ray_cgroup_path_property(filename, property, data)
-
-
-def set_ray_cgroup_path_property(cgroup_path, property, data):
+def set_ray_cgroup_property(cgroup_path, property, data):
     filename = os.path.join(cgroup_path, property)
     with open(filename, "w") as f:
         return f.write(str(data))
@@ -59,20 +54,20 @@ def create_cgroup_for_worker(resource_json):
                     cpu_shares += val
             create_ray_parent_cgroup("cpuset")
             cgroup_path = create_ray_cgroup("cpuset", cgroup_name)
-            set_ray_cgroup_property("cpuset.cpus", ",".join(str(v) for v in cpu_ids))
-            set_ray_cgroup_property("cpuset.mems", ",".join(str(v) for v in cpu_ids))
+            set_ray_cgroup_property(cgroup_path, "cpuset.cpus", ",".join(str(v) for v in cpu_ids))
+            set_ray_cgroup_property(cgroup_path, "cpuset.mems", ",".join(str(v) for v in cpu_ids))
             cgroup_nodes.append(cgroup_path)
         else:
             cpu_shares = cpu_resource
         # cpushare
         create_ray_parent_cgroup("cpu")
         cgroup_path = create_ray_cgroup("cpu", cgroup_name)
-        set_ray_cgroup_property("cpu.shares", str(int(cpu_shares / 10000 * 1024)))
+        set_ray_cgroup_property(cgroup_path, "cpu.shares", str(int(cpu_shares / 10000 * 1024)))
         cgroup_nodes.append(cgroup_path)
     if "memory" in allocated_resource.keys():
         create_ray_parent_cgroup("memory")
         cgroup_path = create_ray_cgroup("memory", cgroup_name)
-        set_ray_cgroup_property("memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
+        set_ray_cgroup_property(cgroup_path, "memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
         cgroup_nodes.append(cgroup_path)
     return cgroup_nodes
 
@@ -89,5 +84,5 @@ def start_worker_in_cgroup(worker_func, resource_json):
     else:
         current_pid = os.getpid()
         for idx, node in enumerate(cgroup_nodes):
-            set_ray_cgroup_path_property(node, "cgroup.procs", current_pid)
+            set_ray_cgroup_property(node, "cgroup.procs", current_pid)
         worker_func()
