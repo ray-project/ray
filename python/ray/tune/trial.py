@@ -13,6 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.exceptions import GetTimeoutError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -83,11 +84,21 @@ class ExportFormat:
 class CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self, trial_id, runner, runner_ip, node_ip):
+    def __init__(self, trial_id, runner, node_ip):
         self.trial_id = trial_id
         self.runner = runner
-        self.runner_ip = runner_ip
         self.node_ip = node_ip
+        self._runner_ip = None
+
+    @property
+    def runner_ip(self):
+        if not self._runner_ip:
+            try:
+                self._runner_ip = ray.get(
+                    self.runner.get_current_ip.remote(), timeout=30)
+            except GetTimeoutError:
+                pass
+        return self._runner_ip
 
     def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
@@ -298,7 +309,6 @@ class Trial:
         self.start_time = None
         self.logdir = None
         self.runner = None
-        self.runner_ip = None
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
@@ -321,7 +331,7 @@ class Trial:
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
             CheckpointDeleter(self._trainable_name(), self.runner,
-                              self.runner_ip, self))
+                              self.node_ip))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -471,10 +481,8 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.runner_ip = ray.get(
-            runner.get_current_ip.remote()) if runner else None
         self.checkpoint_manager.delete = CheckpointDeleter(
-            self._trainable_name(), runner, self.runner_ip, self.node_ip)
+            self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
