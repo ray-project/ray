@@ -399,10 +399,13 @@ ray::Status NodeManager::RegisterGcs() {
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));
-            RAY_LOG(INFO) << "Resource subscription version: " << resource_notification.v() << " from node id " << id;
+            RAY_LOG(INFO) << "Resource subscription version: "
+                          << resource_notification.v() << " from node id " << id;
             ResourceCreateUpdated(id, resource_set);
           } else {
-            RAY_LOG(INFO) << "Emtpy resource subscription version: " << resource_notification.v();;
+            RAY_LOG(INFO) << "Emtpy resource subscription version: "
+                          << resource_notification.v();
+            ;
           }
 
           if (resource_notification.deleted_resources_size() != 0) {
@@ -926,7 +929,8 @@ void NodeManager::ResourceUsageBatchReceived(
       // Skip messages from self.
       continue;
     }
-    RAY_LOG(INFO) << "Resource usage update received node id: " << node_id << " version: " << resource_usage_batch.v();
+    RAY_LOG(INFO) << "Resource usage update received node id: " << node_id
+                  << " version: " << resource_usage_batch.v();
     UpdateResourceUsage(node_id, resource_usage);
   }
 }
@@ -1611,11 +1615,11 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(INFO) << "Request to prepare bundle resources is received, "
-                 << bundle_spec.DebugString();
+                << bundle_spec.DebugString();
 
   auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
   RAY_LOG(INFO) << "Request to prepare bundle resources is done, "
-                 << bundle_spec.DebugString() << " prepared " << prepared;
+                << bundle_spec.DebugString() << " prepared " << prepared;
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1625,10 +1629,10 @@ void NodeManager::HandleCommitBundleResources(
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(INFO) << "Request to commit bundle resources is received, "
-                 << bundle_spec.DebugString();
+                << bundle_spec.DebugString();
   placement_group_resource_manager_->CommitBundle(bundle_spec);
   RAY_LOG(INFO) << "Request to commit bundle resources is done, "
-                 << bundle_spec.DebugString();
+                << bundle_spec.DebugString();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -2417,9 +2421,10 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   bool suppress_warning = false;
 
   // if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
-  //   // If the task is part of a placement group, do nothing. If necessary, the infeasible
-  //   // warning should come from the placement group scheduling, not the task scheduling.
-  //   suppress_warning = true;
+  //   // If the task is part of a placement group, do nothing. If necessary, the
+  //   infeasible
+  //   // warning should come from the placement group scheduling, not the task
+  //   scheduling. suppress_warning = true;
   // }
 
   // Push a warning to the task's driver that this task is currently infeasible.

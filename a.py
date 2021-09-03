@@ -1,4 +1,6 @@
 import ray
+from ray.autoscaler._private.util import parse_placement_group_resource_str
+from pprint import pprint
 ray.init(address="auto")
 
 r = ray.state.state._available_resources_per_node()
@@ -13,7 +15,6 @@ for p, val in ray.util.placement_group_table().items():
     if pg_id not in pgs:
         pgs[pg_id] = {}
 
-from ray.autoscaler._private.util import parse_placement_group_resource_str
 total = 0
 for k, v in r.items():
     print(f"\nnode: {k}")
@@ -30,5 +31,5 @@ for k, v in r.items():
             else:
                 if c:
                     pgs[id][r] = val
-from pprint import pprint
+
 pprint(len(pgs))

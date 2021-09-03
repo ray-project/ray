@@ -5,7 +5,7 @@
 
 import time
 
-from time import perf_counter
+# from time import perf_counter
 from random import random
 
 import ray
@@ -76,7 +76,8 @@ bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
 # # assert original == new, new
 # print(ray.cluster_resources())
 # assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
-# assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
+# assert ray.available_resources()["pg_custom"]
+# == num_nodes * resource_quantity
 
 
 # Scenario 2:
@@ -122,14 +123,13 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
             pgs_unremoved.append(pg)
 
     tasks = []
-    max_actor_cnt = 5
-    actor_cnt = 0
+    # max_actor_cnt = 5
+    # actor_cnt = 0
     actors = []
     ids_removed = set([pg.id.hex() for pg in pgs_removed])
     ids_unremoved = set([pg.id.hex() for pg in pgs_unremoved])
-    print(
-        f"pgs unremoved id - removed id {set(ids_removed).intersection(set(ids_unremoved))}"
-    )
+    print("pgs unremoved id - removed id "
+          f"{set(ids_removed).intersection(set(ids_unremoved))}")
     # Randomly schedule tasks or actors on placement groups that
     # are not removed.
     for pg in pgs_unremoved:
@@ -148,7 +148,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
 
     print("ready")
     unready = [pg.ready() for pg in pgs_unremoved]
-    i = 0
+    # i = 0
     # while unready:
     #     ready, unready = ray.wait(unready, timeout=0)
     #     i += 1

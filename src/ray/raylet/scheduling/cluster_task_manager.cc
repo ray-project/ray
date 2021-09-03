@@ -89,8 +89,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // Move on to the next shape.
       if (node_id_string.empty()) {
         RAY_LOG(INFO) << "No node found to schedule a task "
-                       << task.GetTaskSpecification().TaskId() << " is infeasible?"
-                       << is_infeasible;
+                      << task.GetTaskSpecification().TaskId() << " is infeasible?"
+                      << is_infeasible;
         break;
       }
 
@@ -985,8 +985,8 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
       shapes_it++;
     } else {
       RAY_LOG(INFO) << "Infeasible task of task id "
-                     << task.GetTaskSpecification().TaskId()
-                     << " is now feasible. Move the entry back to tasks_to_schedule_";
+                    << task.GetTaskSpecification().TaskId()
+                    << " is now feasible. Move the entry back to tasks_to_schedule_";
       tasks_to_schedule_[shapes_it->first] = shapes_it->second;
       shapes_it = infeasible_tasks_.erase(shapes_it);
     }

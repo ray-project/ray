@@ -218,8 +218,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
   // RAY_LOG(INFO) << "Preparing resource from node " << node_id
   //                << " for a bundle: " << bundle->DebugString();
   lease_client->PrepareBundleResources(
-      *bundle, [bundle, callback](
-                   const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
+      *bundle, [bundle, callback](const Status &status,
+                                  const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {

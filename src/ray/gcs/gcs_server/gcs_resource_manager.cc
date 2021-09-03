@@ -323,7 +323,8 @@ const absl::flat_hash_map<NodeID, SchedulingResources>
 
 void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
                                                const ResourceSet &resources) {
-  // RAY_LOG(INFO) << "Resource changes updated: " << resources.ToString() << " node id: " << node_id;
+  // RAY_LOG(INFO) << "Resource changes updated: " << resources.ToString() << " node id: "
+  // << node_id;
   cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));
 }
 
