@@ -176,8 +176,7 @@ for i in range(3):
     #     placement_group(bundles, strategy="STRICT_SPREAD")
     #     for _ in range(pre_created_num_pgs // 3)
     # ]
-    pg_launchers.append(
-        pg_launcher.remote([], num_pgs_to_create // 3))
+    pg_launchers.append(pg_launcher.remote([], num_pgs_to_create // 3))
 print(f"{(num_pgs_to_create // 3) * 3} pgs will be created")
 
 ray.get(pg_launchers)

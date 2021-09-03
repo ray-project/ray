@@ -1,4 +1,3 @@
-
 import ray
 ray.init(address="auto")
 
@@ -11,7 +10,7 @@ for p, val in ray.util.placement_group_table().items():
     strategy = val["strategy"]
     if state != "CREATED":
         continue
-    if pg_id not in pgs:        
+    if pg_id not in pgs:
         pgs[pg_id] = {}
 
 from ray.autoscaler._private.util import parse_placement_group_resource_str
