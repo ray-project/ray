@@ -489,7 +489,8 @@ class Trial:
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
-        self.checkpoint_manager.delete.node_ip = self.node_ip
+        if self.checkpoint_manager.delete:
+            self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
