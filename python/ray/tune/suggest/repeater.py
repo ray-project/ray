@@ -180,11 +180,7 @@ class Repeater(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
-    def set_search_properties(self,
-                              metric: Optional[str],
-                              mode: Optional[str],
-                              config: Dict,
-                              **spec) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
         return set_search_properties_backwards_compatible(
-            self.searcher.set_search_properties, metric, mode, config,
-            **spec)
+            self.searcher.set_search_properties, metric, mode, config, **spec)

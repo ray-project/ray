@@ -490,8 +490,8 @@ def run(
         search_alg = SearchGenerator(search_alg)
 
     if config and not set_search_properties_backwards_compatible(
-            search_alg.set_search_properties, metric, mode, config,
-            experiments[0].public_spec if experiments[0] else {}):
+            search_alg.set_search_properties, metric, mode, config, **
+            experiments[0].public_spec):
         if has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "

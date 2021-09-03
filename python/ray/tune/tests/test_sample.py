@@ -1800,7 +1800,7 @@ class SearchSpaceTest(unittest.TestCase):
         mocked_warning_method.assert_called_once_with(
             "Please update custom Searcher to take in function signature "
             "as ``def set_search_properties(metric, mode, config, "
-            "experiment=None) -> bool``.")
+            "**spec) -> bool``.")
 
 
 if __name__ == "__main__":

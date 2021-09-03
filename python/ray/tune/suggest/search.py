@@ -23,11 +23,8 @@ class SearchAlgorithm:
     def metric(self):
         return self._metric
 
-    def set_search_properties(self,
-                              metric: Optional[str],
-                              mode: Optional[str],
-                              config: Dict,
-                              **spec) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms

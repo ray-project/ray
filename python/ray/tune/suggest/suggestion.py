@@ -456,7 +456,6 @@ class ConcurrencyLimiter(Searcher):
         self.searcher.on_unpause(trial_id)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, experiment: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         return set_search_properties_backwards_compatible(
-            self.searcher.set_search_properties, metric, mode, config,
-            experiment)
+            self.searcher.set_search_properties, metric, mode, config, **spec)
