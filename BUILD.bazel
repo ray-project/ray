@@ -1308,10 +1308,10 @@ cc_test(
         "src/ray/rpc/test/grpc_server_client_test.cc",
     ],
     tags = ["team:core"],
+    copts = COPTS,
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
