@@ -42,7 +42,7 @@ RaySGD abstracts away the complexity of setting up a distributed training system
             results = model(x)
         return results
 
-We can simply construct the trainer function:
+We can simply construct the trainer function and specify the backend we want (torch, tensorflow, or horovod) and the number of workers to use for training:
 
 .. code-block:: python
 
