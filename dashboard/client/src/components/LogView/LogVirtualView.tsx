@@ -209,7 +209,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       className={`hljs-${theme}`}
       style={{
         fontSize,
-        fontFamily: 'menlo, monospace',
+        fontFamily: "menlo, monospace",
         ...style,
       }}
       itemSize={fontSize + 6}

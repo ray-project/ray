@@ -133,7 +133,9 @@ const useEventTable = (props: EventTableProps) => {
     pagination,
     changePage,
     labelOptions: Array.from(new Set(events.map((e) => e.label))),
-    hostOptions: Array.from(new Set(events.map((e) => e.sourceHostname || e.hostName))),
+    hostOptions: Array.from(
+      new Set(events.map((e) => e.sourceHostname || e.hostName)),
+    ),
     sourceOptions: Array.from(new Set(events.map((e) => e.sourceType))),
     severityOptions: Array.from(new Set(events.map((e) => e.severity))),
     loading,
