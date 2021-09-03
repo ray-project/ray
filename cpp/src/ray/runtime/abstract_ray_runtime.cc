@@ -253,5 +253,19 @@ void AbstractRayRuntime::ExitActor() {
   throw RayIntentionalSystemExitException("SystemExit");
 }
 
+ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  return task_submitter_->CreatePlacementGroup(create_options);
+}
+
+void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
+  return task_submitter_->RemovePlacementGroup(group_id);
+}
+
+bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
+                                                 int timeout_seconds) {
+  return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
+}
+
 }  // namespace internal
 }  // namespace ray

@@ -4,18 +4,22 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
+import tempfile
 import time
 import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv,\
     VectorizedMockEnv
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent,\
+    MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER
@@ -157,13 +161,14 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            pg = PGTrainer(
+            # We expect this to fail already on Trainer init due
+            # to the env sanity check right after env creation (inside
+            # RolloutWorker).
+            self.assertRaises(Exception, lambda: PGTrainer(
                 env="fail", config={
-                    "num_workers": 1,
+                    "num_workers": 2,
                     "framework": fw,
-                })
-            self.assertRaises(Exception, lambda: pg.train())
-            pg.stop()
+                }))
 
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -676,9 +681,28 @@ class TestRolloutWorker(unittest.TestCase):
             num_envs=3,
             policy_spec=MockPolicy,
             seed=1)
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
+        # Make sure all environments got a different deterministic seed.
         seeds = ev.foreach_env(lambda env: env.rng_seed)
-        # Make sure all environments get a different deterministic seed.
         self.assertEqual(seeds, [1, 2, 3])
+        ev.stop()
+
+    def test_wrap_multi_agent_env(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: BasicMultiAgent(10),
+            policy_spec=MockPolicy,
+            policy_config={
+                "in_evaluation": False,
+            },
+            record_env=tempfile.gettempdir())
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
+        # Make sure the resulting environment is indeed still an
+        # instance of MultiAgentEnv and VideoMonitor.
+        self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
+        self.assertTrue(isinstance(ev.env, gym.Env))
+        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def sample_and_flush(self, ev):

@@ -81,6 +81,11 @@ class AbstractRayRuntime : public RayRuntime {
 
   void ExitActor();
 
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::internal::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+  bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
+
   const TaskID &GetCurrentTaskId();
 
   const JobID &GetCurrentJobID();
