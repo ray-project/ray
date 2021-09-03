@@ -365,7 +365,7 @@ def _tracing_actor_creation(method):
 
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
-            if not self.__ray_metadata__._is_cross_language:
+            if not self.__ray_metadata__.is_cross_language:
                 kwargs["_ray_trace_ctx"] = None
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -402,7 +402,7 @@ def _tracing_actor_method_invocation(method):
             **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled() or self.__ray_metadata__._is_cross_language:
+        if not is_tracing_enabled() or self.__ray_metadata__.is_cross_language:
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = (self._actor_ref()
