@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/rpc/grpc_server.h"
 #include <chrono>
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
