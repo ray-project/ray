@@ -1078,10 +1078,10 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   AssertNoLeaks();
 }
 
-INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests, PullManagerTest,
+INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerTest,
                         testing::Values(true, false));
 
-INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests, PullManagerWithAdmissionControlTest,
+INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerWithAdmissionControlTest,
                         testing::Values(true, false));
 }  // namespace ray
 

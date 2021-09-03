@@ -57,11 +57,11 @@ TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
 
 TEST_P(StreamingExactlySameTest, Hold) {}
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingExactlySameTest,
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingExactlySameTest,
                         testing::Values(0, 1, 5, 9));
 
 }  // namespace streaming
