@@ -77,7 +77,16 @@ class WorkerGroup:
         self.num_gpus_per_worker = num_gpus_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
+        # TODO(matt): Validate resources. Fast-fail if it is impossible to
+        #  handle the request, rather than hang indefinitely.
+        self._remote_cls = ray.remote(
+            num_cpus=self.num_cpus_per_worker,
+            num_gpus=self.num_gpus_per_worker,
+            resources=self.additional_resources_per_worker)(BaseWorker)
         self.start()
+
+    def _create_worker(self):
+        return self._remote_cls.remote()
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -86,15 +95,8 @@ class WorkerGroup:
                                "Please call `shutdown` first if you want to "
                                "restart them.")
 
-        # TODO(matt): Validate resources. Fast-fail if it is impossible to
-        #  handle the request, rather than hang indefinitely.
-
-        remote_cls = ray.remote(
-            num_cpus=self.num_cpus_per_worker,
-            num_gpus=self.num_gpus_per_worker,
-            resources=self.additional_resources_per_worker)(BaseWorker)
         logger.debug(f"Starting {self.num_workers} workers.")
-        self.workers = [remote_cls.remote() for _ in range(self.num_workers)]
+        self.add_workers(self.num_workers)
         logger.debug(f"{len(self.workers)} workers have successfully started.")
 
     def shutdown(self, patience_s: float = 5):
@@ -194,6 +196,27 @@ class WorkerGroup:
 
         return ray.get(
             self.execute_single_async(worker_index, func, *args, **kwargs))
+
+    def remove_workers(self, worker_indexes: List[int]):
+        """Removes the workers with the specified indexes.
+
+        Args:
+            worker_indexes (List[int]): The indexes of the workers to remove.
+        """
+        new_workers = []
+        for i in range(len(self.workers)):
+            if i not in worker_indexes:
+                new_workers.append(self.workers[i])
+        self.workers = new_workers
+
+    def add_workers(self, num_workers: int):
+        """Adds ``num_workers`` to this WorkerGroup.
+
+        Args:
+            num_workers (int): The number of workers to add.
+        """
+        for _ in range(num_workers):
+            self.workers.append(self._create_worker())
 
     def __len__(self):
         return len(self.workers)
