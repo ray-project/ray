@@ -132,7 +132,7 @@ TEST_F(TestGrpcServerClientFixture, TestBasic) {
   SleepRequest request;
   request.set_sleep_time_ms(1);
   bool done = false;
-  Sleep(request, [&done](const Status status, const SleepReply &reply) {
+  Sleep(request, [&done](const Status &status, const SleepReply &reply) {
     RAY_LOG(INFO) << "replied, status=" << status;
     done = true;
   });
@@ -156,7 +156,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   SleepRequest request;
   request.set_sleep_time_ms(1);
   bool call_timed_out = false;
-  Sleep(request, [&call_timed_out](const Status status, const SleepReply &reply) {
+  Sleep(request, [&call_timed_out](const Status &status, const SleepReply &reply) {
     RAY_LOG(INFO) << "Replied, status=" << status;
     ASSERT_TRUE(status.IsIOError());
     call_timed_out = true;
@@ -189,7 +189,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   SleepRequest request;
   request.set_sleep_time_ms(1);
   bool call_timed_out = false;
-  Sleep(request, [&call_timed_out](const Status status, const SleepReply &reply) {
+  Sleep(request, [&call_timed_out](const Status &status, const SleepReply &reply) {
     RAY_LOG(INFO) << "Replied, status=" << status;
     ASSERT_TRUE(status.IsIOError());
     call_timed_out = true;
@@ -215,7 +215,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   // Send again, this request should be replied. If any leaking happened, this call won't
   // be replied to since the max_active_rpcs is 1.
   bool done = false;
-  Sleep(request, [&done](const Status status, const SleepReply &reply) {
+  Sleep(request, [&done](const Status &status, const SleepReply &reply) {
     RAY_LOG(INFO) << "replied, status=" << status;
     done = true;
   });
