@@ -21,7 +21,7 @@ export RAY_BACKEND_LOG_LEVEL=debug
 pushd /ray || true
 bash ./ci/travis/install-bazel.sh --system
 
-ll -al /sys/fs/cgroup
+ls -al /sys/fs/cgroup
 mkdir /sys/fs/cgroup/cpu/ray-aIBs5jS9
 
 # shellcheck disable=SC2046
