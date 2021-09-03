@@ -59,41 +59,35 @@ def _get_insufficient_resources_warning_threshold() -> float:
             os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "10"))
 
 
+# TODO(xwjiang): Consider having a help page with more detailed instructions.
 @lru_cache()
 def _get_insufficient_resources_warning_msg() -> str:
+    msg = (
+        f"No trial is running and no new trial has been started within"
+        f" at least the last "
+        f"{_get_insufficient_resources_warning_threshold()} seconds. "
+        f"This could be due to the cluster not having enough "
+        f"resources available to start the next trial. "
+        f"Stop the tuning job and adjust the resources requested per trial "
+        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
+        f"and/or add more resources to your Ray runtime.")
     if is_ray_cluster():
-        return (
-            f"If autoscaler is still scaling up, ignore this message. No "
-            f"trial is running and no new trial has been started within at "
-            f"least the last {_get_insufficient_resources_warning_threshold()}"
-            f" seconds. "
-            f"This could be due to the cluster not having enough "
-            f"resources available to start the next trial. Please stop the "
-            f"tuning job and adjust `resources_per_trial` or `num_workers`"
-            f"(for rllib) as well as max_workers and worker_nodes "
-            f"InstanceType specified in cluster.yaml.")
+        return "If autoscaler is still scaling up, ignore this message. " + msg
     else:
-        return (f"No trial is running and no new trial has been started within"
-                f" at least the last "
-                f"{_get_insufficient_resources_warning_threshold()} seconds. "
-                f"This could be due to the cluster not having enough "
-                f"resources available to start the next trial. Please stop "
-                f"the tuning job and adjust `resources_per_trial` or "
-                f"`num_workers`(for rllib) and/or start a cluster with more"
-                f" resources.")
+        return msg
 
 
 # A beefed up version when Tune Error is raised.
 def _get_insufficient_resources_error_msg(trial: Trial) -> str:
     trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
-    return (f"You asked for {trial_cpu_gpu['CPU']} cpu and "
-            f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
-            f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
-            f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu."
-            f"The cluster does not have enough resources available to "
-            f"start the next trial. Please stop the tuning job and adjust "
-            f"`resources_per_trial` or `num_workers`(for rllib) "
-            f"and/or start a cluster with more resources.")
+    return (
+        f"You asked for {trial_cpu_gpu['CPU']} cpu and "
+        f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
+        f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
+        f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu. "
+        f"Stop the tuning job and adjust the resources requested per trial "
+        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
+        f"and/or add more resources to your Ray runtime.")
 
 
 @DeveloperAPI
