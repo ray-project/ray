@@ -129,7 +129,6 @@ class TestGrpcServerClientFixture : public ::testing::Test {
 
 TEST_F(TestGrpcServerClientFixture, TestBasic) {
   // Send request
-  
   SleepRequest request;
   request.set_sleep_time_ms(1);
   bool done = false;
