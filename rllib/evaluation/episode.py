@@ -140,7 +140,7 @@ class MultiAgentEpisode:
             # New signature should be: (agent_id, episode, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = \
-                    self.policy_mapping_fn(agent_id, self, self.worker)
+                    self.policy_mapping_fn(agent_id, self, worker=self.worker)
             except TypeError as e:
                 if "positional argument" in e.args[0] or \
                         "unexpected keyword argument" in e.args[0]:

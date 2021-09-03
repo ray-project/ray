@@ -1509,7 +1509,7 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
                 f"(type={type(env)}).")
 
     # Do some test runs with the provided env.
-    if isinstance(env, gym.Env):
+    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
         # Make sure the gym.Env has the two space attributes properly set.
         assert hasattr(env, "observation_space") and hasattr(
             env, "action_space")

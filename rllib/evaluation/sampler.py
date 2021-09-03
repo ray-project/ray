@@ -1018,8 +1018,8 @@ def _do_policy_eval(
             # have already been changed (mapping fn stay constant
             # within one episode).
             episode = active_episodes[eval_data[0].env_id]
-            policy_id = episode.policy_mapping_fn(eval_data[0].agent_id,
-                                                  episode, episode.worker)
+            policy_id = episode.policy_mapping_fn(
+                eval_data[0].agent_id, episode, worker=episode.worker)
             policy: Policy = _get_or_raise(policies, policy_id)
 
         input_dict = sample_collector.get_inference_input_dict(policy_id)
