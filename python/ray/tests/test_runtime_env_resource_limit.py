@@ -63,7 +63,7 @@ def test_resource_limit_without_container(shutdown_only):
                     "a": "b",
                 }
             }).remote())
-    assert memory_cgroup_name.startswith("/ray-")
+    assert memory_cgroup_name.startswith("ray-")
 
     cpu_cgroup_name = ray.get(
         get_cpu_cgroup_name.options(
@@ -72,7 +72,7 @@ def test_resource_limit_without_container(shutdown_only):
                     "a": "b",
                 }
             }).remote())
-    assert cpu_cgroup_name.startswith("/ray-")
+    assert cpu_cgroup_name.startswith("ray-")
 
     memory_value = ray.get(
         get_memory_cgroup_value.options(
@@ -126,7 +126,7 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
                     "a": "b",
                 }
             }).remote())
-    assert cpuset_cgroup_name.startswith("/ray-")
+    assert cpuset_cgroup_name.startswith("ray-")
 
     cpuset_value = ray.get(
         get_cpuset_cgroup_value.options(
