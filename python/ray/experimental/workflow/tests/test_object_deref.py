@@ -17,6 +17,16 @@ def nested_ref():
 
 
 @workflow.step
+def return_objectrefs() -> List[ObjectRef]:
+    return [ray.put(x) for x in range(5)]
+
+
+@workflow.step
+def nested_ref_workflow():
+    return nested_ref.remote()
+
+
+@workflow.step
 def nested_workflow(n: int):
     if n <= 0:
         return "nested"
@@ -30,8 +40,8 @@ def deref_check(u: int, v: "ObjectRef[int]",
                 z: List[Dict[str, str]]):
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
-                and x == "nested" and y[0] == "nested"
-                and z[0]["output"] == "nested")
+                and x == "nested" and y[0] == "nested" and
+                z[0]["output"] == "nested"), f"{u}, {v}, {w}, {x}, {y}, {z}"
     except Exception:
         return False
 
@@ -69,19 +79,21 @@ def receive_data(data: np.ndarray):
     return data
 
 
-# TODO(suquark): Support ObjectRef checkpointing.
-def test_objectref_inputs_exception(workflow_start_regular_shared):
-    with pytest.raises(ValueError):
-        assert receive_data.step(ray.put([42])).run()
-
-
-@pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
 def test_objectref_inputs(workflow_start_regular_shared):
-    assert deref_check.step(
+    output, s = deref_check.step(
         ray.put(42), nested_ref.remote(), [nested_ref.remote()],
         nested_workflow.step(10), [nested_workflow.step(9)], [{
             "output": nested_workflow.step(7)
         }]).run()
+    assert output is True, s
+
+
+def test_objectref_outputs(workflow_start_regular_shared):
+    single = nested_ref_workflow.step().run()
+    assert single == 42
+
+    multi = return_objectrefs.step().run()
+    assert ray.get(multi) == list(range(5))
 
 
 def test_object_deref(workflow_start_regular_shared):
