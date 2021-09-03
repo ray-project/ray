@@ -646,10 +646,10 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_;
   // buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
-  for (auto &node : nodes_) {
-    buffer << "node id: " << node.first;
-    buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
-  }
+  // for (auto &node : nodes_) {
+  //   buffer << "node id: " << node.first;
+  //   buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
+  // }
   return buffer.str();
 }
 

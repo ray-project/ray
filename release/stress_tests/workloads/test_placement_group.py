@@ -43,40 +43,40 @@ total_trial = repeat * num_pg
 bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
 
 # Create and remove placement groups.
-original = ray.cluster_resources()
-print(f"Original cluster resources: {original}")
-for _ in range(repeat):
-    pgs = []
-    for i in range(num_pg):
-        start = perf_counter()
-        pgs.append(placement_group(bundles, strategy="PACK"))
-        end = perf_counter()
-        print(f"append_group iteration {i}")
-        total_creating_time += (end - start)
+# original = ray.cluster_resources()
+# print(f"Original cluster resources: {original}")
+# for _ in range(repeat):
+#     pgs = []
+#     for i in range(num_pg):
+#         start = perf_counter()
+#         pgs.append(placement_group(bundles, strategy="PACK"))
+#         end = perf_counter()
+#         print(f"append_group iteration {i}")
+#         total_creating_time += (end - start)
 
-    ray.get([pg.ready() for pg in pgs])
+#     ray.get([pg.ready() for pg in pgs])
 
-    for pg in pgs:
-        start = perf_counter()
-        remove_placement_group(pg)
-        end = perf_counter()
-        print(f"remove_group iteration {i}")
-        total_removing_time += (end - start)
+#     for pg in pgs:
+#         start = perf_counter()
+#         remove_placement_group(pg)
+#         end = perf_counter()
+#         print(f"remove_group iteration {i}")
+#         total_removing_time += (end - start)
 
 # Validate the correctness.
-t = [entry["state"] for entry in ray.util.placement_group_table().values()]
-print(t)
-print(len(t))
+# t = [entry["state"] for entry in ray.util.placement_group_table().values()]
+# print(t)
+# print(len(t))
 
-print("Waiting for resources to be released")
-time.sleep(10)
-# new = ray.cluster_resources()
-# print("hahahoho")
-# time.sleep(1000)
-# assert original == new, new
-print(ray.cluster_resources())
-assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
-assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
+# print("Waiting for resources to be released")
+# time.sleep(10)
+# # new = ray.cluster_resources()
+# # print("hahahoho")
+# # time.sleep(1000)
+# # assert original == new, new
+# print(ray.cluster_resources())
+# assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
+# assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
 
 
 # Scenario 2:
