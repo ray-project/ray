@@ -89,11 +89,19 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
           spill_objects_callback, object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
-          [this]() { return GetDebugDump(); }),
+          // absl can't check thread safety for lambda
+          [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+            mutex_.AssertHeld();
+            return GetDebugDump();
+          }),
+      total_consumed_bytes_(0),
       get_request_queue_(io_context_, object_lifecycle_mgr_,
-                         [this](const ObjectID &object_id, const auto &request) {
-                           this->AddToClientObjectIds(object_id, request->client);
-                         },
+                         // absl failed to check thread safety for lambda
+                         [this](const ObjectID &object_id, const auto &request)
+                             ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                               mutex_.AssertHeld();
+                               this->AddToClientObjectIds(object_id, request->client);
+                             },
                          [this](const auto &request) { this->ReturnFromGet(request); }) {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -330,9 +338,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    fb::MessageType type,
                                    const std::vector<uint8_t> &message) {
-  // Global lock is used here so that we allow raylet to access some of methods
-  // that are required for object spilling directly without releasing a lock.
-  std::lock_guard<std::recursive_mutex> guard(mutex_);
+  absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
@@ -345,9 +351,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    auto handle_create = [this, client, message](bool fallback_allocator,
-                                                 PlasmaObject *result,
-                                                 bool *spilling_required) {
+    // absl failed analyze mutex safety for lambda
+    auto handle_create = [this, client, message](
+                             bool fallback_allocator, PlasmaObject *result,
+                             bool *spilling_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+      mutex_.AssertHeld();
       return HandleCreateObjectRequest(client, message, fallback_allocator, result,
                                        spilling_required);
     };
@@ -453,7 +461,6 @@ void PlasmaStore::DoAccept() {
 }
 
 void PlasmaStore::ProcessCreateRequests() {
-  std::lock_guard<std::recursive_mutex> guard(mutex_);
   // Only try to process requests if the timer is not set. If the timer is set,
   // that means that the first request is currently not serviceable because
   // there is not enough memory. In that case, we should wait for the timer to
@@ -479,6 +486,7 @@ void PlasmaStore::ProcessCreateRequests() {
     // Try to process requests later, after space has been made.
     create_timer_ = execute_after(io_context_,
                                   [this]() {
+                                    absl::MutexLock lock(&mutex_);
                                     create_timer_ = nullptr;
                                     ProcessCreateRequests();
                                   },
@@ -502,15 +510,10 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   }
 }
 
-int64_t PlasmaStore::GetConsumedBytes() {
-  std::lock_guard<std::recursive_mutex> guard(mutex_);
-  return total_consumed_bytes_;
-}
+int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
-  // The lock is acquired when a request is received to the plasma store.
-  // recursive mutex is used here to allow
-  std::lock_guard<std::recursive_mutex> guard(mutex_);
+  absl::MutexLock lock(&mutex_);
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   if (!entry) {
     // Object already evicted or deleted.
@@ -520,14 +523,13 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 }
 
 void PlasmaStore::PrintDebugDump() const {
+  absl::MutexLock lock(&mutex_);
   RAY_LOG(INFO) << GetDebugDump();
-
   stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
                                RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {
-  // TODO(swang): We might want to optimize this if it gets called more often.
   std::stringstream buffer;
   buffer << "========== Plasma store: =================\n";
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
