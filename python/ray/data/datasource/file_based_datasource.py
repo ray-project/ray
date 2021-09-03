@@ -180,7 +180,6 @@ def _resolve_paths_and_filesystem(
     """
     from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
         _resolve_filesystem_and_path
-    import fsspec
 
     if isinstance(paths, str):
         paths = [paths]
@@ -192,6 +191,7 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
+        import fsspec
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
             raise TypeError(f"The filesystem passed must either conform to "
                             f"pyarrow.fs.FileSystem, or "

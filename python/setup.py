@@ -171,6 +171,17 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
+        "data": [
+            "dask",
+            "mars",
+            "modin",
+            "pyspark",
+            "tensorflow",
+            "torch",
+            "pandas",
+            "pyarrow==4.0.1",
+            "fsspec",
+        ],
         "default": [
             "aiohttp",  # noqa
             "aiohttp_cors",  # noqa
