@@ -62,7 +62,7 @@ INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
 
 INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingExactlySameTest,
-                        testing::Values(0, 1, 5, 9));
+                         testing::Values(0, 1, 5, 9));
 
 }  // namespace streaming
 }  // namespace ray

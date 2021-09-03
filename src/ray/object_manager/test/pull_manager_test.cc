@@ -1079,10 +1079,10 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 }
 
 INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerTest,
-                        testing::Values(true, false));
+                         testing::Values(true, false));
 
 INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerWithAdmissionControlTest,
-                        testing::Values(true, false));
+                         testing::Values(true, false));
 }  // namespace ray
 
 int main(int argc, char **argv) {
