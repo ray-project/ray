@@ -167,9 +167,9 @@ class RayTrialExecutor(TrialExecutor):
 
         self._trial_cleanup = _TrialCleanup()
         self._has_cleaned_up_pgs = False
-        self._max_pending_trials = 1
         self._reuse_actors = reuse_actors
-        self._cached_actor_pg = deque(maxlen=self._max_pending_trials)
+        # The maxlen will be updated when `set_max_pending_trials()` is called
+        self._cached_actor_pg = deque(maxlen=1)
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -218,14 +218,13 @@ class RayTrialExecutor(TrialExecutor):
         return self._pg_manager.in_staging_grace_period()
 
     def set_max_pending_trials(self, max_pending: int) -> None:
-        self._max_pending_trials = max_pending
         if len(self._cached_actor_pg) > 0:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run.")
         else:
-            self._cached_actor_pg = deque(maxlen=self._max_pending_trials)
-        self._pg_manager.set_max_staging(self._max_pending_trials)
+            self._cached_actor_pg = deque(maxlen=max_pending)
+        self._pg_manager.set_max_staging(max_pending)
 
     def stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
@@ -526,8 +525,9 @@ class RayTrialExecutor(TrialExecutor):
         try:
             trial.write_error_log(error_msg)
             if hasattr(trial, "runner") and trial.runner:
-                if (not error and self._reuse_actors and
-                        len(self._cached_actor_pg) < self._max_pending_trials):
+                if (not error and self._reuse_actors
+                        and (len(self._cached_actor_pg) <
+                             (self._cached_actor_pg.maxlen or float("inf")))):
                     logger.debug("Reusing actor for %s", trial.runner)
                     # Move PG into cache (disassociate from trial)
                     pg = self._pg_manager.cache_trial_pg(trial)
