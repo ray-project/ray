@@ -235,8 +235,7 @@ class BackendExecutor:
             num_cpus_per_worker: float = 1,
             num_gpus_per_worker: float = 0,
             additional_resources_per_worker: Optional[Dict[str, float]] = None,
-            max_retries: int = 3
-    ):
+            max_retries: int = 3):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
@@ -260,10 +259,9 @@ class BackendExecutor:
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
-        self.worker_group = WorkerGroup(self._num_workers,
-                                        self._num_cpus_per_worker,
-                                        self._num_gpus_per_worker,
-                                        self._additional_resources_per_worker)
+        self.worker_group = WorkerGroup(
+            self._num_workers, self._num_cpus_per_worker,
+            self._num_gpus_per_worker, self._additional_resources_per_worker)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
