@@ -125,11 +125,6 @@ parser.add_argument(
     default=0,
     help="The PID of the process for setup worker runtime env.")
 parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    default="{}",
-    help="The serialized and validated runtime env json.")
-parser.add_argument(
     "--ray-debugger-external",
     default=False,
     action="store_true",
@@ -195,7 +190,6 @@ if __name__ == "__main__":
         node,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
-        runtime_env_json=args.serialized_runtime_env,
         worker_shim_pid=args.worker_shim_pid,
         ray_debugger_external=args.ray_debugger_external)
 

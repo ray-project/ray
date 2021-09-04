@@ -61,7 +61,7 @@ a) For Atari support: `pip install gym[atari] atari_py`.
    For VizDoom support: Install VizDoom
    (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
    `pip install vizdoomgym`.
-   For PyBullet support: `pip install pybullet pybullet_envs`.
+   For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
    tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config['env'] = [name]`.
