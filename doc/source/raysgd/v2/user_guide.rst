@@ -114,9 +114,19 @@ RaySGD provides a thin API around different backend frameworks for
 distributed deep learning. At the moment, RaySGD allows you to perform
 training with:
 
-* **Pytorch:** RaySGD initializes your distributed process group, allowing you to run your `DataDistributedParallel` training script.
-* **Tensorflow:**  RaySGD configures `TF_CONFIG` for you, allowing you to run your `MultiWorkerMirroredStrategy` training script.
-* **Horovod:** RaySGD configures the Horovod environment and Rendezvous server for you, allowing you to run your `DistributedOptimizer` training script.
+* **PyTorch:** RaySGD initializes your distributed process group, allowing
+  you to run your `DataDistributedParallel` training script. See `PyTorch
+  Distributed Overview <https://torchmetrics.readthedocs.io/en/latest/>`_ for
+  more information.
+* **TensorFlow:**  RaySGD configures `TF_CONFIG` for you, allowing you to run
+  your `MultiWorkerMirroredStrategy` training script. See `Distributed training
+  with TensorFlow <https://www.tensorflow.org/guide/distributed_training>`_ for
+  more information.
+* **Horovod:** RaySGD configures the Horovod environment and Rendezvous
+  server for you, allowing you to run your `DistributedOptimizer` training
+  script. See `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
+  for more information.
+
 
 Porting code to RaySGD
 ----------------------
@@ -134,6 +144,8 @@ Porting code to RaySGD
     .. group-tab:: horovod
 
         TODO. Write about how to convert code to use horovod.
+
+.. TODO add BackendConfigs
 
 .. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <sgd-backwards-compatibility>`.
 
@@ -212,9 +224,11 @@ Logs will be written by:
 1. :ref:`Logging Callbacks <sgd-logging-callbacks>`
 2. :ref:`Checkpoints <sgd-checkpointing>`
 
+.. TODO link to Training Run Iterator API as a 3rd option for logging.
 
-Reporting
----------
+
+Monitoring training (sgd.report)
+--------------------------------
 
 RaySGD provides an ``sgd.report(**kwargs)`` API for reporting intermediate
 results from the training function up to the ``Trainer``.
@@ -226,6 +240,45 @@ For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
 ``SGDIterator`` which will iterate over the reported results.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.)
+
+Distributed metrics (for Pytorch)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In real applications, you may want to calculate optimization metrics besides
+accuracy and loss: recall, precision, Fbeta, etc.
+
+RaySGD natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
+
+Here is an example:
+
+.. code-block:: python
+
+    from ray.util.sgd import v2 as sgd
+    from ray.util.sgd.v2 import SGDCallback, Trainer
+    from typing import List, Dict
+
+    import torch
+    import torchmetrics
+
+    class PrintingCallback(SGDCallback):
+        def handle_result(self, results: List[Dict], **info):
+            print(results)
+
+    def train_func(config):
+        preds = torch.randn(10, 5).softmax(dim=-1)
+        target = torch.randint(5, (10,))
+        accuracy = torchmetrics.functional.accuracy(preds, target).item()
+        sgd.report(accuracy=accuracy)
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    result = trainer.run(
+        train_func,
+        callbacks=[PrintingCallback()]
+    )
+    # [{'accuracy': 0.20000000298023224, '_timestamp': 1630716913, '_time_this_iter_s': 0.0039408206939697266, '_training_iteration': 1},
+    #  {'accuracy': 0.10000000149011612, '_timestamp': 1630716913, '_time_this_iter_s': 0.0030548572540283203, '_training_iteration': 1}]
+    trainer.shutdown()
 
 Autofilled metrics
 ~~~~~~~~~~~~~~~~~~
@@ -303,6 +356,18 @@ The following ``Callback``\s are available and will write to a file within the
 1. ``JsonLoggerCallback``
 2. ``TBXLoggerCallback``
 
+You can also implement a logging callback with
+custom logic by subclassing ``SGDSingleFileLoggingCallback`` or
+``SGDSingleWorkerLoggingCallback``.
+
+Custom Callbacks
+~~~~~~~~~~~~~~~~~
+
+If the provided callbacks do not cover your desired integrations or use-cases,
+you may always implement a custom callback by subclassing ``Callback``. If
+the callback is general enough, please feel welcome to add it to the ``ray``
+repository.
+
 .. _sgd-checkpointing:
 
 Checkpointing
@@ -354,6 +419,16 @@ directory <sgd-logging>` of each run.
 
 
 .. note:: Persisting checkpoints to durable storage (e.g. S3) is not yet supported.
+
+Configuring checkpoints
++++++++++++++++++++++++
+
+For more configurability of checkpointing behavior (specifically saving
+checkpoints to disk), a ``CheckpointStrategy`` can be passed into
+``Trainer.run``.
+
+.. note:: Currently ``CheckpointStrategy`` only enables or disables disk
+   persistence altogether. Additional functionality coming soon!
 
 
 Loading checkpoints
@@ -412,6 +487,10 @@ RaySGD has built-in fault tolerance to recover from worker failures (i.e.
 down and new workers will be added in. The training function will be
 restarted, but progress from the previous execution can be resumed through
 checkpointing.
+
+.. note:: In order to retain progress when recovery, your training function
+   **must** implement logic for both saving *and* loading :ref:`checkpoints
+   <sgd-checkpointing>`.
 
 The number of retries is configurable through the ``max_retries`` argument of
 the ``Trainer`` constructor.
@@ -525,36 +604,6 @@ A couple caveats:
 
     analysis = tune.run(trainable, config={
         "lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)}, num_samples=12)
-
-Distributed metrics (for Pytorch)
----------------------------------
-
-In real applications, you may want to calculate optimization metrics besides
-accuracy and loss: recall, precision, Fbeta, etc.
-
-RaySGD natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
-
-Here is an example:
-
-.. code-block:: python
-
-    import torch
-    import torchmetrics
-    from ray.util.sgd.v2 import Trainer
-
-    def train_func(config):
-        preds = torch.randn(10, 5).softmax(dim=-1)
-        target = torch.randint(5, (10,))
-        # In a real use-case this would be passed into sgd.report()
-        # and processed with a Callback.
-        return torchmetrics.functional.accuracy(preds, target)
-
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    print(trainer.run(train_func))
-    # [tensor(0.3000), tensor(0.3000)]
-    trainer.shutdown()
-
 ..
     Advanced APIs
     -------------
