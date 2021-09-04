@@ -515,14 +515,15 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env as runtime_env
+                import ray._private.runtime_env.working_dir as working_dir_pkg
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
-                                                      tmp_dir)
-                    runtime_env.rewrite_runtime_env_uris(job_config)
-                    runtime_env.upload_runtime_env_package_if_needed(
+                    (old_dir,
+                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
+                                                 tmp_dir)
+                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
+                    working_dir_pkg.upload_runtime_env_package_if_needed(
                         job_config)
-                    runtime_env.PKG_DIR = old_dir
+                    working_dir_pkg.PKG_DIR = old_dir
 
                 serialized_job_config = pickle.dumps(job_config)
 
