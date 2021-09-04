@@ -402,7 +402,7 @@ def _tracing_actor_method_invocation(method):
             **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled() or self.__ray_metadata__.is_cross_language:
+        if not is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = (self._actor_ref()
@@ -454,7 +454,7 @@ def _inject_tracing_into_class(_cls):
             with use_context(DictPropagator.extract(
                     _ray_trace_ctx)), tracer.start_as_current_span(
                         _actor_span_consumer_name(self.__class__.__name__,
-                                                    method),
+                                                  method),
                         kind=_opentelemetry.trace.SpanKind.CONSUMER,
                         attributes=_actor_hydrate_span_args(
                             self.__class__.__name__, method),
@@ -485,7 +485,7 @@ def _inject_tracing_into_class(_cls):
             with use_context(DictPropagator.extract(
                     _ray_trace_ctx)), tracer.start_as_current_span(
                         _actor_span_consumer_name(self.__class__.__name__,
-                                                    method.__name__),
+                                                  method.__name__),
                         kind=_opentelemetry.trace.SpanKind.CONSUMER,
                         attributes=_actor_hydrate_span_args(
                             self.__class__.__name__, method.__name__),
