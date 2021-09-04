@@ -113,3 +113,9 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.DONES], [False, False])
         check(batch[SampleBatch.REWARDS], [10.0 + gamma * 100.0, 100.0])
         check(batch[SampleBatch.NEXT_OBS], [2, 2])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -15,4 +15,9 @@ cartpole-apex-dqn:
         # Works for both torch and tf.
         framework: tf
         num_workers: 3
-        num_gpus: 0
+        optimizer:
+            num_replay_buffer_shards: 1
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true
