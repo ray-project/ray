@@ -271,6 +271,8 @@ class Workflow:
     def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
 
+        If the workflow with the given id already exists, it will be resumed.
+
         Examples:
             >>> @workflow.step
             ... def book_flight(origin: str, dest: str) -> Flight:
