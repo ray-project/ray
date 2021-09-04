@@ -45,6 +45,9 @@ class AssertNumEvalEpisodesCallback(DefaultCallbacks):
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
         if "evaluation" in result:
             hist_stats = result["evaluation"]["hist_stats"]
+            # Compare number of entries in episode_lengths (this is the
+            # number of episodes actually run) with desired number of
+            # episodes from the config.
             assert len(hist_stats["episode_lengths"]) == \
                 trainer.config["evaluation_num_episodes"]
             print("Number of evaluation episodes is exactly "
