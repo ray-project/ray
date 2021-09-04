@@ -241,16 +241,9 @@ def apex_execution_plan(workers: WorkerSet,
         selected_workers=selected_workers).for_each(add_apex_metrics)
 
 
-def apex_validate_config(config):
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
-    validate_config(config)
-
-
 ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
-    validate_config=apex_validate_config,
     execution_plan=apex_execution_plan,
     mixins=[OverrideDefaultResourceRequest],
 )

@@ -5,7 +5,7 @@ import queue
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 
-    This is for use with AsyncSamplesOptimizer.
+    This class is used for async sampling algorithms.
     """
 
     def __init__(self,

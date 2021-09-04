@@ -45,7 +45,7 @@ class MultiGPULearnerThread(LearnerThread):
             train_batch_size (int): Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
             num_multi_gpu_tower_stacks (int): Number of buffers to parallelly
-                load data into on one device. Each buffer is of size of
+                load data into on one device. Each buffer is of size
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
             minibatch_buffer_size (int): Max number of train batches to store
@@ -60,6 +60,10 @@ class MultiGPULearnerThread(LearnerThread):
         LearnerThread.__init__(self, local_worker, minibatch_buffer_size,
                                num_sgd_iter, learner_queue_size,
                                learner_queue_timeout)
+        # Add timer for easuring multi-GPU tower loading times
+        # (with batch data).
+        self.load_wait_timer = TimerStat()
+
         self.train_batch_size = train_batch_size
 
         # TODO: (sven) Allow multi-GPU to work for multi-agent as well.
