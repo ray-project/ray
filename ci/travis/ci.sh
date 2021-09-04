@@ -305,7 +305,7 @@ _bazel_build_before_install() {
   elif [ "${RAY_DEBUG_BUILD}" = "tsan" ]; then
     bazel build --config tsan "${target}"
   elif [ "${RAY_DEBUG_BUILD}" = "ubsan" ]; then
-    bazel build --config ubsan "${target}"
+    bazel build --config ubsan-build "${target}"
   else
     echo "Invalid config given"
     exit 1
@@ -345,8 +345,12 @@ build_wheels() {
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
-        -e "CC=${CC:-}"
       )
+
+      if [ -n "${CC:-}" ];
+      then
+        MOUNT_BAZEL_CACHE+=( "-e" "CC=${CC:-}" )
+      fi
 
 
       if [ -z "${BUILDKITE-}" ]; then

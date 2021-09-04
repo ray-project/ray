@@ -157,9 +157,16 @@ build:debug --strip="never"
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
 build:ubsan --copt -fno-sanitize-recover=all
-# https://github.com/bazelbuild/bazel/issues/11122
-build:ubsan --copt -fno-sanitize=vptr,function
-build:ubsan --linkopt -fsanitize-link-c++-runtime
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -fno-sanitize-recover=all
+
+build:ubsan-build --strip=never
+build:ubsan-build --copt -fsanitize=undefined
+build:ubsan-build --copt -fno-sanitize-recover=all
+# https://github.com/bazelbuild/bazel/issues/11122
+build:ubsan-build --copt -fno-sanitize=vptr,function
+build:ubsan-build --linkopt -fsanitize-link-c++-runtime
+build:ubsan-build --copt -g
+build:ubsan-build --linkopt -fsanitize=undefined
+build:ubsan-build --linkopt -fno-sanitize-recover=all
