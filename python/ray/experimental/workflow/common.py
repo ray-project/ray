@@ -192,7 +192,7 @@ class Workflow:
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
-            raise ValueError("Workflow should have one return value.")
+            raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs
         if self._data.inputs is None:
