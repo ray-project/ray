@@ -1307,8 +1307,8 @@ cc_test(
     srcs = [
         "src/ray/rpc/test/grpc_server_client_test.cc",
     ],
-    tags = ["team:core"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
