@@ -5,6 +5,7 @@ import grpc
 import logging
 from itertools import chain
 import json
+import os
 import socket
 import sys
 from threading import Lock, Thread, RLock
@@ -15,11 +16,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
+from ray._raylet import connect_to_gcs
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
+import ray._private.runtime_env.working_dir as working_dir_pkg
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -58,6 +62,10 @@ class SpecificServer:
     process_handle_future: futures.Future
     channel: "grpc._channel.Channel"
 
+    def is_ready(self) -> bool:
+        """Check if the server is ready or not (doesn't block)."""
+        return self.process_handle_future.done()
+
     def wait_ready(self, timeout: Optional[float] = None) -> None:
         """
         Wait for the server to actually start up.
@@ -88,7 +96,7 @@ class SpecificServer:
 
     def set_result(self, proc: Optional[ProcessInfo]) -> None:
         """Set the result of the internal future if it is currently unset."""
-        if not self.process_handle_future.done():
+        if not self.is_ready():
             self.process_handle_future.set_result(proc)
 
 
@@ -204,10 +212,29 @@ class ProxyManager():
         specific_server = self._get_server_for_client(client_id)
         assert specific_server, f"Server has not been created for: {client_id}"
 
-        serialized_runtime_env = job_config.get_serialized_runtime_env()
-
         output, error = self.node.get_log_file_handles(
             f"ray_client_server_{specific_server.port}", unique=True)
+
+        # Set up the working_dir for the server.
+        # TODO(edoakes): this should go be unified with the worker setup code
+        # by going through the runtime_env agent.
+        uris = job_config.get_runtime_env_uris() if job_config else []
+        if uris:
+            # Download and set up the working_dir locally.
+            working_dir = working_dir_pkg.ensure_runtime_env_setup(uris)
+
+            # Set PYTHONPATH in the environment variables so the working_dir
+            # is included in the module search path.
+            runtime_env = job_config.runtime_env
+            env_vars = runtime_env.get("env_vars", None) or {}
+            python_path = working_dir
+            if "PYTHONPATH" in env_vars:
+                python_path += (os.pathsep + runtime_env["PYTHONPATH"])
+            env_vars["PYTHONPATH"] = python_path
+            runtime_env["env_vars"] = env_vars
+            job_config.set_runtime_env(runtime_env)
+
+        serialized_runtime_env = job_config.get_serialized_runtime_env()
 
         proc = start_ray_client_server(
             self.redis_address,
@@ -251,6 +278,13 @@ class ProxyManager():
             if client is None:
                 logger.error(f"Unable to find channel for client: {client_id}")
             return client
+
+    def has_channel(self, client_id: str) -> bool:
+        server = self._get_server_for_client(client_id)
+        if server is None:
+            return False
+
+        return server.is_ready()
 
     def get_channel(
             self,
@@ -319,28 +353,96 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception:
             logger.exception(f"Proxying call to {method} failed!")
 
+    def _has_channel_for_request(self, context):
+        client_id = _get_client_id_from_context(context)
+        return self.proxy_manager.has_channel(client_id)
+
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
         return self._call_inner_function(request, context, "Init")
 
-    def PrepRuntimeEnv(self, request,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        return self._call_inner_function(request, context, "PrepRuntimeEnv")
-
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
-        return self._call_inner_function(request, context, "KVPut")
+        """Proxies internal_kv.put.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "KVPut")
+
+        with disable_client_hook():
+            already_exists = ray.experimental.internal_kv._internal_kv_put(
+                request.key, request.value, overwrite=request.overwrite)
+        return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
-        return self._call_inner_function(request, context, "KVGet")
+        """Proxies internal_kv.get.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "KVGet")
+
+        with disable_client_hook():
+            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        return ray_client_pb2.KVGetResponse(value=value)
 
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
-        return self._call_inner_function(request, context, "KVGet")
+        """Proxies internal_kv.delete.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "KVGet")
+
+        with disable_client_hook():
+            ray.experimental.internal_kv._internal_kv_del(request.key)
+        return ray_client_pb2.KVDelResponse()
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
-        return self._call_inner_function(request, context, "KVList")
+        """Proxies internal_kv.list.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "KVList")
+
+        with disable_client_hook():
+            keys = ray.experimental.internal_kv._internal_kv_list(
+                request.prefix)
+        return ray_client_pb2.KVListResponse(keys=keys)
 
     def KVExists(self, request,
                  context=None) -> ray_client_pb2.KVExistsResponse:
-        return self._call_inner_function(request, context, "KVExists")
+        """Proxies internal_kv.exists.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "KVExists")
+
+        with disable_client_hook():
+            exists = ray.experimental.internal_kv._internal_kv_exists(
+                request.key)
+        return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ListNamedActors(self, request, context=None
                         ) -> ray_client_pb2.ClientListNamedActorsResponse:
@@ -392,7 +494,8 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
         job_config = pickle.loads(req.job_config)
     new_job_config = ray_client_server_env_prep(job_config)
     modified_init_req = ray_client_pb2.InitRequest(
-        job_config=pickle.dumps(new_job_config))
+        job_config=pickle.dumps(new_job_config),
+        ray_init_kwargs=init_request.init.ray_init_kwargs)
 
     init_request.init.CopyFrom(modified_init_req)
     return (init_request, new_job_config)
@@ -442,8 +545,10 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         f"Server startup failed for client: {client_id}, "
                         f"using JobConfig: {job_config}!")
                     raise RuntimeError(
-                        "Starting up Server Failed! Check "
-                        "`ray_client_server_[port].err` on the cluster.")
+                        "Starting Ray client server failed. This is most "
+                        "likely because the runtime_env failed to be "
+                        "installed. See ray_client_server_[port].err on the "
+                        "head node of the cluster for the relevant logs.")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")
@@ -512,10 +617,19 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(connection_str: str,
-                  redis_address: str,
+                  redis_address: Optional[str],
                   *,
                   redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None):
+    # Initialize internal KV to be used to upload and download working_dir
+    # before calling ray.init within the RayletServicers.
+    # NOTE(edoakes): redis_address and redis_password should only be None in
+    # tests.
+    if redis_address is not None and redis_password is not None:
+        ip, port = redis_address.split(":")
+        gcs_client = connect_to_gcs(ip, int(port), redis_password)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)

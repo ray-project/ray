@@ -125,11 +125,12 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, nullptr, std::vector<ObjectID>()));
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{});
+                                                           ray::rpc::Address{},
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -240,6 +241,20 @@ void AbstractRayRuntime::ExitActor() {
     throw std::logic_error("This shouldn't be called on a non-actor worker.");
   }
   throw RayIntentionalSystemExitException("SystemExit");
+}
+
+ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  return task_submitter_->CreatePlacementGroup(create_options);
+}
+
+void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
+  return task_submitter_->RemovePlacementGroup(group_id);
+}
+
+bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
+                                                 int timeout_seconds) {
+  return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 
 }  // namespace internal

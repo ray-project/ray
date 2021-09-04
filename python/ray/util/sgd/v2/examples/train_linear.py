@@ -3,8 +3,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer, TorchConfig
-from ray.util.sgd.v2.callbacks import JsonLoggerCallback
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler
 
@@ -80,6 +81,7 @@ def train_func(config):
     for _ in range(epochs):
         train(train_loader, model, loss_fn, optimizer)
         result = validate(validation_loader, model, loss_fn)
+        sgd.report(**result)
         results.append(result)
 
     return results
@@ -90,7 +92,10 @@ def train_linear(num_workers=1):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
     trainer.start()
     results = trainer.run(
-        train_func, config, callbacks=[JsonLoggerCallback("./sgd_results")])
+        train_func,
+        config,
+        callbacks=[JsonLoggerCallback(),
+                   TBXLoggerCallback()])
     trainer.shutdown()
 
     print(results)
@@ -108,7 +113,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=1,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--smoke-test",

@@ -1,14 +1,19 @@
 import logging
+import os
 from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
+from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +26,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
 
-    Current subclasses: JSONDatasource, CSVDatasource
+    Current subclasses:
+        JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
     def prepare_read(
@@ -33,11 +39,12 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         import pyarrow as pa
         import numpy as np
 
-        paths, file_infos, filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem)
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, file_infos = _expand_paths(paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
 
         read_file = self._read_file
@@ -98,6 +105,149 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_files().")
 
+    def do_write(self,
+                 blocks: List[ObjectRef[Block]],
+                 metadata: List[BlockMetadata],
+                 path: str,
+                 dataset_uuid: str,
+                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 **write_args) -> List[ObjectRef[WriteResult]]:
+        """Creates and returns write tasks for a file-based datasource."""
+        path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        path = path[0]
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
+
+        _write_block_to_file = self._write_block
+
+        def write_block(write_path: str, block: Block):
+            logger.debug(f"Writing {write_path} file.")
+            fs = filesystem
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            with fs.open_output_stream(write_path) as f:
+                _write_block_to_file(f, BlockAccessor.for_block(block))
+
+        write_block = cached_remote_fn(write_block)
+
+        file_format = self._file_format()
+        write_tasks = []
+        for block_idx, block in enumerate(blocks):
+            write_path = os.path.join(
+                path, f"{dataset_uuid}_{block_idx:06}.{file_format}")
+            write_task = write_block.remote(write_path, block)
+            write_tasks.append(write_task)
+
+        return write_tasks
+
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
+        """Writes a block to a single file, passing all kwargs to the writer.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _write_files().")
+
+    def _file_format(self):
+        """Returns the file format string, to be used as the file extension
+        when writing files.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _file_format().")
+
+
+# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
+# _expand_paths.
+
+
+def _resolve_paths_and_filesystem(
+        paths: Union[str, List[str]],
+        filesystem: "pyarrow.fs.FileSystem" = None,
+) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
+    """
+    Resolves and normalizes all provided paths, infers a filesystem from the
+    paths and ensures that all paths use the same filesystem.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation that should be used for
+            reading these files. If None, a filesystem will be inferred. If not
+            None, the provided filesystem will still be validated against all
+            filesystems inferred from the provided paths to ensure
+            compatibility.
+    """
+    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
+        _resolve_filesystem_and_path
+    import fsspec
+
+    if isinstance(paths, str):
+        paths = [paths]
+    elif (not isinstance(paths, list)
+          or any(not isinstance(p, str) for p in paths)):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+    elif len(paths) == 0:
+        raise ValueError("Must provide at least one path.")
+
+    if filesystem and not isinstance(filesystem, FileSystem):
+        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
+            raise TypeError(f"The filesystem passed must either conform to "
+                            f"pyarrow.fs.FileSystem, or "
+                            f"fsspec.spec.AbstractFileSystem. The provided "
+                            f"filesystem was: {filesystem}")
+        filesystem = PyFileSystem(FSSpecHandler(filesystem))
+
+    resolved_paths = []
+    for path in paths:
+        if filesystem is not None:
+            # If we provide a filesystem, _resolve_filesystem_and_path will not
+            # slice off the protocol from the provided URI/path when resolved.
+            path = _unwrap_protocol(path)
+        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+            path, filesystem)
+        if filesystem is None:
+            filesystem = resolved_filesystem
+        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_paths.append(resolved_path)
+
+    return resolved_paths, filesystem
+
+
+def _expand_paths(paths: Union[str, List[str]],
+                  filesystem: "pyarrow.fs.FileSystem"):
+    """
+    Expands all provided paths into concrete file paths by walking directories.
+    Also returns a sidecar of file infos.
+
+    This should be used on the output of _resolve_paths_and_filesystem.
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories. These paths
+            should be properly resolved, e.g. the paths returned from
+            _resolve_paths_and_filesystem.
+        filesystem: The filesystem implementation that should be used for
+            reading these files.
+    """
+    from pyarrow.fs import FileType
+    expanded_paths = []
+    file_infos = []
+    for path in paths:
+        file_info = filesystem.get_file_info(path)
+        if file_info.type == FileType.Directory:
+            paths, file_infos_ = _expand_directory(path, filesystem)
+            expanded_paths.extend(paths)
+            file_infos.extend(file_infos_)
+        elif file_info.type == FileType.File:
+            expanded_paths.append(path)
+            file_infos.append(file_info)
+        else:
+            raise FileNotFoundError(path)
+    return expanded_paths, file_infos
+
 
 def _expand_directory(path: str,
                       filesystem: "pyarrow.fs.FileSystem",
@@ -133,78 +283,6 @@ def _expand_directory(path: str,
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
-
-
-# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem.
-
-
-def _resolve_paths_and_filesystem(
-        paths: Union[str, List[str]],
-        filesystem: "pyarrow.fs.FileSystem" = None
-) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
-    """
-    Resolves and normalizes all provided paths, infers a filesystem from the
-    paths and ensures that all paths use the same filesystem, and expands all
-    directory paths to the underlying file paths.
-
-    Args:
-        paths: A single file/directory path or a list of file/directory paths.
-            A list of paths can contain both files and directories.
-        filesystem: The filesystem implementation that should be used for
-            reading these files. If None, a filesystem will be inferred. If not
-            None, the provided filesystem will still be validated against all
-            filesystems inferred from the provided paths to ensure
-            compatibility.
-    """
-    from pyarrow.fs import FileSystem, FileType, \
-        PyFileSystem, FSSpecHandler, \
-        _resolve_filesystem_and_path
-    import fsspec
-
-    if isinstance(paths, str):
-        paths = [paths]
-    elif (not isinstance(paths, list)
-          or any(not isinstance(p, str) for p in paths)):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
-
-    if filesystem and not isinstance(filesystem, FileSystem):
-        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(f"The filesystem passed must either conform to "
-                            f"pyarrow.fs.FileSystem, or "
-                            f"fsspec.spec.AbstractFileSystem. The provided "
-                            f"filesystem was: {filesystem}")
-        filesystem = PyFileSystem(FSSpecHandler(filesystem))
-
-    resolved_paths = []
-    for path in paths:
-        if filesystem is not None:
-            # If we provide a filesystem, _resolve_filesystem_and_path will not
-            # slice off the protocol from the provided URI/path when resolved.
-            path = _unwrap_protocol(path)
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
-        if filesystem is None:
-            filesystem = resolved_filesystem
-        resolved_path = filesystem.normalize_path(resolved_path)
-        resolved_paths.append(resolved_path)
-
-    expanded_paths = []
-    file_infos = []
-    for path in resolved_paths:
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            paths, file_infos_ = _expand_directory(path, filesystem)
-            expanded_paths.extend(paths)
-            file_infos.extend(file_infos_)
-        elif file_info.type == FileType.File:
-            expanded_paths.append(path)
-            file_infos.append(file_info)
-        else:
-            raise FileNotFoundError(path)
-    return expanded_paths, file_infos, filesystem
 
 
 def _unwrap_protocol(path):

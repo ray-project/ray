@@ -9,7 +9,8 @@ from ray.experimental.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
-from ray.experimental.workflow.common import WorkflowStatus
+from ray.experimental.workflow.common import (WorkflowStatus,
+                                              ensure_ray_initialized)
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
 
@@ -97,6 +98,7 @@ def step(*args, **kwargs):
 
 class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
+
     The class that is based on must have the "__getstate__" and
      "__setstate__" method.
 
@@ -152,6 +154,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
     Returns:
         A virtual actor.
     """
+    ensure_ray_initialized()
     return virtual_actor_class.get_actor(actor_id,
                                          storage_base.get_global_storage())
 
@@ -165,7 +168,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
     Examples:
         >>> trip = start_trip.step()
-        >>> res1 = trip.async_run(workflow_id="trip1")
+        >>> res1 = trip.run_async(workflow_id="trip1")
         >>> res2 = workflow.resume("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
 
@@ -175,26 +178,33 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
+    ensure_ray_initialized()
     return execution.resume(workflow_id)
 
 
-def get_output(workflow_id: str) -> ray.ObjectRef:
+def get_output(workflow_id: str, *,
+               name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
-        workflow_id: The ID of the running workflow job.
+        workflow_id(str): The ID of the running workflow job.
+        name(Optional[str]): If set, fetch the specific step instead of
+            the output of the workflow.
 
     Examples:
-        >>> trip = start_trip.step()
-        >>> res1 = trip.async_run(workflow_id="trip1")
+        >>> trip = start_trip.options(name="trip").step()
+        >>> res1 = trip.run_async(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
+        >>> step_output = workflow.get_output("trip1", "trip")
+        >>> assert ray.get(step_output) == ray.get(res1)
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    return execution.get_output(workflow_id)
+    ensure_ray_initialized()
+    return execution.get_output(workflow_id, name)
 
 
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
@@ -209,7 +219,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
 
     Examples:
         >>> workflow_step = long_running_job.step()
-        >>> wf = workflow_step.async_run(workflow_id="long_running_job")
+        >>> wf = workflow_step.run_async(workflow_id="long_running_job")
         >>> jobs = workflow.list_all()
         >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ]
         >>> ray.get(wf)
@@ -221,6 +231,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     Returns:
         A list of tuple with workflow id and workflow status
     """
+    ensure_ray_initialized()
     if isinstance(status_filter, str):
         status_filter = set({WorkflowStatus(status_filter)})
     elif isinstance(status_filter, WorkflowStatus):
@@ -251,7 +262,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
 
     Examples:
         >>> workflow_step = failed_job.step()
-        >>> output = workflow_step.async_run(workflow_id="failed_job")
+        >>> output = workflow_step.run_async(workflow_id="failed_job")
         >>> try:
         >>>     ray.get(output)
         >>> except Exception:
@@ -264,6 +275,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
+    ensure_ray_initialized()
     return execution.resume_all(include_failed)
 
 
@@ -281,6 +293,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Returns:
         The status of that workflow
     """
+    ensure_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
@@ -294,13 +307,14 @@ def cancel(workflow_id: str) -> None:
 
     Examples:
         >>> workflow_step = some_job.step()
-        >>> output = workflow_step.async_run(workflow_id="some_job")
+        >>> output = workflow_step.run_async(workflow_id="some_job")
         >>> workflow.cancel(workflow_id="some_job")
         >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
 
     Returns:
         None
     """
+    ensure_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)

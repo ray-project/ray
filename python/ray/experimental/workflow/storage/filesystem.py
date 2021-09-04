@@ -128,7 +128,7 @@ class FilesystemStorageImpl(Storage):
                 raise ValueError(f"storage path {workflow_root_dir} must be"
                                  " a directory.")
         else:
-            self._workflow_root_dir.mkdir()
+            self._workflow_root_dir.mkdir(parents=True)
 
     def make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([str(self._workflow_root_dir)], names))

@@ -40,6 +40,7 @@
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
 
 namespace ray {
@@ -104,7 +105,9 @@ class DefaultStdErrLogger final {
 
 class SpdLogMessage final {
  public:
-  explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
+  explicit SpdLogMessage(const char *file, int line, int loglevel,
+                         std::shared_ptr<std::ostringstream> expose_osstream)
+      : loglevel_(loglevel), expose_osstream_(expose_osstream) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
 
@@ -117,13 +120,13 @@ class SpdLogMessage final {
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
       stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
+    if (expose_osstream_) {
+      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
+    }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
     logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
                 str_.str());
     logger->flush();
-    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      std::_Exit(EXIT_FAILURE);
-    }
   }
 
   ~SpdLogMessage() { Flush(); }
@@ -136,6 +139,7 @@ class SpdLogMessage final {
  private:
   std::ostringstream str_;
   int loglevel_;
+  std::shared_ptr<std::ostringstream> expose_osstream_;
 };
 
 typedef ray::SpdLogMessage LoggingProvider;
@@ -161,6 +165,8 @@ static int GetMappedSeverity(RayLogLevel severity) {
     return spdlog::level::off;
   }
 }
+
+std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
@@ -335,11 +341,24 @@ std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
 
 std::string RayLog::GetLoggerName() { return logger_name_; }
 
+void RayLog::AddFatalLogCallbacks(
+    const std::vector<FatalLogCallback> &expose_log_callbacks) {
+  fatal_log_callbacks_.insert(fatal_log_callbacks_.end(), expose_log_callbacks.begin(),
+                              expose_log_callbacks.end());
+}
+
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
-    : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
+    : logging_provider_(nullptr),
+      is_enabled_(severity >= severity_threshold_),
+      severity_(severity),
+      is_fatal_(severity == RayLogLevel::FATAL) {
+  if (is_fatal_) {
+    expose_osstream_ = std::make_shared<std::ostringstream>();
+    *expose_osstream_ << file_name << ":" << line_number << ":";
+  }
   if (is_enabled_) {
-    logging_provider_ =
-        new LoggingProvider(file_name, line_number, GetMappedSeverity(severity));
+    logging_provider_ = new LoggingProvider(
+        file_name, line_number, GetMappedSeverity(severity), expose_osstream_);
   }
 }
 
@@ -352,10 +371,22 @@ std::ostream &RayLog::Stream() {
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
 
+bool RayLog::IsFatal() const { return is_fatal_; }
+
+std::ostream &RayLog::ExposeStream() { return *expose_osstream_; }
+
 RayLog::~RayLog() {
   if (logging_provider_ != nullptr) {
     delete reinterpret_cast<LoggingProvider *>(logging_provider_);
     logging_provider_ = nullptr;
+  }
+  if (expose_osstream_ != nullptr) {
+    for (const auto &callback : fatal_log_callbacks_) {
+      callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+    }
+  }
+  if (severity_ == RayLogLevel::FATAL) {
+    std::_Exit(EXIT_FAILURE);
   }
 }
 

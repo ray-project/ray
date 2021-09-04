@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 
 # Import psutil after ray so the packaged version is used.
@@ -134,9 +134,9 @@ def push_error_to_driver_through_redis(redis_client,
     assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
-    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    error_data = gcs_utils.construct_error_message(job_id, error_type, message,
+                                                   time.time())
+    pubsub_msg = gcs_utils.PubSubMessage()
     pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
@@ -270,6 +270,9 @@ def set_cuda_visible_devices(gpu_ids):
     Args:
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
+
+    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+        return
 
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
@@ -1038,27 +1041,26 @@ def get_wheel_filename(
             `ray --version`.  Examples: "2.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38"
+            "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
             ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
-                                              " '37', or '38'")
+    assert py_version in ["36", "37", "38", "39"], py_version
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version in ["38", "39"] else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
 
-    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
-                                        " 'linux', or 'win32'")
+    assert sys_platform in os_strings, sys_platform
 
-    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
-                      f"cp{py_version}{'m' if py_version != '38' else ''}"
-                      f"-{os_strings[sys_platform]}.whl")
+    wheel_filename = (
+        f"ray-{ray_version}-cp{py_version}-"
+        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"-{os_strings[sys_platform]}.whl")
 
     return wheel_filename
 
@@ -1094,3 +1096,11 @@ def get_release_wheel_url(
     # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
     # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
     # 4_x86_64.whl
+
+
+def validate_namespace(namespace: str):
+    if not isinstance(namespace, str):
+        raise TypeError("namespace must be None or a string.")
+    elif namespace == "":
+        raise ValueError("\"\" is not a valid namespace. "
+                         "Pass None to not specify a namespace.")

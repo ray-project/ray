@@ -60,10 +60,38 @@ static std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53") {
   }
 }
 
-void ProcessHelper::StartRayNode(int redis_port, std::string redis_password) {
+std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resources) {
+  std::ostringstream oss;
+  oss << "{";
+  for (auto iter = resources.begin(); iter != resources.end();) {
+    oss << "\"" << iter->first << "\":" << iter->second;
+    ++iter;
+    if (iter != resources.end()) {
+      oss << ",";
+    }
+  }
+  oss << "}";
+  return oss.str();
+}
+
+void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
+                                 const int num_cpus, const int num_gpus,
+                                 const std::unordered_map<std::string, int> resources) {
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
                                     redis_password, "--include-dashboard", "false"});
+  if (num_cpus >= 0) {
+    cmdargs.emplace_back("--num-cpus");
+    cmdargs.emplace_back(std::to_string(num_cpus));
+  }
+  if (num_gpus >= 0) {
+    cmdargs.emplace_back("--num-gpus");
+    cmdargs.emplace_back(std::to_string(num_gpus));
+  }
+  if (!resources.empty()) {
+    cmdargs.emplace_back("--resources");
+    cmdargs.emplace_back(FormatResourcesArg(resources));
+  }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -83,7 +111,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
-                 ConfigInternal::Instance().redis_password);
+                 ConfigInternal::Instance().redis_password,
+                 ConfigInternal::Instance().num_cpus, ConfigInternal::Instance().num_gpus,
+                 ConfigInternal::Instance().resources);
   }
   if (redis_ip == "127.0.0.1") {
     redis_ip = GetNodeIpAddress();
@@ -163,7 +193,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
-  options.ref_counting_enabled = true;
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;

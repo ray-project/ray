@@ -10,21 +10,6 @@ import json
 import time
 import traceback
 
-try:
-    import aiohttp
-    import aiohttp.web
-    import aiohttp_cors
-    from aiohttp import hdrs
-
-    import aioredis  # noqa: F401
-except ImportError:
-    print("Not all Ray Dashboard dependencies were found. "
-          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-          "only be usable via `pip install 'ray[default]'`. Please "
-          "update your install command.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
-
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -36,6 +21,12 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -60,7 +51,6 @@ class DashboardAgent(object):
                  temp_dir=None,
                  session_dir=None,
                  runtime_env_dir=None,
-                 runtime_env_setup_hook=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
@@ -76,7 +66,6 @@ class DashboardAgent(object):
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
-        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -103,6 +92,8 @@ class DashboardAgent(object):
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
             f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -330,13 +321,6 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the resource directory used by runtime_env.")
-    parser.add_argument(
-        "--runtime-env-setup-hook",
-        required=True,
-        type=str,
-        default=None,
-        help="The module path to a Python function that"
-        "will be imported and run to set up the runtime env.")
 
     args = parser.parse_args()
     try:
@@ -367,7 +351,6 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
-            runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,

@@ -81,6 +81,7 @@ cdef class ObjectRef(BaseID):
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
+        c_string call_site_data
 
     cdef CObjectID native(self)
 
@@ -106,7 +107,8 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
-                            owner_address=*)
+                            owner_address=*,
+                            c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,

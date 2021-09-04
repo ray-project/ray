@@ -14,7 +14,8 @@ from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
-from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
+from ray._private.test_utils import (wait_for_condition, SignalActor,
+                                     fetch_prometheus)
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -55,10 +56,10 @@ _METRICS = [
     "ray_pending_actors",
     "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
-    "ray_async_pool_req_num",
-    "ray_async_pool_req_execution_time_ms",
-    "ray_async_pool_req_queue_time_ms",
-    "ray_async_pool_req_activate_num",
+    "ray_operation_count",
+    "ray_operation_run_time_ms",
+    "ray_operation_queue_time_ms",
+    "ray_operation_active_count",
 ]
 
 # This list of metrics should be kept in sync with

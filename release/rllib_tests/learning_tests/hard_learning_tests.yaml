@@ -1,0 +1,247 @@
+
+a2c-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: A2C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 7200
+    config:
+        rollout_fragment_length: 20
+        clip_rewards: True
+        num_workers: 5
+        num_envs_per_worker: 5
+        num_gpus: 1
+        lr_schedule: [
+            [0, 0.0007],
+            [20000000, 0.000000000001],
+        ]
+
+apex-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: APEX
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 20.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 7200
+    config:
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        n_step: 3
+        lr: .0001
+        adam_epsilon: .00015
+        hiddens: [512]
+        buffer_size: 1000000
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: 0.01
+        prioritized_replay_alpha: 0.5
+        final_prioritized_replay_beta: 1.0
+        prioritized_replay_beta_annealing_timesteps: 2000000
+        num_gpus: 1
+        num_workers: 8
+        num_envs_per_worker: 8
+        rollout_fragment_length: 20
+        train_batch_size: 512
+        target_network_update_freq: 50000
+        timesteps_per_iteration: 25000
+
+appo-pong-no-frameskip-v4:
+    env: PongNoFrameskip-v4
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 2000
+    config:
+        vtrace: True
+        use_kl_loss: False
+        rollout_fragment_length: 50
+        train_batch_size: 750
+        num_workers: 31
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_multi_gpu_tower_stacks: 1
+        num_envs_per_worker: 8
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+        num_gpus: 1
+        grad_clip: 10
+        model:
+          dim: 42
+
+ddpg-hopperbulletenv-v0:
+    env: HopperBulletEnv-v0
+    run: DDPG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 120.0
+        timesteps_total: 50000
+    stop:
+        time_total_s: 3600
+    config:
+        actor_hiddens: [256, 256]
+        critic_hiddens: [256, 256]
+        n_step: 3
+        model: {}
+        gamma: 0.99
+        env_config: {}
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 10000
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+        timesteps_per_iteration: 1000
+        target_network_update_freq: 0
+        tau: 0.001
+        buffer_size: 10000
+        prioritized_replay: True
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: false
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: true
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        rollout_fragment_length: 1
+        train_batch_size: 48
+        num_gpus: 1
+        num_workers: 0
+        num_gpus_per_worker: 0
+        worker_side_prioritization: false
+
+dqn-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: DQN
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 30.0
+        timesteps_total: 450000
+    stop:
+        time_total_s: 7200
+    config:
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        prioritized_replay: false
+        n_step: 1
+        target_network_update_freq: 8000
+        lr: .0000625
+        adam_epsilon: .00015
+        hiddens: [512]
+        learning_starts: 20000
+        buffer_size: 1000000
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: 0.01
+        prioritized_replay_alpha: 0.5
+        final_prioritized_replay_beta: 1.0
+        prioritized_replay_beta_annealing_timesteps: 2000000
+        num_gpus: 0.5
+        timesteps_per_iteration: 10000
+
+impala-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 300.0
+        timesteps_total: 6000000
+    stop:
+        time_total_s: 3600
+    config:
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        num_workers: 10
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
+        num_gpus: 1
+
+ppo-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: PPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 7200
+    config:
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: True
+        clip_param: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        train_batch_size: 5000
+        rollout_fragment_length: 100
+        sgd_minibatch_size: 500
+        num_sgd_iter: 10
+        num_workers: 10
+        num_envs_per_worker: 5
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+        model:
+            vf_share_layers: true
+        num_gpus: 1
+
+# Expect roughly 1000 reward after 1h on 1GPU
+sac-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: SAC
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 80000
+    stop:
+        time_total_s: 7200
+    config:
+        horizon: 1000
+        soft_horizon: false
+        Q_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256]
+        policy_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: true
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: true
+        train_batch_size: 256
+        target_network_update_freq: 1
+        timesteps_per_iteration: 1000
+        learning_starts: 10000
+        optimization:
+          actor_learning_rate: 0.0003
+          critic_learning_rate: 0.0003
+          entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        clip_actions: false
+        normalize_actions: true
+        evaluation_interval: 1
+        metrics_smoothing_episodes: 5

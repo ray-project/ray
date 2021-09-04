@@ -24,6 +24,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -32,6 +34,8 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/get_request_queue.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -46,8 +50,6 @@ enum class PlasmaError;
 }  // namespace flatbuf
 
 using flatbuf::PlasmaError;
-
-struct GetRequest;
 
 class PlasmaStore {
  public:
@@ -68,6 +70,42 @@ class PlasmaStore {
   /// Stop this store.
   void Stop();
 
+  /// Return true if the given object id has only one reference.
+  /// Only one reference means there's only a raylet that pins the object
+  /// so it is safe to spill the object.
+  /// NOTE: Avoid using this method outside object spilling context (e.g., unless you
+  /// absolutely know what's going on). This method won't work correctly if it is used
+  /// before the object is pinned by raylet for the first time.
+  bool IsObjectSpillable(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Return the plasma object bytes that are consumed by core workers.
+  int64_t GetConsumedBytes();
+
+  /// Get the available memory for new objects to be created. This includes
+  /// memory that is currently being used for created but unsealed objects.
+  void GetAvailableMemory(std::function<void(size_t)> callback) const
+      LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
+              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
+               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
+        << "Tracking for available memory in the plasma store has gone out of sync. "
+           "Please file a GitHub issue.";
+    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
+              object_lifecycle_mgr_.GetNumBytesUnsealed());
+    // We do not count unsealed objects as in use because these may have been
+    // created by the object manager.
+    int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
+                               object_lifecycle_mgr_.GetNumBytesUnsealed();
+    size_t available = 0;
+    if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
+      available = allocator_.GetFootprintLimit() - num_bytes_in_use;
+    }
+    callback(available);
+  }
+
+ private:
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
   ///
@@ -86,7 +124,7 @@ class PlasmaStore {
   PlasmaError CreateObject(const ray::ObjectInfo &object_info,
                            plasma::flatbuf::ObjectSource source,
                            const std::shared_ptr<Client> &client, bool fallback_allocator,
-                           PlasmaObject *result);
+                           PlasmaObject *result) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -95,7 +133,8 @@ class PlasmaStore {
   /// \param client The client who created the object. If this does not
   ///   match the creator of the object, then the abort will fail.
   /// \return 1 if the abort succeeds, else 0.
-  int AbortObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
+  int AbortObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Delete a specific object by object_id that have been created in the hash table.
   ///
@@ -104,12 +143,7 @@ class PlasmaStore {
   ///  - PlasmaError::OK, if the object was delete successfully.
   ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
   ///  - PlasmaError::ObjectInUse, if the object is in use.
-  PlasmaError DeleteObject(ObjectID &object_id);
-
-  /// Evict objects returned by the eviction policy.
-  ///
-  /// \param object_ids Object IDs of the objects to be evicted.
-  void EvictObjects(const std::vector<ObjectID> &object_ids);
+  PlasmaError DeleteObject(ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process a get request from a client. This method assumes that we will
   /// eventually have these objects sealed. If one of the objects has not yet
@@ -124,122 +158,70 @@ class PlasmaStore {
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
                          const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                         bool is_from_worker);
+                         bool is_from_worker) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Process queued requests to create an object.
+  void ProcessCreateRequests() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  void SealObjects(const std::vector<ObjectID> &object_ids);
-
-  /// Check if the plasma store contains an object:
-  ///
-  /// \param object_id Object ID that will be checked.
-  /// \return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
-  /// not
-  ObjectStatus ContainsObject(const ObjectID &object_id);
+  void SealObjects(const std::vector<ObjectID> &object_ids)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Record the fact that a particular client is no longer using an object.
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
+  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.
   ///
   /// \param error The error code from the acceptor.
-  void ConnectClient(const boost::system::error_code &error);
+  void ConnectClient(const boost::system::error_code &error)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Disconnect a client from the PlasmaStore.
   ///
   /// \param client The client that is disconnected.
-  void DisconnectClient(const std::shared_ptr<Client> &client);
+  void DisconnectClient(const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
-                        const std::vector<uint8_t> &message);
+                        const std::vector<uint8_t> &message) LOCKS_EXCLUDED(mutex_);
 
-  /// Return true if the given object id has only one reference.
-  /// Only one reference means there's only a raylet that pins the object
-  /// so it is safe to spill the object.
-  /// NOTE: Avoid using this method outside object spilling context (e.g., unless you
-  /// absolutely know what's going on). This method won't work correctly if it is used
-  /// before the object is pinned by raylet for the first time.
-  bool IsObjectSpillable(const ObjectID &object_id);
-
-  /// Return the plasma object bytes that are consumed by core workers.
-  int64_t GetConsumedBytes();
-
-  /// Process queued requests to create an object.
-  void ProcessCreateRequests();
-
-  /// Get the available memory for new objects to be created. This includes
-  /// memory that is currently being used for created but unsealed objects.
-  void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    RAY_CHECK((object_store_.GetNumBytesUnsealed() > 0 &&
-               object_store_.GetNumObjectsUnsealed() > 0) ||
-              (object_store_.GetNumBytesUnsealed() == 0 &&
-               object_store_.GetNumObjectsUnsealed() == 0))
-        << "Tracking for available memory in the plasma store has gone out of sync. "
-           "Please file a GitHub issue.";
-    RAY_CHECK(num_bytes_in_use_ >= object_store_.GetNumBytesUnsealed());
-    // We do not count unsealed objects as in use because these may have been
-    // created by the object manager.
-    int64_t num_bytes_in_use =
-        static_cast<int64_t>(num_bytes_in_use_ - object_store_.GetNumBytesUnsealed());
-    if (!RayConfig::instance().plasma_unlimited()) {
-      RAY_CHECK(allocator_.GetFootprintLimit() >= num_bytes_in_use);
-    }
-    size_t available = 0;
-    if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
-      available = allocator_.GetFootprintLimit() - num_bytes_in_use;
-    }
-    callback(available);
-  }
-
-  void PrintDebugDump() const;
-
-  // NOTE(swang): This will iterate through all objects in the
-  // object store, so it should be called sparingly.
-  std::string GetDebugDump() const;
-
- private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
                                         bool fallback_allocator, PlasmaObject *object,
-                                        bool *spilling_required);
+                                        bool *spilling_required)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
-                           const ObjectID &object_id, uint64_t req_id);
+                           const ObjectID &object_id, uint64_t req_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void AddToClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
-                            const std::shared_ptr<Client> &client);
+  void AddToClientObjectIds(const ObjectID &object_id,
+                            const std::shared_ptr<ClientInterface> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Remove a GetRequest and clean up the relevant data structures.
-  ///
-  /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  /// Remove all of the GetRequests for a given client.
-  ///
-  /// \param client The client whose GetRequests should be removed.
-  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
-
-  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
-
-  void UpdateObjectGetRequests(const ObjectID &object_id);
-
-  int RemoveFromClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
-                                const std::shared_ptr<Client> &client);
-
-  void EraseFromObjectTable(const ObjectID &object_id);
-
-  const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
-                                          plasma::flatbuf::ObjectSource source,
-                                          bool allow_fallback_allocation);
+  int RemoveFromClientObjectIds(const ObjectID &object_id,
+                                const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Start listening for clients.
   void DoAccept();
+
+  void PrintDebugDump() const LOCKS_EXCLUDED(mutex_);
+
+  std::string GetDebugDump() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+ private:
+  friend class GetRequestQueue;
 
   // A reference to the asio io context.
   instrumented_io_context &io_context_;
@@ -249,25 +231,17 @@ class PlasmaStore {
   boost::asio::basic_socket_acceptor<ray::local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   ray::local_stream_socket socket_;
+
+  /// This mutex is used in order to make plasma store threas-safe with raylet.
+  /// Raylet's local_object_manager needs to ping access plasma store's method in order to
+  /// figure out the correct view of the object store. recursive_mutex is used to avoid
+  /// deadlock while we keep the simplest possible change. NOTE(sang): Avoid adding more
+  /// interface that node manager or object manager can access the plasma store with this
+  /// mutex if it is not absolutely necessary.
+  mutable absl::Mutex mutex_;
+
   /// The allocator that allocates mmaped memory.
-  IAllocator &allocator_;
-  /// The object store stores created objects.
-  ObjectStore object_store_;
-  /// The state that is managed by the eviction policy.
-  EvictionPolicy eviction_policy_;
-  /// A hash table mapping object IDs to a vector of the get requests that are
-  /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_;
-
-  std::unordered_set<ObjectID> deletion_cache_;
-
-  /// A callback to asynchronously spill objects when space is needed. The
-  /// callback returns the amount of space still needed after the spilling is
-  /// complete.
-  /// NOTE: This function should guarantee the thread-safety because the callback is
-  /// shared with the main raylet thread.
-  const ray::SpillObjectsCallback spill_objects_callback_;
+  IAllocator &allocator_ GUARDED_BY(mutex_);
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is
@@ -279,6 +253,8 @@ class PlasmaStore {
   /// shared with the main raylet thread.
   const ray::DeleteObjectCallback delete_object_callback_;
 
+  ObjectLifecycleManager object_lifecycle_mgr_ GUARDED_BY(mutex_);
+
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
@@ -286,42 +262,25 @@ class PlasmaStore {
   /// The percentage of object store memory used above which spilling is triggered.
   const float object_spilling_threshold_;
 
-  /// The amount of time to wait between logging space usage debug messages.
-  const uint64_t usage_log_interval_ns_;
-
-  /// The last time space usage was logged.
-  uint64_t last_usage_log_ns_ = 0;
-
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be
   /// retried when this timer expires.
-  std::shared_ptr<boost::asio::deadline_timer> create_timer_;
+  std::shared_ptr<boost::asio::deadline_timer> create_timer_ GUARDED_BY(mutex_);
 
   /// Timer for printing debug information.
-  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_;
+  mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_ GUARDED_BY(mutex_);
 
   /// Queue of object creation requests.
-  CreateRequestQueue create_request_queue_;
-
-  /// This mutex is used in order to make plasma store threas-safe with raylet.
-  /// Raylet's local_object_manager needs to ping access plasma store's method in order to
-  /// figure out the correct view of the object store. recursive_mutex is used to avoid
-  /// deadlock while we keep the simplest possible change. NOTE(sang): Avoid adding more
-  /// interface that node manager or object manager can access the plasma store with this
-  /// mutex if it is not absolutely necessary.
-  std::recursive_mutex mutex_;
-
-  /// Total number of bytes allocated to objects that are in use by any client.
-  /// This includes objects that are being created and objects that a client
-  /// called get on.
-  int64_t num_bytes_in_use_ = 0;
+  CreateRequestQueue create_request_queue_ GUARDED_BY(mutex_);
 
   /// Total plasma object bytes that are consumed by core workers.
-  int64_t total_consumed_bytes_ = 0;
+  std::atomic<int64_t> total_consumed_bytes_;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
-  bool dumped_on_oom_ = false;
+  bool dumped_on_oom_ GUARDED_BY(mutex_) = false;
+
+  GetRequestQueue get_request_queue_ GUARDED_BY(mutex_);
 };
 
 }  // namespace plasma

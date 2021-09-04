@@ -77,7 +77,7 @@ DEFAULT_CONFIG = with_common_config({
         # The initial noise scaling factor.
         "initial_scale": 1.0,
         # The final noise scaling factor.
-        "final_scale": 1.0,
+        "final_scale": 0.02,
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
@@ -91,6 +91,14 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": True,
     # Alpha parameter for prioritized replay buffer.
@@ -169,8 +177,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
@@ -186,6 +192,16 @@ def validate_config(config: TrainerConfigDict) -> None:
                 "ParameterNoise Exploration requires `batch_mode` to be "
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
+
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

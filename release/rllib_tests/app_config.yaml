@@ -1,18 +1,10 @@
-base_image: "anyscale/ray-ml:1.3.0-gpu"
+base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
 env_vars: {}
-debian_packages:
-  - libglib2.0-0
-  - unrar
-  - curl
-  - unzip
-  - gcc
-  - python3-dev
+debian_packages: []
 
 python:
-  pip_packages:
-    - gym[atari]
-    - atari_py
-    - pybullet
+  # These dependencies should be handled by requirements_rllib.txt and requirements_ml_docker.txt
+  pip_packages: []
   conda_packages: []
 
 post_build_cmds:
@@ -20,7 +12,3 @@ post_build_cmds:
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy==1.19.5 || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  # Install Atari ROMs.
-  - wget http://www.atarimania.com/roms/Roms.rar
-  - unrar x Roms.rar
-  - python -m atari_py.import_roms .

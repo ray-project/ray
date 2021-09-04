@@ -29,6 +29,7 @@ struct HandlerStats {
 
   // Execution stats.
   int64_t cum_execution_time = 0;
+  int64_t running_count = 0;
 };
 
 /// Count and queueing statistics over all asio handlers.
@@ -112,6 +113,15 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
   void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// A proxy post function that collects count, queueing, and execution statistics for
+  /// the given handler.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler. Defaults to UNKNOWN.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and
