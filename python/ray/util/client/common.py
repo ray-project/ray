@@ -3,6 +3,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray._private.utils import check_oversized_function
 
 import concurrent
 from dataclasses import dataclass
@@ -113,8 +114,15 @@ class ClientRemoteFunc(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                self._ref = ray.put(
-                    self._func, client_ref_id=self._client_side_ref.id)
+                self._ref = ray.worker._put_pickled(
+                    self._pickle(), client_ref_id=self._client_side_ref.id)
+
+    def _pickle(self):
+        data = ray.worker._dumps_from_client(self._func)
+        # Check pickled size before sending to server, which is more efficient
+        # and can be done synchronously inside remote() calls.
+        check_oversized_function(data, self._name, "function", None)
+        return data
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
@@ -161,8 +169,15 @@ class ClientActorClass(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                self._ref = ray.put(
-                    self.actor_cls, client_ref_id=self._client_side_ref.id)
+                self._ref = ray.worker._put_pickled(
+                    self._pickle(), client_ref_id=self._client_side_ref.id)
+
+    def _pickle(self):
+        data = ray.worker._dumps_from_client(self.actor_cls)
+        # Check pickled size before sending to server, which is more efficient
+        # and can be done synchronously inside remote() calls.
+        check_oversized_function(data, self._name, "actor", None)
+        return data
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor

@@ -259,7 +259,7 @@ class Worker:
             out = out[0]
         return out
 
-    def _put(self, val, *, client_ref_id: bytes = None):
+    def _put(self, val, client_ref_id: bytes):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -268,6 +268,9 @@ class Worker:
                 "do this, you can wrap the ObjectRef in a list and "
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
+        return self._put_pickled(data, client_ref_id)
+
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
@@ -610,6 +613,9 @@ class Worker:
     def _converted_key_exists(self, key: str) -> bool:
         """Check if a key UUID is present in the store of converted objects."""
         return key in self._converted
+
+    def _dumps_from_client(self, val) -> bytes:
+        return dumps_from_client(val, self._client_id)
 
 
 def make_client_id() -> str:

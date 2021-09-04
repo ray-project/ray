@@ -294,8 +294,8 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 
     ray_instance = ray.init(_redis_password="test")
     proxier.CHECK_PROCESS_INTERVAL_S = 1
-    # The timeout has likely been set to 1 earlier. Increase it to wait for
-    # channel to become ready.
+    # The timeout has likely been set to 1 in an earlier test. Increase timeout
+    # to wait for the channel to become ready.
     proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
     pm = proxier.ProxyManager(
@@ -340,7 +340,6 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
         if with_specific_server:
             pm.create_specific_server(client)
             assert pm.start_specific_server(client, JobConfig())
-            # pytest.set_trace()
             channel = pm.get_channel(client)
             assert channel, f"Specific server for {client} has shut down"
             grpc.channel_ready_future(channel).result(timeout=5)

@@ -288,7 +288,8 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     x1 = f.remote()
     del x1
     if client_test_enabled():
-        # Client mode does not wait for x1 or raise exception.
+        # In client mode, x1 may not have received the underlying exception
+        # when deleted, so no exception is raised.
         prev_num_exceptions = num_exceptions
     else:
         wait_for_condition(lambda: num_exceptions == 1)

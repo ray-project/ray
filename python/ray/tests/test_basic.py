@@ -652,11 +652,11 @@ def test_oversized_function(ray_start_shared_local_modes):
     def f():
         return len(bar)
 
-    with pytest.raises(ValueError):
-        ray.get(f.remote())
+    with pytest.raises(ValueError, match="The function f is too large"):
+        f.remote()
 
-    with pytest.raises(ValueError):
-        Actor.remote()._actor_id.id
+    with pytest.raises(ValueError, match="The actor Actor is too large"):
+        Actor.remote()
 
 
 def test_args_stars_after(ray_start_shared_local_modes):

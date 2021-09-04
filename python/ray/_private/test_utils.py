@@ -286,9 +286,7 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
 
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
-    print(f"dbg actor._actor_id {actor._actor_id}", flush=True)
     actor_id = actor._actor_id.hex()
-    print(f"dbg actor_id {actor_id}", flush=True)
     current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
