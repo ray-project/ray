@@ -106,6 +106,7 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
+        self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -122,7 +123,7 @@ class Client:
 
     @property
     def root_url(self):
-        return ray.get(self._controller.get_root_url.remote())
+        return self._root_url
 
     def __del__(self):
         if not self._detached:
@@ -377,6 +378,10 @@ def start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
+            - root_url (str): The URL where the Deployment will be located at.
+              If no `root_url` is provided, Serve will check the environment
+              variable `RAY_SERVE_ROOT_URL` on the Ray cluster which is
+              serving the Deployment.
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
