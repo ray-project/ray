@@ -194,7 +194,7 @@ def get_output(workflow_id: str, *,
     """Get the output of a running workflow.
 
     Args:
-        workflow_id: The ID of the running workflow job.
+        workflow_id: The workflow to get the output of.
         name: If set, fetch the specific step instead of the output of the
             workflow.
 
@@ -218,12 +218,13 @@ def get_output(workflow_id: str, *,
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
         Union[WorkflowStatus, str]]]] = None
              ) -> List[Tuple[str, WorkflowStatus]]:
-    """List the workflow status. If status is given, it'll filter by that.
+    """List all workflows matching a given status filter.
 
     Args:
-        status: If given, only return workflow with that status. It can
-            be a set workflow status,
-            i.e., "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"
+        status: If given, only returns workflow with that status. This can
+            be a single status or set of statuses. The string form of the
+            status is also acceptable, i.e.,
+            "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE".
 
     Examples:
         >>> workflow_step = long_running_job.step()
@@ -263,11 +264,10 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
 def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
-    This usually is used after ray cluster shutdown to resume all tasks.
-
+    This can be used after cluster restart to resume all tasks.
 
     Args:
-        with_failed: Whether to include the failed workflow.
+        with_failed: Whether to resume FAILED workflows.
 
     Examples:
         >>> workflow_step = failed_job.step()
@@ -293,7 +293,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     """Get the status for a given workflow.
 
     Args:
-        workflow_id: The workflow id
+        workflow_id: The workflow to query.
 
     Examples:
         >>> workflow_step = trip.step()
@@ -314,7 +314,7 @@ def cancel(workflow_id: str) -> None:
     """Cancel a workflow.
 
     Args:
-        workflow_id: The workflow to cancel
+        workflow_id: The workflow to cancel.
 
     Examples:
         >>> workflow_step = some_job.step()
