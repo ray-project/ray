@@ -46,7 +46,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     batch[SampleBatch.NEXT_OBS] = np.concatenate(
         [
             batch[SampleBatch.OBS][n_step:],
-            np.tile(batch[SampleBatch.NEXT_OBS][-1], n_step)
+            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * n_step)
         ],
         axis=0)
     batch[SampleBatch.DONES] = np.concatenate(
