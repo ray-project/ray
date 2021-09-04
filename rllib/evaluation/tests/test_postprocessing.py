@@ -16,7 +16,7 @@ class TestPostprocessing(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_n_step(self):
+    def test_n_step_3(self):
         """Tests, whether n-step adjustments of trajectories work."""
         # n-step = 3
         gamma = 0.9
@@ -41,6 +41,8 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.REWARDS],
               [91.0, 171.0, 271.0, 271.0, 271.0, 190.0, 100.0])
 
+    def test_n_step_4(self):
+        """Tests, whether n-step adjustments of trajectories work."""
         # n-step = 4
         gamma = 0.99
         obs = np.arange(0, 7)
@@ -72,8 +74,14 @@ class TestPostprocessing(unittest.TestCase):
             discount_cumsum(np.array(rewards[6:]), gamma)[0],
         ])
 
+    def test_n_step_malformed_dones(self):
         # Test bad input (trajectory has dones in middle).
         # Re-use same batch, but change dones.
+        gamma = 1.0
+        obs = np.arange(0, 7)
+        actions = np.random.randint(-1, 3, size=(7, ))
+        rewards = [10.0, 0.0, 100.0, 50.0, 60.0, 10.0, 100.0]
+        next_obs = np.arange(1, 8)
         batch = SampleBatch({
             SampleBatch.OBS: obs,
             SampleBatch.ACTIONS: actions,
@@ -83,3 +91,25 @@ class TestPostprocessing(unittest.TestCase):
         })
         self.assertRaisesRegex(AssertionError, "Unexpected done in middle",
                                lambda: adjust_nstep(5, gamma, batch))
+
+    def test_n_step_very_short_trajectory(self):
+        """Tests, whether n-step also works for very small trajectories."""
+        gamma = 1.0
+        obs = np.arange(0, 2)
+        actions = np.random.randint(-100, 300, size=(2, ))
+        check_actions = actions.copy()
+        rewards = [10.0, 100.0]
+        next_obs = np.arange(1, 3)
+        batch = SampleBatch({
+            SampleBatch.OBS: obs,
+            SampleBatch.ACTIONS: actions,
+            SampleBatch.REWARDS: rewards,
+            SampleBatch.DONES: [False, False],
+            SampleBatch.NEXT_OBS: next_obs,
+        })
+        adjust_nstep(3, gamma, batch)
+        check(batch[SampleBatch.OBS], [0, 1])
+        check(batch[SampleBatch.ACTIONS], check_actions)
+        check(batch[SampleBatch.DONES], [False, False])
+        check(batch[SampleBatch.REWARDS], [10.0 + gamma * 100.0, 100.0])
+        check(batch[SampleBatch.NEXT_OBS], [2, 2])

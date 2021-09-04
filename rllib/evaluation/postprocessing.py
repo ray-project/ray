@@ -42,25 +42,26 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     assert not any(batch[SampleBatch.DONES][:-1]), \
         "Unexpected done in middle of trajectory!"
 
+    len_ = len(batch)
+
     # Shift NEXT_OBS and DONES.
     batch[SampleBatch.NEXT_OBS] = np.concatenate(
         [
             batch[SampleBatch.OBS][n_step:],
-            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * n_step)
+            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * min(n_step, len_))
         ],
         axis=0)
     batch[SampleBatch.DONES] = np.concatenate(
         [
             batch[SampleBatch.DONES][n_step - 1:],
-            np.tile(batch[SampleBatch.DONES][-1], n_step - 1)
+            np.tile(batch[SampleBatch.DONES][-1], min(n_step - 1, len_))
         ],
         axis=0)
 
     # Change rewards in place.
-    traj_length = len(batch)
-    for i in range(traj_length):
+    for i in range(len_):
         for j in range(1, n_step):
-            if i + j < traj_length:
+            if i + j < len_:
                 batch[SampleBatch.REWARDS][i] += \
                     gamma**j * batch[SampleBatch.REWARDS][i + j]
 
