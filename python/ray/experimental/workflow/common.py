@@ -301,6 +301,8 @@ class Workflow:
     def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
+        If the workflow with the given id already exists, it will be resumed.
+
         Examples:
             >>> @workflow.step
             ... def book_flight(origin: str, dest: str) -> Flight:
