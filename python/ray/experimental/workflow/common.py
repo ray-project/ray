@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import ray
 from ray import ObjectRef
+from ray.util.annotations import PublicAPI
 
 # Alias types
 StepID = str
@@ -46,6 +47,7 @@ class WorkflowRef:
         return hash(self.step_id)
 
 
+@PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
@@ -268,6 +270,7 @@ class Workflow:
             "This means they cannot be passed or returned from Ray "
             "remote, or stored in Ray objects.")
 
+    @PublicAPI(stability="beta")
     def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
 
@@ -298,6 +301,7 @@ class Workflow:
         """
         return ray.get(self.run_async(workflow_id))
 
+    @PublicAPI(stability="beta")
     def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 

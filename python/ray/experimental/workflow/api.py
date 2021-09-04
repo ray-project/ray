@@ -13,6 +13,7 @@ from ray.experimental.workflow.common import (WorkflowStatus,
                                               ensure_ray_initialized)
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.virtual_actor_class import (
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     """Initialize workflow.
 
@@ -67,6 +69,7 @@ def make_step_decorator(step_options: Dict[str, Any]):
     return decorator
 
 
+@PublicAPI(stability="beta")
 def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
 
@@ -96,6 +99,7 @@ def step(*args, **kwargs):
     return make_step_decorator(step_options)
 
 
+@PublicAPI(stability="beta")
 class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
 
@@ -145,6 +149,7 @@ class _VirtualActorDecorator:
 virtual_actor = _VirtualActorDecorator()
 
 
+@PublicAPI(stability="beta")
 def get_actor(actor_id: str) -> "VirtualActor":
     """Get an virtual actor.
 
@@ -159,6 +164,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
                                          storage_base.get_global_storage())
 
 
+@PublicAPI(stability="beta")
 def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow.
 
@@ -182,14 +188,15 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     return execution.resume(workflow_id)
 
 
+@PublicAPI(stability="beta")
 def get_output(workflow_id: str, *,
                name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
-        workflow_id(str): The ID of the running workflow job.
-        name(Optional[str]): If set, fetch the specific step instead of
-            the output of the workflow.
+        workflow_id: The ID of the running workflow job.
+        name: If set, fetch the specific step instead of the output of the
+            workflow.
 
     Examples:
         >>> trip = start_trip.options(name="trip").step()
@@ -207,6 +214,7 @@ def get_output(workflow_id: str, *,
     return execution.get_output(workflow_id, name)
 
 
+@PublicAPI(stability="beta")
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
         Union[WorkflowStatus, str]]]] = None
              ) -> List[Tuple[str, WorkflowStatus]]:
@@ -251,6 +259,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     return execution.list_all(status_filter)
 
 
+@PublicAPI(stability="beta")
 def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
@@ -273,12 +282,13 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
         >>>   include_failed=True).get("failed_job") is not None
 
     Returns:
-        Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
+        A list of (workflow_id, returned_obj_ref) resumed.
     """
     ensure_ray_initialized()
     return execution.resume_all(include_failed)
 
 
+@PublicAPI(stability="beta")
 def get_status(workflow_id: str) -> WorkflowStatus:
     """Get the status for a given workflow.
 
@@ -299,6 +309,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     return execution.get_status(workflow_id)
 
 
+@PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow.
 
