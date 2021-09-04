@@ -16,6 +16,55 @@ class Postprocessing:
     VALUE_TARGETS = "value_targets"
 
 
+def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
+    """Rewrites `batch` to encode n-step rewards, dones, and next-obs.
+
+    Observations and actions remain unaffected. At the end of the trajectory,
+    n is truncated to fit in the traj length.
+
+    Args:
+        n_step (int): The number of steps to look ahead and adjust.
+        gamma (float): The discount factor.
+        batch (SampleBatch): The SampleBatch to adjust (in place).
+
+    Examples:
+        n-step=3
+        Trajectory=o0 r0 d0, o1 r1 d1, o2 r2 d2, o3 r3 d3, o4 r4 d4=True o5
+        gamma=0.9
+        Returned trajectory:
+        0: o0 [r0 + 0.9*r1 + 0.9^2*r2 + 0.9^3*r3] d3 o0'=o3
+        1: o1 [r1 + 0.9*r2 + 0.9^2*r3 + 0.9^3*r4] d4 o1'=o4
+        2: o2 [r2 + 0.9*r3 + 0.9^2*r4] d4 o1'=o5
+        3: o3 [r3 + 0.9*r4] d4 o3'=o5
+        4: o4 r4 d4 o4'=o5
+    """
+
+    assert not any(batch[SampleBatch.DONES][:-1]), \
+        "Unexpected done in middle of trajectory!"
+
+    # Shift NEXT_OBS and DONES.
+    batch[SampleBatch.NEXT_OBS] = np.concatenate(
+        [
+            batch[SampleBatch.OBS][n_step:],
+            np.tile(batch[SampleBatch.NEXT_OBS][-1], n_step)
+        ],
+        axis=0)
+    batch[SampleBatch.DONES] = np.concatenate(
+        [
+            batch[SampleBatch.DONES][n_step - 1:],
+            np.tile(batch[SampleBatch.DONES][-1], n_step - 1)
+        ],
+        axis=0)
+
+    # Change rewards in place.
+    traj_length = len(batch)
+    for i in range(traj_length):
+        for j in range(1, n_step):
+            if i + j < traj_length:
+                batch[SampleBatch.REWARDS][i] += \
+                    gamma**j * batch[SampleBatch.REWARDS][i + j]
+
+
 @DeveloperAPI
 def compute_advantages(rollout: SampleBatch,
                        last_r: float,
@@ -136,7 +185,7 @@ def compute_gae_for_sample_batch(
     return batch
 
 
-def discount_cumsum(x: np.ndarray, gamma: float) -> float:
+def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
     y[t] - discount*y[t+1] = x[t]
@@ -146,6 +195,16 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> float:
         gamma (float): The discount factor gamma.
 
     Returns:
-        float: The discounted cumulative sum over the reward sequence `x`.
+        np.ndarray: The sequence containing the discounted cumulative sums
+            for each individual reward in `x` till the end of the trajectory.
+
+    Examples:
+        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
+        >>> gamma = 0.9
+        >>> discount_cumsum(x, gamma)
+        ... array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
+        ...        1.0 + 0.9*2.0 + 0.9^2*3.0,
+        ...        2.0 + 0.9*3.0,
+        ...        3.0])
     """
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

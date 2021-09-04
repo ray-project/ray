@@ -59,16 +59,6 @@ class StoreToReplayBuffer:
             self.local_actor.add_batch(batch)
         else:
             actor = random.choice(self.replay_actors)
-
-            #TODO
-            print(f"Adding batch to buffer: {batch}")
-            import numpy as np
-            try:#TODO
-                np.testing.assert_equal(batch["obs"][1:], batch["new_obs"][:-1])
-            except Exception as e:
-                raise e
-
-
             actor.add_batch.remote(batch)
         return batch
 

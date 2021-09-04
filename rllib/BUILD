@@ -1345,6 +1345,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "evaluation/tests/test_postprocessing",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_postprocessing.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:ml", "evaluation"],
     size = "medium",

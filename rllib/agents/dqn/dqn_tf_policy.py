@@ -8,6 +8,7 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -378,47 +379,13 @@ def compute_q_values(policy: Policy,
     return value, logits, dist, state
 
 
-def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
-                  actions: TensorType, rewards: TensorType,
-                  new_obs: TensorType, dones: TensorType):
-    """Rewrites the given trajectory fragments to encode n-step rewards.
-
-    reward[i] = (
-        reward[i] * gamma**0 +
-        reward[i+1] * gamma**1 +
-        ... +
-        reward[i+n_step-1] * gamma**(n_step-1))
-
-    The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
-
-    At the end of the trajectory, n is truncated to fit in the traj length.
-    """
-
-    assert not any(dones[:-1]), "Unexpected done in middle of trajectory"
-
-    traj_length = len(rewards)
-    for i in range(traj_length):
-        for j in range(1, n_step):
-            if i + j < traj_length:
-                new_obs[i] = new_obs[i + j]
-                dones[i] = dones[i + j]
-                rewards[i] += gamma**j * rewards[i + j]
-
-
 def postprocess_nstep_and_prio(policy: Policy,
                                batch: SampleBatch,
                                other_agent=None,
                                episode=None) -> SampleBatch:
     # N-step Q adjustments.
     if policy.config["n_step"] > 1:
-        #TEST
-        batch[SampleBatch.NEXT_OBS][0][0] = -100.0
-        print(batch[SampleBatch.OBS][1][0])
-        #END TEST
-        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
-                      batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS],
-                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-                      batch[SampleBatch.DONES])
+        adjust_nstep(policy.config["n_step"], policy.config["gamma"], batch)
 
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
