@@ -91,8 +91,7 @@ class StochasticSampling(Exploration):
             false_fn=lambda: deterministic_actions)
 
         def logp_false_fn():
-            batch_size = tf.shape(tree.flatten(action)[0])[0]
-            return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+            return tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
 
         logp = tf.cond(
             tf.math.logical_and(
