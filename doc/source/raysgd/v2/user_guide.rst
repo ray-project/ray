@@ -198,8 +198,11 @@ perform hyperparameter tuning with RaySGD, please refer to the
 
 .. _sgd-logging:
 
+Logging, Monitoring, and Callbacks
+----------------------------------
+
 Logging
--------
+~~~~~~~
 
 Each ``Trainer`` will have a local directory created for logs, and each call
 to ``Trainer.run`` will create its own sub-directory of logs.
@@ -227,8 +230,8 @@ Logs will be written by:
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 
 
-Monitoring training (sgd.report)
---------------------------------
+Reporting intermediate results
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RaySGD provides an ``sgd.report(**kwargs)`` API for reporting intermediate
 results from the training function up to the ``Trainer``.
@@ -242,7 +245,7 @@ For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
 The primary use-case for reporting is for metrics (accuracy, loss, etc.)
 
 Distributed metrics (for Pytorch)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++++++++++++++
 
 In real applications, you may want to calculate optimization metrics besides
 accuracy and loss: recall, precision, Fbeta, etc.
@@ -281,7 +284,7 @@ Here is an example:
     trainer.shutdown()
 
 Autofilled metrics
-~~~~~~~~~~~~~~~~~~
+++++++++++++++++++
 
 In addition to user defined metrics, a few fields are automatically populated:
 
@@ -302,7 +305,7 @@ variable to ``1``.
 .. _sgd-callbacks:
 
 Callbacks
----------
+~~~~~~~~~
 
 You may want to plug in your training code with your favorite experiment management framework.
 RaySGD provides an interface to fetch intermediate results and callbacks to process/log your intermediate results.
@@ -348,7 +351,7 @@ You can plug all of these into RaySGD with the following interface:
 .. _sgd-logging-callbacks:
 
 Logging Callbacks
-~~~~~~~~~~~~~~~~~
++++++++++++++++++
 
 The following ``Callback``\s are available and will write to a file within the
 :ref:`log directory <sgd-logging>` of each training run.
@@ -361,7 +364,7 @@ custom logic by subclassing ``SGDSingleFileLoggingCallback`` or
 ``SGDSingleWorkerLoggingCallback``.
 
 Custom Callbacks
-~~~~~~~~~~~~~~~~~
+++++++++++++++++
 
 If the provided callbacks do not cover your desired integrations or use-cases,
 you may always implement a custom callback by subclassing ``Callback``. If
