@@ -264,10 +264,9 @@ class Workflow:
 
     def __reduce__(self):
         raise ValueError(
-            "Workflow is not supposed to be serialized by pickle. "
-            "Maybe you are passing it to a Ray remote function, "
-            "returning it from a Ray remote function, or using "
-            "'ray.put()' with it?")
+            "Workflow[T] objects are not serializable. "
+            "This means they cannot be passed or returned from Ray "
+            "remote, or stored in Ray objects.")
 
     def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
