@@ -142,7 +142,7 @@ Note that steps that have side-effects still need to be idempotent. This is beca
        return uuid.uuid4().hex
 
     @workflow.step
-    def book_flight_idempotent(request_id: int) -> FlightTicket:
+    def book_flight_idempotent(request_id: str) -> FlightTicket:
        if service.has_ticket(request_id):
            # Retrieve the previously created ticket.
            return service.get_ticket(request_id)

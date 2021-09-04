@@ -239,7 +239,7 @@ class Workflow:
             mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
-    def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
+    def _iter_workflows_in_dag(self) -> Iterator["Workflow"]:
         """Collect all workflows in the DAG linked to the workflow
         using BFS."""
         # deque is used instead of queue.Queue because queue.Queue is aimed

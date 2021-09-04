@@ -5,7 +5,7 @@ Workflow IDs
 ------------
 Each workflow has a unique ``workflow_id``. By default, when you call ``.run()`` or ``.run_async()``, a random id is generated. It is recommended you explicitly assign each workflow an id via ``.run(workflow_id="id")``.
 
-If ``.run()`` is called with a previously used workflow id,  the workflow will be resumed, unless ``resume_existing=False``, in which case an error will be raised.
+If ``.run()`` is called with a previously used workflow id, the workflow will be resumed from the previous execution.
 
 Workflow States
 ---------------

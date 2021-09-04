@@ -378,7 +378,7 @@ class WorkflowStorage:
         assert not workflow.executed
         tasks = [
             self._write_step_inputs(w.step_id, w.data)
-            for w in workflow.iter_workflows_in_dag()
+            for w in workflow._iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))
 
