@@ -91,13 +91,19 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       Preconditions.checkNotNull(actorCreationTaskSpec);
       final List<Common.ConcurrencyGroup> concurrencyGroups =
           actorCreationTaskSpec.getConcurrencyGroupsList();
-      concurrencyGroups.forEach(
-          (concurrencyGroup) -> {
-            ExecutorService executorService =
-                Executors.newFixedThreadPool(concurrencyGroup.getMaxConcurrency());
-            Preconditions.checkState(!services.containsKey(concurrencyGroup.getName()));
-            services.put(concurrencyGroup.getName(), executorService);
-          });
+      if (concurrencyGroups.isEmpty()) {
+        services.put(
+            /*defaultConcurrencyGroupName=*/ "",
+            Executors.newFixedThreadPool(actorCreationTaskSpec.getMaxConcurrency()));
+      } else {
+        concurrencyGroups.forEach(
+            (concurrencyGroup) -> {
+              ExecutorService executorService =
+                  Executors.newFixedThreadPool(concurrencyGroup.getMaxConcurrency());
+              Preconditions.checkState(!services.containsKey(concurrencyGroup.getName()));
+              services.put(concurrencyGroup.getName(), executorService);
+            });
+      }
     }
 
     public synchronized ExecutorService getExecutorService(TaskSpec taskSpec) {
