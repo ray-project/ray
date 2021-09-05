@@ -130,7 +130,7 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     # `deterministic_actions` or `stochastic_actions`). In case
     # actions are just [B], zeros_like works just fine here, but if
     # actions are [B, ...], we have to reduce logp back to just [B].
-    if len(actions.shape) > 1:
+    if len(logp_.shape) > 1:
         logp_ = logp_[:, 0]
     return logp_
 
