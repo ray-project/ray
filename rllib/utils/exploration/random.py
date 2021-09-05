@@ -130,9 +130,7 @@ class Random(Exploration):
             true_fn=true_fn,
             false_fn=false_fn)
 
-        ## TODO(sven): Move into (deterministic_)sample(logp=True|False)
         logp = zero_logps_from_actions(action)
-        #tf.zeros_like(tree.flatten(action)[0], dtype=tf.float32)[:1]
         return action, logp
 
     def get_torch_exploration_action(self, action_dist: ActionDistribution,

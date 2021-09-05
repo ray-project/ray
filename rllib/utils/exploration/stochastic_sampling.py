@@ -95,8 +95,8 @@ class StochasticSampling(Exploration):
             tf.math.logical_and(
                 explore, tf.convert_to_tensor(ts >= self.random_timesteps)),
             true_fn=lambda: action_dist.sampled_action_logp(),
-            false_fn=functools.partial(
-                zero_logps_from_actions, deterministic_actions))
+            false_fn=functools.partial(zero_logps_from_actions,
+                                       deterministic_actions))
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:

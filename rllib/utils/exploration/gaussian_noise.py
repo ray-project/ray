@@ -133,9 +133,6 @@ class GaussianNoise(Exploration):
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
         logp = zero_logps_from_actions(deterministic_actions)
-        #logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)
-        #if len(deterministic_actions.shape) > 1:
-        #    logp = logp[:, 0]
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
