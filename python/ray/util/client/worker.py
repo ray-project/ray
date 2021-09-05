@@ -90,6 +90,8 @@ class Worker:
         Args:
             conn_str: The host:port connection string for the ray server.
             secure: whether to use SSL secure channel or not.
+            credentials: gprc channel credentials. Default ones will be used
+              if None.
             metadata: additional metadata passed in the grpc request headers.
             connection_retries: Number of times to attempt to reconnect to the
               ray server if it doesn't respond immediately. Setting to 0 tries
@@ -107,7 +109,6 @@ class Worker:
         if secure:
             if credentials is None:
                 credentials = grpc.ssl_channel_credentials()
-
             self.channel = grpc.secure_channel(
                 conn_str, credentials, options=GRPC_OPTIONS)
         else:
