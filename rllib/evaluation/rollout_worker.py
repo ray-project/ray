@@ -18,7 +18,7 @@ from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import Preprocessor
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
@@ -1363,7 +1363,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
             else:
-                self.preprocessors[name] = None
+                self.preprocessors[name] = NoPreprocessor(obs_space)
+
+            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
+                raise ValueError(
+                    "Found raw Tuple|Dict space as input to policy. "
+                    "Please preprocess these observations with a "
+                    "Tuple|DictFlatteningPreprocessor.")
 
             self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
                                           conf, merged_conf)
