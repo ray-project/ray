@@ -134,7 +134,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             true_fn=lambda: exploration_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
+        logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)
+        if len(deterministic_actions.shape) > 1:
+            logp = logp[:, 0]
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:

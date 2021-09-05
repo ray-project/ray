@@ -90,7 +90,10 @@ class StochasticSampling(Exploration):
             false_fn=lambda: deterministic_actions)
 
         def logp_false_fn():
-            return tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
+            logp_ = tf.zeros_like(deterministic_actions, dtype=tf.float32)
+            if list(tf.shape(deterministic_actions)) > 1:
+                logp_ = logp_[:, 0]
+            return logp_
 
         logp = tf.cond(
             tf.math.logical_and(
