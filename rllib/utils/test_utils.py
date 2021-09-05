@@ -406,7 +406,14 @@ def run_learning_tests_from_yaml(
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            e["config"]["framework"] = "tf"
+            # If framework explicitly given, only test for that framework.
+            # Some algos do not have both versions available.
+            if "framework" in e["config"]:
+                frameworks = [e["config"]["framework"]]
+            else:
+                frameworks = ["tf", "torch"]
+                e["config"]["framework"] = "tf"
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 15min hardcoded for now.
@@ -420,15 +427,26 @@ def run_learning_tests_from_yaml(
                 e["stop"]["episode_reward_mean"] = \
                     e["pass_criteria"]["episode_reward_mean"]
 
+            keys = []
             # Generate the torch copy of the experiment.
-            e_torch = copy.deepcopy(e)
-            e_torch["config"]["framework"] = "torch"
-            k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
-            k_torch = re.sub("-tf-", "-torch-", k_tf)
-            experiments[k_tf] = e
-            experiments[k_torch] = e_torch
-            # Generate `checks` dict.
-            for k_ in [k_tf, k_torch]:
+            if len(frameworks) == 2:
+                e_torch = copy.deepcopy(e)
+                e_torch["config"]["framework"] = "torch"
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                keys.append(re.sub("-tf-", "-torch-", keys[0]))
+                experiments[keys[0]] = e
+                experiments[keys[1]] = e_torch
+            # tf-only.
+            elif frameworks[0] == "tf":
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                experiments[keys[0]] = e
+            # torch-only.
+            else:
+                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
+                experiments[keys[0]] = e
+
+            # Generate `checks` dict for all experiments (tf and/or torch).
+            for k_ in keys:
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
                     "min_timesteps": e["pass_criteria"]["timesteps_total"],
@@ -436,9 +454,8 @@ def run_learning_tests_from_yaml(
                     "failures": 0,
                     "passed": False,
                 }
-            # This key would break tune.
-            del e["pass_criteria"]
-            del e_torch["pass_criteria"]
+                # This key would break tune.
+                del experiments[k_]["pass_criteria"]
 
     # Print out the actual config.
     print("== Test config ==")

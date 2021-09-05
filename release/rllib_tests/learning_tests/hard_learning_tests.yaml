@@ -19,6 +19,41 @@ a2c-breakoutnoframeskip-v4:
             [20000000, 0.000000000001],
         ]
 
+a3c-pongdeterministic-v4:
+    env: PongDeterministic-v4
+    run: A3C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    config:
+        num_gpus: 0
+        num_workers: 16
+        rollout_fragment_length: 20
+        vf_loss_coeff: 0.5
+        entropy_coeff: 0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        preprocessor_pref: rllib
+        model:
+            use_lstm: true
+            conv_activation: elu
+            dim: 42
+            grayscale: true
+            zero_mean: false
+            # Reduced channel depth and kernel size from default.
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]
+
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
@@ -78,6 +113,76 @@ appo-pong-no-frameskip-v4:
         grad_clip: 10
         model:
           dim: 42
+
+ars-hopperbulletenv-v0:
+    env: HopperBulletEnv-v0
+    run: ARS
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 100.0
+        timesteps_total: 2000000
+    stop:
+        time_total_s: 2000
+    config:
+        noise_stdev: 0.01
+        num_rollouts: 1
+        rollouts_used: 1
+        num_workers: 1
+        sgd_stepsize: 0.02
+        noise_size: 250000000
+        eval_prob: 0.2
+        offset: 0
+        observation_filter: NoFilter
+        report_length: 3
+
+cql-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: CQL
+    pass_criteria:
+        episode_reward_mean: 100.0
+        timesteps_total: 2000000
+    stop:
+        time_total_s: 3600
+    config:
+        input: ["TODO"]
+        framework: torch
+        soft_horizon: False
+        horizon: 1000
+        Q_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256, 256]
+        policy_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: false
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: false
+        train_batch_size: 256
+        target_network_update_freq: 0
+        timesteps_per_iteration: 1000
+        learning_starts: 10
+        optimization:
+          actor_learning_rate: 0.0001
+          critic_learning_rate: 0.0003
+          entropy_learning_rate: 0.0001
+        num_workers: 0
+        num_gpus: 1
+        metrics_smoothing_episodes: 5
+
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+
+        # Switch on online evaluation.
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler
 
 ddpg-hopperbulletenv-v0:
     env: HopperBulletEnv-v0
@@ -245,3 +350,18 @@ sac-halfcheetahbulletenv-v0:
         normalize_actions: true
         evaluation_interval: 1
         metrics_smoothing_episodes: 5
+
+td3-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: TD3
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 1000000
+    stop:
+        time_total_s: 7200
+    config:
+        num_gpus: 1
+        learning_starts: 10000
+        exploration_config:
+            random_timesteps: 10000
