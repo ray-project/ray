@@ -11,7 +11,6 @@ public class BaseTest {
   @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
     Assert.assertFalse(Ray.isInitialized());
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
   }
 

@@ -63,9 +63,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final TaskExecutor taskExecutor;
   private final LocalModeObjectStore objectStore;
 
-  //  / The thread pool to execute actor tasks.
-  //  private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
-
   private final Map<ActorId, Integer> actorMaxConcurrency = new ConcurrentHashMap<>();
 
   /// The thread pool to execute normal tasks.
@@ -85,7 +82,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
     private Map<String, ExecutorService> services = new ConcurrentHashMap<>();
 
-    /// TODO: sync
     public ActorExecutorService(TaskSpec taskSpec) {
       ActorCreationTaskSpec actorCreationTaskSpec = taskSpec.getActorCreationTaskSpec();
       Preconditions.checkNotNull(actorCreationTaskSpec);
@@ -112,6 +108,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       Preconditions.checkState(services.containsKey(concurrencyGroupName));
       return services.get(concurrencyGroupName);
     }
+
+    public synchronized void shutdown() {
+      services.forEach((key, service) -> service.shutdown());
+      services.clear();
+    }
   }
 
   private static final class ActorConcurrencyGroupManager {
@@ -130,6 +131,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       ActorExecutorService actorExecutorService = actorExecutorServices.get(actorId);
       return actorExecutorService.getExecutorService(taskSpec);
     }
+
+    public synchronized void shutdown() {
+      actorExecutorServices.forEach((actorId, actorExecutorService) -> {
+        actorExecutorService.shutdown();
+      });
+      actorExecutorServices.clear();
+    }
   }
 
   public LocalModeTaskSubmitter(
@@ -139,8 +147,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     this.objectStore = objectStore;
     // The thread pool that executes normal tasks in parallel.
     normalTaskExecutorService = Executors.newCachedThreadPool();
-    // The thread pool that executes actor tasks in parallel.
-    //    actorTaskExecutorServices = new HashMap<>();
     actorConcurrencyGroupManager = new ActorConcurrencyGroupManager();
   }
 
@@ -356,11 +362,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   public void shutdown() {
     // Shutdown actor task executor service.
-    //    synchronized (actorTaskExecutorServices) {
-    //      for (Map.Entry<ActorId, ExecutorService> item : actorTaskExecutorServices.entrySet()) {
-    //        item.getValue().shutdown();
-    //      }
-    //    }
+    actorConcurrencyGroupManager.shutdown();
     // Shutdown normal task executor service.
     normalTaskExecutorService.shutdown();
   }
