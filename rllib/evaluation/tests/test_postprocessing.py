@@ -114,6 +114,44 @@ class TestPostprocessing(unittest.TestCase):
         check(batch[SampleBatch.REWARDS], [10.0 + gamma * 100.0, 100.0])
         check(batch[SampleBatch.NEXT_OBS], [2, 2])
 
+    def test_n_step_from_same_obs_source_array(self):
+        """Tests, whether n-step also works on a shared obs/new-obs array."""
+        gamma = 0.99
+        # The underlying observation data. Both obs and next_obs will
+        # be references into that same np.array.
+        underlying_obs = np.arange(0, 8)
+        obs = underlying_obs[:7]
+        next_obs = underlying_obs[1:]
+
+        actions = np.random.randint(-1, 3, size=(7, ))
+        check_actions = actions.copy()
+        rewards = [10.0, 0.0, 100.0, 50.0, 60.0, 10.0, 100.0]
+        dones = [False, False, False, False, False, False, True]
+
+        batch = SampleBatch({
+            SampleBatch.OBS: obs,
+            SampleBatch.ACTIONS: actions,
+            SampleBatch.REWARDS: rewards,
+            SampleBatch.DONES: dones,
+            SampleBatch.NEXT_OBS: next_obs,
+        })
+        adjust_nstep(4, gamma, batch)
+
+        check(batch[SampleBatch.OBS], [0, 1, 2, 3, 4, 5, 6])
+        check(batch[SampleBatch.ACTIONS], check_actions)
+        check(batch[SampleBatch.NEXT_OBS], [4, 5, 6, 7, 7, 7, 7])
+        check(batch[SampleBatch.DONES],
+              [False, False, False, True, True, True, True])
+        check(batch[SampleBatch.REWARDS], [
+            discount_cumsum(np.array(rewards[0:4]), gamma)[0],
+            discount_cumsum(np.array(rewards[1:5]), gamma)[0],
+            discount_cumsum(np.array(rewards[2:6]), gamma)[0],
+            discount_cumsum(np.array(rewards[3:7]), gamma)[0],
+            discount_cumsum(np.array(rewards[4:]), gamma)[0],
+            discount_cumsum(np.array(rewards[5:]), gamma)[0],
+            discount_cumsum(np.array(rewards[6:]), gamma)[0],
+        ])
+
 
 if __name__ == "__main__":
     import pytest
