@@ -133,9 +133,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     }
 
     public synchronized void shutdown() {
-      actorExecutorServices.forEach((actorId, actorExecutorService) -> {
-        actorExecutorService.shutdown();
-      });
+      actorExecutorServices.forEach(
+          (actorId, actorExecutorService) -> {
+            actorExecutorService.shutdown();
+          });
       actorExecutorServices.clear();
     }
   }
