@@ -12,6 +12,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.tf_ops import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -129,8 +130,9 @@ class Random(Exploration):
             true_fn=true_fn,
             false_fn=false_fn)
 
-        # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-        logp = tf.zeros_like(tree.flatten(action)[0], dtype=tf.float32)[:1]
+        ## TODO(sven): Move into (deterministic_)sample(logp=True|False)
+        logp = zero_logps_from_actions(action)
+        #tf.zeros_like(tree.flatten(action)[0], dtype=tf.float32)[:1]
         return action, logp
 
     def get_torch_exploration_action(self, action_dist: ActionDistribution,
