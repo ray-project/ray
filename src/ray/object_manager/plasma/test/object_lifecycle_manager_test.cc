@@ -47,6 +47,20 @@ class MockObjectStore : public IObjectStore {
   MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
 };
 
+class DummyStatsCollector : public IStatsCollector {
+ public:
+  void OnObjectCreated(const ObjectID &id) override {}
+  void OnObjectSealed(const ObjectID &id) override {}
+  void OnObjectDeleting(const ObjectID &id) override {}
+  void OnObjectRefIncreased(const ObjectID &id) override {}
+  void OnObjectRefDecreased(const ObjectID &id) override {}
+  void GetDebugDump(std::stringstream &buffer) const override {}
+  int64_t GetNumBytesInUse() const override { return 0; }
+  int64_t GetNumBytesCreatedTotal() const override { return 0; }
+  int64_t GetNumBytesUnsealed() const override { return 0; }
+  int64_t GetNumObjectsUnsealed() const override { return 0; }
+};
+
 struct ObjectLifecycleManagerTest : public Test {
   void SetUp() override {
     Test::SetUp();
@@ -56,13 +70,20 @@ struct ObjectLifecycleManagerTest : public Test {
     object_store_ = object_store.get();
     manager_ = std::make_unique<ObjectLifecycleManager>(
         ObjectLifecycleManager(std::move(object_store), std::move(eviction_policy),
-                               [this](auto &id) { notify_deleted_ids_.push_back(id); }));
+                               [this](auto &id) { notify_deleted_ids_.push_back(id); },
+                               std::make_unique<DummyStatsCollector>()));
     sealed_object_.state = ObjectState::PLASMA_SEALED;
     not_sealed_object_.state = ObjectState::PLASMA_CREATED;
     one_ref_object_.state = ObjectState::PLASMA_SEALED;
-    one_ref_object_.ref_count = 1;
     two_ref_object_.state = ObjectState::PLASMA_SEALED;
-    two_ref_object_.ref_count = 2;
+  }
+
+  int64_t GetRefCount(const ObjectID &id) {
+    return manager_->meta_store_.GetRefCount(id);
+  }
+
+  void SetRefCount(const ObjectID &id, int64_t value) {
+    manager_->meta_store_.store_[id].ref_count = value;
   }
 
   MockEvictionPolicy *eviction_policy_;
@@ -238,6 +259,7 @@ TEST_F(ObjectLifecycleManagerTest, DeleteFailure) {
   }
 
   {
+    SetRefCount(id3_, 1);
     manager_->earger_deletion_objects_.clear();
     EXPECT_CALL(*object_store_, GetObject(id3_))
         .Times(1)
@@ -270,15 +292,16 @@ TEST_F(ObjectLifecycleManagerTest, AddReference) {
     EXPECT_CALL(*object_store_, GetObject(id2_)).Times(1).WillOnce(Return(&object1_));
     EXPECT_CALL(*eviction_policy_, BeginObjectAccess(id2_)).Times(1).WillOnce(Return());
     EXPECT_TRUE(manager_->AddReference(id2_));
-    EXPECT_EQ(1, object1_.GetRefCount());
+    EXPECT_EQ(1, GetRefCount(id2_));
   }
 
   {
+    SetRefCount(id3_, 1);
     EXPECT_CALL(*object_store_, GetObject(id3_))
         .Times(1)
         .WillOnce(Return(&one_ref_object_));
     EXPECT_TRUE(manager_->AddReference(id3_));
-    EXPECT_EQ(2, one_ref_object_.GetRefCount());
+    EXPECT_EQ(2, GetRefCount(id3_));
   }
 }
 
@@ -295,26 +318,28 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceFailure) {
 }
 
 TEST_F(ObjectLifecycleManagerTest, RemoveReferenceTwoRef) {
+  SetRefCount(id1_, 2);
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(1)
       .WillOnce(Return(&two_ref_object_));
   EXPECT_TRUE(manager_->RemoveReference(id1_));
-  EXPECT_EQ(1, two_ref_object_.GetRefCount());
+  EXPECT_EQ(1, GetRefCount(id1_));
 }
 
 TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefSealed) {
+  SetRefCount(id1_, 1);
   EXPECT_TRUE(one_ref_object_.Sealed());
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(1)
       .WillOnce(Return(&one_ref_object_));
   EXPECT_CALL(*eviction_policy_, EndObjectAccess(id1_)).Times(1).WillOnce(Return());
   EXPECT_TRUE(manager_->RemoveReference(id1_));
-  EXPECT_EQ(0, one_ref_object_.GetRefCount());
+  EXPECT_EQ(0, GetRefCount(id1_));
 }
 
 TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
   manager_->earger_deletion_objects_.emplace(id1_);
-
+  SetRefCount(id1_, 1);
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(2)
       .WillRepeatedly(Return(&one_ref_object_));
@@ -323,7 +348,7 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
   EXPECT_CALL(*eviction_policy_, RemoveObject(id1_)).Times(1).WillOnce(Return());
 
   EXPECT_TRUE(manager_->RemoveReference(id1_));
-  EXPECT_EQ(0, one_ref_object_.GetRefCount());
+  EXPECT_EQ(0, GetRefCount(id1_));
 
   std::vector<ObjectID> expect_notified_ids{id1_};
   EXPECT_EQ(expect_notified_ids, notify_deleted_ids_);

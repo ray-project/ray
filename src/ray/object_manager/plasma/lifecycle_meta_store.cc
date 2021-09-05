@@ -15,11 +15,41 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/plasma.h"
-
-#include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/lifecycle_meta_store.h"
 
 namespace plasma {
 
-LocalObject::LocalObject(Allocation allocation) : allocation(std::move(allocation)) {}
+using namespace ray;
+
+namespace {
+const LifecycleMetadata kDefaultStats{};
+}
+
+bool LifecycleMetadataStore::IncreaseRefCount(const ObjectID &id) {
+  store_[id].ref_count += 1;
+  return true;
+}
+
+bool LifecycleMetadataStore::DecreaseRefCount(const ObjectID &id) {
+  if (GetMetadata(id).ref_count == 0) {
+    return false;
+  }
+  store_[id].ref_count -= 1;
+  return true;
+}
+
+void LifecycleMetadataStore::RemoveObject(const ObjectID &id) { store_.erase(id); }
+
+const LifecycleMetadata &LifecycleMetadataStore::GetMetadata(const ObjectID &id) const {
+  auto it = store_.find(id);
+  if (it == store_.end()) {
+    return kDefaultStats;
+  }
+  return it->second;
+}
+
+int64_t LifecycleMetadataStore::GetRefCount(const ray::ObjectID &id) const {
+  return GetMetadata(id).ref_count;
+}
+
 }  // namespace plasma

@@ -21,6 +21,7 @@
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/lifecycle_meta_store.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/stats_collector.h"
@@ -92,6 +93,9 @@ class IObjectLifecycleManager {
   ///
   /// \return true if object exists and reference count is greater than 0, false otherise.
   virtual bool RemoveReference(const ObjectID &object_id) = 0;
+
+  /// Returns true if object is spillable.
+  virtual bool IsObjectSpillable(const ObjectID &object_id) const = 0;
 };
 
 // ObjectLifecycleManager allocates LocalObjects from the allocator.
@@ -118,6 +122,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
 
   bool RemoveReference(const ObjectID &object_id) override;
 
+  bool IsObjectSpillable(const ObjectID &object_id) const override;
+
   /// Ask it to evict objects until we have at least size of capacity
   /// available.
   /// TEST ONLY
@@ -143,7 +149,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   // Test only
   ObjectLifecycleManager(std::unique_ptr<IObjectStore> store,
                          std::unique_ptr<IEvictionPolicy> eviction_policy,
-                         ray::DeleteObjectCallback delete_object_callback);
+                         ray::DeleteObjectCallback delete_object_callback,
+                         std::unique_ptr<IStatsCollector> stats_collector);
 
   const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
                                           plasma::flatbuf::ObjectSource source,
@@ -165,6 +172,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 
   std::unique_ptr<IObjectStore> object_store_;
+  LifecycleMetadataStore meta_store_;
+
   std::unique_ptr<IEvictionPolicy> eviction_policy_;
   const ray::DeleteObjectCallback delete_object_callback_;
 
@@ -172,7 +181,7 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   // once reference count becomes 0.
   absl::flat_hash_set<ObjectID> earger_deletion_objects_;
 
-  ObjectStatsCollector stats_collector_;
+  std::unique_ptr<IStatsCollector> stats_collector_;
 };
 
 }  // namespace plasma

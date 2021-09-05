@@ -42,6 +42,7 @@ class MockObjectLifecycleManager : public IObjectLifecycleManager {
   MOCK_METHOD1(DeleteObject, flatbuf::PlasmaError(const ObjectID &object_id));
   MOCK_METHOD1(AddReference, bool(const ObjectID &object_id));
   MOCK_METHOD1(RemoveReference, bool(const ObjectID &object_id));
+  MOCK_CONST_METHOD1(IsObjectSpillable, bool(const ObjectID &object_id));
 };
 
 struct GetRequestQueueTest : public Test {

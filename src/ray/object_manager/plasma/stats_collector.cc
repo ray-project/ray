@@ -19,7 +19,12 @@
 
 namespace plasma {
 
-void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
+ObjectStatsCollector::ObjectStatsCollector(const IObjectStore &object_store,
+                                           const LifecycleMetadataStore &meta_store)
+    : object_store_(object_store), meta_store_(meta_store) {}
+
+void ObjectStatsCollector::OnObjectCreated(const ObjectID &id) {
+  auto &obj = GetObject(id);
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
 
@@ -44,14 +49,16 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   num_bytes_unsealed_ += kObjectSize;
 }
 
-void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
+void ObjectStatsCollector::OnObjectSealed(const ObjectID &id) {
+  auto &obj = GetObject(id);
+  auto &metadata = GetMetadata(id);
   RAY_CHECK(obj.Sealed());
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
   num_objects_unsealed_--;
   num_bytes_unsealed_ -= kObjectSize;
 
-  if (obj.GetRefCount() == 1) {
+  if (metadata.ref_count == 1) {
     if (obj.GetSource() == plasma::flatbuf::ObjectSource::CreatedByWorker) {
       num_objects_spillable_++;
       num_bytes_spillable_ += kObjectSize;
@@ -59,13 +66,15 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   }
 
   // though this won't happen in practice but add it here for completeness.
-  if (obj.GetRefCount() == 0) {
+  if (metadata.ref_count == 0) {
     num_objects_evictable_++;
     num_bytes_evictable_ += kObjectSize;
   }
 }
 
-void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
+void ObjectStatsCollector::OnObjectDeleting(const ObjectID &id) {
+  auto &obj = GetObject(id);
+  auto &metadata = GetMetadata(id);
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
 
@@ -83,7 +92,7 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
     num_bytes_errored_ -= kObjectSize;
   }
 
-  if (obj.GetRefCount() > 0) {
+  if (metadata.ref_count > 0) {
     num_objects_in_use_--;
     num_bytes_in_use_ -= kObjectSize;
   }
@@ -95,25 +104,27 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   }
 
   // obj sealed
-  if (obj.GetRefCount() == 1 &&
+  if (metadata.ref_count == 1 &&
       kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_spillable_--;
     num_bytes_spillable_ -= kObjectSize;
   }
 
-  if (obj.GetRefCount() == 0) {
+  if (metadata.ref_count == 0) {
     num_objects_evictable_--;
     num_bytes_evictable_ -= kObjectSize;
   }
 }
 
-void ObjectStatsCollector::OnObjectRefIncreased(const LocalObject &obj) {
+void ObjectStatsCollector::OnObjectRefIncreased(const ObjectID &id) {
+  auto &obj = GetObject(id);
+  auto &metadata = GetMetadata(id);
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
   const bool kSealed = obj.Sealed();
 
   // object ref count bump from 0 to 1
-  if (obj.GetRefCount() == 1) {
+  if (metadata.ref_count == 1) {
     num_objects_in_use_++;
     num_bytes_in_use_ += kObjectSize;
 
@@ -129,20 +140,22 @@ void ObjectStatsCollector::OnObjectRefIncreased(const LocalObject &obj) {
   }
 
   // object ref count bump from 1 to 2
-  if (obj.GetRefCount() == 2 &&
+  if (metadata.ref_count == 2 &&
       kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
     num_objects_spillable_--;
     num_bytes_spillable_ -= kObjectSize;
   }
 }
 
-void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
+void ObjectStatsCollector::OnObjectRefDecreased(const ObjectID &id) {
+  auto &obj = GetObject(id);
+  auto &metadata = GetMetadata(id);
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
   const bool kSealed = obj.Sealed();
 
   // object ref count decrease from 2 to 1
-  if (obj.GetRefCount() == 1) {
+  if (metadata.ref_count == 1) {
     if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
       num_objects_spillable_++;
       num_bytes_spillable_ += kObjectSize;
@@ -150,7 +163,7 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   }
 
   // object ref count decrease from 1 to 0
-  if (obj.GetRefCount() == 0) {
+  if (metadata.ref_count == 0) {
     num_objects_in_use_--;
     num_bytes_in_use_ -= kObjectSize;
 
@@ -197,6 +210,16 @@ int64_t ObjectStatsCollector::GetNumBytesUnsealed() const { return num_bytes_uns
 
 int64_t ObjectStatsCollector::GetNumObjectsUnsealed() const {
   return num_objects_unsealed_;
+}
+
+const LocalObject &ObjectStatsCollector::GetObject(const ObjectID &id) const {
+  auto entry = object_store_.GetObject(id);
+  RAY_CHECK(entry) << id << " doesn't exist in object store";
+  return *entry;
+}
+
+const LifecycleMetadata &ObjectStatsCollector::GetMetadata(const ObjectID &id) const {
+  return meta_store_.GetMetadata(id);
 }
 
 }  // namespace plasma

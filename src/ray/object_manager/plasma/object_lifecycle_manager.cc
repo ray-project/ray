@@ -26,10 +26,12 @@ using namespace flatbuf;
 ObjectLifecycleManager::ObjectLifecycleManager(
     IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::make_unique<ObjectStore>(allocator)),
+      meta_store_(),
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
-      stats_collector_() {}
+      stats_collector_(
+          std::make_unique<ObjectStatsCollector>(*object_store_, meta_store_)) {}
 
 std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::CreateObject(
     const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
@@ -45,7 +47,7 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
     return {nullptr, PlasmaError::OutOfMemory};
   }
   eviction_policy_->ObjectCreated(object_info.object_id);
-  stats_collector_.OnObjectCreated(*entry);
+  stats_collector_->OnObjectCreated(object_info.object_id);
   return {entry, PlasmaError::OK};
 }
 
@@ -57,7 +59,7 @@ const LocalObject *ObjectLifecycleManager::SealObject(const ObjectID &object_id)
   // TODO(scv119): should we check delete object from earger_deletion_objects_?
   auto entry = object_store_->SealObject(object_id);
   if (entry != nullptr) {
-    stats_collector_.OnObjectSealed(*entry);
+    stats_collector_->OnObjectSealed(object_id);
   }
   return entry;
 }
@@ -73,7 +75,7 @@ flatbuf::PlasmaError ObjectLifecycleManager::AbortObject(const ObjectID &object_
     return PlasmaError::ObjectSealed;
   }
 
-  bool abort_while_using = entry->ref_count > 0;
+  bool abort_while_using = meta_store_.GetRefCount(object_id) > 0;
   DeleteObjectInternal(object_id);
 
   if (abort_while_using) {
@@ -98,7 +100,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
     return PlasmaError::ObjectNotSealed;
   }
 
-  if (entry->ref_count != 0) {
+  if (meta_store_.GetRefCount(object_id) > 0) {
     // To delete an object, there must be no clients currently using it.
     // Put it into deletion cache, it will be deleted later.
     earger_deletion_objects_.emplace(object_id);
@@ -125,13 +127,13 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
   }
   // If there are no other clients using this object, notify the eviction policy
   // that the object is being used.
-  if (entry->ref_count == 0) {
+  if (meta_store_.GetRefCount(object_id) == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_->BeginObjectAccess(object_id);
   }
   // Increase reference count.
-  entry->ref_count++;
-  stats_collector_.OnObjectRefIncreased(*entry);
+  meta_store_.IncreaseRefCount(object_id);
+  stats_collector_->OnObjectRefIncreased(object_id);
   RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
                  << ", num bytes in use is now " << GetNumBytesInUse();
   return true;
@@ -139,17 +141,17 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
 
 bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
-  if (!entry || entry->ref_count == 0) {
+  if (!entry || meta_store_.GetRefCount(object_id) == 0) {
     RAY_LOG(ERROR)
         << object_id
         << " doesn't exist, or its ref count is already 0, remove reference failed.";
     return false;
   }
 
-  entry->ref_count--;
-  stats_collector_.OnObjectRefDecreased(*entry);
+  meta_store_.DecreaseRefCount(object_id);
+  stats_collector_->OnObjectRefDecreased(object_id);
 
-  if (entry->ref_count > 0) {
+  if (meta_store_.GetRefCount(object_id) > 0) {
     return true;
   }
 
@@ -164,6 +166,15 @@ bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
     DeleteObjectInternal(object_id);
   }
   return true;
+}
+
+bool ObjectLifecycleManager::IsObjectSpillable(const ObjectID &object_id) const {
+  auto entry = GetObject(object_id);
+  if (!entry) {
+    // Object already evicted or deleted.
+    return false;
+  }
+  return entry->Sealed() && meta_store_.GetRefCount(object_id) == 1;
 }
 
 std::string ObjectLifecycleManager::EvictionPolicyDebugString() const {
@@ -224,7 +235,7 @@ void ObjectLifecycleManager::EvictObjects(const std::vector<ObjectID> &object_id
     RAY_CHECK(entry != nullptr) << "To evict an object it must be in the object table.";
     RAY_CHECK(entry->state == ObjectState::PLASMA_SEALED)
         << "To evict an object it must have been sealed.";
-    RAY_CHECK(entry->ref_count == 0)
+    RAY_CHECK(meta_store_.GetRefCount(object_id) == 0)
         << "To evict an object, there must be no clients currently using it.";
 
     DeleteObjectInternal(object_id);
@@ -237,10 +248,11 @@ void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
 
   bool aborted = entry->state == ObjectState::PLASMA_CREATED;
 
-  stats_collector_.OnObjectDeleting(*entry);
+  stats_collector_->OnObjectDeleting(object_id);
   earger_deletion_objects_.erase(object_id);
   eviction_policy_->RemoveObject(object_id);
   object_store_->DeleteObject(object_id);
+  meta_store_.RemoveObject(object_id);
 
   if (!aborted) {
     // only send notification if it's not aborted.
@@ -249,7 +261,7 @@ void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
 }
 
 int64_t ObjectLifecycleManager::GetNumBytesInUse() const {
-  return stats_collector_.GetNumBytesInUse();
+  return stats_collector_->GetNumBytesInUse();
 }
 
 bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
@@ -258,29 +270,31 @@ bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
 }
 
 int64_t ObjectLifecycleManager::GetNumBytesCreatedTotal() const {
-  return stats_collector_.GetNumBytesCreatedTotal();
+  return stats_collector_->GetNumBytesCreatedTotal();
 }
 
 int64_t ObjectLifecycleManager::GetNumBytesUnsealed() const {
-  return stats_collector_.GetNumBytesUnsealed();
+  return stats_collector_->GetNumBytesUnsealed();
 }
 
 int64_t ObjectLifecycleManager::GetNumObjectsUnsealed() const {
-  return stats_collector_.GetNumObjectsUnsealed();
+  return stats_collector_->GetNumObjectsUnsealed();
 }
 
 void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
-  return stats_collector_.GetDebugDump(buffer);
+  return stats_collector_->GetDebugDump(buffer);
 }
 
 // For test only.
 ObjectLifecycleManager::ObjectLifecycleManager(
     std::unique_ptr<IObjectStore> store, std::unique_ptr<IEvictionPolicy> eviction_policy,
-    ray::DeleteObjectCallback delete_object_callback)
+    ray::DeleteObjectCallback delete_object_callback,
+    std::unique_ptr<IStatsCollector> stats_collector)
     : object_store_(std::move(store)),
+      meta_store_(),
       eviction_policy_(std::move(eviction_policy)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
-      stats_collector_() {}
+      stats_collector_(std::move(stats_collector)) {}
 
 }  // namespace plasma

@@ -514,12 +514,7 @@ int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  auto entry = object_lifecycle_mgr_.GetObject(object_id);
-  if (!entry) {
-    // Object already evicted or deleted.
-    return false;
-  }
-  return entry->Sealed() && entry->GetRefCount() == 1;
+  return object_lifecycle_mgr_.IsObjectSpillable(object_id);
 }
 
 void PlasmaStore::PrintDebugDump() const {

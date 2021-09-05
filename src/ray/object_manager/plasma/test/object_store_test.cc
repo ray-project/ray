@@ -89,7 +89,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     }));
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ false);
     EXPECT_NE(entry, nullptr);
-    EXPECT_EQ(entry->ref_count, 0);
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
@@ -147,7 +146,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
 
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ true);
     EXPECT_NE(entry, nullptr);
-    EXPECT_EQ(entry->ref_count, 0);
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);

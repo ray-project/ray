@@ -15,11 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/plasma.h"
+#pragma once
 
-#include "ray/object_manager/plasma/common.h"
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/id.h"
 
 namespace plasma {
 
-LocalObject::LocalObject(Allocation allocation) : allocation(std::move(allocation)) {}
+struct LifecycleMetadata {
+  LifecycleMetadata() : ref_count(0) {}
+  int64_t ref_count;
+};
+
+// LifecycleMetadataStore stores the metadata for object lifecycles,
+// including ref_counts.
+class LifecycleMetadataStore {
+ public:
+  bool IncreaseRefCount(const ray::ObjectID &id);
+  bool DecreaseRefCount(const ray::ObjectID &id);
+  void RemoveObject(const ray::ObjectID &id);
+  const LifecycleMetadata &GetMetadata(const ray::ObjectID &id) const;
+  int64_t GetRefCount(const ray::ObjectID &id) const;
+
+ private:
+  friend struct ObjectLifecycleManagerTest;
+
+  absl::flat_hash_map<ray::ObjectID, LifecycleMetadata> store_;
+};
 }  // namespace plasma

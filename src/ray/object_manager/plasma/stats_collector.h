@@ -18,44 +18,78 @@
 #pragma once
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/lifecycle_meta_store.h"
+#include "ray/object_manager/plasma/object_store.h"
 
 namespace plasma {
 
-// ObjectStatsCollector subscribes to plasma store state changes
+// IStatsCollector subscribes to plasma store state changes
 // and calculate the store statistics.
-//
-// TODO(scv119): move other stats from PlasmaStore/ObjectStore/
-// ObjectLifeCycleManager into this class.
-class ObjectStatsCollector {
+class IStatsCollector {
  public:
+  virtual ~IStatsCollector() = default;
+
   // Called after a new object is created.
-  void OnObjectCreated(const LocalObject &object);
+  virtual void OnObjectCreated(const ObjectID &id) = 0;
 
   // Called after an object is sealed.
-  void OnObjectSealed(const LocalObject &object);
+  virtual void OnObjectSealed(const ObjectID &id) = 0;
 
   // Called BEFORE an object is deleted.
-  void OnObjectDeleting(const LocalObject &object);
+  virtual void OnObjectDeleting(const ObjectID &id) = 0;
 
   // Called after an object's ref count is bumped by 1.
-  void OnObjectRefIncreased(const LocalObject &object);
+  virtual void OnObjectRefIncreased(const ObjectID &id) = 0;
 
   // Called after an object's ref count is decreased by 1.
-  void OnObjectRefDecreased(const LocalObject &object);
+  virtual void OnObjectRefDecreased(const ObjectID &id) = 0;
 
   // Debug dump the stats.
-  void GetDebugDump(std::stringstream &buffer) const;
+  virtual void GetDebugDump(std::stringstream &buffer) const = 0;
 
-  int64_t GetNumBytesInUse() const;
+  virtual int64_t GetNumBytesInUse() const = 0;
 
-  int64_t GetNumBytesCreatedTotal() const;
+  virtual int64_t GetNumBytesCreatedTotal() const = 0;
 
-  int64_t GetNumBytesUnsealed() const;
+  virtual int64_t GetNumBytesUnsealed() const = 0;
 
-  int64_t GetNumObjectsUnsealed() const;
+  virtual int64_t GetNumObjectsUnsealed() const = 0;
+};
+
+class ObjectStatsCollector : public IStatsCollector {
+ public:
+  ObjectStatsCollector(const IObjectStore &object_store,
+                       const LifecycleMetadataStore &meta_store);
+
+  void OnObjectCreated(const ObjectID &id) override;
+
+  void OnObjectSealed(const ObjectID &id) override;
+
+  void OnObjectDeleting(const ObjectID &id) override;
+
+  void OnObjectRefIncreased(const ObjectID &id) override;
+
+  void OnObjectRefDecreased(const ObjectID &id) override;
+
+  void GetDebugDump(std::stringstream &buffer) const override;
+
+  int64_t GetNumBytesInUse() const override;
+
+  int64_t GetNumBytesCreatedTotal() const override;
+
+  int64_t GetNumBytesUnsealed() const override;
+
+  int64_t GetNumObjectsUnsealed() const override;
+
+ private:
+  const LocalObject &GetObject(const ObjectID &id) const;
+  const LifecycleMetadata &GetMetadata(const ObjectID &id) const;
 
  private:
   friend struct ObjectStatsCollectorTest;
+
+  const IObjectStore &object_store_;
+  const LifecycleMetadataStore &meta_store_;
 
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;
