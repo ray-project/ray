@@ -18,7 +18,7 @@ from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
@@ -174,7 +174,7 @@ class RolloutWorker(ParallelIteratorWorker):
             count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
-            preprocessor_pref: str = "deepmind",
+            preprocessor_pref: Optional[str] = "deepmind",
             sample_async: bool = False,
             compress_observations: bool = False,
             num_envs: int = 1,
@@ -256,8 +256,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
-            preprocessor_pref (str): Whether to prefer RLlib preprocessors
-                ("rllib") or deepmind ("deepmind") when applicable.
+            preprocessor_pref (Optional[str]): Whether to use no preprocessor
+                (None), RLlib preprocessors ("rllib") or deepmind ("deepmind"),
+                when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -414,7 +415,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = True
+        self.preprocessing_enabled: bool = False \
+            if preprocessor_pref is None else True
         self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None
@@ -1358,15 +1360,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
                 self.preprocessors[name] = preprocessor
-                obs_space = preprocessor.observation_space
+                if preprocessor is not None:
+                    obs_space = preprocessor.observation_space
             else:
-                self.preprocessors[name] = NoPreprocessor(obs_space)
-
-            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                raise ValueError(
-                    "Found raw Tuple|Dict space as input to policy. "
-                    "Please preprocess these observations with a "
-                    "Tuple|DictFlatteningPreprocessor.")
+                self.preprocessors[name] = None
 
             self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
                                           conf, merged_conf)
