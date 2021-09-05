@@ -14,5 +14,9 @@ cartpole-apex-dqn:
     config:
         # Works for both torch and tf.
         framework: tf
-        num_workers: 3
+        # Make this work with only 5 CPUs and 0 GPUs:
+        num_workers: 2
+        optimizer:
+            num_replay_buffer_shards: 2
+
         num_gpus: 0
