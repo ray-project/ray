@@ -436,7 +436,7 @@ def run_learning_tests_from_yaml(
                     "failures": 0,
                     "passed": False,
                 }
-            # This key would break tune.
+            # These keys would break tune.
             del e["pass_criteria"]
             del e_torch["pass_criteria"]
 

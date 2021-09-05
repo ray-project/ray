@@ -1,4 +1,4 @@
-"""Multi-GPU learning tests for RLlib (torch and tf).
+"""Multi-GPU + GTrXL (attention net) learning tests for RLlib (torch and tf).
 """
 
 import json
@@ -20,7 +20,8 @@ if __name__ == "__main__":
     results = run_learning_tests_from_yaml(yaml_files)
 
     test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/rllib_multi_gpu_learning_tests.json")
+        "TEST_OUTPUT_JSON",
+        "/tmp/rllib_multi_gpu_with_attention_learning_tests.json")
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 

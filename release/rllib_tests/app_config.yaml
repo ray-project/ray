@@ -3,11 +3,14 @@ env_vars: {}
 debian_packages: []
 
 python:
-  # These dependencies should be handled by requirements_rllib.txt and requirements_ml_docker.txt
+  # These dependencies should be handled by requirements_rllib.txt and
+  # requirements_ml_docker.txt
   pip_packages: []
   conda_packages: []
 
 post_build_cmds:
+  # TODO: Erase the numpy uninstall/reinstall lines below as soon as we have
+  #  this PR merged: https://github.com/ray-project/ray/pull/18366
   - pip uninstall -y numpy ray || true
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy==1.19.5 || true
