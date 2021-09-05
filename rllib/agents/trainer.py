@@ -758,7 +758,8 @@ class Trainer(Trainable):
             self._validate_config(evaluation_config, trainer_obj_or_none=self)
             # Switch on complete_episode rollouts (evaluations are
             # always done on n complete episodes) and set the
-            # `in_evaluation` flag.
+            # `in_evaluation` flag. Also, make sure our rollout fragments
+            # are short so we don't have more than one episode in one rollout.
             evaluation_config.update({
                 "batch_mode": "complete_episodes",
                 "rollout_fragment_length": 1,

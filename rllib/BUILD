@@ -1725,7 +1725,7 @@ py_test(
 
 # Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout_no_learning1",
+    name = "test_rollout_no_learning_1",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1735,7 +1735,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning2",
+    name = "test_rollout_no_learning_2",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1745,7 +1745,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning3",
+    name = "test_rollout_no_learning_3",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1755,7 +1755,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning4",
+    name = "test_rollout_no_learning_4",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
