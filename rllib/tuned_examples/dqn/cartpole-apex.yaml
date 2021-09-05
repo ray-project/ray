@@ -15,8 +15,18 @@ cartpole-apex-dqn:
         # Works for both torch and tf.
         framework: tf
         # Make this work with only 5 CPUs and 0 GPUs:
-        num_workers: 2
+        num_workers: 3
         optimizer:
             num_replay_buffer_shards: 2
 
         num_gpus: 0
+
+        min_iter_time_s: 5
+        target_network_update_freq: 500
+        learning_starts: 1000
+        timesteps_per_iteration: 1000
+        buffer_size: 20000
+
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
