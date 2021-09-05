@@ -1,6 +1,5 @@
 import gym
 import numpy as np
-import tree  # pip install dm_tree
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
