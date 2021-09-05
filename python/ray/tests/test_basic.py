@@ -554,21 +554,21 @@ def test_keyword_args(ray_start_shared_local_modes):
         return
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
-        ray.get(f1.remote(3))
+    with pytest.raises(TypeError):
+        f1.remote(3)
 
-    with pytest.raises(Exception):
-        ray.get(f1.remote(x=3))
+    with pytest.raises(TypeError):
+        f1.remote(x=3)
 
-    with pytest.raises(Exception):
-        ray.get(f2.remote(0, w=0))
+    with pytest.raises(TypeError):
+        f2.remote(0, w=0)
 
-    with pytest.raises(Exception):
-        ray.get(f2.remote(3, x=3))
+    with pytest.raises(TypeError):
+        f2.remote(3, x=3)
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
-        ray.get(f2.remote(1, 2, 3, 4))
+    with pytest.raises(TypeError):
+        f2.remote(1, 2, 3, 4)
 
     @ray.remote
     def f3(x):
@@ -588,7 +588,7 @@ def test_args_starkwargs(ray_start_shared_local_modes):
     def test_function(fn, remote_fn):
         assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
         with pytest.raises(TypeError):
-            ray.get(remote_fn.remote(3))
+            remote_fn.remote(3)
 
     remote_test_function = ray.remote(test_function)
 
@@ -622,7 +622,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
         assert fn(1) == ray.get(remote_fn.remote(1))
 
         with pytest.raises(TypeError):
-            ray.get(remote_fn.remote(1, 2, x=3))
+            remote_fn.remote(1, 2, x=3)
 
     remote_test_function = ray.remote(test_function)
 
@@ -652,7 +652,8 @@ def test_oversized_function(ray_start_shared_local_modes):
     def f():
         return len(bar)
 
-    with pytest.raises(ValueError, match="The function f is too large"):
+    with pytest.raises(
+            ValueError, match="The remote function .*f is too large"):
         f.remote()
 
     with pytest.raises(ValueError, match="The actor Actor is too large"):

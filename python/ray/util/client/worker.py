@@ -331,6 +331,8 @@ class Worker:
                                 num_returns: int) -> List[Future]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
+        if num_returns is None:
+            num_returns = 1
 
         id_futures = [Future() for _ in range(num_returns)]
 
