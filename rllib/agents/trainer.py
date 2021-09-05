@@ -3,7 +3,6 @@ from datetime import datetime
 import functools
 import gym
 import logging
-import math
 import numpy as np
 import os
 import pickle
@@ -24,7 +23,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
