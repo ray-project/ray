@@ -2,7 +2,6 @@ import pytest
 import grpc
 
 from ray.util.client.worker import Worker
-import ray
 
 
 class Credentials(grpc.ChannelCredentials):
