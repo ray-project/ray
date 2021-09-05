@@ -330,6 +330,20 @@ cc_library(
 )
 
 cc_library(
+    name = "spill_worker_pool",
+    hdrs = [
+        "src/ray/object_manager/plasma/spill_worker_pool.h",
+    ],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":ray_common",
+        "//src/ray/protobuf:common_cc_proto",
+    ],
+)
+
+cc_library(
     name = "plasma_store_server_lib",
     srcs = [
         "src/ray/object_manager/plasma/create_request_queue.cc",
@@ -337,6 +351,7 @@ cc_library(
         "src/ray/object_manager/plasma/eviction_policy.cc",
         "src/ray/object_manager/plasma/get_request_queue.cc",
         "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
+        "src/ray/object_manager/plasma/object_spill_manager.cc",
         "src/ray/object_manager/plasma/object_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
         "src/ray/object_manager/plasma/stats_collector.cc",
@@ -350,6 +365,7 @@ cc_library(
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/get_request_queue.h",
         "src/ray/object_manager/plasma/object_lifecycle_manager.h",
+        "src/ray/object_manager/plasma/object_spill_manager.h",
         "src/ray/object_manager/plasma/object_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
         "src/ray/object_manager/plasma/stats_collector.h",
@@ -362,6 +378,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
+        ":spill_worker_pool",
     ],
 )
 
