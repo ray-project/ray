@@ -125,7 +125,8 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     """
     # Need to flatten `actions` in case we have a complex action space.
     # Take the 0th component to extract the batch dim.
-    logp_ = tf.zeros_like(tree.flatten(actions)[0], dtype=tf.float32)
+    action_component = tree.flatten(actions)[0]
+    logp_ = tf.zeros_like(action_component, dtype=tf.float32)
     # Logp's should be single values (but with the same batch dim as
     # `deterministic_actions` or `stochastic_actions`). In case
     # actions are just [B], zeros_like works just fine here, but if
