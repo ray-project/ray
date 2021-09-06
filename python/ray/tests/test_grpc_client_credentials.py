@@ -15,7 +15,7 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
             self.credentials = credentials
 
     class MockChannel:
-        def __init__(self, conn_str, credentials, options):
+        def __init__(self, conn_str, credentials, options, compression):
             self.credentials = credentials
 
         def subscribe(self, f):
@@ -30,5 +30,9 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
     monkeypatch.setattr(grpc, "secure_channel", mock_secure_channel)
 
     with pytest.raises(Stop) as stop:
-        Worker(secure=True, credentials=Credentials("test"))
+        Worker(secure=False, _credentials=Credentials("test"))
+    assert stop.value.credentials.name == "test"
+
+    with pytest.raises(Stop) as stop:
+        Worker(secure=True, _credentials=Credentials("test"))
     assert stop.value.credentials.name == "test"

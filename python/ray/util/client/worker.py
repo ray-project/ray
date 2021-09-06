@@ -79,24 +79,26 @@ def backoff(timeout: int) -> int:
 
 
 class Worker:
-    def __init__(self,
-                 conn_str: str = "",
-                 secure: bool = False,
-                 credentials: Optional[grpc.ChannelCredentials] = None,
-                 metadata: List[Tuple[str, str]] = None,
-                 connection_retries: int = 3):
+    def __init__(
+            self,
+            conn_str: str = "",
+            secure: bool = False,
+            metadata: List[Tuple[str, str]] = None,
+            connection_retries: int = 3,
+            _credentials: Optional[grpc.ChannelCredentials] = None,
+    ):
         """Initializes the worker side grpc client.
 
         Args:
             conn_str: The host:port connection string for the ray server.
             secure: whether to use SSL secure channel or not.
-            credentials: gprc channel credentials. Default ones will be used
-              if None.
             metadata: additional metadata passed in the grpc request headers.
             connection_retries: Number of times to attempt to reconnect to the
               ray server if it doesn't respond immediately. Setting to 0 tries
               at least once.  For infinite retries, catch the ConnectionError
               exception.
+            _credentials: gprc channel credentials. Default ones will be used
+              if None.
         """
         self._client_id = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
@@ -106,11 +108,13 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
-        if secure:
-            if credentials is None:
-                credentials = grpc.ssl_channel_credentials()
+        if secure and _credentials is None:
+            # Credentials should work even if secure is not set.
+            _credentials = grpc.ssl_channel_credentials()
+
+        if _credentials is not None:
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=GRPC_OPTIONS)
+                conn_str, _credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
                 conn_str, options=GRPC_OPTIONS)

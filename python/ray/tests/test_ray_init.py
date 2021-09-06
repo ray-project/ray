@@ -232,16 +232,16 @@ def test_ray_init_credentials_with_client(monkeypatch):
     def mock_init(self,
                   conn_str="",
                   secure=False,
-                  credentials=None,
                   metadata=None,
-                  connection_retries=3):
-        raise (Stop(credentials))
-        orig_init(self, conn_str, secure, credentials, metadata,
-                  connection_retries)
+                  connection_retries=3,
+                  _credentials=None):
+        raise (Stop(_credentials))
+        orig_init(self, conn_str, secure, metadata, connection_retries,
+                  _credentials)
 
     monkeypatch.setattr(Worker, "__init__", mock_init)
     with pytest.raises(Stop) as stop:
-        with ray_start_client_server(credentials=Credentials("test")):
+        with ray_start_client_server(_credentials=Credentials("test")):
             pass
 
     assert stop.value.credentials.name == "test"

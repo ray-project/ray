@@ -12,7 +12,6 @@ import sys
 import threading
 import time
 import traceback
-import grpc
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
@@ -596,7 +595,6 @@ def init(
         log_to_driver: bool = True,
         namespace: Optional[str] = None,
         runtime_env: Dict[str, Any] = None,
-        credentials: Optional[grpc.ChannelCredentials] = None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction: bool = False,
         _redis_max_memory: Optional[int] = None,
@@ -701,8 +699,6 @@ def init(
         runtime_env (dict): The runtime environment to use for this job (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-        credentials: gprc channel credentials. Default ones will be used
-            if None.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
