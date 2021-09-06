@@ -846,7 +846,7 @@ class Trainer(Trainable):
         return self.evaluate()
 
     @PublicAPI
-    def evaluate(self, done_function: Optional[Callable[[int], bool]] = None
+    def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
                  ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
@@ -854,11 +854,10 @@ class Trainer(Trainable):
         merging evaluation_config with the normal trainer config.
 
         Args:
-            done_function (Optional[Callable[[int], bool]]): An optional
-                callable taking the already run episodes as only arg. It's
-                used to find out whether evaluation should continue. Useful
-                for evaluation parallel to training and
-                evaluation_num_episodes=auto.
+            episodes_left_fn (Optional[Callable[[int], int]]): An optional
+                callable taking the already run num episodes as only arg
+                and returning the number of episodes left to run. It's used
+                to find out whether evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -890,6 +889,13 @@ class Trainer(Trainable):
             num_episodes = self.config["evaluation_num_episodes"] if \
                 self.config["evaluation_num_episodes"] != "auto" else \
                 (self.config["evaluation_num_workers"] or 1)
+
+            # Default done-function returns True, whenever num episodes
+            # have been completed.
+            if episodes_left_fn is None:
+
+                def episodes_left_fn(num_episodes_done):
+                    return num_episodes - num_episodes_done
 
             logger.info(
                 f"Evaluating current policy for {num_episodes} episodes.")
@@ -928,11 +934,12 @@ class Trainer(Trainable):
                 # How many episodes have we run (across all eval workers)?
                 num_episodes_done = 0
                 round_ = 0
-                while num_episodes_done < num_episodes or (
-                        done_function is not None
-                        and not done_function(num_episodes_done)):
+                while True:
+                    episodes_left_to_do = episodes_left_fn(num_episodes_done)
+                    if episodes_left_to_do <= 0:
+                        break
+
                     round_ += 1
-                    episodes_left_to_do = num_episodes - num_episodes_done
                     batches = ray.get([
                         w.sample.remote() for i, w in enumerate(
                             self.evaluation_workers.remote_workers())

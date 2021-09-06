@@ -37,12 +37,12 @@ parser.add_argument(
 parser.add_argument(
     "--stop-timesteps",
     type=int,
-    default=100000,
+    default=200000,
     help="Number of timesteps to train.")
 parser.add_argument(
     "--stop-reward",
     type=float,
-    default=100.0,
+    default=180.0,
     help="Reward at which we stop training.")
 parser.add_argument(
     "--local-mode",
@@ -84,31 +84,29 @@ if __name__ == "__main__":
         "env": "CartPole-v0",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "vf_share_layers": True,
-        },
         "framework": args.framework,
         # Run with tracing enabled for tfe/tf2.
         "eager_tracing": args.framework in ["tfe", "tf2"],
+
         # Parallel evaluation+training config.
-        # Use two evaluation workers (must be >0, otherwise,
-        # evaluation will run on a local worker and block).
+        # Switch on evaluation in parallel with training.
+        "evaluation_parallel_to_training": True,
+        # Use two evaluation workers. Must be >0, otherwise,
+        # evaluation will run on a local worker and block (no parallelism).
         "evaluation_num_workers": 2,
         # Evaluate every other training iteration (together
         # with every other call to Trainer.train()).
         "evaluation_interval": 2,
-        "train_batch_size": 16000,
         # Run for n episodes (properly distribute load amongst all eval
         # workers). The longer it takes to evaluate, the more
         # sense it makes to use `evaluation_parallel_to_training=True`.
         # Use "auto" to run evaluation for roughly as long as the training
         # step takes.
         "evaluation_num_episodes": args.evaluation_num_episodes,
-        # Switch on evaluation in parallel with training.
-        "evaluation_parallel_to_training": True,
 
         # Use a custom callback that asserts that we are running the
-        # configured exact number of episodes per evaluation.
+        # configured exact number of episodes per evaluation OR - in auto
+        # mode - run at least as many episodes as we have eval workers.
         "callbacks": AssertNumEvalEpisodesCallback,
     }
 

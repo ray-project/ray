@@ -221,12 +221,16 @@ def build_trainer(
 
                             # Run at least one `evaluate()` (num_episodes_done
                             # must be > 0), even if the training is very fast.
-                            def stop_eval(num_episodes_done):
-                                return (num_episodes_done > 0
-                                        and train_future.done())
+                            def episodes_left_fn(num_episodes_done):
+                                if num_episodes_done > 0 and \
+                                        train_future.done():
+                                    return 0
+                                else:
+                                    return self.config[
+                                        "evaluation_num_workers"]
 
                             evaluation_metrics = self.evaluate(
-                                done_function=stop_eval)
+                                episodes_left_fn=episodes_left_fn)
                         else:
                             evaluation_metrics = self.evaluate()
                         # Collect the training results from the future.
