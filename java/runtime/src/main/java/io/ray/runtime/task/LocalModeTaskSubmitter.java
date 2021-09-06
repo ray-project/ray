@@ -2,6 +2,7 @@ package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
@@ -273,7 +274,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 ActorCreationTaskSpec.newBuilder()
                     .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
                     .setMaxConcurrency(options.maxConcurrency)
-                    .addConcurrencyGroups(buildConcurrencyGroups(options))
+                    .addConcurrencyGroups(generateConcurrencyGroupsBuilder(options))
                     .build())
             .build();
     submitTaskSpec(taskSpec);
@@ -567,14 +568,21 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     Common.ConcurrencyGroup.Builder builder = Common.ConcurrencyGroup.newBuilder();
     options.concurrencyGroups.forEach((concurrencyGroup) -> {
       ConcurrencyGroupImpl impl = (ConcurrencyGroupImpl) concurrencyGroup;
-      builder.addFunctionDescriptors();
       builder.setMaxConcurrency(impl.getMaxConcurrency()).setName(impl.getName());
-      impl.getFunctionDescriptors();
-      impl.getMaxConcurrency();
-
+      appendFunctionDescriptors(builder, impl.getFunctionDescriptors());
     });
 
-    return null;
+    return builder;
+  }
 
+  private static void appendFunctionDescriptors(Common.ConcurrencyGroup.Builder builder, List<FunctionDescriptor> functionDescriptors) {
+    Preconditions.checkNotNull(functionDescriptors);
+    Preconditions.checkState(!functionDescriptors.isEmpty());
+    functionDescriptors.stream().map(functionDescriptor -> (JavaFunctionDescriptor) functionDescriptor).map(javaFunctionDescriptor -> Common.FunctionDescriptor.newBuilder().setJavaFunctionDescriptor(
+      Common.JavaFunctionDescriptor.newBuilder()
+        .setClassName(javaFunctionDescriptor.className)
+        .setFunctionName(javaFunctionDescriptor.name)
+        .setSignature(javaFunctionDescriptor.signature)
+    )).forEach(builder::addFunctionDescriptors);
   }
 }
