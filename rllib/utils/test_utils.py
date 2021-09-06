@@ -447,6 +447,7 @@ def run_learning_tests_from_yaml(
 
             # Generate `checks` dict for all experiments (tf and/or torch).
             for k_ in keys:
+                e = experiments[k_]
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
                     "min_timesteps": e["pass_criteria"]["timesteps_total"],
@@ -455,7 +456,7 @@ def run_learning_tests_from_yaml(
                     "passed": False,
                 }
                 # This key would break tune.
-                del experiments[k_]["pass_criteria"]
+                del e["pass_criteria"]
 
     # Print out the actual config.
     print("== Test config ==")
