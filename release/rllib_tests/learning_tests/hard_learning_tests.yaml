@@ -87,7 +87,7 @@ apex-breakoutnoframeskip-v4:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
-appo-pong-no-frameskip-v4:
+appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -229,6 +229,45 @@ ddpg-hopperbulletenv-v0:
         num_gpus_per_worker: 0
         worker_side_prioritization: false
 
+# Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
+# isn't actually any more efficient on Atari, since the network size is
+# relatively small and the env doesn't require a GPU.
+ddppo-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: DDPPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        # DDPPO only supports PyTorch so far.
+        framework: torch
+        # Worker config: 10 workers, each of which requires a GPU.
+        num_workers: 8
+        # Workers require GPUs, but share 1 GPU amongst 2 workers.
+        num_gpus_per_worker: 0.5
+        # Each worker will sample 100 * 5 envs per worker steps = 500 steps
+        # per optimization round. This is 5000 steps summed across workers.
+        rollout_fragment_length: 100
+        num_envs_per_worker: 5
+        # Each worker will take a minibatch of 50. There are 10 workers total,
+        # so the effective minibatch size will be 500.
+        sgd_minibatch_size: 50
+        num_sgd_iter: 10
+        # Params from standard PPO Atari config:
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: true
+        clip_param: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+        model:
+            vf_share_layers: true
+
 dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
@@ -261,6 +300,18 @@ dqn-breakoutnoframeskip-v4:
         prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 0.5
         timesteps_per_iteration: 10000
+
+es-humanoid-v2:
+    env: Humanoid-v2
+    run: ES
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 6000.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        num_workers: 50
 
 impala-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
