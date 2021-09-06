@@ -73,6 +73,10 @@ class Random(Exploration):
             # Function to produce random samples from primitive space
             # components: (Multi)Discrete or Box.
             def random_component(component):
+                # Have at least an additional shape of (1,), even if the
+                # component is Box(-1.0, 1.0, shape=()).
+                shape = component.shape or (1, )
+
                 if isinstance(component, Discrete):
                     return tf.random.uniform(
                         shape=(batch_size, ) + component.shape,
@@ -92,19 +96,19 @@ class Random(Exploration):
                             component.bounded_below.all():
                         if component.dtype.name.startswith("int"):
                             return tf.random.uniform(
-                                shape=(batch_size, ) + component.shape,
+                                shape=(batch_size, ) + shape,
                                 minval=component.low.flat[0],
                                 maxval=component.high.flat[0],
                                 dtype=component.dtype)
                         else:
                             return tf.random.uniform(
-                                shape=(batch_size, ) + component.shape,
+                                shape=(batch_size, ) + shape,
                                 minval=component.low,
                                 maxval=component.high,
                                 dtype=component.dtype)
                     else:
                         return tf.random.normal(
-                            shape=(batch_size, ) + component.shape,
+                            shape=(batch_size, ) + shape,
                             dtype=component.dtype)
                 else:
                     assert isinstance(component, Simplex), \
@@ -112,7 +116,7 @@ class Random(Exploration):
                         "sampling!".format(component)
                     return tf.nn.softmax(
                         tf.random.uniform(
-                            shape=(batch_size, ) + component.shape,
+                            shape=(batch_size, ) + shape,
                             minval=0.0,
                             maxval=1.0,
                             dtype=component.dtype))
