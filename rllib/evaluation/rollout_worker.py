@@ -420,8 +420,12 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        # Update the global seed for numpy/random/tf-eager/torch.
-        update_global_seed_if_necessary(policy_config.get("framework"), seed)
+        # Update the global seed for numpy/random/tf-eager/torch if we are not
+        # the local worker, otherwise, this was already done in the Trainer
+        # object itself.
+        if self.worker_index > 0:
+            update_global_seed_if_necessary(
+                policy_config.get("framework"), seed)
 
         # A single environment provided by the user (via config.env). This may
         # also remain None.

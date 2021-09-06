@@ -211,6 +211,10 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
+        additional_resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the extra resources that will be
+            requested for each worker in addition to ``num_cpus_per_worker``
+            and ``num_gpus_per_worker``.
         max_retries (int): Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
 
@@ -230,13 +234,14 @@ class BackendExecutor:
             num_workers: int = 1,
             num_cpus_per_worker: float = 1,
             num_gpus_per_worker: float = 0,
-            max_retries: int = 3,
-    ):
+            additional_resources_per_worker: Optional[Dict[str, float]] = None,
+            max_retries: int = 3):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
+        self._additional_resources_per_worker = additional_resources_per_worker
         self._max_failures = max_retries
         if self._max_failures < 0:
             self._max_failures = float("inf")
@@ -254,9 +259,9 @@ class BackendExecutor:
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
-        self.worker_group = WorkerGroup(self._num_workers,
-                                        self._num_cpus_per_worker,
-                                        self._num_gpus_per_worker)
+        self.worker_group = WorkerGroup(
+            self._num_workers, self._num_cpus_per_worker,
+            self._num_gpus_per_worker, self._additional_resources_per_worker)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook

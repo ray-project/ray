@@ -18,6 +18,7 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
+from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 import ray.data.tests.util as util
@@ -1813,6 +1814,67 @@ def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     assert_sorted(
         ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
+
+
+def test_dataset_retry_exceptions(ray_start_regular_shared, local_path):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    class FlakyCSVDatasource(CSVDatasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+            count = self.counter.increment.remote()
+            if ray.get(count) == 1:
+                raise ValueError()
+            else:
+                return CSVDatasource._read_file(self, f, path, **reader_args)
+
+        def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
+                         **writer_args):
+            count = self.counter.increment.remote()
+            if ray.get(count) == 1:
+                raise ValueError()
+            else:
+                CSVDatasource._write_block(self, f, block, **writer_args)
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(local_path, "test1.csv")
+    df1.to_csv(path1, index=False, storage_options={})
+    ds1 = ray.data.read_datasource(
+        FlakyCSVDatasource(), parallelism=1, paths=path1)
+    ds1.write_datasource(
+        FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    assert df1.equals(
+        pd.read_csv(
+            os.path.join(local_path, "data_000000.csv"), storage_options={}))
+
+    counter = Counter.remote()
+
+    def flaky_mapper(x):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError()
+        else:
+            return ray.get(count)
+
+    assert sorted(ds1.map(flaky_mapper).take()) == [2, 3, 4]
+
+    with pytest.raises(ValueError):
+        ray.data.read_datasource(
+            FlakyCSVDatasource(),
+            parallelism=1,
+            paths=path1,
+            ray_remote_args={
+                "retry_exceptions": False
+            }).take()
 
 
 if __name__ == "__main__":

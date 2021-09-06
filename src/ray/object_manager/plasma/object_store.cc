@@ -47,9 +47,6 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->construct_duration = -1;
   entry->source = source;
 
-  num_objects_unsealed_++;
-  num_bytes_unsealed_ += entry->GetObjectSize();
-  num_bytes_created_total_ += entry->GetObjectSize();
   RAY_LOG(DEBUG) << "create object " << object_info.object_id << " succeeded";
   return entry;
 }
@@ -69,8 +66,6 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   }
   entry->state = ObjectState::PLASMA_SEALED;
   entry->construct_duration = std::time(nullptr) - entry->create_time;
-  num_objects_unsealed_--;
-  num_bytes_unsealed_ -= entry->GetObjectSize();
   return entry;
 }
 
@@ -79,20 +74,10 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   if (entry == nullptr) {
     return false;
   }
-  if (entry->state == ObjectState::PLASMA_CREATED) {
-    num_bytes_unsealed_ -= entry->GetObjectSize();
-    num_objects_unsealed_--;
-  }
   allocator_.Free(std::move(entry->allocation));
   object_table_.erase(object_id);
   return true;
 }
-
-int64_t ObjectStore::GetNumBytesCreatedTotal() const { return num_bytes_created_total_; }
-
-int64_t ObjectStore::GetNumBytesUnsealed() const { return num_bytes_unsealed_; };
-
-int64_t ObjectStore::GetNumObjectsUnsealed() const { return num_objects_unsealed_; };
 
 LocalObject *ObjectStore::GetMutableObject(const ObjectID &object_id) {
   auto it = object_table_.find(object_id);
