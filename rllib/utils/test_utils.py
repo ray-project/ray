@@ -489,21 +489,31 @@ def run_learning_tests_from_yaml(
         for t in trials:
             experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
 
+            # If we have evaluation workers, use their rewards.
+            # This is useful for offline learning tests, where
+            # we evaluate against an actual environment.
+            check_eval = experiments[experiment]["config"].get(
+                "evaluation_interval", None) is not None
+
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
             else:
+                reward_mean = \
+                    t.last_result["evaluation"]["episode_reward_mean"] if \
+                    check_eval else t.last_result["episode_reward_mean"]
                 desired_reward = checks[experiment]["min_reward"]
-                desired_timesteps = checks[experiment]["min_timesteps"]
 
                 throughput = t.last_result["timesteps_total"] / \
                     t.last_result["time_total_s"]
-
+                desired_timesteps = checks[experiment]["min_timesteps"]
                 desired_throughput = \
                     desired_timesteps / t.stopping_criterion["time_total_s"]
 
-                if t.last_result["episode_reward_mean"] < desired_reward or \
-                        desired_throughput and throughput < desired_throughput:
+                # We failed to reach desired reward or the desired throughput.
+                if reward_mean < desired_reward or \
+                        (desired_throughput and throughput < desired_throughput):
                     checks[experiment]["failures"] += 1
+                # We succeeded!
                 else:
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
