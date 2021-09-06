@@ -40,16 +40,15 @@ logger = logging.getLogger(__name__)
 
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
-
     Attributes:
         _worker: The associated worker that this manager related.
         _functions_to_export: The remote functions to export when
             the worker gets connected.
         _actors_to_export: The actors to export when the worker gets
             connected.
-        _function_execution_info: The map from job_id to function_id
+        _function_execution_info: The function_id
             and execution_info.
-        _num_task_executions: The map from job_id to function
+        _num_task_executions: The function
             execution times.
         imported_actor_classes: The set of actor classes keys (format:
             ActorClass:function_id) that are already in GCS.
@@ -59,9 +58,7 @@ class FunctionActorManager:
         self._worker = worker
         self._functions_to_export = []
         self._actors_to_export = []
-        # This field is a dictionary that maps a driver ID to a dictionary of
-        # functions (and information about those functions) that have been
-        # registered for that driver (this inner dictionary maps function IDs
+        # This field is a dictionary that maps function IDs
         # to a FunctionExecutionInfo object. This should only be used on
         # workers that execute remote functions.
         self._function_execution_info = defaultdict(lambda: {})
@@ -79,30 +76,24 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
         self.execution_infos = {}
 
-    def increase_task_counter(self, job_id, function_descriptor):
+    def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
-        if self._worker.load_code_from_local:
-            job_id = ray.JobID.nil()
-        self._num_task_executions[job_id][function_id] += 1
+        self._num_task_executions[function_id] += 1
 
-    def get_task_counter(self, job_id, function_descriptor):
+    def get_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
-        if self._worker.load_code_from_local:
-            job_id = ray.JobID.nil()
-        return self._num_task_executions[job_id][function_id]
+        return self._num_task_executions[function_id]
 
     def compute_collision_identifier(self, function_or_class):
         """The identifier is used to detect excessive duplicate exports.
-
         The identifier is used to determine when the same function or class is
         exported many times. This can yield false positives.
-
         Args:
             function_or_class: The function or class to compute an identifier
                 for.
-
         Returns:
             The identifier. Note that different functions or classes can give
                 rise to same identifier. However, the same function should
@@ -124,23 +115,45 @@ class FunctionActorManager:
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
 
+    def load_function_or_class_from_local(self, module_name,
+                                          function_or_class_name):
+        """Try to load a function or class in the module from local."""
+        module = importlib.import_module(module_name)
+        parts = [part for part in function_or_class_name.split(".") if part]
+        object = module
+        try:
+            for part in parts:
+                object = getattr(object, part)
+            return object
+        except Exception:
+            return None
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
-
         Args:
             remote_function: the RemoteFunction object.
         """
         if self._worker.load_code_from_local:
-            return
-
+            function_descriptor = remote_function._function_descriptor
+            module_name, function_name = (
+                function_descriptor.module_name,
+                function_descriptor.function_name,
+            )
+            # If the function is dynamic, we still export it to GCS
+            # even if load_code_from_local is set True.
+            if self.load_function_or_class_from_local(
+                    module_name, function_name) is not None:
+                return
         function = remote_function._function
-        pickled_function = pickle.dumps(function)
+        pickled_function = remote_function._pickled_function
 
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
+        if self._worker.redis_client.exists(key) == 1:
+            return
         self._worker.redis_client.hset(
             key,
             mapping={
@@ -174,7 +187,7 @@ class FunctionActorManager:
         # atomic. Otherwise, there is race condition. Another thread may use
         # the temporary function above before the real function is ready.
         with self.lock:
-            self._num_task_executions[job_id][function_id] = 0
+            self._num_task_executions[function_id] = 0
 
             try:
                 function = pickle.loads(serialized_function)
@@ -185,7 +198,7 @@ class FunctionActorManager:
                         "This function was not imported properly.")
 
                 # Use a placeholder method when function pickled failed
-                self._function_execution_info[job_id][function_id] = (
+                self._function_execution_info[function_id] = (
                     FunctionExecutionInfo(
                         function=f,
                         function_name=function_name,
@@ -207,7 +220,7 @@ class FunctionActorManager:
                 # However in the worker process, the `__main__` module is a
                 # different module, which is `default_worker.py`
                 function.__module__ = module
-                self._function_execution_info[job_id][function_id] = (
+                self._function_execution_info[function_id] = (
                     FunctionExecutionInfo(
                         function=function,
                         function_name=function_name,
@@ -219,33 +232,36 @@ class FunctionActorManager:
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
-
         Args:
             job_id: ID of the job that the function belongs to.
             function_descriptor: The FunctionDescriptor of the function to get.
-
         Returns:
             A FunctionExecutionInfo object.
         """
+        function_id = function_descriptor.function_id
+        # If the function has already been loaded,
+        # There's no need to load again
+        if function_id in self._function_execution_info:
+            return self._function_execution_info[function_id]
         if self._worker.load_code_from_local:
             # Load function from local code.
-            # Currently, we don't support isolating code by jobs,
-            # thus always set job ID to NIL here.
-            job_id = ray.JobID.nil()
             if not function_descriptor.is_actor_method():
-                self._load_function_from_local(job_id, function_descriptor)
-        else:
-            # Load function from GCS.
-            # Wait until the function to be executed has actually been
-            # registered on this worker. We will push warnings to the user if
-            # we spend too long in this loop.
-            # The driver function may not be found in sys.path. Try to load
-            # the function from GCS.
-            with profiling.profile("wait_for_function"):
-                self._wait_for_function(function_descriptor, job_id)
+                # If the function is not able to be loaded,
+                # try to load it from GCS,
+                # even if load_code_from_local is set True
+                if self._load_function_from_local(function_descriptor) is True:
+                    return self._function_execution_info[function_id]
+        # Load function from GCS.
+        # Wait until the function to be executed has actually been
+        # registered on this worker. We will push warnings to the user if
+        # we spend too long in this loop.
+        # The driver function may not be found in sys.path. Try to load
+        # the function from GCS.
+        with profiling.profile("wait_for_function"):
+            self._wait_for_function(function_descriptor, job_id)
         try:
             function_id = function_descriptor.function_id
-            info = self._function_execution_info[job_id][function_id]
+            info = self._function_execution_info[function_id]
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
                        "job_id: %s, function_descriptor: %s. Message: %s" %
@@ -253,46 +269,37 @@ class FunctionActorManager:
             raise KeyError(message)
         return info
 
-    def _load_function_from_local(self, job_id, function_descriptor):
+    def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
-        if (job_id in self._function_execution_info
-                and function_id in self._function_execution_info[job_id]):
-            return
+
         module_name, function_name = (
             function_descriptor.module_name,
             function_descriptor.function_name,
         )
-        try:
-            module = importlib.import_module(module_name)
-            parts = [part for part in function_name.split(".") if part]
-            object = module
-            for part in parts:
-                object = getattr(object, part)
+
+        object = self.load_function_or_class_from_local(
+            module_name, function_name)
+        if object is not None:
             function = object._function
-            self._function_execution_info[job_id][function_id] = (
+            self._function_execution_info[function_id] = (
                 FunctionExecutionInfo(
                     function=function,
                     function_name=function_name,
                     max_calls=0,
                 ))
-            self._num_task_executions[job_id][function_id] = 0
-        except Exception as e:
-            raise RuntimeError(f"Function {function_descriptor} failed "
-                               "to be loaded from local code.\n"
-                               f"sys.path: {sys.path}, "
-                               f"Error message: {str(e)}")
+            self._num_task_executions[function_id] = 0
+            return True
+        else:
+            return False
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
-
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
         a problem somewhere and we will push an error message to the user.
-
         If this worker is an actor, then this will wait until the actor has
         been defined.
-
         Args:
             function_descriptor : The FunctionDescriptor of the function that
                 we want to execute.
@@ -306,7 +313,7 @@ class FunctionActorManager:
             with self.lock:
                 if (self._worker.actor_id.is_nil()
                         and (function_descriptor.function_id in
-                             self._function_execution_info[job_id])):
+                             self._function_execution_info)):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -327,11 +334,9 @@ class FunctionActorManager:
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
-
         The is factored out as a separate function because it is also called
         on cached actor class definitions when a worker connects for the first
         time.
-
         Args:
             key: The key to store the actor class info at.
             actor_class_info: Information about the actor class.
@@ -344,7 +349,15 @@ class FunctionActorManager:
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
         if self._worker.load_code_from_local:
-            return
+            module_name, class_name = (
+                actor_creation_function_descriptor.module_name,
+                actor_creation_function_descriptor.class_name)
+            # If the class is dynamic, we still export it to GCS
+            # even if load_code_from_local is set True.
+            if self.load_function_or_class_from_local(module_name,
+                                                      class_name) is not None:
+                return
+
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
@@ -378,12 +391,10 @@ class FunctionActorManager:
 
     def load_actor_class(self, job_id, actor_creation_function_descriptor):
         """Load the actor class.
-
         Args:
             job_id: job ID of the actor.
             actor_creation_function_descriptor: Function descriptor of
                 the actor constructor.
-
         Returns:
             The actor class.
         """
@@ -393,10 +404,16 @@ class FunctionActorManager:
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                job_id = ray.JobID.nil()
-                # Load actor class from local code.
+                # Load actor class from local code first.
                 actor_class = self._load_actor_class_from_local(
-                    job_id, actor_creation_function_descriptor)
+                    actor_creation_function_descriptor)
+                # If the actor is unable to be loaded
+                # from local, try to load it
+                # from GCS even if load_code_from_local is set True
+                if actor_class is None:
+                    actor_class = self._load_actor_class_from_gcs(
+                        job_id, actor_creation_function_descriptor)
+
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
@@ -427,38 +444,32 @@ class FunctionActorManager:
                     actor_method,
                     actor_imported=True,
                 )
-                self._function_execution_info[job_id][method_id] = (
+                self._function_execution_info[method_id] = (
                     FunctionExecutionInfo(
                         function=executor,
                         function_name=actor_method_name,
                         max_calls=0,
                     ))
-                self._num_task_executions[job_id][method_id] = 0
-            self._num_task_executions[job_id][function_id] = 0
+                self._num_task_executions[method_id] = 0
+            self._num_task_executions[function_id] = 0
         return actor_class
 
-    def _load_actor_class_from_local(self, job_id,
-                                     actor_creation_function_descriptor):
+    def _load_actor_class_from_local(self, actor_creation_function_descriptor):
         """Load actor class from local code."""
-        assert isinstance(job_id, ray.JobID)
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)
-        try:
-            module = importlib.import_module(module_name)
-            parts = [part for part in class_name.split(".") if part]
-            object = module
-            for part in parts:
-                object = getattr(object, part)
+
+        object = self.load_function_or_class_from_local(
+            module_name, class_name)
+
+        if object is not None:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
                 return object
-        except Exception as e:
-            raise RuntimeError(
-                f"Actor {class_name} failed to be imported from local code.\n"
-                f"sys.path: {sys.path}, "
-                f"Error Message: {str(e)}")
+        else:
+            return None
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
         class TemporaryActor:
@@ -484,7 +495,15 @@ class FunctionActorManager:
         # up in an infinite loop here, but we should push an error to
         # the driver if too much time is spent here.
         while key not in self.imported_actor_classes:
-            time.sleep(0.001)
+            try:
+                # If we're in the process of deserializing an ActorHandle
+                # and we hold the function_manager lock, we may be blocking
+                # the import_thread from loading the actor class. Use cv.wait
+                # to temporarily yield control to the import thread.
+                self.cv.wait()
+            except RuntimeError:
+                # We don't hold the function_manager lock, just sleep regularly
+                time.sleep(0.001)
 
         # Fetch raw data from GCS.
         (job_id_str, class_name, module, pickled_class,
@@ -534,10 +553,8 @@ class FunctionActorManager:
 
     def _make_actor_method_executor(self, method_name, method, actor_imported):
         """Make an executor that wraps a user-defined actor method.
-
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
-
         Args:
             method_name (str): The name of the actor method.
             method (instancemethod): The actor method to wrap. This should be a
@@ -546,7 +563,6 @@ class FunctionActorManager:
             actor_imported (bool): Whether the actor has been imported.
                 Checkpointing operations will not be run if this is set to
                 False.
-
         Returns:
             A function that executes the given actor method on the worker's
                 stored instance of the actor. The function also updates the

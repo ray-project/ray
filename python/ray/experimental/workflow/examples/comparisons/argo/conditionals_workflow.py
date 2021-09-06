@@ -27,5 +27,4 @@ def flip_coin() -> str:
 
 if __name__ == "__main__":
     workflow.init()
-
     print(flip_coin.step().run())

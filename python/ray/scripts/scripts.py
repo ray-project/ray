@@ -476,32 +476,24 @@ def debug(address):
     help="Module path to the Python function that will be used to set up the "
     "environment for the worker process.")
 @click.option(
-    "--runtime-env-setup-hook",
-    hidden=True,
-    default=ray_constants.DEFAULT_RUNTIME_ENV_SETUP_HOOK,
-    type=str,
-    help="Module path to the Python function that will be used to set up the "
-    "runtime env in agent.")
-@click.option(
     "--ray-debugger-external",
     is_flag=True,
     default=False,
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
 @add_click_options(logging_options)
-def start(node_ip_address, address, port, redis_password, redis_shard_ports,
-          object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, worker_port_list,
-          ray_client_server_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head,
-          include_dashboard, dashboard_host, dashboard_port,
-          dashboard_agent_listen_port, block, plasma_directory,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, tracing_startup_hook,
-          worker_setup_hook, runtime_env_setup_hook, ray_debugger_external,
-          log_style, log_color, verbose):
+def start(
+        node_ip_address, address, port, redis_password, redis_shard_ports,
+        object_manager_port, node_manager_port, gcs_server_port,
+        min_worker_port, max_worker_port, worker_port_list,
+        ray_client_server_port, memory, object_store_memory, redis_max_memory,
+        num_cpus, num_gpus, resources, head, include_dashboard, dashboard_host,
+        dashboard_port, dashboard_agent_listen_port, block, plasma_directory,
+        autoscaling_config, no_redirect_worker_output, no_redirect_output,
+        plasma_store_socket_name, raylet_socket_name, temp_dir, system_config,
+        lru_evict, enable_object_reconstruction, metrics_export_port,
+        no_monitor, tracing_startup_hook, worker_setup_hook,
+        ray_debugger_external, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -562,7 +554,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         worker_setup_hook=worker_setup_hook,
-        runtime_env_setup_hook=runtime_env_setup_hook,
         ray_debugger_external=ray_debugger_external)
     if head:
         # Use default if port is none, allocate an available port if port is 0
@@ -576,7 +567,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         num_redis_shards = None
         # Start Ray on the head node.
-        if redis_shard_ports is not None:
+        if redis_shard_ports is not None and address is None:
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
@@ -588,6 +579,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If the primary one is not reachable, we starts new one(s) "
                 "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
             external_addresses = address.split(",")
+            # We reuse primary redis as sharding when there's only one
+            # instance provided.
+            if len(external_addresses) == 1:
+                external_addresses.append(external_addresses[0])
             reachable = False
             try:
                 [primary_redis_ip, port] = external_addresses[0].split(":")
@@ -604,8 +599,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if reachable:
                 ray_params.update_if_absent(
                     external_addresses=external_addresses)
-                if len(external_addresses) > 1:
-                    num_redis_shards = len(external_addresses) - 1
+                num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if "
@@ -1792,7 +1786,7 @@ def healthcheck(address, redis_password, component):
             options = (("grpc.enable_http_proxy", 0), )
             channel = grpc.insecure_channel(gcs_address, options=options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest(seq=0)
+            request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
                 request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
             if reply.status.code == 0:

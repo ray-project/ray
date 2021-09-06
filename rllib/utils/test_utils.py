@@ -11,6 +11,7 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
+from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -181,8 +182,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, \
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
-    # String comparison.
-    elif hasattr(x, "dtype") and x.dtype == np.object:
+    # String/byte comparisons.
+    elif hasattr(x, "dtype") and \
+            (x.dtype == np.object or str(x.dtype) == "<U216"):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -334,12 +336,6 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
-                # Framestacking w/ traj. view API.
-                framestacks = pol.config["model"].get("num_framestacks",
-                                                      "auto")
-                if isinstance(framestacks, int) and framestacks > 1:
-                    obs = np.stack(
-                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
@@ -377,8 +373,12 @@ def check_compute_single_action(trainer,
                         "({})!".format(action, what, action_space))
 
 
-def run_learning_tests_from_yaml(yaml_files: List[str],
-                                 max_num_repeats: int = 2) -> Dict[str, Any]:
+def run_learning_tests_from_yaml(
+        yaml_files: List[str],
+        *,
+        max_num_repeats: int = 2,
+        smoke_test: bool = False,
+) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
@@ -407,9 +407,18 @@ def run_learning_tests_from_yaml(yaml_files: List[str],
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
             e["config"]["framework"] = "tf"
-            # We also stop early, once we reach the desired reward.
-            e["stop"]["episode_reward_mean"] = \
-                e["pass_criteria"]["episode_reward_mean"]
+            # For smoke-tests, we just run for n min.
+            if smoke_test:
+                # 15min hardcoded for now.
+                e["stop"]["time_total_s"] = 900
+                # Don't stop smoke tests b/c of any reward received.
+                e["pass_criteria"]["episode_reward_mean"] = float("inf")
+                # Same for timesteps.
+                e["pass_criteria"]["timesteps_total"] = LARGE_INTEGER
+            else:
+                # We also stop early, once we reach the desired reward.
+                e["stop"]["episode_reward_mean"] = \
+                    e["pass_criteria"]["episode_reward_mean"]
 
             # Generate the torch copy of the experiment.
             e_torch = copy.deepcopy(e)

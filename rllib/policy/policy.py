@@ -600,7 +600,7 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             state (object): The new state to set this policy to. Can be
-                obtained by calling `Policy.get_state()`.
+                obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
@@ -780,13 +780,13 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-            postprocessed_batch["seq_lens"] = seq_lens
+            postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
         train_batch.is_training = True
         if seq_lens is not None:
-            train_batch["seq_lens"] = seq_lens
+            train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:

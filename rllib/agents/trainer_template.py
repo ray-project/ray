@@ -1,7 +1,7 @@
 import concurrent.futures
 from functools import partial
 import logging
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
@@ -63,9 +63,10 @@ def build_trainer(
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
-        execution_plan: Optional[Callable[[
-            WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan,
+        execution_plan: Optional[Union[Callable[
+            [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
+                Trainer, WorkerSet, TrainerConfigDict
+            ], Iterable[ResultDict]]]] = default_execution_plan,
         allow_unknown_configs: bool = False,
         allow_unknown_subkeys: Optional[List[str]] = None,
         override_all_subkeys_if_type_changes: Optional[List[str]] = None,
@@ -174,7 +175,19 @@ def build_trainer(
                 config=config,
                 num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
-            self.train_exec_impl = execution_plan(self.workers, config)
+            try:
+                self.train_exec_impl = execution_plan(self, self.workers,
+                                                      config)
+            except TypeError as e:
+                # Keyword error: Try old way w/o kwargs.
+                if "() takes 2 positional arguments but 3" in e.args[0]:
+                    self.train_exec_impl = execution_plan(self.workers, config)
+                    logger.warning(
+                        "`execution_plan` functions should accept "
+                        "`trainer`, `workers`, and `config` as args!")
+                # Other error -> re-raise.
+                else:
+                    raise e
 
             if after_init:
                 after_init(self)
@@ -188,7 +201,7 @@ def build_trainer(
                 self.config["evaluation_interval"] and \
                 (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
-            # No evaluation necessary.
+            # No evaluation necessary, just run the next training iteration.
             if not evaluate_this_iter:
                 res = next(self.train_exec_impl)
             # We have to evaluate in this training iteration.
@@ -210,7 +223,7 @@ def build_trainer(
                     evaluation_metrics = self.evaluate()
 
                 assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
+                    "Trainer.evaluate() needs to return a dict."
                 res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.

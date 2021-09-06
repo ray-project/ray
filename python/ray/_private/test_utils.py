@@ -3,6 +3,7 @@ import errno
 import io
 import fnmatch
 import os
+import json
 import pathlib
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import timeit
 import socket
 import math
 import traceback
+import logging
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
@@ -20,10 +22,8 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 from ray.util.queue import Queue, _QueueActor, Empty
-import requests
 from ray.scripts.scripts import main as ray_main
-from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
-                                               get_hook_logger)
+from ray._private.runtime_env import RuntimeEnvContext
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -536,6 +536,30 @@ def get_error_message(pub_sub, num, error_type=None, timeout=20):
     return msgs
 
 
+def init_log_pubsub():
+    """Initialize redis error info pub/sub"""
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    log_pubsub_channel = gcs_utils.LOG_FILE_CHANNEL
+    p.psubscribe(log_pubsub_channel)
+    return p
+
+
+def get_log_message(pub_sub, num, timeout=20):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        msgs = log_lines
+
+    return msgs
+
+
 def format_web_url(url):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
@@ -560,6 +584,9 @@ def object_memory_usage() -> bool:
 
 
 def fetch_prometheus(prom_addresses):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
     components_dict = {}
     metric_names = set()
     metric_samples = []
@@ -598,13 +625,15 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def sleep_setup_runtime_env(runtime_env: dict, session_dir):
-    logger = get_hook_logger()
+def sleep_setup_runtime_env(runtime_env: dict,
+                            context: RuntimeEnvContext,
+                            logger=None):
+    logger = logging.getLogger(__name__)
     logger.info(f"Setting up runtime environment {runtime_env}")
     logger.info("Simulating long runtime env setup.  Sleeping for 15s...")
     time.sleep(15)
     logger.info("Finished sleeping for 15s")
-    return RuntimeEnvContext()
+    return
 
 
 class BatchQueue(Queue):

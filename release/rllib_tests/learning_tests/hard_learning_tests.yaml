@@ -52,6 +52,78 @@ apex-breakoutnoframeskip-v4:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
+appo-pong-no-frameskip-v4:
+    env: PongNoFrameskip-v4
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 2000
+    config:
+        vtrace: True
+        use_kl_loss: False
+        rollout_fragment_length: 50
+        train_batch_size: 750
+        num_workers: 31
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_multi_gpu_tower_stacks: 1
+        num_envs_per_worker: 8
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+        num_gpus: 1
+        grad_clip: 10
+        model:
+          dim: 42
+
+ddpg-hopperbulletenv-v0:
+    env: HopperBulletEnv-v0
+    run: DDPG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 120.0
+        timesteps_total: 50000
+    stop:
+        time_total_s: 3600
+    config:
+        actor_hiddens: [256, 256]
+        critic_hiddens: [256, 256]
+        n_step: 3
+        model: {}
+        gamma: 0.99
+        env_config: {}
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 10000
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+        timesteps_per_iteration: 1000
+        target_network_update_freq: 0
+        tau: 0.001
+        buffer_size: 10000
+        prioritized_replay: True
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: false
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: true
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        rollout_fragment_length: 1
+        train_batch_size: 48
+        num_gpus: 1
+        num_workers: 0
+        num_gpus_per_worker: 0
+        worker_side_prioritization: false
+
 dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
@@ -173,51 +245,3 @@ sac-halfcheetahbulletenv-v0:
         normalize_actions: true
         evaluation_interval: 1
         metrics_smoothing_episodes: 5
-
-# Expect roughly 1000 reward after 1h on 1GPU
-# TODO: (sven) this seems to be somewhat broken on tf AND torch (?)
-#  try to find older version that still works.
-ddpg-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
-    run: DDPG
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: -100.0
-        timesteps_total: 400000
-    stop:
-        time_total_s: 7200
-    config:
-        actor_hiddens: [64, 64]
-        critic_hiddens: [64, 64]
-        n_step: 1
-        model: {}
-        gamma: 0.99
-        env_config: {}
-        exploration_config:
-            initial_scale: 1.0
-            final_scale: 0.02
-            scale_timesteps: 10000
-            ou_base_scale: 0.1
-            ou_theta: 0.15
-            ou_sigma: 0.2
-        timesteps_per_iteration: 1000
-        target_network_update_freq: 0
-        tau: 0.001
-        buffer_size: 10000
-        prioritized_replay: True
-        prioritized_replay_alpha: 0.6
-        prioritized_replay_beta: 0.4
-        prioritized_replay_eps: 0.000001
-        clip_rewards: False
-        actor_lr: 0.001
-        critic_lr: 0.001
-        use_huber: False
-        huber_threshold: 1.0
-        l2_reg: 0.000001
-        learning_starts: 500
-        rollout_fragment_length: 1
-        train_batch_size: 64
-        num_workers: 0
-        num_gpus: 1
-        num_gpus_per_worker: 0
-        worker_side_prioritization: False

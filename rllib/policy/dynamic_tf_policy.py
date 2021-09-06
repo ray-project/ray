@@ -189,7 +189,7 @@ class DynamicTFPolicy(TFPolicy):
             ]
             # Placeholder for RNN time-chunk valid lengths.
             if self._state_inputs:
-                self._seq_lens = existing_inputs["seq_lens"]
+                self._seq_lens = existing_inputs[SampleBatch.SEQ_LENS]
         # Create new input placeholders.
         else:
             self._state_inputs = [
@@ -327,7 +327,8 @@ class DynamicTFPolicy(TFPolicy):
                         explore=explore)
 
         # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session()
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"]))
 
         batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
@@ -404,7 +405,7 @@ class DynamicTFPolicy(TFPolicy):
                 ("state_in_{}".format(i),
                  existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
         if rnn_inputs:
-            rnn_inputs.append(("seq_lens", existing_inputs[-1]))
+            rnn_inputs.append((SampleBatch.SEQ_LENS, existing_inputs[-1]))
         input_dict = OrderedDict(
             [("is_exploring", self._is_exploring), ("timestep",
                                                     self._timestep)] +
@@ -613,8 +614,10 @@ class DynamicTFPolicy(TFPolicy):
             dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
-            train_batch["seq_lens"] = self._seq_lens
-            self._loss_input_dict.update({"seq_lens": train_batch["seq_lens"]})
+            train_batch[SampleBatch.SEQ_LENS] = self._seq_lens
+            self._loss_input_dict.update({
+                SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]
+            })
 
         self._loss_input_dict.update({k: v for k, v in train_batch.items()})
 
@@ -632,8 +635,8 @@ class DynamicTFPolicy(TFPolicy):
 
         TFPolicy._initialize_loss(self, loss, [
             (k, v) for k, v in train_batch.items() if k in all_accessed_keys
-        ] + ([("seq_lens", train_batch["seq_lens"])]
-             if "seq_lens" in train_batch else []))
+        ] + ([(SampleBatch.SEQ_LENS, train_batch[SampleBatch.SEQ_LENS])]
+             if SampleBatch.SEQ_LENS in train_batch else []))
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]

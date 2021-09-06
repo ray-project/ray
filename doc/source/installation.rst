@@ -13,7 +13,19 @@ You can install the latest official version of Ray as follows. Official releases
 
 .. code-block:: bash
 
-  pip install -U ray
+  pip install -U ray  # minimal install
+
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U 'ray[default]'`
+
+To install Ray libraries:
+
+.. code-block:: bash
+
+  pip install -U ray[tune]  # installs Ray + dependencies for Ray Tune
+  pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
+  pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
+
 
 **Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
@@ -26,7 +38,10 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip install -U [link to wheel]
+  pip install -U LINK_TO_WHEEL.whl  # minimal install
+
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U 'ray[default]' @ LINK_TO_WHEEL.whl`
 
 
 ===================  ===================  ======================

@@ -1,6 +1,12 @@
-# Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 from pathlib import Path
 
+try:
+    TUNE_INSTALLED = True
+    from ray import tune  # noqa: F401
+except ImportError:
+    TUNE_INSTALLED = False
+
+# Autofilled sgd.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
@@ -30,3 +36,11 @@ RESULT_FILE_JSON = "results.json"
 
 # Default directory where all SGD logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
+
+# File name to use for checkpoints saved with Tune
+TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
+
+# The key to use to specify the checkpoint id for Tune.
+# This needs to be added to the checkpoint dictionary so if the Tune trial
+# is restarted, the checkpoint_id can continue to increment.
+TUNE_CHECKPOINT_ID = "_current_checkpoint_id"

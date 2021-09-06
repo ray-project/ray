@@ -29,6 +29,8 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -196,6 +198,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           &io_service_)),
       object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
           io_service_, gcs_client_, core_worker_subscriber_.get(),
+          /*owner_client_pool=*/&worker_rpc_pool_,
+          /*max_object_report_batch_size=*/
+          RayConfig::instance().max_object_report_batch_size(),
           [this](const ObjectID &obj_id, const ErrorType &error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
@@ -210,7 +215,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
-            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
+            return GetLocalObjectManager().GetLocalSpilledObjectURL(object_id);
           },
           /*spill_objects_callback=*/
           [this]() {
@@ -543,7 +548,6 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
-    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
@@ -558,7 +562,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
 
@@ -1234,6 +1238,11 @@ void NodeManager::DisconnectClient(
                       << " Worker PID: " << worker->GetProcess().GetId();
         std::string error_message_str = error_message.str();
         RAY_LOG(INFO) << error_message_str;
+        RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
+                .WithField("worker_id", worker->WorkerId().Hex())
+                .WithField("node_id", self_node_id_.Hex())
+                .WithField("job_id", worker->GetAssignedJobId().Hex())
+            << error_message_str;
         auto error_data_ptr =
             gcs::CreateErrorTableData(type, error_message_str, current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
@@ -1258,6 +1267,14 @@ void NodeManager::DisconnectClient(
     RAY_LOG(INFO) << "Driver (pid=" << worker->GetProcess().GetId()
                   << ") is disconnected. "
                   << "job_id: " << worker->GetAssignedJobId();
+    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
+      RAY_EVENT(ERROR, EL_RAY_DRIVER_FAILURE)
+              .WithField("node_id", self_node_id_.Hex())
+              .WithField("job_id", worker->GetAssignedJobId().Hex())
+          << "Driver " << worker->WorkerId() << " died. Address: " << worker->IpAddress()
+          << ":" << worker->Port() << ", Pid: " << worker->GetProcess().GetId()
+          << ", JobId: " << worker->GetAssignedJobId();
+    }
   }
 
   client->Close();
@@ -1302,8 +1319,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   boost::system::error_code ec;
   boost::filesystem::rename(from_path, to_path, ec);
   if (ec.value() != 0) {
-    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
-                   << " because of error " << ec.message();
+    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
+                  << " because of error " << ec.message();
     cb(false);
   }
 
@@ -1550,7 +1567,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   auto backlog_size = -1;
   if (RayConfig::instance().report_worker_backlog()) {
-    backlog_size = request.backlog_size();
+    // We add 1 to the backlog size because we need a worker to fulfill the
+    // current request, as well as workers to serve the requests in the
+    // backlog.
+    backlog_size = request.backlog_size() + 1;
   }
   RayTask task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
@@ -1570,51 +1590,17 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
-    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+    // We floor the available CPUs to the nearest integer to avoid starting too
+    // many workers when there is less than 1 CPU left. Otherwise, we could end
+    // up repeatedly starting the worker, then killing it because it idles for
+    // too long. The downside is that we will be slower to schedule tasks that
+    // could use a fraction of a CPU.
+    int64_t available_cpus =
+        static_cast<int64_t>(cluster_resource_scheduler_->GetLocalAvailableCpus());
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
-        task.GetTaskSpecification().IsActorCreationTask())) {
-    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
-    return;
-  }
-
-  auto send_reply_callback_wrapper = [this, actor_id, reply, send_reply_callback](
-                                         Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
-    if (!reply->rejected()) {
-      send_reply_callback(status, success, failure);
-      return;
-    }
-
-    // If the reqiured resource and normal task resource exceed available resource,
-    // reject it.
-    ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                   << " actor_id = " << actor_id
-                   << ", normal_task_resources = " << normal_task_resources.ToString()
-                   << ", local_resoruce_view = "
-                   << cluster_resource_scheduler_->GetLocalResourceViewString();
-    auto resources_data = reply->mutable_resources_data();
-    resources_data->set_node_id(self_node_id_.Binary());
-    resources_data->set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                       normal_task_resources.GetResourceMap().end()};
-    resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-
-    send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
-  };
-
-  // If resources are not enough due to normal tasks' preemption, return a rejection with
-  // normal task resource usages.
-  if (!cluster_task_manager_->IsLocallySchedulable(task)) {
-    reply->set_rejected(true);
-    send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
-    return;
-  }
-
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
+  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
 }
 
 void NodeManager::HandlePrepareBundleResources(

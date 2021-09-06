@@ -215,32 +215,39 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+def getenv_default(key: str, default: Optional[str] = None):
+    """Return environment variable with default value"""
+    # If the environment variable is set but "", still return default
+    return os.environ.get(key, None) or default
+
+
 GLOBAL_CONFIG = {
-    "ANYSCALE_USER": os.environ.get("ANYSCALE_USER",
+    "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
-    "ANYSCALE_HOST": os.environ.get("ANYSCALE_HOST",
+    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
                                     "https://beta.anyscale.com"),
-    "ANYSCALE_CLI_TOKEN": os.environ.get("ANYSCALE_CLI_TOKEN"),
-    "ANYSCALE_CLOUD_ID": os.environ.get(
+    "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
+    "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
         "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
-    "ANYSCALE_PROJECT": os.environ.get("ANYSCALE_PROJECT", ""),
-    "RAY_VERSION": os.environ.get("RAY_VERSION", "2.0.0.dev0"),
-    "RAY_REPO": os.environ.get("RAY_REPO",
+    "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
+    "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
+    "RAY_REPO": getenv_default("RAY_REPO",
                                "https://github.com/ray-project/ray.git"),
-    "RAY_BRANCH": os.environ.get("RAY_BRANCH", "master"),
-    "RELEASE_AWS_BUCKET": os.environ.get("RELEASE_AWS_BUCKET",
+    "RAY_BRANCH": getenv_default("RAY_BRANCH", "master"),
+    "RELEASE_AWS_BUCKET": getenv_default("RELEASE_AWS_BUCKET",
                                          "ray-release-automation-results"),
-    "RELEASE_AWS_LOCATION": os.environ.get("RELEASE_AWS_LOCATION", "dev"),
-    "RELEASE_AWS_DB_NAME": os.environ.get("RELEASE_AWS_DB_NAME", "ray_ci"),
-    "RELEASE_AWS_DB_TABLE": os.environ.get("RELEASE_AWS_DB_TABLE",
+    "RELEASE_AWS_LOCATION": getenv_default("RELEASE_AWS_LOCATION", "dev"),
+    "RELEASE_AWS_DB_NAME": getenv_default("RELEASE_AWS_DB_NAME", "ray_ci"),
+    "RELEASE_AWS_DB_TABLE": getenv_default("RELEASE_AWS_DB_TABLE",
                                            "release_test_result"),
-    "RELEASE_AWS_DB_SECRET_ARN": os.environ.get(
+    "RELEASE_AWS_DB_SECRET_ARN": getenv_default(
         "RELEASE_AWS_DB_SECRET_ARN",
         "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
         "rds-db-credentials/cluster-7RB7EYTTBK2EUC3MMTONYRBJLE/ray_ci-MQN2hh",
     ),
-    "RELEASE_AWS_DB_RESOURCE_ARN": os.environ.get(
+    "RELEASE_AWS_DB_RESOURCE_ARN": getenv_default(
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
@@ -268,6 +275,10 @@ def maybe_fetch_api_token():
             SecretId="arn:aws:secretsmanager:us-west-2:029272617770:secret:"
             "release-automation/"
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
+
+
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
 
 
 class ReleaseTestTimeoutError(RuntimeError):
@@ -512,6 +523,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
     )
 
 
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
+
+
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
     if session_id:
         # Just trigger a request. No need to wait until session shutdown.
@@ -749,11 +782,12 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
 def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             job_name: str, min_workers: str, script: str,
-            script_args: List[str],
-            env_vars: Dict[str, str]) -> Tuple[int, str]:
+            script_args: List[str], env_vars: Dict[str, str],
+            autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
     address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend=5&&update=True"
+              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
+               "&&update=True"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -868,8 +902,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1115,6 +1153,7 @@ def run_test_config(
 
     build_id_override = None
     if test_config["run"].get("use_connect"):
+        autosuspend_mins = test_config["run"].get("autosuspend_mins", 5)
         assert not kick_off_only, \
             "Unsupported for running with Anyscale connect."
         if app_config_id_override is not None:
@@ -1128,6 +1167,9 @@ def run_test_config(
             app_config = response.result.config_json
         install_app_config_packages(app_config)
         install_matching_ray()
+    elif "autosuspend_mins" in test_config["run"]:
+        raise ValueError(
+            "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1181,6 +1223,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1322,7 +1365,8 @@ def run_test_config(
                     min_workers=min_workers,
                     script=test_config["run"]["script"],
                     script_args=script_args,
-                    env_vars=env_vars)
+                    env_vars=env_vars,
+                    autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
 
@@ -1439,7 +1483,8 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1454,6 +1499,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
@@ -1670,6 +1716,8 @@ def run_test_config(
         result = {"status": "timeout", "last_logs": "Test timed out."}
 
     logger.info(f"Final results: {result}")
+
+    log_results_and_artifacts(result)
 
     shutil.rmtree(temp_dir)
 
