@@ -5,7 +5,7 @@ Datasets: Flexible Distributed Data Loading
 
 .. tip::
 
-  Datasets is available as **beta** in Ray 1.7+ (alpha release available in Ray 1.6). Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Datasets is available as **alpha** in Ray 1.7+ (experimental release available in Ray 1.6). Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -68,7 +68,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ray.data.from_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ray.data.from_mars()``
      - (todo)
@@ -112,7 +112,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Modin Dataframe
      - ``ds.to_modin()``
-     - (todo)
+     - ✅
    * - MARS Dataframe
      - ``ds.to_mars()``
      - (todo)

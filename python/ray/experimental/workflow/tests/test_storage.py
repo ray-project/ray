@@ -2,10 +2,13 @@ import pytest
 import ray
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
+from ray.experimental import workflow
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.workflow_storage import asyncio_run
+from ray.experimental.workflow.workflow_storage import asyncio_run, \
+    get_workflow_storage
 from ray.experimental.workflow.common import StepType
+import subprocess
 
 
 def some_func(x):
@@ -171,6 +174,35 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+def test_embedded_objectrefs(workflow_start_regular):
+    workflow_id = test_workflow_storage.__name__
+
+    class ObjectRefsWrapper:
+        def __init__(self, refs):
+            self.refs = refs
+
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
+                                                  storage.get_global_storage())
+    url = storage.get_global_storage().storage_url
+
+    wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
+
+    asyncio_run(wf_storage._put(["key"], wrapped))
+
+    # Be extremely explicit about shutting down. We want to make sure the
+    # `_get` call deserializes the full object and puts it in the object store.
+    # Shutting down the cluster should guarantee we don't accidently get the
+    # old object and pass the test.
+    ray.shutdown()
+    subprocess.check_output("ray stop --force", shell=True)
+
+    workflow.init(url)
+    storage2 = get_workflow_storage(workflow_id)
+
+    result = asyncio_run(storage2._get(["key"]))
+    assert ray.get(result.refs) == [1, 2]
 
 
 if __name__ == "__main__":

@@ -153,10 +153,9 @@ def read_datasource(datasource: Datasource[T],
     def remote_read(task: ReadTask) -> Block:
         return task()
 
-    if ray_remote_args:
-        remote_read = ray.remote(**ray_remote_args)(remote_read)
-    else:
-        remote_read = ray.remote(remote_read)
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
@@ -441,18 +440,19 @@ def from_mars(df: "mars.DataFrame", *,
 
 
 @PublicAPI(stability="beta")
-def from_modin(df: "modin.DataFrame", *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P1
+    from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
+
+    parts = unwrap_partitions(df, axis=0)
+    return from_pandas(parts)
 
 
 @PublicAPI(stability="beta")

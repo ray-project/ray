@@ -289,6 +289,111 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   AssertNoLeaks();
 }
 
+TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
+  /// Test the scneario where the object is spilled to local storage, like filesystems.
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(1);
+  auto obj1 = ObjectRefsToIds(refs)[0];
+  rpc::Address addr1;
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  fake_time_ += 10.;
+  // Objects are spilled locally, but the remote object directory doesn't have the
+  // information. It should still restore objects.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "", self_node_id_, 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // The call can be retried after a delay, and the url in the remote object directory is
+  // updated now.
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
+  /// Test the scneario where the object is spilled to external storages, such as S3.
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(1);
+  auto obj1 = ObjectRefsToIds(refs)[0];
+  rpc::Address addr1;
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  fake_time_ += 10.;
+  // Objects are spilled to the empty URL locally if it is spilled to external storages.
+  ObjectSpilled(obj1, "");
+  // If objects are spilled to external storages, the node id should be Nil().
+  // So this shouldn't invoke restoration.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // Now Nil ID is properly updated.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
+                                 0);
+
+  // We request a local restore.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // The call can be retried after a delay.
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
+                                 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
+
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
   /* Make sure when the object copy is in other raylet, we pull object from there instead
    * of requesting the owner node to restore the object. */
