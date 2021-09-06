@@ -26,7 +26,3 @@ cartpole-apex-dqn:
         learning_starts: 1000
         timesteps_per_iteration: 1000
         buffer_size: 20000
-
-        model:
-            fcnet_hiddens: [64]
-            fcnet_activation: linear
