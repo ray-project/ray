@@ -685,6 +685,7 @@ cc_library(
         ":ray_util",
         ":runtime_env_rpc",
         ":service_based_gcs_client_lib",
+        ":spill_worker_pool",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
