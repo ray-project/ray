@@ -201,6 +201,15 @@ to proceed with the final stages of the release!
    or is delayed, the rest of the release process is blocked until the
    issues have been resolved.
 
+   To have the product Docker images built, ping the product team on the
+   Slack channel (#product) and ask them to build the image. Provide
+   the latest commit hash and make sure all wheels (Linux, Mac, Windows
+   for Python 3.6, 3.7, 3.8, 3.9) are available on S3:
+
+   .. code-block::
+
+       aws s3 ls s3://ray-wheels/releases/1.x.0/<hash>/
+
 2. **Create a GitHub release:** Create a `GitHub release`_. This should include
    **release notes**. Copy the style and formatting used by previous releases.
    Create a draft of the release notes containing information about substantial
@@ -237,6 +246,10 @@ to proceed with the final stages of the release!
 
    This can be tested if you use the script source ./bin/download_wheels.sh
 
+   Tip: Because downloading the wheels can take a long time, you should
+   consider starting an AWS instance just for this. The download will take
+   seconds rather than minutes or hours (and even more so the following upload).
+
 4. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine``.
 
@@ -265,7 +278,7 @@ to proceed with the final stages of the release!
 
    This process is automated. Run ./bin/pip_download_test.sh.
    This will download the ray from the test pypi repository and run the minimum
-   sanity check from all the Python version supported. (3.6, 3.7, 3.8)
+   sanity check from all the Python version supported. (3.6, 3.7, 3.8, 3.9)
 
    The Windows sanity check test is currently not automated. 
    You can start a Windows

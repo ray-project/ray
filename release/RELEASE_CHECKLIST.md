@@ -45,21 +45,24 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
         - [ ] Python 3.6
         - [ ] Python 3.7
         - [ ] Python 3.8
+        - [ ] Python 3.9
     - [ ] OSX
         - [ ] Python 3.6
         - [ ] Python 3.7
         - [ ] Python 3.8
+        - [ ] Python 3.9
     - [ ] Linux
         - [ ] Python 3.6
         - [ ] Python 3.7
         - [ ] Python 3.8
+        - [ ] Python 3.9
 - [ ] Release is created on Github with release notes
     - [ ] Release includes contributors
     - [ ] Release notes sent for review to team leads
     - [ ] Release is published
 - [ ] Wheels uploaded to production PyPI
     - [ ] Installing latest with `pip install -U ray` reveals correct version number and commit hash
-- [ ] “Latest” docs point to new release version
+- [ ] "Latest" docs point to new release version
 - [ ] Docker image latest is updated on dockerhub
 - [ ] Java release is published on Maven
 - [ ] Release is announced internally
