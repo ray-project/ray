@@ -61,7 +61,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
     - [ ] Installing latest with `pip install -U ray` reveals correct version number and commit hash
 - [ ] “Latest” docs point to new release version
 - [ ] Docker image latest is updated on dockerhub
-- [ ] Java release is published on Mavin
+- [ ] Java release is published on Maven
 - [ ] Release is announced internally
 - [ ] Release is announced externally
 - [ ] Any code/doc changes made during the release process contributed back to master branch
