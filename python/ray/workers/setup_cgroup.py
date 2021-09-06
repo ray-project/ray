@@ -54,7 +54,7 @@ def create_cgroup_for_worker(resource_json):
         random.sample(string.ascii_letters + string.digits, 8))
     allocated_resource = json.loads(resource_json)
     cgroup_nodes = []
-    if "CPU" in allocated_resource.keys():
+    if "CPU" in allocated_resource:
         cpu_resource = allocated_resource["CPU"]
         cpu_shares = 0
         if isinstance(cpu_resource, list):
@@ -77,7 +77,7 @@ def create_cgroup_for_worker(resource_json):
         cgroup_path = create_ray_cgroup("cpu", cgroup_name)
         set_ray_cgroup_property(cgroup_path, "cpu.shares", str(int(cpu_shares / 10000 * 1024)))
         cgroup_nodes.append(cgroup_path)
-    if "memory" in allocated_resource.keys():
+    if "memory" in allocated_resource:
         create_ray_parent_cgroup("memory")
         cgroup_path = create_ray_cgroup("memory", cgroup_name)
         set_ray_cgroup_property(cgroup_path, "memory.limit_in_bytes", str(int(allocated_resource["memory"] / 10000)))
