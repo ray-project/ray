@@ -1,3 +1,17 @@
+// Copyright 2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 #include "config/streaming_config.h"
 
@@ -5,9 +19,9 @@ namespace ray {
 namespace streaming {
 #define METRIC_GROUP_JOIN(a, b, c) (a + "." + b + "." + c)
 
-class StreamingPerfBase {
+class StreamingReporterInterface {
  public:
-  virtual ~StreamingPerfBase() = default;
+  virtual ~StreamingReporterInterface() = default;
   virtual bool Start(const StreamingMetricsConfig &conf) = 0;
 
   virtual void Shutdown() = 0;
@@ -41,12 +55,12 @@ class StreamingPerfBase {
 };
 
 /// Streaming perf is a reporter instance based multiple backend.
-/// Other module can report gauge/histogram/counter/qps measurement to meteric server
+/// Other modules can report gauge/histogram/counter/qps measurement to meteric server
 /// side.
-class StreamingPerf : public StreamingPerfBase {
+class StreamingReporter : public StreamingReporterInterface {
  public:
-  StreamingPerf(){};
-  virtual ~StreamingPerf();
+  StreamingReporter(){};
+  virtual ~StreamingReporter();
   bool Start(const StreamingMetricsConfig &conf) override;
   void Shutdown() override;
   void UpdateCounter(const std::string &domain, const std::string &group_name,
@@ -76,7 +90,7 @@ class StreamingPerf : public StreamingPerfBase {
                  double value) override;
 
  private:
-  std::unique_ptr<StreamingPerfBase> impl_;
+  std::unique_ptr<StreamingReporterInterface> impl_;
 };
 }  // namespace streaming
 

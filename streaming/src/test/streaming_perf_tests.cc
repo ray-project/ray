@@ -14,7 +14,7 @@
 using namespace ray::streaming;
 using namespace ray;
 
-class StreamingPerfCounterTest : public ::testing::Test {
+class StreamingReporterCounterTest : public ::testing::Test {
  public:
   using UpdateFunc = std::function<void(size_t)>;
 
@@ -32,7 +32,7 @@ class StreamingPerfCounterTest : public ::testing::Test {
     setenv("STREAMING_METRICS_MODE", "DEV", 1);
     setenv("ENABLE_RAY_STATS", "ON", 1);
     setenv("STREAMING_ENABLE_METRICS", "ON", 1);
-    perf_counter_.reset(new StreamingPerf());
+    perf_counter_.reset(new StreamingReporter());
 
     const std::unordered_map<std::string, std::string> default_tags = {
         {"app", "s_test"}, {"cluster", "kmon-dev"}};
@@ -80,16 +80,16 @@ class StreamingPerfCounterTest : public ::testing::Test {
   std::vector<std::thread> thread_pool_;
 
   StreamingMetricsConfig metrics_conf_;
-  std::unique_ptr<StreamingPerf> perf_counter_;
+  std::unique_ptr<StreamingReporter> perf_counter_;
 };
 
-TEST_F(StreamingPerfCounterTest, UpdateCounterWithOneKeyTest) {
+TEST_F(StreamingReporterCounterTest, UpdateCounterWithOneKeyTest) {
   RegisterAndRun([this](size_t loop_index) {
     perf_counter_->UpdateCounter("domaina", "groupa", "a", loop_index);
   });
 }
 
-TEST_F(StreamingPerfCounterTest, UpdateCounterTest) {
+TEST_F(StreamingReporterCounterTest, UpdateCounterTest) {
   RegisterAndRun([this](size_t loop_index) {
     auto loop_index_str = std::to_string(loop_index % 10);
     perf_counter_->UpdateCounter("domaina" + loop_index_str, "groupa" + loop_index_str,
@@ -97,7 +97,7 @@ TEST_F(StreamingPerfCounterTest, UpdateCounterTest) {
   });
 }
 
-TEST_F(StreamingPerfCounterTest, UpdateGaugeWithOneKeyTest) {
+TEST_F(StreamingReporterCounterTest, UpdateGaugeWithOneKeyTest) {
   RegisterAndRun([this](size_t loop_index) {
     std::unordered_map<std::string, std::string> tags;
     tags["tag1"] = "tag1";
@@ -106,7 +106,7 @@ TEST_F(StreamingPerfCounterTest, UpdateGaugeWithOneKeyTest) {
   });
 }
 
-TEST_F(StreamingPerfCounterTest, UpdateGaugeTest) {
+TEST_F(StreamingReporterCounterTest, UpdateGaugeTest) {
   RegisterAndRun([this](size_t loop_index) {
     auto loop_index_str = std::to_string(loop_index % 10);
     perf_counter_->UpdateGauge("domaina" + loop_index_str, "groupa" + loop_index_str,

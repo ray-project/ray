@@ -36,13 +36,11 @@ void RuntimeContext::InitMetricsReporter() {
     STREAMING_LOG(WARNING) << "metrics is disable";
     return;
   }
-  perf_metrics_reporter_.reset(new StreamingPerf());
+  perf_metrics_reporter_.reset(new StreamingReporter());
 
   std::unordered_map<std::string, std::string> default_tag_map = {
       {"role", NodeType_Name(config_.GetNodeType())},
       {"op_name", config_.GetOpName()},
-      // To avoid opentsdb query error if there are too many tags in metric.
-      /*{"pid", std::to_string(getpid())},*/
       {"worker_name", config_.GetWorkerName()}};
   metrics_config_.SetMetricsGlobalTags(default_tag_map);
 
@@ -127,7 +125,9 @@ void RuntimeContext::ShutdownTimer() {
   STREAMING_LOG(INFO) << "Wake up all reporting conditions.";
   if (timer_thread_) {
     STREAMING_LOG(INFO) << "Join and reset timer thread.";
-    timer_thread_->join();
+    if (timer_thread_->joinable()) {
+      timer_thread_->join();
+    }
     timer_thread_.reset();
     metrics_timer_.reset();
   }

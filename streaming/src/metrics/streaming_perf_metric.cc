@@ -7,7 +7,7 @@
 namespace ray {
 namespace streaming {
 
-bool StreamingPerf::Start(const StreamingMetricsConfig &conf) {
+bool StreamingReporter::Start(const StreamingMetricsConfig &conf) {
   if (impl_) {
     STREAMING_LOG(WARNING) << "Streaming perf is active";
   } else {
@@ -17,7 +17,7 @@ bool StreamingPerf::Start(const StreamingMetricsConfig &conf) {
   return false;
 }
 
-void StreamingPerf::Shutdown() {
+void StreamingReporter::Shutdown() {
   if (impl_) {
     impl_->Shutdown();
     impl_.reset();
@@ -25,9 +25,9 @@ void StreamingPerf::Shutdown() {
     STREAMING_LOG(WARNING) << "No active perf instance will be shutdown";
   }
 }
-void StreamingPerf::UpdateCounter(const std::string &domain,
-                                  const std::string &group_name,
-                                  const std::string &short_name, double value) {
+void StreamingReporter::UpdateCounter(const std::string &domain,
+                                      const std::string &group_name,
+                                      const std::string &short_name, double value) {
   if (impl_) {
     impl_->UpdateCounter(domain, group_name, short_name, value);
   } else {
@@ -35,9 +35,10 @@ void StreamingPerf::UpdateCounter(const std::string &domain,
   }
 }
 
-void StreamingPerf::UpdateGauge(const std::string &domain, const std::string &group_name,
-                                const std::string &short_name, double value,
-                                bool is_reset) {
+void StreamingReporter::UpdateGauge(const std::string &domain,
+                                    const std::string &group_name,
+                                    const std::string &short_name, double value,
+                                    bool is_reset) {
   if (impl_) {
     impl_->UpdateGauge(domain, group_name, short_name, value, is_reset);
   } else {
@@ -45,19 +46,19 @@ void StreamingPerf::UpdateGauge(const std::string &domain, const std::string &gr
   }
 }
 
-void StreamingPerf::UpdateHistogram(const std::string &domain,
-                                    const std::string &group_name,
-                                    const std::string &short_name, double value,
-                                    double min_value, double max_value) {
+void StreamingReporter::UpdateHistogram(const std::string &domain,
+                                        const std::string &group_name,
+                                        const std::string &short_name, double value,
+                                        double min_value, double max_value) {
   if (impl_) {
     impl_->UpdateHistogram(domain, group_name, short_name, value, min_value, max_value);
   } else {
     STREAMING_LOG(WARNING) << "No active perf instance";
   }
 }
-void StreamingPerf::UpdateQPS(const std::string &metric_name,
-                              const std::unordered_map<std::string, std::string> &tags,
-                              double value) {
+void StreamingReporter::UpdateQPS(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value) {
   if (impl_) {
     impl_->UpdateQPS(metric_name, tags, value);
   } else {
@@ -65,28 +66,29 @@ void StreamingPerf::UpdateQPS(const std::string &metric_name,
   }
 }
 
-StreamingPerf::~StreamingPerf() {
+StreamingReporter::~StreamingReporter() {
   if (impl_) {
     STREAMING_LOG(INFO) << "Destory streamimg perf => " << impl_.get();
     Shutdown();
   }
 }
 
-void StreamingPerf::UpdateCounter(
+void StreamingReporter::UpdateCounter(
     const std::string &metric_name,
     const std::unordered_map<std::string, std::string> &tags, double value) {
   if (impl_) {
     impl_->UpdateCounter(metric_name, tags, value);
   }
 }
-void StreamingPerf::UpdateGauge(const std::string &metric_name,
-                                const std::unordered_map<std::string, std::string> &tags,
-                                double value, bool is_rest) {
+void StreamingReporter::UpdateGauge(
+    const std::string &metric_name,
+    const std::unordered_map<std::string, std::string> &tags, double value,
+    bool is_rest) {
   if (impl_) {
     impl_->UpdateGauge(metric_name, tags, value, is_rest);
   }
 }
-void StreamingPerf::UpdateHistogram(
+void StreamingReporter::UpdateHistogram(
     const std::string &metric_name,
     const std::unordered_map<std::string, std::string> &tags, double value,
     double min_value, double max_value) {}
