@@ -645,7 +645,7 @@ class TorchPolicy(Policy):
         for i, batch in enumerate(device_batches):
             batch_fetches[LEARNER_STATS_KEY][f"tower_{i}"] = self.extra_grad_info(batch)
 
-        batch_fetches[LEARNER_STATS_KEY].update(self.extra_compute_grad_fetches())
+        batch_fetches = merge_dicts(batch_fetches, self.extra_compute_grad_fetches(), True)
 
         return batch_fetches
 
@@ -789,7 +789,7 @@ class TorchPolicy(Policy):
             Dict[str, any]: Extra fetch dict to be added to the fetch dict
                 of the compute_gradients call.
         """
-        return {}  # e.g, stats, td error, etc.
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
     def extra_action_out(
