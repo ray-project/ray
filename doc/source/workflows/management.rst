@@ -15,7 +15,6 @@ A workflow can be in one of several states:
 Status              Description
 =================== =======================================================================================
 RUNNING             The workflow is currently running in the cluster.
-RUNNING             The workflow is currently running in the cluster.
 FAILED              This workflow failed with an application error. It can be resumed from the failed step.
 RESUMABLE           This workflow failed with a system error. It can be resumed from the failed step.
 CANCELED            The workflow was canceled. Its result is unavailable, and it cannot be resumed.
