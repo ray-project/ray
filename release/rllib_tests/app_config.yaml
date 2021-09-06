@@ -9,3 +9,5 @@ python:
 
 post_build_cmds:
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # Clone the rl-experiments repo for offline-RL files.
+  - git clone https://github.com/ray-project/rl-experiments.git
