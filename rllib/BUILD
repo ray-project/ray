@@ -114,7 +114,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
 )
 
 py_test(
@@ -126,8 +126,29 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6", "--framework=torch"]
 )
+
+# Once APEX supports multi-GPU.
+# py_test(
+#    name = "learning_cartpole_apex_tf_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/dqn"]
+# )
+
+# py_test(
+#    name = "learning_cartpole_apex_torch_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+# )
 
 # APPO
 py_test(
@@ -1345,6 +1366,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "evaluation/tests/test_postprocessing",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_postprocessing.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:ml", "evaluation"],
     size = "medium",
@@ -1725,7 +1753,7 @@ py_test(
 
 # Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout_no_learning1",
+    name = "test_rollout_no_learning_1",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1735,7 +1763,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning2",
+    name = "test_rollout_no_learning_2",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1745,7 +1773,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning3",
+    name = "test_rollout_no_learning_3",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
@@ -1755,7 +1783,7 @@ py_test(
 )
 
 py_test(
-    name = "test_rollout_no_learning4",
+    name = "test_rollout_no_learning_4",
     main = "tests/test_rollout.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",

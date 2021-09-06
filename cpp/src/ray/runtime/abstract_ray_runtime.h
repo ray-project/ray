@@ -36,6 +36,7 @@ class RayIntentionalSystemExitException : public RayException {
  public:
   RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
 };
+
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
