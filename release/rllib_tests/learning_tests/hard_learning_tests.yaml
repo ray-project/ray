@@ -368,8 +368,8 @@ sac-halfcheetahbulletenv-v0:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 80000
+        episode_reward_mean: 600.0
+        timesteps_total: 100000
     stop:
         time_total_s: 7200
     config:
@@ -383,8 +383,8 @@ sac-halfcheetahbulletenv-v0:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: true
-        n_step: 1
+        no_done_at_end: false
+        n_step: 3
         rollout_fragment_length: 1
         prioritized_replay: true
         train_batch_size: 256
@@ -397,9 +397,6 @@ sac-halfcheetahbulletenv-v0:
           entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 1
-        clip_actions: false
-        normalize_actions: true
-        evaluation_interval: 1
         metrics_smoothing_episodes: 5
 
 td3-halfcheetahbulletenv-v0:
