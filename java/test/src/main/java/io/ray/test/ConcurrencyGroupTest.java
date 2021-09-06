@@ -73,7 +73,6 @@ public class ConcurrencyGroupTest extends BaseTest {
     Assert.assertNotEquals(threadId1, threadId3);
     Assert.assertNotEquals(threadId1, threadId5);
     Assert.assertNotEquals(threadId3, threadId5);
-//
     Assert.assertEquals(threadId3, threadId7);
   }
 
