@@ -65,7 +65,8 @@ inline std::string StringToHex(const std::string &str) {
 }
 
 // Append append_str to the begining of each line of str.
-inline std::string AppendToEachLine(const std::string str, const std::string append_str) {
+inline std::string AppendToEachLine(const std::string &str,
+                                    const std::string &append_str) {
   std::stringstream ss;
   ss << append_str;
   for (char c : str) {
