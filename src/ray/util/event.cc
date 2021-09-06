@@ -230,7 +230,7 @@ void RayEvent::ReportEvent(const std::string &severity, const std::string &label
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
-  RayEvent(severity_ele, label) << message;
+  RayEvent(severity_ele, EventLevelToLogLevel(severity_ele), label) << message;
 }
 
 bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
@@ -238,6 +238,22 @@ bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
 }
 
 void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
+
+RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) {
+  switch (severity) {
+  case rpc::Event_Severity_INFO:
+    return RayLogLevel::INFO;
+  case rpc::Event_Severity_WARNING:
+    return RayLogLevel::WARNING;
+  case rpc::Event_Severity_ERROR:
+    return RayLogLevel::ERROR;
+  case rpc::Event_Severity_FATAL:
+    return RayLogLevel::FATAL;
+  default:
+    RAY_LOG(FATAL) << "Can't cast severity " << severity;
+  }
+  return RayLogLevel::INFO;
+}
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
@@ -253,28 +269,39 @@ void RayEvent::SendMessage(const std::string &message) {
                                        ? RayEventContext::Instance()
                                        : RayEventContext::GlobalInstance();
 
-  rpc::Event event;
+  static const int event_id_size = 18;
+  static const std::string empty_event_id_hex(event_id_size * 2, 'f');
+  std::string event_id;
+  if (IsLevelEnabled(severity_)) {
+    std::string event_id_buffer = std::string(event_id_size, ' ');
+    FillRandom(&event_id_buffer);
+    event_id = StringToHex(event_id_buffer);
+    rpc::Event event;
+    event.set_event_id(event_id);
 
-  std::string event_id_buffer = std::string(18, ' ');
-  FillRandom(&event_id_buffer);
-  event.set_event_id(StringToHex(event_id_buffer));
+    event.set_source_type(context.GetSourceType());
+    event.set_source_hostname(context.GetSourceHostname());
+    event.set_source_pid(context.GetSourcePid());
 
-  event.set_source_type(context.GetSourceType());
-  event.set_source_hostname(context.GetSourceHostname());
-  event.set_source_pid(context.GetSourcePid());
+    event.set_severity(severity_);
+    event.set_label(label_);
+    event.set_message(message);
+    event.set_timestamp(current_sys_time_us());
 
-  event.set_severity(severity_);
-  event.set_label(label_);
-  event.set_message(message);
-  event.set_timestamp(current_sys_time_us());
+    auto mp = context.GetCustomFields();
+    for (const auto &pair : mp) {
+      custom_fields_[pair.first] = pair.second;
+    }
+    event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
-  auto mp = context.GetCustomFields();
-  for (const auto &pair : mp) {
-    custom_fields_[pair.first] = pair.second;
+    EventManager::Instance().Publish(event, custom_fields_);
+  } else {
+    event_id = empty_event_id_hex;
   }
-  event.mutable_custom_fields()->insert(mp.begin(), mp.end());
-
-  EventManager::Instance().Publish(event, custom_fields_);
+  if (ray::RayLog::IsLevelEnabled(log_severity_)) {
+    ::ray::RayLog(__FILE__, __LINE__, log_severity_)
+        << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+  }
 }
 
 static absl::once_flag init_once_;
