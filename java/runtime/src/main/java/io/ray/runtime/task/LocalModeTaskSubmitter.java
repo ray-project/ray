@@ -94,22 +94,24 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       Preconditions.checkNotNull(actorCreationTaskSpec);
       final List<Common.ConcurrencyGroup> concurrencyGroups =
           actorCreationTaskSpec.getConcurrencyGroupsList();
-      if (concurrencyGroups.isEmpty()) {
-        services.put(
-            /*defaultConcurrencyGroupName=*/ DEFAULT_CONCURRENCY_GROUP_NAME,
-            Executors.newFixedThreadPool(actorCreationTaskSpec.getMaxConcurrency()));
-      } else {
         concurrencyGroups.forEach(
             (concurrencyGroup) -> {
               ExecutorService executorService =
                   Executors.newFixedThreadPool(concurrencyGroup.getMaxConcurrency());
               Preconditions.checkState(!services.containsKey(concurrencyGroup.getName()));
+              if (concurrencyGroup.getName().equals("")) {
+                int x=  2;
+              }
               services.put(concurrencyGroup.getName(), executorService);
               concurrencyGroup.getFunctionDescriptorsList().forEach((fd) -> {
                 indexFunctionToConcurrencyGroupName.put(protoFunctionDescriptorToJava(fd), concurrencyGroup.getName());
               });
             });
-      }
+
+        /// Put the default concurrency group.
+        services.put(
+          /*defaultConcurrencyGroupName=*/ DEFAULT_CONCURRENCY_GROUP_NAME,
+          Executors.newFixedThreadPool(actorCreationTaskSpec.getMaxConcurrency()));
     }
 
     public synchronized ExecutorService getExecutorService(TaskSpec taskSpec) {
@@ -451,6 +453,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
           executorService = normalTaskExecutorService;
         }
         try {
+          if (executorService == null) {
+            int a = 2;
+          }
           executorService.submit(runnable);
         } catch (RejectedExecutionException e) {
           if (executorService.isShutdown()) {
