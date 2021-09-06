@@ -640,11 +640,12 @@ class TorchPolicy(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        batch_fetches = {}
         batch_fetches[LEARNER_STATS_KEY] = {}
         for i, batch in enumerate(device_batches):
             batch_fetches[LEARNER_STATS_KEY][f"tower_{i}"] = self.extra_grad_info(batch)
 
-        batch_fetches.update(self.extra_compute_grad_fetches())
+        batch_fetches[LEARNER_STATS_KEY].update(self.extra_compute_grad_fetches())
 
         return batch_fetches
 
@@ -788,7 +789,7 @@ class TorchPolicy(Policy):
             Dict[str, any]: Extra fetch dict to be added to the fetch dict
                 of the compute_gradients call.
         """
-        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
+        return {}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
     def extra_action_out(
