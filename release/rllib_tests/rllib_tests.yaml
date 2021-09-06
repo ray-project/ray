@@ -24,7 +24,7 @@
     timeout: 7200
     script: python multi_gpu_learning_tests/run.py
 
-# 2-GPU learning tests (StatelessCartPole) + LSTM=True for major algos
+# 2-GPU learning tests (StatelessCartPole) + use_lstm=True for major algos
 # (that support RNN models).
 - name: multi_gpu_with_lstm_learning_tests
   cluster:
@@ -34,6 +34,17 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
+
+# 2-GPU learning tests (StatelessCartPole) + use_attention=True for major
+# algos (that support RNN models).
+- name: multi_gpu_with_lstm_learning_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_with_attention_learning_tests/run.py
 
 # We'll have these as per-PR tests soon.
 # - name: example_scripts_on_gpu_tests
