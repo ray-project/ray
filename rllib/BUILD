@@ -114,7 +114,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
 )
 
 py_test(
@@ -126,7 +126,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6", "--framework=torch"]
 )
 
 # Once APEX supports multi-GPU.
