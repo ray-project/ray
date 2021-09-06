@@ -37,12 +37,15 @@ using json = nlohmann::json;
 
 namespace ray {
 
-#define RAY_EVENT(event_type, label)                                       \
-  if (ray::RayEvent::IsLevelEnabled(                                       \
-          ::ray::rpc::Event_Severity::Event_Severity_##event_type) ||      \
-      ray::RayLog::IsLevelEnabled(ray::RayLogLevel::event_type))           \
-  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, \
-                  ray::RayLogLevel::event_type, label)
+#define RAY_EVENT(event_type, label)                                            \
+  if (ray::RayEvent::IsLevelEnabled(                                            \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type) ||           \
+      ray::RayLog::IsLevelEnabled(ray::RayEvent::EventLevelToLogLevel(          \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type)))            \
+  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type,      \
+                  ray::RayEvent::EventLevelToLogLevel(                          \
+                      ::ray::rpc::Event_Severity::Event_Severity_##event_type), \
+                  label)
 
 // interface of event reporter
 class BaseEventReporter {
@@ -217,6 +220,8 @@ class RayEvent {
   /// \return True if input event level is not lower than the threshold.
   static bool IsLevelEnabled(rpc::Event_Severity event_level);
 
+  static RayLogLevel EventLevelToLogLevel(const rpc::Event_Severity &severity);
+
   ~RayEvent();
 
  private:
@@ -227,8 +232,6 @@ class RayEvent {
   RayEvent(const RayEvent &event) = delete;
 
   const RayEvent &operator=(const RayEvent &event) = delete;
-
-  static RayLogLevel EventLevelToLogLevel(const rpc::Event_Severity &severity);
 
   // Only for test
   static void SetLevel(const std::string &event_level);

@@ -246,20 +246,15 @@ RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) 
   case rpc::Event_Severity_WARNING:
     return RayLogLevel::WARNING;
   case rpc::Event_Severity_ERROR:
-    return RayLogLevel::ERROR;
+  // Converts fatal events to error logs because fatal logs will lead to process exiting
+  // directly.
   case rpc::Event_Severity_FATAL:
-    return RayLogLevel::FATAL;
+    return RayLogLevel::ERROR;
   default:
     RAY_LOG(FATAL) << "Can't cast severity " << severity;
   }
   return RayLogLevel::INFO;
 }
-
-bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
-  return event_level >= severity_threshold_;
-}
-
-void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 

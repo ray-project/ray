@@ -519,9 +519,45 @@ TEST(EVENT_TEST, TEST_LOG_LEVEL) {
   result.clear();
 }
 
+TEST(EVENT_TEST, TEST_LOG_EVENT) {
+  std::string log_dir = GenerateLogDir();
+  // Initialize log level to error
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR, log_dir);
+
+  TestEventReporter::event_list.clear();
+  EventManager::Instance().ClearReporters();
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
+  EXPECT_EQ(TestEventReporter::event_list.size(), 0);
+
+  // Add some events. Only ERROR and FATAL events would be printed in general log.
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log");
+  EXPECT_EQ((int)vc.size(), 2);
+  // Check ERROR event
+  EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[0], testing::HasSubstr("test error"));
+  // Check FATAL event. We convert fatal events to error logs.
+  EXPECT_THAT(vc[1], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[1], testing::HasSubstr("test fatal"));
+
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR);
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  // Use ERROR type logger by default to avoid printing large scale logs in current test.
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR);
   return RUN_ALL_TESTS();
 }
