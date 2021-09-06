@@ -276,3 +276,9 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
+
+# The cgroup v1 default root directory.
+CGROUP_V1_ROOT = "/sys/fs/cgroup"
+
+# The rott cgroup name for ray.
+RAY_PARENT_CGROUP_NAME = "ray"

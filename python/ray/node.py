@@ -183,6 +183,9 @@ class Node:
 
         self._init_temp(redis_client)
 
+        # Try validating if cgroup is available
+        self.validate_cgroup()
+
         # If it is a head node, try validating if
         # external storage is configurable.
         if head:
@@ -1267,3 +1270,16 @@ class Node:
         from ray import external_storage
         external_storage.setup_external_storage(deserialized_config)
         external_storage.reset_external_storage()
+
+    def validate_cgroup(self):
+        """Make sure we can write the cgroup config.
+        """
+        worker_resource_limits_enabled = self._config.get("worker_resource_limits_enabled", False)
+        if worker_resource_limits_enabled:
+            try:
+                ray._private.utils.create_ray_parent_cgroup("cpu")
+                ray._private.utils.create_ray_parent_cgroup("cpuset")
+                ray._private.utils.create_ray_parent_cgroup("memory")
+            except Exception as e:
+                logger.error("The config worker_resource_limits_enabled is True, but failed to create cgroup")
+                raise
