@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument(
     "--evaluation-num-episodes",
-    type=lambda v: str(v) if isinstance(v, str) else int(v),
+    type=lambda v: v if v == "auto" else int(v),
     default=13,
     help="Number of evaluation episodes to run each iteration. "
     "If 'auto', will run as many as possible during train pass.")
