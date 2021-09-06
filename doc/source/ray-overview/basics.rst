@@ -17,7 +17,7 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`
-- :ref:`datasets` (beta)
+- :ref:`datasets` (alpha)
 - :ref:`workflows` (alpha)
 
 There are also many :ref:`community integrations <ray-oss-list>` with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the :ref:`full list of Ray distributed libraries here <ray-oss-list>`.

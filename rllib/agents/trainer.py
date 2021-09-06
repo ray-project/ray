@@ -3,7 +3,6 @@ from datetime import datetime
 import functools
 import gym
 import logging
-import math
 import numpy as np
 import os
 import pickle
@@ -758,9 +757,11 @@ class Trainer(Trainable):
             self._validate_config(evaluation_config, trainer_obj_or_none=self)
             # Switch on complete_episode rollouts (evaluations are
             # always done on n complete episodes) and set the
-            # `in_evaluation` flag.
+            # `in_evaluation` flag. Also, make sure our rollout fragments
+            # are short so we don't have more than one episode in one rollout.
             evaluation_config.update({
                 "batch_mode": "complete_episodes",
+                "rollout_fragment_length": 1,
                 "in_evaluation": True,
             })
             logger.debug("using evaluation_config: {}".format(extra_config))
@@ -902,19 +903,27 @@ class Trainer(Trainable):
                     self.evaluation_workers.local_worker().sample()
             # Evaluation worker set has n remote workers.
             else:
-                num_rounds = int(
-                    math.ceil(self.config["evaluation_num_episodes"] /
-                              self.config["evaluation_num_workers"]))
-                num_workers = len(self.evaluation_workers.remote_workers())
-                num_episodes = num_rounds * num_workers
-                for i in range(num_rounds):
-                    logger.info("Running round {} of parallel evaluation "
-                                "({}/{} episodes)".format(
-                                    i, (i + 1) * num_workers, num_episodes))
-                    ray.get([
-                        w.sample.remote()
-                        for w in self.evaluation_workers.remote_workers()
+                # How many episodes do we need to run?
+                num_episodes = self.config["evaluation_num_episodes"]
+                # How many have we run (across all evaluation workers)?
+                num_episodes_done = 0
+                round_ = 0
+                while num_episodes_done < num_episodes:
+                    round_ += 1
+                    episodes_left_to_do = num_episodes - num_episodes_done
+                    batches = ray.get([
+                        w.sample.remote() for i, w in enumerate(
+                            self.evaluation_workers.remote_workers())
+                        if i < episodes_left_to_do
                     ])
+                    # Per our config for the evaluation workers
+                    # (`rollout_fragment_length=1` and
+                    # `batch_mode=complete_episode`), we know that we'll have
+                    # exactly one episode per returned batch.
+                    num_episodes_done += len(batches)
+                    logger.info(
+                        f"Ran round {round_} of parallel evaluation "
+                        f"({num_episodes_done}/{num_episodes} episodes done)")
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
