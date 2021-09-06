@@ -1560,6 +1560,10 @@ class Trainer(Trainable):
             raise ValueError(
                 "`evaluation_num_episodes=auto` not supported for "
                 "`evaluation_parallel_to_training=False`!")
+        elif not isinstance(config["evaluation_num_episodes"], int):
+            raise ValueError(
+                "`evaluation_num_episodes` "
+                f"({config['evaluation_num_episodes']}) must be an int!")
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
