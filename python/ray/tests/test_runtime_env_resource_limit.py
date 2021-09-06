@@ -5,7 +5,8 @@ import sys
 import pytest
 
 import ray
-from ray.workers import setup_cgroup
+from ray import ray_constants
+from ray._private import utils
 
 
 @pytest.mark.skipif(
@@ -39,19 +40,19 @@ def test_resource_limit_without_container(shutdown_only):
     @ray.remote
     def get_memory_cgroup_value():
         cgroup_name = _get_memory_cgroup_name()
-        cgroup_path = os.path.join(setup_cgroup.cgroup_v1_root, "memory",
-                                   setup_cgroup.ray_parent_cgroup_name,
+        cgroup_path = os.path.join(ray_constants.CGROUP_V1_ROOT, "memory",
+                                   ray_constants.RAY_PARENT_CGROUP_NAME,
                                    cgroup_name)
-        return setup_cgroup.get_ray_cgroup_property(cgroup_path,
+        return utils.get_ray_cgroup_property(cgroup_path,
                                                     "memory.limit_in_bytes")
 
     @ray.remote
     def get_cpu_cgroup_value():
         cgroup_name = _get_cpu_cgroup_name()
-        cgroup_path = os.path.join(setup_cgroup.cgroup_v1_root, "cpu",
-                                   setup_cgroup.ray_parent_cgroup_name,
+        cgroup_path = os.path.join(ray_constants.CGROUP_V1_ROOT, "cpu",
+                                   ray_constants.RAY_PARENT_CGROUP_NAME,
                                    cgroup_name)
-        return setup_cgroup.get_ray_cgroup_property(cgroup_path, "cpu.shares")
+        return utils.get_ray_cgroup_property(cgroup_path, "cpu.shares")
 
     memory_cgroup_name = ray.get(
         get_memory_cgroup_name.options(
@@ -113,10 +114,10 @@ def test_cpuset_resource_limit_without_container(shutdown_only):
     @ray.remote
     def get_cpuset_cgroup_value():
         cgroup_name = _get_cpuset_cgroup_name()
-        cgroup_path = os.path.join(setup_cgroup.cgroup_v1_root, "cpuset",
-                                   setup_cgroup.ray_parent_cgroup_name,
+        cgroup_path = os.path.join(ray_constants.CGROUP_V1_ROOT, "cpuset",
+                                   ray_constants.RAY_PARENT_CGROUP_NAME,
                                    cgroup_name)
-        return setup_cgroup.get_ray_cgroup_property(cgroup_path, "cpuset.cpus")
+        return utils.get_ray_cgroup_property(cgroup_path, "cpuset.cpus")
 
     cpuset_cgroup_name = ray.get(
         get_cpuset_cgroup_name.options(
