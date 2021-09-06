@@ -93,11 +93,13 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
 bool LRUCache::Exists(const ObjectID &key) const { return item_map_.count(key) > 0; }
 
 EvictionPolicy::EvictionPolicy(const IObjectStore &object_store,
-                               const IAllocator &allocator)
+                               const IAllocator &allocator,
+                               const LifecycleMetadataStore &meta_store)
     : pinned_memory_bytes_(0),
       cache_("global lru", allocator.GetFootprintLimit()),
       object_store_(object_store),
-      allocator_(allocator) {}
+      allocator_(allocator),
+      meta_store_(meta_store) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
                                              std::vector<ObjectID> &objects_to_evict) {
@@ -110,8 +112,32 @@ int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-void EvictionPolicy::ObjectCreated(const ObjectID &object_id) {
+void EvictionPolicy::OnObjectCreated(const ObjectID &object_id) {
   cache_.Add(object_id, GetObjectSize(object_id));
+}
+
+void EvictionPolicy::OnObjectSealed(const ray::ObjectID & /* unused */) {}
+
+void EvictionPolicy::OnObjectDeleting(const ObjectID &object_id) {
+  // If the object is in the LRU cache, remove it.
+  cache_.Remove(object_id);
+}
+
+void EvictionPolicy::OnObjectRefIncreased(const ObjectID &object_id) {
+  if (meta_store_.GetRefCount(object_id) == 1) {
+    // If the object is in the LRU cache, remove it.
+    cache_.Remove(object_id);
+    pinned_memory_bytes_ += GetObjectSize(object_id);
+  }
+}
+
+void EvictionPolicy::OnObjectRefDecreased(const ObjectID &object_id) {
+  auto size = GetObjectSize(object_id);
+  if (meta_store_.GetRefCount(object_id) == 0) {
+    // Add the object to the LRU cache.
+    cache_.Add(object_id, size);
+    pinned_memory_bytes_ -= size;
+  }
 }
 
 int64_t EvictionPolicy::RequireSpace(int64_t size,
@@ -130,29 +156,11 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
   return required_space - num_bytes_evicted;
 }
 
-void EvictionPolicy::BeginObjectAccess(const ObjectID &object_id) {
-  // If the object is in the LRU cache, remove it.
-  cache_.Remove(object_id);
-  pinned_memory_bytes_ += GetObjectSize(object_id);
-}
-
-void EvictionPolicy::EndObjectAccess(const ObjectID &object_id) {
-  auto size = GetObjectSize(object_id);
-  // Add the object to the LRU cache.
-  cache_.Add(object_id, size);
-  pinned_memory_bytes_ -= size;
-}
-
-void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
-  // If the object is in the LRU cache, remove it.
-  cache_.Remove(object_id);
-}
-
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
   return object_store_.GetObject(object_id)->GetObjectSize();
 }
 
-bool EvictionPolicy::IsObjectExists(const ObjectID &object_id) const {
+bool EvictionPolicy::IsObjectEvictable(const ObjectID &object_id) const {
   return cache_.Exists(object_id);
 }
 

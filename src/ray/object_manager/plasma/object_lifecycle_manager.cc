@@ -27,7 +27,8 @@ ObjectLifecycleManager::ObjectLifecycleManager(
     IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::make_unique<ObjectStore>(allocator)),
       meta_store_(),
-      eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
+      eviction_policy_(
+          std::make_unique<EvictionPolicy>(*object_store_, allocator, meta_store_)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
       stats_collector_(
@@ -46,7 +47,7 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   if (entry == nullptr) {
     return {nullptr, PlasmaError::OutOfMemory};
   }
-  eviction_policy_->ObjectCreated(object_info.object_id);
+  eviction_policy_->OnObjectCreated(object_info.object_id);
   stats_collector_->OnObjectCreated(object_info.object_id);
   return {entry, PlasmaError::OK};
 }
@@ -59,6 +60,7 @@ const LocalObject *ObjectLifecycleManager::SealObject(const ObjectID &object_id)
   // TODO(scv119): should we check delete object from earger_deletion_objects_?
   auto entry = object_store_->SealObject(object_id);
   if (entry != nullptr) {
+    eviction_policy_->OnObjectSealed(object_id);
     stats_collector_->OnObjectSealed(object_id);
   }
   return entry;
@@ -125,15 +127,10 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
     RAY_LOG(ERROR) << object_id << " doesn't exist, add reference failed.";
     return false;
   }
-  // If there are no other clients using this object, notify the eviction policy
-  // that the object is being used.
-  if (meta_store_.GetRefCount(object_id) == 0) {
-    // Tell the eviction policy that this object is being used.
-    eviction_policy_->BeginObjectAccess(object_id);
-  }
   // Increase reference count.
   meta_store_.IncreaseRefCount(object_id);
   stats_collector_->OnObjectRefIncreased(object_id);
+  eviction_policy_->OnObjectRefIncreased(object_id);
   RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
                  << ", num bytes in use is now " << GetNumBytesInUse();
   return true;
@@ -150,15 +147,13 @@ bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
 
   meta_store_.DecreaseRefCount(object_id);
   stats_collector_->OnObjectRefDecreased(object_id);
+  eviction_policy_->OnObjectRefDecreased(object_id);
 
   if (meta_store_.GetRefCount(object_id) > 0) {
     return true;
   }
-
   RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
                  << ", num bytes in use is now " << GetNumBytesInUse();
-
-  eviction_policy_->EndObjectAccess(object_id);
 
   // TODO(scv119): handle this anomaly in upper layer.
   RAY_CHECK(entry->Sealed()) << object_id << " is not sealed while ref count becomes 0.";
@@ -249,8 +244,8 @@ void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
   bool aborted = entry->state == ObjectState::PLASMA_CREATED;
 
   stats_collector_->OnObjectDeleting(object_id);
+  eviction_policy_->OnObjectDeleting(object_id);
   earger_deletion_objects_.erase(object_id);
-  eviction_policy_->RemoveObject(object_id);
   object_store_->DeleteObject(object_id);
   meta_store_.RemoveObject(object_id);
 

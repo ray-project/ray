@@ -98,87 +98,100 @@ class MockObjectStore : public IObjectStore {
   MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
 };
 
-TEST(EvictionPolicyTest, Test) {
-  MockAllocator allocator;
-  MockObjectStore store;
-  EXPECT_CALL(allocator, GetFootprintLimit()).WillRepeatedly(Return(100));
-  ObjectID key1 = ObjectID::FromRandom();
-  ObjectID key2 = ObjectID::FromRandom();
-  ObjectID key3 = ObjectID::FromRandom();
-  ObjectID key4 = ObjectID::FromRandom();
+struct EvictionPolicyTest : public Test {
+  EvictionPolicyTest()
+      : Test(),
+        allocator(),
+        store(),
+        meta_store(),
+        policy(store, allocator, meta_store) {}
 
-  LocalObject object1{Allocation()};
-  object1.object_info.data_size = 10;
-  object1.object_info.metadata_size = 0;
-  LocalObject object2{Allocation()};
-  object2.object_info.data_size = 20;
-  object2.object_info.metadata_size = 0;
-  LocalObject object3{Allocation()};
-  object3.object_info.data_size = 30;
-  object3.object_info.metadata_size = 0;
-  LocalObject object4{Allocation()};
-  object4.object_info.data_size = 40;
-  object4.object_info.metadata_size = 0;
+  void SetUp() override {
+    Test::SetUp();
 
-  auto init_object_store = [&](EvictionPolicy &policy) {
+    object1.object_info.data_size = 10;
+    object1.object_info.metadata_size = 0;
+    object2.object_info.data_size = 20;
+    object2.object_info.metadata_size = 0;
+    object3.object_info.data_size = 30;
+    object3.object_info.metadata_size = 0;
+    object4.object_info.data_size = 40;
+    object4.object_info.metadata_size = 0;
+
+    EXPECT_CALL(allocator, GetFootprintLimit()).WillRepeatedly(Return(100));
     EXPECT_CALL(store, GetObject(_))
         .Times(4)
         .WillOnce(Return(&object1))
         .WillOnce(Return(&object2))
         .WillOnce(Return(&object3))
         .WillOnce(Return(&object4));
-    policy.ObjectCreated(key1);
-    policy.ObjectCreated(key2);
-    policy.ObjectCreated(key3);
-    policy.ObjectCreated(key4);
-
+    policy.OnObjectCreated(key1);
+    policy.OnObjectCreated(key2);
+    policy.OnObjectCreated(key3);
+    policy.OnObjectCreated(key4);
     EXPECT_CALL(allocator, Allocated()).WillRepeatedly(Return(10 + 20 + 30 + 40));
-  };
-
-  {
-    EvictionPolicy policy(store, allocator);
-    init_object_store(policy);
-    std::vector<ObjectID> objects_to_evict;
-
-    // Require 10, need to evict at least 20%, so the first two objects should be evicted.
-    // [10,20,30,40] -> [30,40]
-    EXPECT_EQ(-20, policy.RequireSpace(10, objects_to_evict));
-    EXPECT_EQ(2, objects_to_evict.size());
   }
 
-  {
-    EvictionPolicy policy(store, allocator);
-    init_object_store(policy);
-    std::vector<ObjectID> objects_to_evict;
-
-    // Require 30, need to evict 30, so the first two objects should be evicted.
-    // [10,20,30,40] -> [30,40]
-    EXPECT_EQ(0, policy.RequireSpace(30, objects_to_evict));
-    EXPECT_EQ(2, objects_to_evict.size());
+  bool IsObjectEvictable(const ObjectID &object_id) {
+    return policy.IsObjectEvictable(object_id);
   }
 
-  {
-    EvictionPolicy policy(store, allocator);
-    init_object_store(policy);
-    std::vector<ObjectID> objects_to_evict;
+  MockAllocator allocator;
+  MockObjectStore store;
+  LifecycleMetadataStore meta_store;
+  EvictionPolicy policy;
 
-    // Require 40, need to evict 40, so the first three objects should be evicted.
-    // [10,20,30,40] -> [40]
-    EXPECT_EQ(-20, policy.RequireSpace(40, objects_to_evict));
-    EXPECT_EQ(3, objects_to_evict.size());
-  }
+  ObjectID key1 = ObjectID::FromRandom();
+  ObjectID key2 = ObjectID::FromRandom();
+  ObjectID key3 = ObjectID::FromRandom();
+  ObjectID key4 = ObjectID::FromRandom();
+  LocalObject object1{Allocation()};
+  LocalObject object2{Allocation()};
+  LocalObject object3{Allocation()};
+  LocalObject object4{Allocation()};
+};
 
-  {
-    EvictionPolicy policy(store, allocator);
-    init_object_store(policy);
+TEST_F(EvictionPolicyTest, EvictTest) {
+  std::vector<ObjectID> objects_to_evict;
+  // Require 10, need to evict at least 20%, so the first two objects should be evicted.
+  // [10,20,30,40] -> [30,40]
+  EXPECT_EQ(-20, policy.RequireSpace(10, objects_to_evict));
+  EXPECT_EQ(2, objects_to_evict.size());
+}
 
-    EXPECT_CALL(store, GetObject(_)).WillRepeatedly(Return(&object1));
-    EXPECT_TRUE(policy.IsObjectExists(key1));
-    policy.BeginObjectAccess(key1);
-    EXPECT_FALSE(policy.IsObjectExists(key1));
-    policy.EndObjectAccess(key1);
-    EXPECT_TRUE(policy.IsObjectExists(key1));
-  }
+TEST_F(EvictionPolicyTest, EvictTest1) {
+  std::vector<ObjectID> objects_to_evict;
+
+  // Require 30, need to evict 30, so the first two objects should be evicted.
+  // [10,20,30,40] -> [30,40]
+  EXPECT_EQ(0, policy.RequireSpace(30, objects_to_evict));
+  EXPECT_EQ(2, objects_to_evict.size());
+}
+
+TEST_F(EvictionPolicyTest, EvictTest2) {
+  std::vector<ObjectID> objects_to_evict;
+
+  // Require 40, need to evict 40, so the first three objects should be evicted.
+  // [10,20,30,40] -> [40]
+  EXPECT_EQ(-20, policy.RequireSpace(40, objects_to_evict));
+  EXPECT_EQ(3, objects_to_evict.size());
+}
+
+TEST_F(EvictionPolicyTest, EvictTest3) {
+  EXPECT_CALL(store, GetObject(_)).WillRepeatedly(Return(&object1));
+  EXPECT_TRUE(IsObjectEvictable(key1));
+  meta_store.IncreaseRefCount(key1);
+  policy.OnObjectRefIncreased(key1);
+  EXPECT_FALSE(IsObjectEvictable(key1));
+  meta_store.IncreaseRefCount(key1);
+  policy.OnObjectRefIncreased(key1);
+  EXPECT_FALSE(IsObjectEvictable(key1));
+  meta_store.DecreaseRefCount(key1);
+  policy.OnObjectRefDecreased(key1);
+  EXPECT_FALSE(IsObjectEvictable(key1));
+  meta_store.DecreaseRefCount(key1);
+  policy.OnObjectRefDecreased(key1);
+  EXPECT_TRUE(IsObjectEvictable(key1));
 }
 }  // namespace plasma
 

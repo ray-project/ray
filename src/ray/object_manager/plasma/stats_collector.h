@@ -18,6 +18,7 @@
 #pragma once
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/lifecycle_event_subscriber.h"
 #include "ray/object_manager/plasma/lifecycle_meta_store.h"
 #include "ray/object_manager/plasma/object_store.h"
 
@@ -25,24 +26,9 @@ namespace plasma {
 
 // IStatsCollector subscribes to plasma store state changes
 // and calculate the store statistics.
-class IStatsCollector {
+class IStatsCollector : public ILifecycleEventSubscriber {
  public:
   virtual ~IStatsCollector() = default;
-
-  // Called after a new object is created.
-  virtual void OnObjectCreated(const ObjectID &id) = 0;
-
-  // Called after an object is sealed.
-  virtual void OnObjectSealed(const ObjectID &id) = 0;
-
-  // Called BEFORE an object is deleted.
-  virtual void OnObjectDeleting(const ObjectID &id) = 0;
-
-  // Called after an object's ref count is bumped by 1.
-  virtual void OnObjectRefIncreased(const ObjectID &id) = 0;
-
-  // Called after an object's ref count is decreased by 1.
-  virtual void OnObjectRefDecreased(const ObjectID &id) = 0;
 
   // Debug dump the stats.
   virtual void GetDebugDump(std::stringstream &buffer) const = 0;

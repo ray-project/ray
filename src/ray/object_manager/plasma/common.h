@@ -85,7 +85,7 @@ struct Allocation {
   friend class DummyAllocator;
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
-  FRIEND_TEST(EvictionPolicyTest, Test);
+  friend struct EvictionPolicyTest;
   friend struct GetRequestQueueTest;
 };
 
@@ -128,7 +128,7 @@ class LocalObject {
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
   friend struct ObjectStatsCollectorTest;
-  FRIEND_TEST(EvictionPolicyTest, Test);
+  friend struct EvictionPolicyTest;
   friend struct GetRequestQueueTest;
 
   /// Allocation Info;

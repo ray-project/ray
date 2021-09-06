@@ -28,12 +28,13 @@ namespace plasma {
 
 class MockEvictionPolicy : public IEvictionPolicy {
  public:
-  MOCK_METHOD1(ObjectCreated, void(const ObjectID &));
+  MOCK_METHOD1(OnObjectCreated, void(const ObjectID &));
+  MOCK_METHOD1(OnObjectSealed, void(const ObjectID &));
+  MOCK_METHOD1(OnObjectDeleting, void(const ObjectID &));
+  MOCK_METHOD1(OnObjectRefIncreased, void(const ObjectID &));
+  MOCK_METHOD1(OnObjectRefDecreased, void(const ObjectID &));
   MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> &));
-  MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
-  MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
   MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
-  MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
 };
 
@@ -145,7 +146,7 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
 
   // eviction
   EXPECT_CALL(*object_store_, DeleteObject(id1_)).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(*eviction_policy_, RemoveObject(id1_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectDeleting(id1_)).Times(1).WillOnce(Return());
 
   auto expected = std::pair<const LocalObject *, flatbuf::PlasmaError>(
       &object1_, flatbuf::PlasmaError::OK);
@@ -239,7 +240,7 @@ TEST_F(ObjectLifecycleManagerTest, AbortSuccess) {
       .Times(2)
       .WillRepeatedly(Return(&not_sealed_object_));
   EXPECT_CALL(*object_store_, DeleteObject(id3_)).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(*eviction_policy_, RemoveObject(id3_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectDeleting(id3_)).Times(1).WillOnce(Return());
   EXPECT_EQ(manager_->AbortObject(id3_), flatbuf::PlasmaError::OK);
   // aborted object is not notified.
   EXPECT_TRUE(notify_deleted_ids_.empty());
@@ -275,7 +276,7 @@ TEST_F(ObjectLifecycleManagerTest, DeleteSuccess) {
       .Times(2)
       .WillRepeatedly(Return(&sealed_object_));
   EXPECT_CALL(*object_store_, DeleteObject(id1_)).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(*eviction_policy_, RemoveObject(id1_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectDeleting(id1_)).Times(1).WillOnce(Return());
 
   EXPECT_EQ(flatbuf::PlasmaError::OK, manager_->DeleteObject(id1_));
   std::vector<ObjectID> expect_notified_ids{id1_};
@@ -290,7 +291,9 @@ TEST_F(ObjectLifecycleManagerTest, AddReference) {
 
   {
     EXPECT_CALL(*object_store_, GetObject(id2_)).Times(1).WillOnce(Return(&object1_));
-    EXPECT_CALL(*eviction_policy_, BeginObjectAccess(id2_)).Times(1).WillOnce(Return());
+    EXPECT_CALL(*eviction_policy_, OnObjectRefIncreased(id2_))
+        .Times(1)
+        .WillOnce(Return());
     EXPECT_TRUE(manager_->AddReference(id2_));
     EXPECT_EQ(1, GetRefCount(id2_));
   }
@@ -300,6 +303,9 @@ TEST_F(ObjectLifecycleManagerTest, AddReference) {
     EXPECT_CALL(*object_store_, GetObject(id3_))
         .Times(1)
         .WillOnce(Return(&one_ref_object_));
+    EXPECT_CALL(*eviction_policy_, OnObjectRefIncreased(id3_))
+        .Times(1)
+        .WillOnce(Return());
     EXPECT_TRUE(manager_->AddReference(id3_));
     EXPECT_EQ(2, GetRefCount(id3_));
   }
@@ -332,7 +338,7 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefSealed) {
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(1)
       .WillOnce(Return(&one_ref_object_));
-  EXPECT_CALL(*eviction_policy_, EndObjectAccess(id1_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectRefDecreased(id1_)).Times(1).WillOnce(Return());
   EXPECT_TRUE(manager_->RemoveReference(id1_));
   EXPECT_EQ(0, GetRefCount(id1_));
 }
@@ -343,9 +349,9 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(2)
       .WillRepeatedly(Return(&one_ref_object_));
-  EXPECT_CALL(*eviction_policy_, EndObjectAccess(id1_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectRefDecreased(id1_)).Times(1).WillOnce(Return());
   EXPECT_CALL(*object_store_, DeleteObject(id1_)).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(*eviction_policy_, RemoveObject(id1_)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*eviction_policy_, OnObjectDeleting(id1_)).Times(1).WillOnce(Return());
 
   EXPECT_TRUE(manager_->RemoveReference(id1_));
   EXPECT_EQ(0, GetRefCount(id1_));

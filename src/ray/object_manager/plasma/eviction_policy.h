@@ -31,6 +31,8 @@
 #include <vector>
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/lifecycle_event_subscriber.h"
+#include "ray/object_manager/plasma/lifecycle_meta_store.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -38,17 +40,9 @@
 namespace plasma {
 
 /// The eviction policy interface.
-class IEvictionPolicy {
+class IEvictionPolicy : public ILifecycleEventSubscriber {
  public:
   virtual ~IEvictionPolicy() = default;
-
-  /// This method will be called whenever an object is first created in order to
-  /// add it to the LRU cache. This is done so that the first time, the Plasma
-  /// store calls begin_object_access, we can remove the object from the LRU
-  /// cache.
-  ///
-  /// \param object_id The object ID of the object that was created.
-  virtual void ObjectCreated(const ObjectID &object_id) = 0;
 
   /// This method will be called when the Plasma store needs more space, perhaps
   /// to create a new object. When this method is called, the eviction
@@ -63,22 +57,6 @@ class IEvictionPolicy {
   /// any. If negative, then the required space has been made.
   virtual int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) = 0;
 
-  /// This method will be called whenever an unused object in the Plasma store
-  /// starts to be used. When this method is called, the eviction policy will
-  /// assume that the objects chosen to be evicted will in fact be evicted from
-  /// the Plasma store by the caller.
-  ///
-  /// \param object_id The ID of the object that is now being used.
-  virtual void BeginObjectAccess(const ObjectID &object_id) = 0;
-
-  /// This method will be called whenever an object in the Plasma store that was
-  /// being used is no longer being used. When this method is called, the
-  /// eviction policy will assume that the objects chosen to be evicted will in
-  /// fact be evicted from the Plasma store by the caller.
-  ///
-  /// \param object_id The ID of the object that is no longer being used.
-  virtual void EndObjectAccess(const ObjectID &object_id) = 0;
-
   /// Choose some objects to evict from the Plasma store. When this method is
   /// called, the eviction policy will assume that the objects chosen to be
   /// evicted will in fact be evicted from the Plasma store by the caller.
@@ -92,11 +70,6 @@ class IEvictionPolicy {
   /// \return The total number of bytes of space chosen to be evicted.
   virtual int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
                                        std::vector<ObjectID> &objects_to_evict) = 0;
-
-  /// This method will be called when an object is going to be removed
-  ///
-  /// \param object_id The ID of the object that is now being used.
-  virtual void RemoveObject(const ObjectID &object_id) = 0;
 
   /// Returns debugging information for this eviction policy.
   virtual std::string DebugString() const = 0;
@@ -159,29 +132,34 @@ class LRUCache {
 /// The eviction policy implementation
 class EvictionPolicy : public IEvictionPolicy {
  public:
-  EvictionPolicy(const IObjectStore &object_store, const IAllocator &allocator);
+  EvictionPolicy(const IObjectStore &object_store, const IAllocator &allocator,
+                 const LifecycleMetadataStore &meta_store);
 
-  void ObjectCreated(const ObjectID &object_id) override;
+  void OnObjectCreated(const ray::ObjectID &id) override;
+
+  void OnObjectSealed(const ray::ObjectID &id) override;
+
+  void OnObjectDeleting(const ray::ObjectID &id) override;
+
+  void OnObjectRefIncreased(const ray::ObjectID &id) override;
+
+  void OnObjectRefDecreased(const ray::ObjectID &id) override;
 
   int64_t RequireSpace(int64_t size, std::vector<ObjectID> &objects_to_evict) override;
-
-  void BeginObjectAccess(const ObjectID &object_id) override;
-
-  void EndObjectAccess(const ObjectID &object_id) override;
 
   int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
                                std::vector<ObjectID> &objects_to_evict) override;
 
-  void RemoveObject(const ObjectID &object_id) override;
-
   std::string DebugString() const override;
 
  private:
+  friend struct EvictionPolicyTest;
+
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;
 
   /// Returns whether the object exist in cache or not
-  bool IsObjectExists(const ObjectID &object_id) const;
+  bool IsObjectEvictable(const ObjectID &object_id) const;
 
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
@@ -190,10 +168,8 @@ class EvictionPolicy : public IEvictionPolicy {
   LRUCache cache_;
 
   const IObjectStore &object_store_;
-
   const IAllocator &allocator_;
-
-  FRIEND_TEST(EvictionPolicyTest, Test);
+  const LifecycleMetadataStore &meta_store_;
 };
 
 }  // namespace plasma
