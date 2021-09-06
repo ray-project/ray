@@ -172,9 +172,6 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   // once reference count becomes 0.
   absl::flat_hash_set<ObjectID> earger_deletion_objects_;
 
-  // Total bytes of the objects whose references are greater than 0.
-  int64_t num_bytes_in_use_;
-
   ObjectStatsCollector stats_collector_;
 };
 

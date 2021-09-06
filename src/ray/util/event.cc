@@ -255,6 +255,12 @@ RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) 
   return RayLogLevel::INFO;
 }
 
+bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
+  return event_level >= severity_threshold_;
+}
+
+void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
+
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
 void RayEvent::SendMessage(const std::string &message) {
