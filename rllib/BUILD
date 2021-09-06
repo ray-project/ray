@@ -2508,12 +2508,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+)
+
+py_test(
     name = "examples/parallel_evaluation_and_training_tf2",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
     args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6"]
+)
+
+py_test(
+    name = "examples/parallel_evaluation_and_training_torch",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6"]
 )
 
 py_test(

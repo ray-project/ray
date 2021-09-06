@@ -5,6 +5,14 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
+
+parser.add_argument(
+    "--evaluation-num-episodes",
+    type=lambda v: str(v) if isinstance(v, str) else int(v),
+    default=13,
+    help="Number of evaluation episodes to run each iteration. "
+    "If 'auto', will run as many as possible during train pass.")
+
 parser.add_argument(
     "--run",
     type=str,
@@ -36,6 +44,10 @@ parser.add_argument(
     type=float,
     default=100.0,
     help="Reward at which we stop training.")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.")
 
 
 class AssertNumEvalEpisodesCallback(DefaultCallbacks):
@@ -45,13 +57,19 @@ class AssertNumEvalEpisodesCallback(DefaultCallbacks):
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
         if "evaluation" in result:
             hist_stats = result["evaluation"]["hist_stats"]
+            num_episodes_done = len(hist_stats["episode_lengths"])
             # Compare number of entries in episode_lengths (this is the
             # number of episodes actually run) with desired number of
             # episodes from the config.
-            assert len(hist_stats["episode_lengths"]) == \
-                trainer.config["evaluation_num_episodes"]
-            print("Number of evaluation episodes is exactly "
-                  f"{trainer.config['evaluation_num_episodes']} (ok)!")
+            if isinstance(trainer.config["evaluation_num_episodes"], int):
+                assert num_episodes_done == \
+                    trainer.config["evaluation_num_episodes"]
+            else:
+                assert trainer.config["evaluation_num_episodes"] == "auto"
+                assert num_episodes_done >= \
+                       trainer.config["evaluation_num_workers"]
+            print("Number of run evaluation episodes: "
+                  f"{num_episodes_done} (ok)!")
 
 
 if __name__ == "__main__":
@@ -60,7 +78,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
         "env": "CartPole-v0",
@@ -79,10 +97,13 @@ if __name__ == "__main__":
         # Evaluate every other training iteration (together
         # with every other call to Trainer.train()).
         "evaluation_interval": 2,
-        # Run for 50 episodes (25 per eval worker and per
-        # evaluation round). The longer it takes to evaluate, the more
+        "train_batch_size": 16000,
+        # Run for n episodes (properly distribute load amongst all eval
+        # workers). The longer it takes to evaluate, the more
         # sense it makes to use `evaluation_parallel_to_training=True`.
-        "evaluation_num_episodes": 13,
+        # Use "auto" to run evaluation for roughly as long as the training
+        # step takes.
+        "evaluation_num_episodes": args.evaluation_num_episodes,
         # Switch on evaluation in parallel with training.
         "evaluation_parallel_to_training": True,
 
