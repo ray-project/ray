@@ -99,9 +99,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             ExecutorService executorService =
                 Executors.newFixedThreadPool(concurrencyGroup.getMaxConcurrency());
             Preconditions.checkState(!services.containsKey(concurrencyGroup.getName()));
-            if (concurrencyGroup.getName().equals("")) {
-              int x = 2;
-            }
             services.put(concurrencyGroup.getName(), executorService);
             concurrencyGroup
                 .getFunctionDescriptorsList()
@@ -461,9 +458,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
           executorService = normalTaskExecutorService;
         }
         try {
-          if (executorService == null) {
-            int a = 2;
-          }
           executorService.submit(runnable);
         } catch (RejectedExecutionException e) {
           if (executorService.isShutdown()) {
