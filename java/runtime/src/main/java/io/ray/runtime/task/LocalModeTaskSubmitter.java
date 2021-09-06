@@ -15,6 +15,7 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.runtime.ConcurrencyGroupImpl;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -272,6 +273,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 ActorCreationTaskSpec.newBuilder()
                     .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
                     .setMaxConcurrency(options.maxConcurrency)
+                    .addConcurrencyGroups(buildConcurrencyGroups(options))
                     .build())
             .build();
     submitTaskSpec(taskSpec);
@@ -555,5 +557,24 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     final ActorId actorId = getActorId(taskSpec);
     Preconditions.checkNotNull(actorId);
     return actorMaxConcurrency.containsKey(actorId) && actorMaxConcurrency.get(actorId) > 1;
+  }
+
+  private static Common.ConcurrencyGroup.Builder generateConcurrencyGroupsBuilder(ActorCreationOptions options) {
+    if (options == null || options.concurrencyGroups == null || options.concurrencyGroups.isEmpty()) {
+      return null;
+    }
+
+    Common.ConcurrencyGroup.Builder builder = Common.ConcurrencyGroup.newBuilder();
+    options.concurrencyGroups.forEach((concurrencyGroup) -> {
+      ConcurrencyGroupImpl impl = (ConcurrencyGroupImpl) concurrencyGroup;
+      builder.addFunctionDescriptors();
+      builder.setMaxConcurrency(impl.getMaxConcurrency()).setName(impl.getName());
+      impl.getFunctionDescriptors();
+      impl.getMaxConcurrency();
+
+    });
+
+    return null;
+
   }
 }
