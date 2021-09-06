@@ -1274,12 +1274,15 @@ class Node:
     def validate_cgroup(self):
         """Make sure we can write the cgroup config.
         """
-        worker_resource_limits_enabled = self._config.get("worker_resource_limits_enabled", False)
+        worker_resource_limits_enabled = self._config.get(
+            "worker_resource_limits_enabled", False)
         if worker_resource_limits_enabled:
             try:
                 ray._private.utils.create_ray_parent_cgroup("cpu")
                 ray._private.utils.create_ray_parent_cgroup("cpuset")
                 ray._private.utils.create_ray_parent_cgroup("memory")
-            except Exception as e:
-                logger.error("The config worker_resource_limits_enabled is True, but failed to create cgroup")
+            except Exception:
+                logger.error(
+                    "The config worker_resource_limits_enabled is True,"
+                    "but failed to create cgroup")
                 raise

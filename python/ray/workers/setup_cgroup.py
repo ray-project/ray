@@ -1,11 +1,9 @@
-import errno
 import json
 import os
 import random
 import string
 import logging
 
-import ray.ray_constants as ray_constants
 from ray._private import utils
 
 logger = logging.getLogger(__name__)
@@ -40,13 +38,14 @@ def create_cgroup_for_worker(resource_json):
         utils.create_ray_parent_cgroup("cpu")
         cgroup_path = utils.create_ray_cgroup("cpu", cgroup_name)
         utils.set_ray_cgroup_property(cgroup_path, "cpu.shares",
-                                str(int(cpu_shares / 10000 * 1024)))
+                                      str(int(cpu_shares / 10000 * 1024)))
         cgroup_nodes.append(cgroup_path)
     if "memory" in allocated_resource:
         utils.create_ray_parent_cgroup("memory")
         cgroup_path = utils.create_ray_cgroup("memory", cgroup_name)
-        utils.set_ray_cgroup_property(cgroup_path, "memory.limit_in_bytes",
-                                str(int(allocated_resource["memory"] / 10000)))
+        utils.set_ray_cgroup_property(
+            cgroup_path, "memory.limit_in_bytes",
+            str(int(allocated_resource["memory"] / 10000)))
         cgroup_nodes.append(cgroup_path)
     return cgroup_nodes
 
@@ -54,7 +53,7 @@ def create_cgroup_for_worker(resource_json):
 def start_worker_in_cgroup(worker_func, resource_json):
     try:
         cgroup_nodes = create_cgroup_for_worker(resource_json)
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create cgroup for worker")
         return
 

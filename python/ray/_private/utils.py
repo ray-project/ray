@@ -1113,7 +1113,8 @@ def create_ray_parent_cgroup(controller):
     try:
         os.mkdir(ray_parent_cgroup)
         if controller == "cpuset":
-            cpuset_root = os.path.join(ray_constants.CGROUP_V1_ROOT, controller)
+            cpuset_root = os.path.join(ray_constants.CGROUP_V1_ROOT,
+                                       controller)
             cpus = get_ray_cgroup_property(cpuset_root, "cpuset.cpus")
             mems = get_ray_cgroup_property(cpuset_root, "cpuset.mems")
             set_ray_cgroup_property(ray_parent_cgroup, "cpuset.cpus", cpus)
@@ -1126,7 +1127,8 @@ def create_ray_parent_cgroup(controller):
 
 def create_ray_cgroup(controller, cgroup_name):
     ray_cgroup = os.path.join(ray_constants.CGROUP_V1_ROOT, controller,
-                              ray_constants.RAY_PARENT_CGROUP_NAME, cgroup_name)
+                              ray_constants.RAY_PARENT_CGROUP_NAME,
+                              cgroup_name)
     os.mkdir(ray_cgroup)
     return ray_cgroup
 
