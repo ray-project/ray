@@ -93,7 +93,12 @@ def create_cgroup_for_worker(resource_json):
 
 
 def start_worker_in_cgroup(worker_func, resource_json):
-    cgroup_nodes = create_cgroup_for_worker(resource_json)
+    try:
+        cgroup_nodes = create_cgroup_for_worker(resource_json)
+    except Exception as e:
+        logger.exception("Failed to create cgroup for worker")
+        return
+
     child_pid = os.fork()
     # todo (chenk008): clean cgroup if fork failed
     if child_pid != 0:
