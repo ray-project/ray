@@ -1,23 +1,24 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
-import time
 import threading
+import time
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
     TYPE_CHECKING
 
+import gym
+import numpy as np
 import ray
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
