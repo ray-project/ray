@@ -153,10 +153,9 @@ def read_datasource(datasource: Datasource[T],
     def remote_read(task: ReadTask) -> Block:
         return task()
 
-    if ray_remote_args:
-        remote_read = ray.remote(**ray_remote_args)(remote_read)
-    else:
-        remote_read = ray.remote(remote_read)
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
