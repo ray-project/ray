@@ -62,6 +62,9 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
+  if (!name.empty()) {
+    name = GetFullName(create_options.global, create_options.name);
+  }
   std::string ray_namespace = "";
   ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
                                                 /*max_task_retries=*/0,
@@ -85,6 +88,24 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
 ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
                                               const CallOptions &task_options) {
   return Submit(invocation, task_options);
+}
+
+JobID NativeTaskSubmitter::GetCurrentJobID() const {
+  return CoreWorkerProcess::GetCoreWorker().GetCurrentJobId();
+}
+
+ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name) const {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  auto full_actor_name = GetFullName(global, actor_name);
+  auto pair = core_worker.GetNamedActorHandle(full_actor_name, "");
+  if (!pair.second.ok()) {
+    RAY_LOG(WARNING) << pair.second.message();
+    return ActorID::Nil();
+  }
+
+  auto actor_handle = pair.first;
+  RAY_CHECK(actor_handle);
+  return actor_handle->GetActorID();
 }
 
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
