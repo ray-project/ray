@@ -196,13 +196,8 @@ perform hyperparameter tuning with RaySGD, please refer to the
 
 .. TODO add support for with_parameters
 
-.. _sgd-logging:
-
-Logging, Monitoring, and Callbacks
-----------------------------------
-
-Logging
-~~~~~~~
+Log Directory Structure
+-----------------------
 
 Each ``Trainer`` will have a local directory created for logs, and each call
 to ``Trainer.run`` will create its own sub-directory of logs.
@@ -229,6 +224,10 @@ Logs will be written by:
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 
+.. _sgd-logging:
+
+Logging, Monitoring, and Callbacks
+----------------------------------
 
 Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -353,23 +352,29 @@ You can plug all of these into RaySGD with the following interface:
 Logging Callbacks
 +++++++++++++++++
 
-The following ``Callback``\s are available and will write to a file within the
+The following ``SGDCallback``\s are available and will write to a file within the
 :ref:`log directory <sgd-logging>` of each training run.
 
 1. ``JsonLoggerCallback``
 2. ``TBXLoggerCallback``
 
-You can also implement a logging callback with
-custom logic by subclassing ``SGDSingleFileLoggingCallback`` or
-``SGDSingleWorkerLoggingCallback``.
-
 Custom Callbacks
 ++++++++++++++++
 
 If the provided callbacks do not cover your desired integrations or use-cases,
-you may always implement a custom callback by subclassing ``Callback``. If
+you may always implement a custom callback by subclassing ``SGDCallback``. If
 the callback is general enough, please feel welcome to add it to the ``ray``
 repository.
+
+A simple example for creating a callback that will print out results:
+
+.. code-block:: python
+
+    from ray.util.sgd.v2 import SGDCallback
+
+    class PrintingCallback(SGDCallback):
+        def handle_result(self, results: List[Dict], **info):
+            print(results)
 
 
 ..
