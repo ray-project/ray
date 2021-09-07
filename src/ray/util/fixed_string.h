@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// basic_fixed_string is adapted from
+// https://github.com/tomazos/fixed_string/blob/master/fixed_string.h
+
 #pragma once
 #include <cstddef>
 #include <initializer_list>
