@@ -1272,7 +1272,8 @@ class Dataset(Generic[T]):
             core_worker.get_owner_address(block)
             for block in self.get_blocks()
         ]
-        return raydp.spark.ray_dataset_to_spark_dataframe(spark, self, locations)
+        return raydp.spark.ray_dataset_to_spark_dataframe(
+            spark, self.schema(), self.get_blocks(), locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
