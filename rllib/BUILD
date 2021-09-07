@@ -1234,7 +1234,7 @@ py_test(
 
 py_test(
     name = "evaluation/tests/test_postprocessing",
-    tags = ["team:ml", "evaluation"],
+    tags = ["evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_postprocessing.py"]
 )
