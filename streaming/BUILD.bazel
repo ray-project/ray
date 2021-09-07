@@ -62,6 +62,7 @@ cc_binary(
 
 cc_binary(
     name = "stats_lib.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:stats_lib"],
