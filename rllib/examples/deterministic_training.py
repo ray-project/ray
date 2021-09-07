@@ -9,11 +9,8 @@ import ray
 from ray import tune
 from ray.rllib.examples.env.env_using_remote_actor import \
     CartPoleWithRemoteParamServer, ParameterStorage
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check
-
-tf1, tf, tfv = try_import_tf()
-torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -37,6 +34,8 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,  # parallelism
+        # Make sure every environment gets a fixed seed.
+        "num_envs_per_worker": 2,
         "framework": args.framework,
         "seed": args.seed,
 
@@ -51,11 +50,16 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results1 = tune.run(args.run, config=config, stop=stop, verbose=1)
     results2 = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
-        check(
-            list(results.results.values())[0]["hist_stats"],
-            list(results2.results.values())[0]["hist_stats"])
+        results1 = list(results1.results.values())[0]
+        results2 = list(results2.results.values())[0]
+        # Test rollout behavior.
+        check(results1["hist_stats"], results2["hist_stats"])
+        # As well as training behavior (minibatch sequence during SGD
+        # iterations).
+        check(results1["info"]["learner"][DEFAULT_POLICY_ID]["learner_stats"],
+              results2["info"]["learner"][DEFAULT_POLICY_ID]["learner_stats"])
     ray.shutdown()

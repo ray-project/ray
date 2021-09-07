@@ -781,7 +781,8 @@ class CoreWorkerDirectTaskReceiver {
       std::function<Status(const TaskSpecification &task_spec,
                            const std::shared_ptr<ResourceMappingType> resource_ids,
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
+                           ReferenceCounter::ReferenceTableProto *borrower_refs,
+                           bool *is_application_level_error)>;
 
   using OnTaskDone = std::function<Status()>;
 

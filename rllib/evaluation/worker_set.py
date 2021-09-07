@@ -427,7 +427,6 @@ class WorkerSet:
             normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
-            model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,

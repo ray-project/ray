@@ -16,12 +16,10 @@ import subprocess
 import sys
 import time
 from typing import Optional
-import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -226,16 +224,6 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
-
-
-def _log_dashboard_dependency_warning_once():
-    if log_once("dashboard_failed_import"
-                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
-        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
-        warning_message += " To disable this message, set " \
-                           "RAY_DISABLE_IMPORT_WARNING " \
-                           "env var to '1'."
-        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -832,17 +820,6 @@ def start_redis(node_ip_address,
             addresses for the remaining shards, and the processes that were
             started.
     """
-
-    if len(redirect_files) != 1 + num_redis_shards:
-        raise ValueError("The number of redirect file pairs should be equal "
-                         "to the number of redis shards (including the "
-                         "primary shard) we will start.")
-    if redis_shard_ports is None:
-        redis_shard_ports = num_redis_shards * [None]
-    elif len(redis_shard_ports) != num_redis_shards:
-        raise RuntimeError("The number of Redis shard ports does not match "
-                           "the number of Redis shards.")
-
     processes = []
 
     if external_addresses is not None:
@@ -855,6 +832,17 @@ def start_redis(node_ip_address,
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
+        if len(redirect_files) != 1 + num_redis_shards:
+            raise ValueError(
+                "The number of redirect file pairs should be equal "
+                "to the number of redis shards (including the "
+                "primary shard) we will start.")
+        if redis_shard_ports is None:
+            redis_shard_ports = num_redis_shards * [None]
+        elif len(redis_shard_ports) != num_redis_shards:
+            raise RuntimeError(
+                "The number of Redis shard ports does not match "
+                "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -910,7 +898,7 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None and len(external_addresses) > 1:
+        if external_addresses is not None:
             shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
@@ -1195,7 +1183,6 @@ def start_dashboard(require_dashboard,
             if require_dashboard:
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
@@ -1209,7 +1196,7 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
-        if redis_password:
+        if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
@@ -1335,7 +1322,6 @@ def start_raylet(redis_address,
                  worker_path,
                  setup_worker_path,
                  worker_setup_hook,
-                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1379,8 +1365,6 @@ def start_raylet(redis_address,
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1512,9 +1496,7 @@ def start_raylet(redis_address,
 
             return True
         except ImportError:
-            _log_dashboard_dependency_warning_once()
-
-        return False
+            return False
 
     if not check_should_start_agent():
         # An empty agent command will cause the raylet not to start it.
@@ -1535,7 +1517,6 @@ def start_raylet(redis_address,
             f"--temp-dir={temp_dir}",
             f"--session-dir={session_dir}",
             f"--runtime-env-dir={resource_dir}",
-            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",

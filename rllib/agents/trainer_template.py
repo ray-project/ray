@@ -69,9 +69,10 @@ def build_trainer_class(
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = DEPRECATED_VALUE,
         before_init: Optional[Callable[[Trainer], None]] = DEPRECATED_VALUE,
         after_init: Optional[Callable[[Trainer], None]] = DEPRECATED_VALUE,
-        execution_plan: Optional[
-            Callable[[WorkerSet, TrainerConfigDict], Iterable[ResultDict]]
-        ] = DEPRECATED_VALUE,
+        execution_plan: Optional[Union[Callable[
+            [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
+                Trainer, WorkerSet, TrainerConfigDict
+            ], Iterable[ResultDict]]]] = DEPRECATED_VALUE,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = DEPRECATED_VALUE,
 ) -> Type[Trainer]:
     """Helper function for defining a custom trainer.

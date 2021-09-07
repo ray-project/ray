@@ -93,6 +93,14 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
     "buffer_size": int(1e6),
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,

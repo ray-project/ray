@@ -116,17 +116,21 @@ message PutResponse {
 // Requests data from the server.
 message GetRequest {
   // The reference ID for the requested object data
-  bytes id = 1;
+  repeated bytes ids = 4;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+
+  // Deprecated fields.
+  bytes id = 1 [deprecated = true];
 }
 
 message GetResponse {
   // Whether or not the data was successfully retrieved
   bool valid = 1;
-  // The data blob, on success
+  // The data blob containing a list of serialized objects, on success.
+  // Total size and the order of objects match those in `GetRequest.ids`.
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;

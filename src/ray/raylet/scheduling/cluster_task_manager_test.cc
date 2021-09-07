@@ -129,12 +129,12 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
   if (!args.empty()) {
     for (auto &arg : args) {
-      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address(), ""));
     }
   } else {
     for (int i = 0; i < num_args; i++) {
       ObjectID put_id = ObjectID::FromIndex(RandomTaskId(), /*index=*/i + 1);
-      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address(), ""));
     }
   }
 

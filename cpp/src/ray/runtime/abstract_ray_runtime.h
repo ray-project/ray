@@ -36,6 +36,7 @@ class RayIntentionalSystemExitException : public RayException {
  public:
   RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
 };
+
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
@@ -77,6 +78,11 @@ class AbstractRayRuntime : public RayRuntime {
   void KillActor(const std::string &str_actor_id, bool no_restart);
 
   void ExitActor();
+
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::internal::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+  bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
 
   const TaskID &GetCurrentTaskId();
 

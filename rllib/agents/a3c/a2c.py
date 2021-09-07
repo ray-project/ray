@@ -1,5 +1,6 @@
 import math
 
+from ray.util.iter import LocalIterator
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
@@ -32,8 +33,8 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 
 def execution_plan(trainer: Trainer,
                    workers: WorkerSet,
-                   config: TrainerConfigDict):
-    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the A2C algorithm. Defines the distributed
     dataflow.
 
     Args:
