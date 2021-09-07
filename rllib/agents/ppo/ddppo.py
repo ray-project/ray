@@ -159,9 +159,9 @@ def execution_plan(workers: WorkerSet,
     # Get setup tasks in order to throw errors on failure.
     ray.get([
         worker.setup_torch_data_parallel.remote(
-            address,
-            i,
-            len(workers.remote_workers()),
+            url=address,
+            world_rank=i,
+            world_size=len(workers.remote_workers()),
             backend=config["torch_distributed_backend"])
         for i, worker in enumerate(workers.remote_workers())
     ])
