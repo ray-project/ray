@@ -420,7 +420,7 @@ If you already have Parquet files with tensor columns containing serialized tens
 
     # Read the Parquet files into a new Dataset, applying the casting UDF
     # on-the-fly within the underlying read tasks.
-    ds = ray.data.read_parquet(path, block_udf=cast_udf)
+    ds = ray.data.read_parquet(path, _block_udf=cast_udf)
 
     # Internally, this column is represented with our Arrow tensor extension
     # type.
@@ -428,7 +428,7 @@ If you already have Parquet files with tensor columns containing serialized tens
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-Please note that the ``block_udf=`` parameter is an experimental developer API and may break in future versions. We're currently exploring ways to do this cast automatically and with minimal user input; see the "Limitations" section below.
+Please note that the ``_block_udf=`` parameter is an experimental developer API and may break in future versions. We're currently exploring ways to do this cast automatically and with minimal user input; see the "Limitations" section below.
 
 Now that the tensor column is properly typed and in a ``Dataset``, we can perform operations on the dataset as if it was a normal table:
 

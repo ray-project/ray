@@ -417,7 +417,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
             block._ensure_integer_index(tensor_col_name), tensor_col_name,
             ArrowTensorArray.from_numpy(np_col))
 
-    ds = ray.data.read_parquet(str(tmp_path), block_udf=np_deser_udf)
+    ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type,
                       ArrowTensorType)
@@ -991,7 +991,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         partition_cols=["one"],
         use_legacy_dataset=False)
 
-    def block_udf(block: pa.Table):
+    def _block_udf(block: pa.Table):
         df = block.to_pandas()
         df["one"] += 1
         return pa.Table.from_pandas(df)
@@ -999,7 +999,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     # 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=1, block_udf=block_udf)
+        str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     assert len(ds._blocks._blocks) == 1
@@ -1008,7 +1008,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     # 2 blocks/read tasks
 
     ds = ray.data.read_parquet(
-        str(tmp_path), parallelism=2, block_udf=block_udf)
+        str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     assert len(ds._blocks._blocks) == 2
@@ -1020,7 +1020,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         str(tmp_path),
         parallelism=2,
         filter=(pa.dataset.field("two") == "a"),
-        block_udf=block_udf)
+        _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     assert len(ds._blocks._blocks) == 2
@@ -1069,14 +1069,14 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
 
-    def block_udf(block: pa.Table):
+    def _block_udf(block: pa.Table):
         df = block.to_pandas()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
     # 2 write tasks
     ds._set_uuid("data")
-    ds.write_parquet(data_path, block_udf=block_udf)
+    ds.write_parquet(data_path, _block_udf=_block_udf)
     path1 = os.path.join(data_path, "data_000000.parquet")
     path2 = os.path.join(data_path, "data_000001.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])

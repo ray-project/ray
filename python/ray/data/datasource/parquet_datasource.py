@@ -30,7 +30,7 @@ class ParquetDatasource(FileBasedDatasource):
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             columns: Optional[List[str]] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-            block_udf: Optional[Callable[[Block], Block]] = None,
+            _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a Parquet file-based datasource.
         """
@@ -97,17 +97,17 @@ class ParquetDatasource(FileBasedDatasource):
                 table = pa.concat_tables(tables, promote=True)
             elif len(tables) == 1:
                 table = tables[0]
-            if block_udf is not None:
-                table = block_udf(table)
+            if _block_udf is not None:
+                table = _block_udf(table)
             # If len(tables) == 0, all fragments were empty, and we return the
             # empty table from the last fragment.
             return table
 
-        if block_udf is not None:
+        if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
-                inferred_schema = block_udf(dummy_table).schema
+                inferred_schema = _block_udf(dummy_table).schema
                 inferred_schema = inferred_schema.with_metadata(
                     schema.metadata)
             except Exception as e:
