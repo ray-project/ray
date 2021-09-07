@@ -3,6 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn.apex as apex
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 
@@ -59,6 +60,64 @@ class TestApexDQN(unittest.TestCase):
             infos = trainer.workers.foreach_policy(
                 lambda p, _: p.get_exploration_state())
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
+
+            trainer.stop()
+
+    def test_apex_lr_schedule(self):
+        config = apex.APEX_DEFAULT_CONFIG.copy()
+        config["num_workers"] = 1
+        config["num_gpus"] = 0
+        config["buffer_size"] = 200
+        config["learning_starts"] = 100
+        config["train_batch_size"] = 100
+        config["rollout_fragment_length"] = 100
+        config["prioritized_replay"] = True
+        config["timesteps_per_iteration"] = 100
+        # 0 metrics reporting delay, this makes sure timestep,
+        # which lr depends on, is updated after each worker rollout.
+        config["min_iter_time_s"] = 0
+        config["optimizer"]["num_replay_buffer_shards"] = 1
+        # This makes sure learning schedule is checked every 50 timesteps.
+        config["optimizer"]["max_weight_sync_delay"] = 50
+        # Initial lr, doesn't really matter because of the schedule below.
+        config['lr'] = 0.2
+        lr_schedule = [
+            [0, 0.2],
+            [1000, 0.1],
+            [2000, 0.01],
+            [3000, 0.001],
+        ]
+        config['lr_schedule'] = lr_schedule
+
+        def _step_n_times(trainer, n: int):
+            """Step trainer n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = trainer.train()
+            return results['info']['learner'][DEFAULT_POLICY_ID]["cur_lr"]
+
+        # Check eager execution frameworks here, since it's easier to control
+        # exact timesteps with these frameworks.
+        for _ in framework_iterator(config):
+            trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
+
+            lr = _step_n_times(trainer, 10)  # 1000 timestep
+            # PiecewiseSchedule does interpolation. So roughly 0.1 here.
+            self.assertLessEqual(lr, 0.11)
+            self.assertGreaterEqual(lr, 0.09)
+
+            lr = _step_n_times(trainer, 10)  # 2000 timestep
+            # PiecewiseSchedule does interpolation. So roughly 0.01 here.
+            self.assertLessEqual(lr, 0.012)
+            self.assertGreaterEqual(lr, 0.008)
+
+            lr = _step_n_times(trainer, 10)  # 3000 timestep
+            # PiecewiseSchedule does interpolation. So roughly 0.001 here.
+            self.assertLessEqual(lr, 0.0013)
+            self.assertGreaterEqual(lr, 0.0007)
 
             trainer.stop()
 
