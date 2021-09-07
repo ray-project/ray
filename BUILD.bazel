@@ -607,7 +607,6 @@ cc_library(
     srcs = [
         "src/ray/stats/metric_exporter.cc",
         "src/ray/stats/metric_exporter_client.cc",
-        "src/ray/stats/stats.cc",
     ],
     hdrs = [
         "src/ray/stats/metric_defs.h",

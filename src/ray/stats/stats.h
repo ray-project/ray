@@ -43,9 +43,9 @@ namespace stats {
 #include "ray/stats/metric_defs.h"
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
-extern std::shared_ptr<IOServicePool> metrics_io_service_pool;
-extern std::shared_ptr<MetricExporterClient> exporter;
-extern absl::Mutex stats_mutex;
+static std::shared_ptr<IOServicePool> metrics_io_service_pool;
+static std::shared_ptr<MetricExporterClient> exporter;
+static absl::Mutex stats_mutex;
 
 typedef std::function<void(Status status, const boost::optional<std::string> &result)>
     GetAgentAddressCallback;

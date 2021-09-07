@@ -58,6 +58,8 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_ALREADY_SEALED "ObjectAlreadySealed"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
+// agent status
+#define STATUS_CODE_AGENT_DISABLED "AgentDisabled"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -102,6 +104,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
       {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
+      {StatusCode::AgentDisabled, STATUS_CODE_AGENT_DISABLED},
   };
 
   if (!code_to_str.count(code())) {
