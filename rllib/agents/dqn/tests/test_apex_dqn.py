@@ -80,14 +80,14 @@ class TestApexDQN(unittest.TestCase):
         # This makes sure learning schedule is checked every 50 timesteps.
         config["optimizer"]["max_weight_sync_delay"] = 50
         # Initial lr, doesn't really matter because of the schedule below.
-        config['lr'] = 0.2
+        config["lr"] = 0.2
         lr_schedule = [
             [0, 0.2],
             [1000, 0.1],
             [2000, 0.01],
             [3000, 0.001],
         ]
-        config['lr_schedule'] = lr_schedule
+        config["lr_schedule"] = lr_schedule
 
         def _step_n_times(trainer, n: int):
             """Step trainer n times.
@@ -97,7 +97,7 @@ class TestApexDQN(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results['info']['learner'][DEFAULT_POLICY_ID]["cur_lr"]
+            return results["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
 
         # Check eager execution frameworks here, since it's easier to control
         # exact timesteps with these frameworks.
@@ -106,18 +106,18 @@ class TestApexDQN(unittest.TestCase):
 
             lr = _step_n_times(trainer, 10)  # 1000 timestep
             # PiecewiseSchedule does interpolation. So roughly 0.1 here.
-            self.assertLessEqual(lr, 0.11)
-            self.assertGreaterEqual(lr, 0.09)
+            self.assertLessEqual(lr, 0.15)
+            self.assertGreaterEqual(lr, 0.05)
 
             lr = _step_n_times(trainer, 10)  # 2000 timestep
             # PiecewiseSchedule does interpolation. So roughly 0.01 here.
-            self.assertLessEqual(lr, 0.012)
-            self.assertGreaterEqual(lr, 0.008)
+            self.assertLessEqual(lr, 0.02)
+            self.assertGreaterEqual(lr, 0.005)
 
             lr = _step_n_times(trainer, 10)  # 3000 timestep
             # PiecewiseSchedule does interpolation. So roughly 0.001 here.
-            self.assertLessEqual(lr, 0.0013)
-            self.assertGreaterEqual(lr, 0.0007)
+            self.assertLessEqual(lr, 0.002)
+            self.assertGreaterEqual(lr, 0.0005)
 
             trainer.stop()
 
