@@ -7,6 +7,7 @@ from ray.experimental.workflow import common
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -20,6 +21,7 @@ MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 
 
+@PublicAPI(stability="beta")
 class WorkflowExecutionError(Exception):
     def __init__(self, workflow_id: str):
         self.message = f"Workflow[id={workflow_id}] failed during execution."

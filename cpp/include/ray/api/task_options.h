@@ -43,11 +43,50 @@ struct CallOptions {
 };
 
 struct ActorCreationOptions {
+  bool global;
   std::string name;
   std::unordered_map<std::string, double> resources;
   int max_restarts = 0;
   int max_concurrency = 1;
 };
 
+enum class PlacementStrategy {
+  PACK = 0,
+  SPREAD = 1,
+  STRICT_PACK = 2,
+  STRICT_SPREAD = 3,
+  UNRECOGNIZED = -1
+};
+
+struct PlacementGroupCreationOptions {
+  bool global;
+  std::string name;
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  PlacementStrategy strategy;
+};
+
 }  // namespace internal
+
+class PlacementGroup {
+ public:
+  PlacementGroup() = default;
+  PlacementGroup(std::string id, internal::PlacementGroupCreationOptions options)
+      : id_(std::move(id)), options_(std::move(options)) {}
+  std::string GetID() { return id_; }
+  std::string GetName() { return options_.name; }
+  std::vector<std::unordered_map<std::string, double>> GetBundles() {
+    return options_.bundles;
+  }
+  internal::PlacementStrategy GetStrategy() { return options_.strategy; }
+  bool Wait(int timeout_seconds) { return callback_(id_, timeout_seconds); }
+  void SetWaitCallbak(std::function<bool(const std::string &, int)> callback) {
+    callback_ = std::move(callback);
+  }
+
+ private:
+  std::string id_;
+  internal::PlacementGroupCreationOptions options_;
+  std::function<bool(const std::string &, int)> callback_;
+};
+
 }  // namespace ray

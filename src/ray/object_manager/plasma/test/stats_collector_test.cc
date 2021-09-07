@@ -70,6 +70,7 @@ struct ObjectStatsCollectorTest : public Test {
     collector_ = &manager_->stats_collector_;
     object_store_ = dynamic_cast<ObjectStore *>(manager_->object_store_.get());
     used_ids_.clear();
+    num_bytes_created_total_ = 0;
   }
 
   void ExpectStatsMatch() {
@@ -96,40 +97,41 @@ struct ObjectStatsCollectorTest : public Test {
 
       if (obj->ref_count > 0) {
         num_objects_in_use++;
-        num_bytes_in_use += obj->object_info.data_size;
+        num_bytes_in_use += obj->object_info.GetObjectSize();
       }
 
       if (obj->state == ObjectState::PLASMA_CREATED) {
         num_objects_unsealed++;
-        num_bytes_unsealed += obj->object_info.data_size;
+        num_bytes_unsealed += obj->object_info.GetObjectSize();
       } else {
         if (obj->ref_count == 1 &&
             obj->source == plasma::flatbuf::ObjectSource::CreatedByWorker) {
           num_objects_spillable++;
-          num_bytes_spillable += obj->object_info.data_size;
+          num_bytes_spillable += obj->object_info.GetObjectSize();
         }
 
         if (obj->ref_count == 0) {
           num_objects_evictable++;
-          num_bytes_evictable += obj->object_info.data_size;
+          num_bytes_evictable += obj->object_info.GetObjectSize();
         }
       }
 
       if (obj->source == plasma::flatbuf::ObjectSource::CreatedByWorker) {
         num_objects_created_by_worker++;
-        num_bytes_created_by_worker += obj->object_info.data_size;
+        num_bytes_created_by_worker += obj->object_info.GetObjectSize();
       } else if (obj->source == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
         num_objects_restored++;
-        num_bytes_restored += obj->object_info.data_size;
+        num_bytes_restored += obj->object_info.GetObjectSize();
       } else if (obj->source == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
         num_objects_received++;
-        num_bytes_received += obj->object_info.data_size;
+        num_bytes_received += obj->object_info.GetObjectSize();
       } else if (obj->source == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
         num_objects_errored++;
-        num_bytes_errored += obj->object_info.data_size;
+        num_bytes_errored += obj->object_info.GetObjectSize();
       }
     }
 
+    EXPECT_EQ(num_bytes_created_total_, collector_->num_bytes_created_total_);
     EXPECT_EQ(num_objects_spillable, collector_->num_objects_spillable_);
     EXPECT_EQ(num_bytes_spillable, collector_->num_bytes_spillable_);
     EXPECT_EQ(num_objects_unsealed, collector_->num_objects_unsealed_);
@@ -167,6 +169,7 @@ struct ObjectStatsCollectorTest : public Test {
   ObjectStatsCollector *collector_;
   ObjectStore *object_store_;
   std::unordered_set<ObjectID> used_ids_;
+  int64_t num_bytes_created_total_;
 };
 
 TEST_F(ObjectStatsCollectorTest, CreateAndAbort) {
@@ -178,6 +181,7 @@ TEST_F(ObjectStatsCollectorTest, CreateAndAbort) {
     int64_t size = Random(100);
     auto info = CreateNewObjectInfo(size++);
     manager_->CreateObject(info, source, false);
+    num_bytes_created_total_ += info.GetObjectSize();
     ExpectStatsMatch();
   }
 
@@ -196,6 +200,7 @@ TEST_F(ObjectStatsCollectorTest, CreateAndDelete) {
     int64_t size = Random(100);
     auto info = CreateNewObjectInfo(size);
     manager_->CreateObject(info, source, false);
+    num_bytes_created_total_ += info.GetObjectSize();
     ExpectStatsMatch();
   }
 
@@ -221,6 +226,7 @@ TEST_F(ObjectStatsCollectorTest, Eviction) {
   for (auto source : sources) {
     auto info = CreateNewObjectInfo(size++);
     manager_->CreateObject(info, source, false);
+    num_bytes_created_total_ += info.GetObjectSize();
     ExpectStatsMatch();
   }
 
@@ -235,10 +241,12 @@ TEST_F(ObjectStatsCollectorTest, RefCountPassThrough) {
   auto info1 = CreateNewObjectInfo(100);
   auto id1 = info1.object_id;
   manager_->CreateObject(info1, ObjectSource::CreatedByWorker, false);
+  num_bytes_created_total_ += info1.GetObjectSize();
 
   auto info2 = CreateNewObjectInfo(200);
   auto id2 = info2.object_id;
   manager_->CreateObject(info2, ObjectSource::RestoredFromStorage, false);
+  num_bytes_created_total_ += info2.GetObjectSize();
   ExpectStatsMatch();
 
   manager_->AddReference(id1);

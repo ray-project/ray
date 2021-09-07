@@ -207,6 +207,32 @@ class ActorReuseTest(unittest.TestCase):
             self.assertNotIn("LOG_STDERR: First", content)
 
 
+class ActorReuseMultiTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=2, num_gpus=0)
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "2"
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testMultiTrialReuse(self):
+        register_trainable("foo2", create_resettable_class())
+
+        # Log to default files
+        [trial1, trial2, trial3, trial4] = tune.run(
+            "foo2",
+            config={
+                "message": tune.grid_search(
+                    ["First", "Second", "Third", "Fourth"]),
+                "id": -1
+            },
+            reuse_actors=True).trials
+
+        self.assertEqual(trial3.last_result["num_resets"], 1)
+        self.assertEqual(trial4.last_result["num_resets"], 1)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

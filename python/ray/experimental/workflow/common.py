@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import ray
 from ray import ObjectRef
+from ray.util.annotations import PublicAPI
 
 # Alias types
 StepID = str
@@ -46,6 +47,7 @@ class WorkflowRef:
         return hash(self.step_id)
 
 
+@PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
@@ -189,7 +191,7 @@ class Workflow:
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
-            raise ValueError("Workflow should have one return value.")
+            raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs
         if self._data.inputs is None:
@@ -236,7 +238,7 @@ class Workflow:
             mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
-    def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
+    def _iter_workflows_in_dag(self) -> Iterator["Workflow"]:
         """Collect all workflows in the DAG linked to the workflow
         using BFS."""
         # deque is used instead of queue.Queue because queue.Queue is aimed
@@ -261,13 +263,15 @@ class Workflow:
 
     def __reduce__(self):
         raise ValueError(
-            "Workflow is not supposed to be serialized by pickle. "
-            "Maybe you are passing it to a Ray remote function, "
-            "returning it from a Ray remote function, or using "
-            "'ray.put()' with it?")
+            "Workflow[T] objects are not serializable. "
+            "This means they cannot be passed or returned from Ray "
+            "remote, or stored in Ray objects.")
 
+    @PublicAPI(stability="beta")
     def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
+
+        If the workflow with the given id already exists, it will be resumed.
 
         Examples:
             >>> @workflow.step
@@ -294,8 +298,11 @@ class Workflow:
         """
         return ray.get(self.run_async(workflow_id))
 
+    @PublicAPI(stability="beta")
     def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
+
+        If the workflow with the given id already exists, it will be resumed.
 
         Examples:
             >>> @workflow.step

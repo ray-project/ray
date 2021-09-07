@@ -23,7 +23,7 @@ from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
-import ray._private.runtime_env as runtime_pkg
+import ray._private.runtime_env.working_dir as working_dir_pkg
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -37,7 +37,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 10
+CHECK_CHANNEL_TIMEOUT_S = 30
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
@@ -221,7 +221,7 @@ class ProxyManager():
         uris = job_config.get_runtime_env_uris() if job_config else []
         if uris:
             # Download and set up the working_dir locally.
-            working_dir = runtime_pkg.ensure_runtime_env_setup(uris)
+            working_dir = working_dir_pkg.ensure_runtime_env_setup(uris)
 
             # Set PYTHONPATH in the environment variables so the working_dir
             # is included in the module search path.

@@ -93,9 +93,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 10);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 10);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 1);
 
     // verify get
     auto entry1 = store.GetObject(kId1);
@@ -109,9 +106,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     auto entry3 = store.SealObject(kId1);
     EXPECT_EQ(entry3, entry);
     EXPECT_EQ(entry3->state, ObjectState::PLASMA_SEALED);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 10);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 0);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 0);
 
     // seal non existing
     EXPECT_EQ(nullptr, store.SealObject(kId2));
@@ -157,9 +151,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 22);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 12);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 1);
 
     // delete unsealed
     EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {
@@ -167,10 +158,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     }));
 
     EXPECT_TRUE(store.DeleteObject(kId2));
-
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 22);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 0);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 0);
   }
 }
 }  // namespace plasma
