@@ -111,11 +111,8 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(self,
-                              metric: Optional[str],
-                              mode: Optional[str],
-                              config: Dict,
-                              experiment: Optional[Dict] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -128,7 +125,8 @@ class Searcher:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
-            experiment (Dict): Experiment settings. See Experiment.PUBLIC_KEYS.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         return False
 

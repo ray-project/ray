@@ -38,14 +38,13 @@ class SearchAlgorithm:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (Dict): Tune config dict.
-            spec: Any kwargs for forward compatiblity.
+            **spec: Any kwargs for forward compatiblity.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:
             return False
         if metric:
             self._metric = metric
-
         return True
 
     @property
