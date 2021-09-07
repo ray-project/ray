@@ -434,7 +434,7 @@ def setup_working_dir(runtime_env: dict,
     # compatible with users providing their own PYTHONPATH in env_vars.
     python_path = working_dir
     if "PYTHONPATH" in context.env_vars:
-        python_path += os.pathsep + runtime_env["PYTHONPATH"]
+        python_path += os.pathsep + context.env_vars["PYTHONPATH"]
     context.env_vars["PYTHONPATH"] = python_path
 
     if context.resources_dir:
