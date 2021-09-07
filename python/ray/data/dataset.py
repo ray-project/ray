@@ -1267,7 +1267,12 @@ class Dataset(Generic[T]):
             A Spark dataframe created from this dataset.
         """
         import raydp
-        return raydp.spark.ray_dataset_to_spark_dataframe(spark, self)
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_blocks()
+        ]
+        return raydp.spark.ray_dataset_to_spark_dataframe(spark, self, locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -1459,14 +1464,6 @@ class Dataset(Generic[T]):
             A list of references to this dataset's blocks.
         """
         return list(self._blocks)
-
-    @DeveloperAPI
-    def get_block_locations(self) -> List[bytes]:
-        core_worker = ray.worker.global_worker.core_worker
-        return [
-            core_worker.get_owner_address(block)
-            for block in self.get_blocks()
-        ]
 
     def _split(self, index: int,
                return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
