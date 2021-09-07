@@ -135,28 +135,29 @@ ars-hopperbulletenv-v0:
         observation_filter: NoFilter
         report_length: 3
 
-bc-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
-    run: BC
-    pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 10000000
-    stop:
-        time_total_s: 3600
-    config:
-        # Use input produced by expert SAC algo.
-        input: ["~/halfcheetah_expert_sac.zip"]
-        actions_in_input_normalized: true
-        num_gpus: 1
+# bc-halfcheetahbulletenv-v0:
+#    env: HalfCheetahBulletEnv-v0
+#    run: BC
+#    pass_criteria:
+#        episode_reward_mean: 400.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # Use input produced by expert SAC algo.
+#        input: ["~/halfcheetah_expert_sac.zip"]
+#        actions_in_input_normalized: true
 
-        model:
-            fcnet_activation: relu
-            fcnet_hiddens: [256, 256, 256]
+#        num_gpus: 1
 
-        evaluation_num_workers: 1
-        evaluation_interval: 1
-        evaluation_config:
-            input: sampler
+#        model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
+
+#        evaluation_num_workers: 1
+#        evaluation_interval: 3
+#        evaluation_config:
+#            input: sampler
 
 cql-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
@@ -359,31 +360,31 @@ impala-breakoutnoframeskip-v4:
         ]
         num_gpus: 1
 
-marwil-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
-    run: MARWIL
-    pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 10000000
-    stop:
-        time_total_s: 3600
-    config:
-        # Use input produced by expert SAC algo.
-        input: ["~/halfcheetah_expert_sac.zip"]
-        actions_in_input_normalized: true
-        # Switch off input evaluation (data does not contain action probs).
-        input_evaluation: []
+# marwil-halfcheetahbulletenv-v0:
+#    env: HalfCheetahBulletEnv-v0
+#    run: MARWIL
+#    pass_criteria:
+#        episode_reward_mean: 400.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # Use input produced by expert SAC algo.
+#        input: ["~/halfcheetah_expert_sac.zip"]
+#        actions_in_input_normalized: true
+#        # Switch off input evaluation (data does not contain action probs).
+#        input_evaluation: []
 
-        num_gpus: 1
+#        num_gpus: 1
 
-        model:
-            fcnet_activation: relu
-            fcnet_hiddens: [256, 256, 256]
+#        model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
 
-        evaluation_num_workers: 1
-        evaluation_interval: 1
-        evaluation_config:
-            input: sampler
+#        evaluation_num_workers: 1
+#        evaluation_interval: 1
+#        evaluation_config:
+#            input: sampler
 
 ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
