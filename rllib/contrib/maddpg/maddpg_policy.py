@@ -1,6 +1,7 @@
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
+from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -34,12 +35,8 @@ class MADDPGPostprocessing:
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
-            _adjust_nstep(self.config["n_step"], self.config["gamma"],
-                          sample_batch[SampleBatch.CUR_OBS],
-                          sample_batch[SampleBatch.ACTIONS],
-                          sample_batch[SampleBatch.REWARDS],
-                          sample_batch[SampleBatch.NEXT_OBS],
-                          sample_batch[SampleBatch.DONES])
+            adjust_nstep(self.config["n_step"], self.config["gamma"],
+                         sample_batch)
 
         return sample_batch
 
