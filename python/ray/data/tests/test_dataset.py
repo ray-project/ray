@@ -486,10 +486,10 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     path1 = os.path.join(str(tmp_path), "test1.parquet")
-    path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path1)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path2)
 
     fs = LocalFileSystem()
@@ -499,6 +499,18 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
     assert ds.count() == 6
+
+    out_path = os.path.join(tmp_path, "out")
+    os.mkdir(out_path)
+
+    ds._set_uuid("data")
+    ds.write_parquet(out_path)
+
+    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000.parquet"))
+    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001.parquet"))
+    ds_df = pd.concat([ds_df1, ds_df2])
+    df = pd.concat([df1, df2])
+    assert ds_df.equals(df)
 
 
 @pytest.mark.parametrize(
