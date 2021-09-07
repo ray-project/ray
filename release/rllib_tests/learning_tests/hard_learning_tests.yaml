@@ -371,6 +371,9 @@ marwil-halfcheetahbulletenv-v0:
         # Use input produced by expert SAC algo.
         input: ["~/halfcheetah_expert_sac.zip"]
         actions_in_input_normalized: true
+        # Switch off input evaluation (data does not contain action probs).
+        input_evaluation: []
+
         num_gpus: 1
 
         model:
