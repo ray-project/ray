@@ -252,8 +252,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
-    # Number of episodes to run per evaluation period. If using multiple
-    # evaluation workers, we will run at least this many episodes total.
+    # Number of episodes to run in total per evaluation period.
+    # If using multiple evaluation workers (evaluation_num_workers > 1),
+    # episodes will be split amongst these.
+    # If "auto":
+    # - evaluation_parallel_to_training=True: Will run as many episodes as the
+    #   training step takes.
+    # - evaluation_parallel_to_training=False: Error.
     "evaluation_num_episodes": 10,
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
@@ -841,11 +846,18 @@ class Trainer(Trainable):
         return self.evaluate()
 
     @PublicAPI
-    def evaluate(self) -> dict:
+    def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
+                 ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
+
+        Args:
+            episodes_left_fn (Optional[Callable[[int], int]]): An optional
+                callable taking the already run num episodes as only arg
+                and returning the number of episodes left to run. It's used
+                to find out whether evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -871,15 +883,30 @@ class Trainer(Trainable):
                 raise ValueError("Custom eval function must return "
                                  "dict of metrics, got {}.".format(metrics))
         else:
-            logger.info("Evaluating current policy for {} episodes.".format(
-                self.config["evaluation_num_episodes"]))
+            # How many episodes do we need to run?
+            # In "auto" mode (only for parallel eval + training): Run one
+            # episode per eval worker.
+            num_episodes = self.config["evaluation_num_episodes"] if \
+                self.config["evaluation_num_episodes"] != "auto" else \
+                (self.config["evaluation_num_workers"] or 1)
+
+            # Default done-function returns True, whenever num episodes
+            # have been completed.
+            if episodes_left_fn is None:
+
+                def episodes_left_fn(num_episodes_done):
+                    return num_episodes - num_episodes_done
+
+            logger.info(
+                f"Evaluating current policy for {num_episodes} episodes.")
+
             metrics = None
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
             if self.evaluation_workers is None:
                 try:
-                    for _ in range(self.config["evaluation_num_episodes"]):
+                    for _ in range(num_episodes):
                         self.workers.local_worker().sample()
                     metrics = collect_metrics(self.workers.local_worker())
                 except ValueError as e:
@@ -899,18 +926,20 @@ class Trainer(Trainable):
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
-                for _ in range(self.config["evaluation_num_episodes"]):
+                for _ in range(num_episodes):
                     self.evaluation_workers.local_worker().sample()
+
             # Evaluation worker set has n remote workers.
             else:
-                # How many episodes do we need to run?
-                num_episodes = self.config["evaluation_num_episodes"]
-                # How many have we run (across all evaluation workers)?
+                # How many episodes have we run (across all eval workers)?
                 num_episodes_done = 0
                 round_ = 0
-                while num_episodes_done < num_episodes:
+                while True:
+                    episodes_left_to_do = episodes_left_fn(num_episodes_done)
+                    if episodes_left_to_do <= 0:
+                        break
+
                     round_ += 1
-                    episodes_left_to_do = num_episodes - num_episodes_done
                     batches = ray.get([
                         w.sample.remote() for i, w in enumerate(
                             self.evaluation_workers.remote_workers())
@@ -1501,8 +1530,9 @@ class Trainer(Trainable):
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
 
-        # If evaluation_num_workers > 0, warn if evaluation_interval is None
-        # (also set it to 1).
+        # Evaluation settings.
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None (also set `evaluation_interval` to 1).
         if config["evaluation_num_workers"] > 0 and \
                 not config["evaluation_interval"]:
             logger.warning(
@@ -1511,6 +1541,10 @@ class Trainer(Trainable):
                 "If this is too frequent, set `evaluation_interval` to some "
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
         elif config["evaluation_num_workers"] == 0 and \
                 config.get("evaluation_parallel_to_training", False):
             logger.warning(
@@ -1518,6 +1552,19 @@ class Trainer(Trainable):
                 "`evaluation_num_workers` > 0! Setting "
                 "`evaluation_parallel_to_training` to False.")
             config["evaluation_parallel_to_training"] = False
+
+        # If `evaluation_num_episodes=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if config["evaluation_num_episodes"] == "auto":
+            if not config["evaluation_parallel_to_training"]:
+                raise ValueError(
+                    "`evaluation_num_episodes=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!")
+        # Make sure, it's an int otherwise.
+        elif not isinstance(config["evaluation_num_episodes"], int):
+            raise ValueError(
+                "`evaluation_num_episodes` ({}) must be an int and "
+                ">0!".format(config["evaluation_num_episodes"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
