@@ -1,14 +1,18 @@
+import os
+
 import pytest
 
 import torch
 import tensorflow as tf
 
 import ray
-from ray import tune
+from ray import tune, cloudpickle
 from ray.tune import TuneError
 
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
-from ray.util.sgd.v2.backends.backend import BackendInterface, BackendConfig
+from ray.util.sgd.v2.constants import TUNE_CHECKPOINT_FILE_NAME
+from ray.util.sgd.v2.backends.backend import Backend, BackendConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
@@ -46,7 +50,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
@@ -125,6 +129,79 @@ def test_tune_error(ray_start_2_cpus):
 
     with pytest.raises(TuneError):
         tune.run(TestTrainable)
+
+
+def test_tune_checkpoint(ray_start_2_cpus):
+    def train_func():
+        for i in range(10):
+            sgd.report(test=i)
+        sgd.save_checkpoint(hello="world")
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    [trial] = tune.run(TestTrainable).trials
+    checkpoint_file = os.path.join(trial.checkpoint.value,
+                                   TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file, "rb") as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["hello"] == "world"
+
+
+def test_reuse_checkpoint(ray_start_2_cpus):
+    def train_func(config):
+        itr = 0
+        ckpt = sgd.load_checkpoint()
+        if ckpt is not None:
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, config["max_iter"]):
+            sgd.save_checkpoint(iter=i)
+            sgd.report(test=i, training_iteration=i)
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
+    last_ckpt = trial.checkpoint.value
+    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file, "rb") as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["iter"] == 4
+    analysis = tune.run(
+        TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 5
+
+
+def test_retry(ray_start_2_cpus):
+    def train_func():
+        ckpt = sgd.load_checkpoint()
+        restored = bool(ckpt)  # Does a previous checkpoint exist?
+        itr = 0
+        if ckpt:
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, 4):
+            if i == 2 and not restored:
+                raise Exception("try to fail me")
+            sgd.save_checkpoint(iter=i)
+            sgd.report(test=i, training_iteration=i)
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    analysis = tune.run(TestTrainable, max_failures=3)
+    last_ckpt = analysis.trials[0].checkpoint.value
+    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_file)
+    with open(checkpoint_file, "rb") as f:
+        checkpoint = cloudpickle.load(f)
+        assert checkpoint["iter"] == 3
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
@@ -14,6 +13,7 @@ from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
+from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         _write_block_to_file = self._write_block
 
-        @ray.remote
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
             fs = filesystem
@@ -127,6 +126,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             with fs.open_output_stream(write_path) as f:
                 _write_block_to_file(f, BlockAccessor.for_block(block))
+
+        write_block = cached_remote_fn(write_block)
 
         file_format = self._file_format()
         write_tasks = []

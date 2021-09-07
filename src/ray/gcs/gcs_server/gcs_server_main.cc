@@ -84,7 +84,8 @@ int main(int argc, char *argv[]) {
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
-                      std::unordered_map<std::string, std::string>(), log_dir);
+                      std::unordered_map<std::string, std::string>(), log_dir,
+                      RayConfig::instance().event_level());
   }
 
   // IO Service for main loop.

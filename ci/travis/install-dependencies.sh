@@ -144,6 +144,12 @@ install_miniconda() {
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
+  elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
+    (
+      set +x
+      echo "Resetting Anaconda Python ${python_version}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
+    )
   fi
 
   command -V python
@@ -275,7 +281,7 @@ install_dependencies() {
   install_toolchains
 
   install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
     install_miniconda
     # Upgrade the miniconda pip.
     install_upgrade_pip
@@ -288,9 +294,12 @@ install_dependencies() {
 
   # Install modules needed in all jobs.
   alias pip="python -m pip"
-  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  fi
+
+  if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
@@ -317,7 +326,9 @@ install_dependencies() {
   fi
 
   # Default requirements
-  pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+  fi
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -338,6 +349,13 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
+
+    # Install Atari ROMs. Previously these have been shipped with atari_py
+    if [[ "${OSTYPE}" = linux* ]]; then
+      bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    else
+      echo "Not installing Atari roms on ${OSTYPE}"
+    fi
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
@@ -368,7 +386,7 @@ install_dependencies() {
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
-  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ]; then

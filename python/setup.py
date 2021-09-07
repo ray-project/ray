@@ -172,16 +172,16 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
-            "aiohttp",  # noqa
-            "aiohttp_cors",  # noqa
-            "aioredis < 2",  # noqa
-            "colorful",  # noqa
-            "py-spy >= 0.2.0",  # noqa
-            "jsonschema",  # noqa
-            "requests",  # noqa
-            "gpustat",  # noqa
-            "opencensus",  # noqa
-            "prometheus_client >= 0.7.1",  # noqa
+            "aiohttp",
+            "aiohttp_cors",
+            "aioredis < 2",
+            "colorful",
+            "py-spy >= 0.2.0",
+            "jsonschema",
+            "requests",
+            "gpustat",
+            "opencensus",
+            "prometheus_client >= 0.7.1",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],

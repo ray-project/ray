@@ -111,7 +111,7 @@ class VectorEnv:
 
 
 class _VectorizedGymEnv(VectorEnv):
-    """Internal wrapper to translate any gym envs into a VectorEnv object.
+    """Internal wrapper to translate any gym.Envs into a VectorEnv object.
     """
 
     def __init__(
