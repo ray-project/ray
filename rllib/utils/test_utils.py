@@ -289,14 +289,14 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 def check_compute_single_action(trainer,
                                 include_state=False,
                                 include_prev_action_reward=False):
-    """Tests different combinations of arguments for trainer.compute_action.
+    """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
         trainer (Trainer): The Trainer object to test.
         include_state (bool): Whether to include the initial state of the
-            Policy's Model in the `compute_action` call.
+            Policy's Model in the `compute_single_action` call.
         include_prev_action_reward (bool): Whether to include the prev-action
-            and -reward in the `compute_action` call.
+            and -reward in the `compute_single_action` call.
 
     Raises:
         ValueError: If anything unexpected happens.
@@ -311,7 +311,7 @@ def check_compute_single_action(trainer,
 
     for what in [pol, trainer]:
         if what is trainer:
-            method_to_test = trainer.compute_action
+            method_to_test = trainer.compute_single_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
             worker_set = getattr(trainer, "workers",
