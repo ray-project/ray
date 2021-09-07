@@ -273,7 +273,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
           location_info, object_id,
           /*location_lookup_failed*/ !location_info.ref_removed());
       if (location_info.ref_removed()) {
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_RELEASED);
+        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
       }
     };
 
@@ -412,7 +412,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
                 << "Worker " << worker_id << " failed to get the location for "
                 << object_id
                 << ", object already released by distributed reference counting protocol";
-            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_RELEASED);
+            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
           } else {
             UpdateObjectLocations(reply.object_location_info(), gcs_client_, &node_ids,
                                   &spilled_url, &spilled_node_id, &object_size);

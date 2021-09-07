@@ -1460,7 +1460,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_RELEASED), object_id));
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory

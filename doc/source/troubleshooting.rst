@@ -235,6 +235,61 @@ as well as some known problems. If you encounter other problems, please
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
 
+Understanding `ObjectLostErrors`
+--------------------------------
+Ray throws an ``ObjectLostError`` to the application when an object cannot be
+retrieved due to application or system error. This can occur during a
+``ray.get()`` call or when fetching a task's arguments, and can happen for a
+number of reasons. Here is a guide to understanding the root cause for
+different error types:
+
+- ``ObjectLostError``: The object was successfully created, but then all copies
+  were lost due to node failure.
+- ``OwnerDiedError``: The owner of an object, i.e., the Python worker that
+  first created the ``ObjectRef`` via ``.remote()`` or ``ray.put()``, has died.
+  The owner stores critical object metadata and an object cannot be retrieved
+  if this process is lost.
+- ``ObjectReconstructionFailedError``: Should only be thrown when `lineage
+  reconstruction`_ is enabled. This error is thrown if an object, or another
+  object that this object depends on, cannot be reconstructed because the
+  maximum number of task retries has been exceeded. By default, a non-actor
+  task can be retried up to 3 times and an actor task cannot be retried.
+  This can be overridden with the ``max_retries`` parameter for remote
+  functions and the ``max_task_retries`` parameter for actors.
+- ``ReferenceCountingAssertionFailure``: The object has already been deleted,
+  so it cannot be retrieved. Ray implements automatic memory management through
+  distributed reference counting, so this error should not happen in general.
+  However, there is a known edge case that can occur when a worker passes an
+  ``ObjectRef``, then exits before the ref count at the ``ObjectRef``'s owner
+  can be updated. Here is an example:
+
+    .. code-block:: python
+    @ray.remote
+    class RefPasser:
+        def pass_ref(self, ref_list, receiver):
+            ray.get(receiver.receive_ref.remote(ref_list))
+            # Simulate an exit.
+            sys.exit(-1)
+
+    @ray.remote
+    class Receiver:
+        def receive_ref(self, ref_list):
+            self.ref = ref_list[0]
+
+        def resolve_ref(self):
+            # Throws a ReferenceCountingAssertionFailure.
+            ray.get(self.ref)
+
+    passer = RefPasser.remote()
+    receiver = Receiver.remote()
+    ref = foo.remote()
+    passer.pass_ref.remote([ref], receiver)
+    # Receiver cannot retrieve the object because the RefPasser did not update
+    # the driver's ref count in time before exiting.
+    ray.get(receiver.resolve_ref.remote())
+
+.. _`lineage reconstruction`: https://docs.ray.io/en/master/fault-tolerance.html
+
 Crashes
 -------
 

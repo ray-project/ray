@@ -9,7 +9,7 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ObjectReleasedError, OwnerDiedError, ObjectReconstructionFailedError,
+    ObjectDeletedError, OwnerDiedError, ObjectReconstructionFailedError,
     RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
@@ -226,9 +226,9 @@ class SerializationContext:
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex(),
                                        object_ref.call_site())
-            elif error_type == ErrorType.Value("OBJECT_RELEASED"):
-                return ObjectReleasedError(object_ref.hex(),
-                                           object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_DELETED"):
+                return ObjectDeletedError(object_ref.hex(),
+                                          object_ref.call_site())
             elif error_type == ErrorType.Value("OWNER_DIED"):
                 return OwnerDiedError(object_ref.hex(), object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):

@@ -295,7 +295,7 @@ class ObjectUnreachableError(RayError):
             ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
 
     def __str__(self):
-        msg = f"Object {self.object_ref_hex} cannot be retrieved. "
+        msg = f"Failed to retrieve object {self.object_ref_hex}. "
         if self.call_site:
             msg += (f"The ObjectRef was created at: {self.call_site}")
         else:
@@ -317,16 +317,13 @@ class ObjectLostError(ObjectUnreachableError):
 
     def __str__(self):
         return super().__str__() + "\n\n" + (
-            f"All copies of {self.object_ref_hex} are lost "
-            "due to node failure.\n\n"
-            "If you did not receive a message about a worker node "
-            "dying, this is likely a system-level bug. "
-            "Please file an issue on GitHub at "
-            "https://github.com/ray-project/ray/issues/new/choose.")
+            f"All copies of {self.object_ref_hex} have been lost due to node "
+            "failure. Check cluster logs (/tmp/ray/session_latest/logs) for "
+            "more information about the failure.")
 
 
-class ObjectReleasedError(ObjectUnreachableError):
-    """Indicates that an object has been released while there was still a
+class ObjectDeletedError(ObjectUnreachableError):
+    """Indicates that an object has been deleted while there was still a
     reference to it.
 
     Attributes:
@@ -335,19 +332,8 @@ class ObjectReleasedError(ObjectUnreachableError):
 
     def __str__(self):
         return super().__str__() + "\n\n" + (
-            f"Object {self.object_ref_hex} has already been released.\n\n"
-            "This is likely due to a corner case in the distributed "
-            "reference counting protocol that can occur when a worker passes "
-            "an ObjectRef, then exits before the ref count at the "
-            "ObjectRef's owner can be updated. For example, suppose we "
-            "call x_ref = foo.remote(...), pass [x_ref] to an actor A, and "
-            "then actor A passes x_ref to actor B by calling "
-            "B.bar.remote(x_ref). In this case, the driver may release x "
-            "before B.bar executes, and B will receive this error.\n\n"
-            "If your application does not match this scenario, then this is "
-            "likely a system-level bug in the distributed ref counting "
-            "protocol. Please file an issue on GitHub at "
-            "https://github.com/ray-project/ray/issues/new/choose.")
+            "The object has already been deleted by the reference counting "
+            "protocol. This should not happen.")
 
 
 class OwnerDiedError(ObjectUnreachableError):
@@ -360,15 +346,13 @@ class OwnerDiedError(ObjectUnreachableError):
 
     def __str__(self):
         return super().__str__() + "\n\n" + (
-            f"Object {self.object_ref_hex} cannot be retrieved because "
-            "the Python worker that first created the ObjectRef (via "
-            "`.remote()` or `ray.put()`) has exited. "
-            "This can happen because of node failure or "
-            "a system-level bug.\n\n"
-            "If you did not receive a message about a worker node "
-            "dying, this is likely a system-level bug. "
-            "Please file an issue on GitHub at "
-            "https://github.com/ray-project/ray/issues/new/choose.")
+            "The object's owner has exited. This is the Python "
+            "worker that first created the ObjectRef via `.remote()` or "
+            "`ray.put()`. "
+            "Check cluster logs for more "
+            "information about the Python worker failure ("
+            "/tmp/ray/session_latest/logs/*worker*{} at IP address {}"
+            ").")
 
 
 class ObjectReconstructionFailedError(ObjectUnreachableError):
@@ -381,15 +365,8 @@ class ObjectReconstructionFailedError(ObjectUnreachableError):
 
     def __str__(self):
         return super().__str__() + "\n\n" + (
-            f"Attempted lineage reconstruction to recover object "
-            "{self.object_ref_hex}, but recovery failed. "
-            "This can happen if the task that creates this "
-            "object, or an object that this object depends on, "
-            "has already been executed up to its maximum number of "
-            "retries (3 for normal tasks, 0 fo actor tasks).\n\n"
-            "Lineage reconstruction is under active development. "
-            "If you see this error, please file an issue at "
-            "https://github.com/ray-project/ray/issues/new/choose.")
+            f"The object cannot be reconstructed "
+            "because the maximum number of task retries has been exceeded.")
 
 
 class GetTimeoutError(RayError):
@@ -425,7 +402,7 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
-    ObjectReleasedError,
+    ObjectDeletedError,
     ObjectReconstructionFailedError,
     OwnerDiedError,
     GetTimeoutError,

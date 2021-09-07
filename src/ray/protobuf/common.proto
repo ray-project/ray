@@ -135,9 +135,9 @@ enum ErrorType {
   OWNER_DIED = 9;
   // This object is unreachable because the owner is alive but no longer has a
   // record of this object, meaning that the physical object has likely already
-  // been released from distributed memory. This can happen in distributed
+  // been deleted from distributed memory. This can happen in distributed
   // reference counting, due to a bug or corner case.
-  OBJECT_RELEASED = 10;
+  OBJECT_DELETED = 10;
 }
 
 /// The task exception encapsulates all information about task

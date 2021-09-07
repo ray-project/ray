@@ -56,7 +56,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     // that an exception will be thrown immediately when the worker tries to
     // get the value.
     RAY_UNUSED(
-        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_RELEASED), object_id));
+        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::CREATED) {
     // The object is either an indicator that the object is in Plasma, or
     // the object has been returned directly in the reply. In either

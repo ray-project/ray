@@ -999,8 +999,8 @@ absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to get the object locations for an object " << object_id
-                     << " that doesn't exist in the reference table";
+    RAY_LOG(DEBUG) << "Tried to get the object locations for an object " << object_id
+                   << " that doesn't exist in the reference table";
     return absl::nullopt;
   }
   return it->second.locations;
