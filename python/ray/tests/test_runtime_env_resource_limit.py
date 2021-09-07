@@ -44,7 +44,7 @@ def test_resource_limit_without_container(shutdown_only):
                                    ray_constants.RAY_PARENT_CGROUP_NAME,
                                    cgroup_name)
         return utils.get_ray_cgroup_property(cgroup_path,
-                                                    "memory.limit_in_bytes")
+                                             "memory.limit_in_bytes")
 
     @ray.remote
     def get_cpu_cgroup_value():
