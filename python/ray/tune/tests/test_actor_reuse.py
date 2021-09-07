@@ -1,8 +1,9 @@
+from collections import defaultdict
 import os
 import pickle
-import unittest
 import sys
-from collections import defaultdict
+import time
+import unittest
 
 import ray
 from ray import tune, logger
@@ -24,6 +25,7 @@ def create_resettable_class():
             self.num_resets = 0
             self.iter = 0
             self.msg = config.get("message", "No message")
+            self.sleep = int(config.get("sleep", 0))
 
         def step(self):
             self.iter += 1
@@ -31,6 +33,9 @@ def create_resettable_class():
             print("PRINT_STDOUT: {}".format(self.msg))
             print("PRINT_STDERR: {}".format(self.msg), file=sys.stderr)
             logger.info("LOG_STDERR: {}".format(self.msg))
+
+            if self.sleep:
+                time.sleep(self.sleep)
 
             return {
                 "id": self.config["id"],
@@ -225,7 +230,8 @@ class ActorReuseMultiTest(unittest.TestCase):
             config={
                 "message": tune.grid_search(
                     ["First", "Second", "Third", "Fourth"]),
-                "id": -1
+                "id": -1,
+                "sleep": 1,
             },
             reuse_actors=True).trials
 
