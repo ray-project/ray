@@ -59,8 +59,6 @@ moto
 mypy
 networkx
 numba
-raydp-nightly; platform_system != "Windows"
-
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
