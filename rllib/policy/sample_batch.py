@@ -109,7 +109,7 @@ class SampleBatch(dict):
                 ) and None not in np.array(v):
                     try:
                         self[k] = np.array(v, dtype=np.float32)
-                    except TypeError:
+                    except (TypeError, ValueError):
                         # For those objects that can't be casted to float32, we
                         # keep it as an numpy array of the object.
                         self[k] = np.array(v)
