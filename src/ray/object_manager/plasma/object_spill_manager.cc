@@ -93,6 +93,8 @@ absl::optional<std::string> ObjectSpillManager::GetSpilledUrl(
   return it->second.ToString();
 }
 
+bool ObjectSpillManager::IsSpillingInProgress() const { return num_active_workers_ > 0; }
+
 void ObjectSpillManager::OnSpillTaskFinished(
     std::vector<ObjectID> objects_to_spill, ray::Status status,
     std::vector<std::string> spilled_urls,

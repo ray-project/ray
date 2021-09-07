@@ -59,6 +59,8 @@ class ObjectSpillManager {
 
   absl::optional<std::string> GetSpilledUrl(const ObjectID &object_id) const;
 
+  bool IsSpillingInProgress() const;
+
  private:
   struct SpilledObjectURI {
     std::string file;
