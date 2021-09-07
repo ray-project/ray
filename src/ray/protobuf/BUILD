@@ -95,25 +95,6 @@ python_grpc_compile(
 )
 
 proto_library(
-    name = "test_service_proto",
-    srcs = ["test_service.proto"],
-    deps = [
-        ":common_proto",
-        ":gcs_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "test_service_cc_proto",
-    deps = [":test_service_proto"],
-)
-
-python_grpc_compile(
-    name = "test_service_py_proto",
-    deps = [":test_service_proto"],
-)
-
-proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
     deps = [":common_proto"],
