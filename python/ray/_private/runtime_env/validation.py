@@ -64,7 +64,9 @@ class RuntimeEnvDict:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
-    def __init__(self, runtime_env_json: dict, working_dir: Optional[str] = None):
+    def __init__(self,
+                 runtime_env_json: dict,
+                 working_dir: Optional[str] = None):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
         # unspecified. However, if all values are None this is set to {}.
@@ -218,7 +220,8 @@ def override_task_or_actor_runtime_env(
         # works. The right solution would be to merge the runtime_env with the
         # parent runtime env before validation.
         runtime_env_dict = RuntimeEnvDict(
-                runtime_env, working_dir=parent_runtime_env.get("working_dir")).get_parsed_dict()
+            runtime_env, working_dir=parent_runtime_env.get(
+                "working_dir")).get_parsed_dict()
     else:
         runtime_env_dict = {}
 

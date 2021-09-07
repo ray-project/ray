@@ -13,7 +13,7 @@ import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.runtime_env import working_dir as working_dir_pkg
-from ray._private.runtime_env.validation import override_task_or_actor_runtime_env
+from ray._private.runtime_env.validation import override_task_or_actor_runtime_env  # noqa: E501
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -931,6 +931,7 @@ def test_large_file_error(shutdown_only):
 
         os.chdir(old_dir)
 
+
 class TestOverrideTaskOrActorRuntimeEnv:
     def test_working_dir_in_child_invalid(self):
         child_env = {"working_dir": "some_dir"}
@@ -954,7 +955,7 @@ class TestOverrideTaskOrActorRuntimeEnv:
         parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
         assert result_env["uris"] == ["c", "d"]
-        assert result_env.get("working_dir") == None
+        assert result_env.get("working_dir") is None
 
         # The dicts passed in should not be mutated.
         assert child_env == {"uris": ["c", "d"]}
