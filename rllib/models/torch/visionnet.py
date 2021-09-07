@@ -150,7 +150,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if self.num_outputs is None:
             # Create a B=1 dummy sample and push it through out conv-net.
             dummy_in = torch.from_numpy(self.obs_space.sample()).permute(
-                2, 0, 1).unsqueeze(0)
+                2, 0, 1).unsqueeze(0).float()
             dummy_out = self._convs(dummy_in)
             self.num_outputs = dummy_out.shape[1]
 
