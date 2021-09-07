@@ -22,6 +22,7 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.resource_spec import ResourceSpec
+from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -329,8 +330,7 @@ class Node:
         self._resource_dir = os.path.join(self._session_dir,
                                           "runtime_resources")
         try_to_create_directory(self._resource_dir)
-        import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._resource_dir
+        working_dir_pkg.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -813,7 +813,6 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.worker_setup_hook,
-            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,

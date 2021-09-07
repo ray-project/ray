@@ -184,7 +184,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
-            (x.dtype == np.object or str(x.dtype) == "<U216"):
+            (x.dtype == np.object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -336,12 +336,6 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
-                # Framestacking w/ traj. view API.
-                framestacks = pol.config["model"].get("num_framestacks",
-                                                      "auto")
-                if isinstance(framestacks, int) and framestacks > 1:
-                    obs = np.stack(
-                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
@@ -442,7 +436,7 @@ def run_learning_tests_from_yaml(
                     "failures": 0,
                     "passed": False,
                 }
-            # This key would break tune.
+            # These keys would break tune.
             del e["pass_criteria"]
             del e_torch["pass_criteria"]
 

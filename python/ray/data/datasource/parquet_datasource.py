@@ -39,6 +39,7 @@ class ParquetDatasource(FileBasedDatasource):
         # FileBasedDatasource's write side (do_write), however.
         _check_pyarrow_version()
         from ray import cloudpickle
+        import pyarrow as pa
         import pyarrow.parquet as pq
         import numpy as np
 
@@ -54,6 +55,9 @@ class ParquetDatasource(FileBasedDatasource):
             use_legacy_dataset=False)
         if schema is None:
             schema = pq_ds.schema
+        if columns:
+            schema = pa.schema([schema.field(column) for column in columns],
+                               schema.metadata)
         pieces = pq_ds.pieces
 
         def read_pieces(serialized_pieces: List[str]):
@@ -69,7 +73,6 @@ class ParquetDatasource(FileBasedDatasource):
             # Ensure that we're reading at least one dataset fragment.
             assert len(pieces) > 0
 
-            import pyarrow as pa
             from pyarrow.dataset import _get_partition_keys
 
             logger.debug(f"Reading {len(pieces)} parquet pieces")

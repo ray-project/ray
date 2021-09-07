@@ -850,12 +850,13 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
-  the warning message is printed repeatedly every this amount of seconds. Defaults to 1 (seconds).
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 10 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
+* **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:
