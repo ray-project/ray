@@ -99,7 +99,6 @@ class Worker:
         self._converted: Dict[str, ClientStub] = {}
 
         if secure and _credentials is None:
-            # Credentials should work even if secure is not set.
             _credentials = grpc.ssl_channel_credentials()
 
         if _credentials is not None:

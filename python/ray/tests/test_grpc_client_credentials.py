@@ -29,6 +29,8 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
 
     monkeypatch.setattr(grpc, "secure_channel", mock_secure_channel)
 
+    # Credentials should be respected whether secure is set or not.
+
     with pytest.raises(Stop) as stop:
         Worker(secure=False, _credentials=Credentials("test"))
     assert stop.value.credentials.name == "test"
