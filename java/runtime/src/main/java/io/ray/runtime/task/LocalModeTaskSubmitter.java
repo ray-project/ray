@@ -392,7 +392,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public void shutdown() {
-    // Shutdown actor task executor service.
+    // Shutdown actor concurrency group manager.
     actorConcurrencyGroupManager.shutdown();
     // Shutdown normal task executor service.
     normalTaskExecutorService.shutdown();
