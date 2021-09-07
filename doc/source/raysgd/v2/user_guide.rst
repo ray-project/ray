@@ -243,7 +243,7 @@ For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.)
 
-Distributed metrics (for Pytorch)
+Example: PyTorch Distributed metrics
 +++++++++++++++++++++++++++++++++
 
 In real applications, you may want to calculate optimization metrics besides
