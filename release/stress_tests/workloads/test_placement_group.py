@@ -76,7 +76,7 @@ bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
 # # assert original == new, new
 # print(ray.cluster_resources())
 # assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
-# assert ray.available_resources()["pg_custom"] 
+# assert ray.available_resources()["pg_custom"]
 # == num_nodes * resource_quantity
 
 
@@ -133,7 +133,10 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         # failure. We need to fix it.
         # if random() < .5:
         for i in range(num_nodes):
-            tasks.append(mock_task.options(placement_group=pg, placement_group_bundle_index=i).remote())
+            tasks.append(
+                mock_task.options(
+                    placement_group=pg,
+                    placement_group_bundle_index=i).remote())
         # else:
         #     if actor_cnt < max_actor_cnt:
         #         actors.append(MockActor.options(placement_group=pg).remote())

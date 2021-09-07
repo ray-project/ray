@@ -80,10 +80,8 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     actors = []
     ids_removed = set([pg.id.hex() for pg in pgs_removed])
     ids_unremoved = set([pg.id.hex() for pg in pgs_unremoved])
-    print(
-        "pgs unremoved id - removed id "
-        f"{set(ids_removed).intersection(set(ids_unremoved))}"
-    )
+    print("pgs unremoved id - removed id "
+          f"{set(ids_removed).intersection(set(ids_unremoved))}")
     # Randomly schedule tasks or actors on placement groups that
     # are not removed.
     for pg in pgs_unremoved:
