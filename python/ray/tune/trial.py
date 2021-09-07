@@ -84,18 +84,19 @@ class ExportFormat:
 class CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self, trial_id, runner, node_ip):
+    def __init__(self, trial_id, runner, node_ip, timeout: int = 15):
         self.trial_id = trial_id
         self.runner = runner
         self.node_ip = node_ip
         self._runner_ip = None
+        self.timeout = timeout
 
     @property
     def runner_ip(self):
         if not self._runner_ip:
             try:
                 self._runner_ip = ray.get(
-                    self.runner.get_current_ip.remote(), timeout=30)
+                    self.runner.get_current_ip.remote(), timeout=self.timeout)
             except GetTimeoutError:
                 pass
         return self._runner_ip
