@@ -547,14 +547,20 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     raise RuntimeError(
                         "Starting Ray client server failed. This is most "
                         "likely because the runtime_env failed to be "
-                        "installed. See ray_client_server_[port].err on the "
-                        "head node of the cluster for the relevant logs.")
+                        f"installed. See ray_client_server_{server.port}.err "
+                        "on the head node of the cluster for the relevant "
+                        "logs.  By default these are located at "
+                        "/tmp/ray/session_latest/logs.")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")
                     raise RuntimeError(
                         "Proxy failed to Connect to backend! Check "
-                        "`ray_client_server.err` on the cluster.")
+                        "`ray_client_server.err` and "
+                        f"`ray_client_server_{server.port}.err` on the head "
+                        "node of the cluster for the relevant logs. "
+                        "By default these are located at "
+                        "/tmp/ray/session_latest/logs.")
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
             except Exception:
                 init_resp = ray_client_pb2.DataResponse(
