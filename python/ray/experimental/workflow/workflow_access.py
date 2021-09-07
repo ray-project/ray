@@ -374,7 +374,7 @@ def init_management_actor() -> None:
             raise RuntimeError("The workflow is using a storage "
                                f"({store.storage_url}) different from the "
                                f"workflow manager({storage_url}).")
-    except ValueError as e:
+    except ValueError:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
         actor = WorkflowManagementActor.options(
