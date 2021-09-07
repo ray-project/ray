@@ -389,6 +389,7 @@ Automatic conversion between the Pandas and Arrow extension types/arrays keeps t
 If you already have a Parquet dataset with columns containing serialized tensors, you can have these tensor columns cast to our tensor extension type at read-time by giving a simple schema for the tensor columns. Note that these tensors must have been serialized as their raw NumPy ndarray bytes in C-contiguous order (e.g. serialized via ``arr.tobytes()``).
 
 .. code-block:: python
+
     import numpy as np
     import pandas as pd
     from ray.data.extensions import TensorDtype, TensorArray
@@ -422,6 +423,7 @@ If you already have a Parquet dataset with columns containing serialized tensors
 If your serialized tensors don't fit the above constraints (e.g. they're stored in Fortran-contiguous order, or they're pickled), you can manually cast this tensor column to our tensor extension type via a read-time user-defined function. This UDF will be pushed down to Ray Datasets' IO layer and executed on each block in parallel, as it's read from storage.
 
 .. code-block:: python
+
     import pickle
 
     # Create a DataFrame with a list of pickled ndarrays as a column.
@@ -459,6 +461,7 @@ Please note that the ``_tensor_column_schema`` and ``_block_udf`` parameters are
 Now that the tensor column is properly typed and in a ``Dataset``, we can perform operations on the dataset as if it was a normal table:
 
 .. code-block:: python
+
     # Arrow and Pandas is now aware of this tensor column, so we can do the
     # typical DataFrame operations on this column.
     ds = ds.map_batches(lambda x: 2 * (x + 1), format="pandas")
@@ -471,6 +474,7 @@ Now that the tensor column is properly typed and in a ``Dataset``, we can perfor
 This dataset can then be written to Parquet file. The tensor column schema will be preserved via the Pandas and Arrow extension types and associated metadata, allowing us to later read the Parquet files into a Dataset without needing to specify a casting UDF. This Pandas --> Arrow --> Parquet --> Arrow --> Pandas conversion support makes working with tensor columns extremely easy when using Ray Datasets to both write and read data.
 
 .. code-block:: python
+
     # You can write the dataset to Parquet.
     ds.write_parquet("/some/path")
     # And you can read it back.
@@ -572,7 +576,7 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
 
 **Limitations:**
  * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.
- * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``_tensor_column_schema`` parameter has been added for :function:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
+ * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``_tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
  * Ingesting tables with tensor columns into pytorch via ``ds.to_torch()`` is blocked by pytorch supporting tensor creation from objects that implement the `__array__` interface. See `issue <https://github.com/pytorch/pytorch/issues/51156>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18314>`__.
  * Ingesting tables with tensor columns into TensorFlow via ``ds.to_tf()`` is blocked by a Pandas fix for properly interpreting extension arrays in ``DataFrame.values`` being released. See `PR <https://github.com/pandas-dev/pandas/pull/43160>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18315>`__.
 

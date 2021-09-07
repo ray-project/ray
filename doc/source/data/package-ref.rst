@@ -35,7 +35,7 @@ DatasetPipeline API
     :members:
 
 Tensor Column Extension API
----------------------
+---------------------------
 
 .. autoclass:: ray.data.extensions.tensor_extension.TensorDtype
     :members:
