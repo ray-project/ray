@@ -137,6 +137,7 @@ class ClientBuilder:
         client_info_dict = ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
+            _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
@@ -182,6 +183,12 @@ class ClientBuilder:
             self._allow_multiple_connections = True
             del kwargs["allow_multiple"]
 
+        self._credentials = None
+
+        if "_credentials" in kwargs.keys():
+            self._credentials = kwargs["_credentials"]
+            del kwargs["_credentials"]
+
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
             extra_args = set(kwargs.keys()).difference(
@@ -211,7 +218,8 @@ class _LocalClientBuilder(ClientBuilder):
             ray_commit=ray.__commit__,
             protocol_version=None,
             _num_clients=1,
-            _context_to_restore=None)
+            _context_to_restore=None,
+            _credentials=self._credentials)
 
 
 def _split_address(address: str) -> Tuple[str, str]:
