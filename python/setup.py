@@ -101,7 +101,7 @@ else:
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.",
+                           "A subpackage of Ray which provides Ray C++ API.",
                            BUILD_TYPE)
 else:
     # "ray" primary wheel package.
