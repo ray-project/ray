@@ -511,7 +511,8 @@ def run_learning_tests_from_yaml(
 
                 # We failed to reach desired reward or the desired throughput.
                 if reward_mean < desired_reward or \
-                        (desired_throughput and throughput < desired_throughput):
+                    (desired_throughput and
+                     throughput < desired_throughput):
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
