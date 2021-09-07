@@ -90,6 +90,8 @@ class ClientRemoteFunc(ClientStub):
                         f"Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
+        # Check if supplied parameters match the function signature. Same case
+        # at the other callsites.
         self._signature.bind(*args, **kwargs)
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
@@ -247,9 +249,9 @@ class ClientActorHandle(ClientStub):
                 self._method_signatures[method_name] = inspect.Signature(
                     parameters=extract_signature(
                         method_obj,
-                        ignore_first=(
-                            not is_class_method(method_obj)
-                            or is_static_method(actor_class, method_name))))
+                        ignore_first=(not (
+                            is_class_method(method_obj) or is_static_method(
+                                actor_class.actor_cls, method_name)))))
         else:
             self._method_num_returns = None
             self._method_signatures = None
@@ -277,7 +279,7 @@ class ClientActorHandle(ClientStub):
         return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())
 
     def _init_class_info(self):
-        # TODO(mwtian): also support Ray method decorators?
+        # TODO: fetch Ray method decorators
         @ray.remote(num_cpus=0)
         def get_class_info(x):
             return x._ray_method_num_returns, x._ray_method_signatures

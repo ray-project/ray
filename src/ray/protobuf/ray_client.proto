@@ -339,6 +339,8 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
+// TODO: add other mutation requests that should be serialized, e.g.
+// TerminateRequest.
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.

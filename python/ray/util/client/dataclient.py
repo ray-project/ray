@@ -200,6 +200,7 @@ class DataClient:
         datareq = ray_client_pb2.DataRequest(get=request, )
         self._async_send(datareq, callback)
 
+    # TODO: convert to async
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
         datareq = ray_client_pb2.DataRequest(put=request, )
