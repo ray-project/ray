@@ -338,7 +338,7 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
             pm.create_specific_server(client)
             assert pm.start_specific_server(client, JobConfig())
             channel = pm.get_channel(client)
-            grpc.channel_ready_future(channel).result(timeout=5)
+            assert channel is not None
             task_servicer.Init(
                 ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(JobConfig())))

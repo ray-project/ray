@@ -8,8 +8,8 @@ unrar x "Roms.rar" > /dev/null
 # Importing from zipfiles with atari_py only works in Python >= 3.7
 # so we unzip manually here
 mkdir -p ./unzipped
-unzip "ROMS.zip" -d ./unzipped
-unzip "HC ROMS.zip" -d ./unzipped
+unzip -qq "ROMS.zip" -d ./unzipped
+unzip -qq "HC ROMS.zip" -d ./unzipped
 python -m atari_py.import_roms ./unzipped
 popd
 echo rm -rf "$ROMDIR"

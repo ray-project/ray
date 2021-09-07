@@ -240,6 +240,22 @@ TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
 }
 
+TEST(RayClusterModeTest, GetActorTest) {
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                        .SetMaxRestarts(1)
+                                        .SetName("named_actor")
+                                        .Remote();
+  auto named_actor_obj = actor.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
+}
+
 TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
 

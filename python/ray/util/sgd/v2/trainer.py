@@ -61,11 +61,17 @@ class Trainer:
             a subclass of ``BackendConfig`` can be passed in.
             Supported ``str`` values: {"torch"}.
         num_workers (int): The number of workers (Ray actors) to launch.
-            Defaults to 1. Each worker will reserve 1 CPU by default.
+            Defaults to 1. Each worker will reserve 1 CPU by default. The
+            number of CPUs reserved by each worker can be overridden with the
+            ``resources_per_worker`` argument.
         use_gpu (bool): If True, training will be done on GPUs (1 per
-            worker). Defaults to False.
+            worker). Defaults to False. The number of GPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument.
         resources_per_worker (Optional[Dict]): If specified, the resources
-            defined in this Dict will be reserved for each worker.
+            defined in this Dict will be reserved for each worker. The
+            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            override the number of CPU/GPUs used by each worker.
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
@@ -96,15 +102,31 @@ class Trainer:
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
+        num_cpus = 1
+        num_gpus = int(use_gpu)
+
         if resources_per_worker:
-            raise NotImplementedError("`resources_per_worker` argument is not "
-                                      "supported yet.")
+            # Override CPU and GPU resources and remove from dict.
+            num_cpus = resources_per_worker.pop("CPU", num_cpus)
+            num_gpus = resources_per_worker.pop("GPU", num_gpus)
+            if not use_gpu and num_gpus > 0:
+                raise ValueError(
+                    "`use_gpu` is False but `GPU` was found in "
+                    "`resources_per_worker`. Either set `use_gpu` to True or "
+                    "remove `GPU` from `resources_per_worker.")
+            if use_gpu and num_gpus == 0:
+                raise ValueError(
+                    "`use_gpu` is True but `GPU` is set to 0 in "
+                    "`resources_per_worker`. Either set `use_gpu` to False or "
+                    "request a positive number of `GPU` in "
+                    "`resources_per_worker.")
 
         self._executor = BackendExecutor(
             backend_config=backend_config,
             num_workers=num_workers,
-            num_cpus_per_worker=1,
-            num_gpus_per_worker=int(use_gpu),
+            num_cpus_per_worker=num_cpus,
+            num_gpus_per_worker=num_gpus,
+            additional_resources_per_worker=resources_per_worker,
             max_retries=max_retries)
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
