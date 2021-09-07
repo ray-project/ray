@@ -208,8 +208,9 @@ class Client:
         else:
             ray_actor_options[
                 "runtime_env"] = ray.get_runtime_context().runtime_env
-            if "working_dir" in ray_actor_options["runtime_env"]:
-                del ray_actor_options["runtime_env"]["working_dir"]
+
+        if "working_dir" in ray_actor_options["runtime_env"]:
+            del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)

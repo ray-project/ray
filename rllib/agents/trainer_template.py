@@ -201,7 +201,7 @@ def build_trainer(
                 self.config["evaluation_interval"] and \
                 (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
-            # No evaluation necessary.
+            # No evaluation necessary, just run the next training iteration.
             if not evaluate_this_iter:
                 res = next(self.train_exec_impl)
             # We have to evaluate in this training iteration.
@@ -223,7 +223,7 @@ def build_trainer(
                     evaluation_metrics = self.evaluate()
 
                 assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
+                    "Trainer.evaluate() needs to return a dict."
                 res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.

@@ -5,7 +5,7 @@ Workflow IDs
 ------------
 Each workflow has a unique ``workflow_id``. By default, when you call ``.run()`` or ``.run_async()``, a random id is generated. It is recommended you explicitly assign each workflow an id via ``.run(workflow_id="id")``.
 
-If ``.run()`` is called with a previously used workflow id,  the workflow will be resumed, unless ``resume_existing=False``, in which case an error will be raised.
+If ``.run()`` is called with a previously used workflow id, the workflow will be resumed from the previous execution.
 
 Workflow States
 ---------------
@@ -14,7 +14,6 @@ A workflow can be in one of several states:
 =================== =======================================================================================
 Status              Description
 =================== =======================================================================================
-RUNNING             The workflow is currently running in the cluster.
 RUNNING             The workflow is currently running in the cluster.
 FAILED              This workflow failed with an application error. It can be resumed from the failed step.
 RESUMABLE           This workflow failed with a system error. It can be resumed from the failed step.
