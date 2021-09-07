@@ -92,6 +92,10 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    # Call (base) PPO's config validation function first.
+    # Note that this will not touch or check on the train_batch_size=-1
+    # setting.
+    ppo.validate_config(config)
 
     # Error if run on Win.
     if sys.platform in ["win32", "cygwin"]:
@@ -127,8 +131,6 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
-    # Call (base) PPO's config validation function.
-    ppo.validate_config(config)
 
 
 def execution_plan(workers: WorkerSet,
