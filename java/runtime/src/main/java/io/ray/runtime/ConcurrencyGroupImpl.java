@@ -37,4 +37,8 @@ public class ConcurrencyGroupImpl implements ConcurrencyGroup {
   public List<FunctionDescriptor> getFunctionDescriptors() {
     return functionDescriptors;
   }
+
+  public String getName() {
+    return name;
+  }
 }
