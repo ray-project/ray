@@ -16,12 +16,10 @@ import subprocess
 import sys
 import time
 from typing import Optional
-import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -226,16 +224,6 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
-
-
-def _log_dashboard_dependency_warning_once():
-    if log_once("dashboard_failed_import"
-                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
-        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
-        warning_message += " To disable this message, set " \
-                           "RAY_DISABLE_IMPORT_WARNING " \
-                           "env var to '1'."
-        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -1195,7 +1183,6 @@ def start_dashboard(require_dashboard,
             if require_dashboard:
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
@@ -1509,9 +1496,7 @@ def start_raylet(redis_address,
 
             return True
         except ImportError:
-            _log_dashboard_dependency_warning_once()
-
-        return False
+            return False
 
     if not check_should_start_agent():
         # An empty agent command will cause the raylet not to start it.
