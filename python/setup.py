@@ -324,6 +324,16 @@ def patch_isdir():
 
 
 def replace_symlinks_with_junctions():
+    """
+    Per default Windows requires admin access to create symlinks, while
+    junctions (which behave similarly) can be created by users.
+
+    This function replaces symlinks (which might be broken when checked
+    out without admin rights) with junctions so Ray can be built both
+    with and without admin access.
+    """
+    assert is_native_windows_or_msys()
+
     # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
         r"ray\new_dashboard": "../../dashboard",
@@ -371,6 +381,8 @@ def replace_symlinks_with_junctions():
 
 
 if is_automated_build and is_native_windows_or_msys():
+    # Automated replacements should only happen in automatic build
+    # contexts for now
     patch_isdir()
     replace_symlinks_with_junctions()
 
