@@ -15,7 +15,7 @@ from typing import Optional, Type
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -177,7 +177,7 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
 
 # Build a child class of `Trainer`, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-SimpleQTrainer = build_trainer(
+SimpleQTrainer = build_trainer_class(
     name="SimpleQTrainer",
     default_policy=SimpleQTFPolicy,
     get_policy_class=get_policy_class,

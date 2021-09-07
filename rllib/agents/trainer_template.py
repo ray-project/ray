@@ -62,11 +62,13 @@ def build_trainer_class(
         mixins: Optional[List[type]] = None,
         event_subscriptions: Optional[Dict[EventName, Union[List[Callable], Callable]]] = None,
 
-        # OBSOLETE:
+        # TODO: Deprecate.
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
+
+        # Already deprecated:
         validate_config: Optional[Callable[[TrainerConfigDict], None]] = DEPRECATED_VALUE,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = DEPRECATED_VALUE,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = DEPRECATED_VALUE,
         before_init: Optional[Callable[[Trainer], None]] = DEPRECATED_VALUE,
         after_init: Optional[Callable[[Trainer], None]] = DEPRECATED_VALUE,
         execution_plan: Optional[Union[Callable[
@@ -151,14 +153,15 @@ def build_trainer_class(
         # Shim new `trainer` arg (backward compatibility).
         event_subscriptions[events.AFTER_CONFIG_COMPLETE].append(
             lambda trainer, config: validate_config(config))
-    if validate_env != DEPRECATED_VALUE:
-        # deprecation_warning(
-        #    old="`validate_env`",
-        #    new=f"event_subscriptions[{events.AFTER_VALIDATE_ENV}]",
-        #    error=False)
-        # Shim new `trainer` arg (backward compatibility).
-        event_subscriptions[events.AFTER_VALIDATE_ENV].append(
-            lambda worker, env, env_ctx: validate_env(env, env_ctx))
+    # TODO: Deprecate.
+    # if validate_env != DEPRECATED_VALUE:
+    #    # deprecation_warning(
+    #    #    old="`validate_env`",
+    #    #    new=f"event_subscriptions[{events.AFTER_VALIDATE_ENV}]",
+    #    #    error=False)
+    #    # Shim new `trainer` arg (backward compatibility).
+    #    event_subscriptions[events.AFTER_VALIDATE_ENV].append(
+    #        lambda worker, env, env_ctx: validate_env(env, env_ctx))
     if before_evaluate_fn != DEPRECATED_VALUE:
         # deprecation_warning(
         #    old="before_evaluate_fn",
@@ -224,28 +227,6 @@ def build_trainer_class(
                     override_all_subkeys_if_type_changes
 
             Trainer.__init__(self, config, env, logger_creator)
-
-        def _init(self, config: TrainerConfigDict,
-                  env_creator: Callable[[EnvConfigDict], EnvType]):
-
-            # Call subscribers to suggest a default policy class
-            # (only one allowed).
-            policy_class_suggestion = self.trigger_event(events.SUGGEST_DEFAULT_POLICY_CLASS, config)
-            # Only override self._policy_class if we have a suggestion.
-            if policy_class_suggestion is not None:
-                self._policy_class = policy_class_suggestion
-
-            # Creating all workers (excluding evaluation workers).
-            self.workers = self.make_workers(
-                env_creator=env_creator,
-                policy_class=self._policy_class,
-                config=config,
-                num_workers=self.config["num_workers"])
-
-            # Call subscribers to suggest an execution plan (only one allowed or
-            # None).
-            self.execution_plan = self.trigger_event(
-                events.SUGGEST_EXECUTION_PLAN, self.workers, config)
 
         @staticmethod
         @override(Trainer)

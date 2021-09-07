@@ -801,15 +801,9 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         update_global_seed_if_necessary(
             config.get("framework"), config.get("seed"))
 
-        self._validate_config(self.config, trainer_obj_or_none=self)
-        if not callable(self.config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}".format(
-                    self.config["callbacks"]))
-
         # Create the Trainer's Callbacks object (Policies and
         # RolloutWorkers will have their own).
+        # TOOO: Deprecate: Use event subscriptions instead.
         self.callbacks = self.config["callbacks"]()
 
         log_level = self.config.get("log_level")
@@ -849,12 +843,19 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers = self.make_workers(
+            call_kwargs = dict(
                 env_creator=self.env_creator,
-                #validate_env=None,
+                validate_env=None,
                 policy_class=self._policy_class,
                 config=evaluation_config,
-                num_workers=self.config["evaluation_num_workers"])
+                num_workers=self.config["evaluation_num_workers"],
+            )
+            self.trigger_event(
+                "before_create_evaluation_workers", **call_kwargs)
+            self.evaluation_workers = self.make_workers(**call_kwargs)
+            self.trigger_event(
+                "after_create_evaluation_workers",
+                return_values=self.evaluation_workers, **call_kwargs)
 
     @override(Trainable)
     def cleanup(self):
@@ -881,13 +882,12 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         return self.make_workers(*args, **kwargs)
 
     @DeveloperAPI
-    @TriggersEvent(before=True, after=True)
     def make_workers(
             self, *, env_creator: Callable[[EnvContext], EnvType],
             policy_class: Type[Policy], config: TrainerConfigDict,
             num_workers: int,
             # Deprecated.
-            validate_env=DEPRECATED_VALUE,
+            validate_env=None,
     ) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -907,24 +907,53 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             WorkerSet: The created WorkerSet.
         """
         # Handle deprecated args.
-        if validate_env != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="`validate_env`",
-                new="config.event_subscriptions['after_validate_env'] = func",
-                error=True)
+        # if validate_env != DEPRECATED_VALUE:
+        #    deprecation_warning(
+        #        old="`validate_env`",
+        #        new="config.event_subscriptions['after_validate_env'] = func",
+        #        error=False)
 
         return WorkerSet(
             env_creator=env_creator,
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            validate_env=validate_env,
+        )
 
     @DeveloperAPI
+    @TriggersEvent(name="init", before=True, after=True)
     def _init(self, config: TrainerConfigDict,
               env_creator: Callable[[EnvContext], EnvType]):
-        """Subclasses should override this for custom initialization."""
-        raise NotImplementedError
+        """Subclasses may override this for custom initialization."""
+
+        # Call subscribers to suggest a default policy class
+        # (only one allowed).
+        policy_class_suggestion = self.trigger_event(events.SUGGEST_DEFAULT_POLICY_CLASS, config)
+        # Only override self._policy_class if we have a suggestion.
+        if policy_class_suggestion is not None:
+            self._policy_class = policy_class_suggestion
+
+        # Creating "rollout" workers (used for collecting the train batches
+        # and for evaluation, but only if no evaluation workers are specified).
+        call_kwargs = dict(
+            env_creator=env_creator,
+            policy_class=self._policy_class,
+            config=config,
+            num_workers=self.config["num_workers"],
+        )
+        self.trigger_event(
+            "before_create_rollout_workers", **call_kwargs)
+        self.workers = self.make_workers(**call_kwargs)
+        self.trigger_event(
+            "after_create_rollout_workers", return_values=self.workers,
+            **call_kwargs)
+
+        # Call subscribers to suggest an execution plan (only one allowed or
+        # None).
+        self.execution_plan = self.trigger_event(
+            events.SUGGEST_EXECUTION_PLAN, self.workers, config)
 
     @Deprecated(new="Trainer.evaluate", error=False)
     def _evaluate(self) -> dict:
