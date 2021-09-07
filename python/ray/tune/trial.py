@@ -33,6 +33,7 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT = 15
 logger = logging.getLogger(__name__)
 
 
@@ -84,7 +85,11 @@ class ExportFormat:
 class CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self, trial_id, runner, node_ip, timeout: int = 15):
+    def __init__(self,
+                 trial_id,
+                 runner,
+                 node_ip,
+                 timeout: int = CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT):
         self.trial_id = trial_id
         self.runner = runner
         self.node_ip = node_ip
