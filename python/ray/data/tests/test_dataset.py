@@ -395,14 +395,13 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     shape = (outer_dim, ) + inner_shape
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape)
+    tensor_col_name = "two"
     df = pd.DataFrame({
         "one": list(range(outer_dim)),
-        "two": [a.tobytes() for a in arr]
+        tensor_col_name: [a.tobytes() for a in arr]
     })
     ds = ray.data.from_pandas([ray.put(df)])
     ds.write_parquet(str(tmp_path))
-
-    tensor_col_name = "two"
 
     # Manually deserialize the tensor bytes and cast to a TensorArray.
     def np_deser_udf(block: pa.Table):
@@ -424,6 +423,40 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
+        ray_start_regular_shared, tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    tensor_col_name = "two"
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        tensor_col_name: [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df[tensor_col_name] += 1
+        return pa.Table.from_pandas(df)
+
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        _block_udf=_block_udf,
+        _tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)})
+
+    assert isinstance(ds.schema().field_by_name(tensor_col_name).type,
+                      ArrowTensorType)
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr + 1))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
