@@ -222,11 +222,11 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
-  RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
-                 << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   auto state = placement_group->GetState();
+  RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
+                 << ", id: " << placement_group->GetPlacementGroupID() << ", try again. state: " << state;
   RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
             state == rpc::PlacementGroupTableData::PENDING ||
             state == rpc::PlacementGroupTableData::REMOVED)
@@ -276,7 +276,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   // Update the placement group load to report load information to the autoscaler.
   RAY_LOG(INFO) << "Scheduling pending placement groups";
-  if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
+  if (pending_placement_groups_.empty()) {
+    RAY_LOG(INFO) << "Nothing to schedule.";
+    return; 
+  }
+  if (IsSchedulingInProgress()) {
     RAY_LOG(INFO) << "Scheduling still in progress";
     return;
   }
