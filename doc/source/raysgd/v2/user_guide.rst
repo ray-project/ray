@@ -371,6 +371,14 @@ you may always implement a custom callback by subclassing ``Callback``. If
 the callback is general enough, please feel welcome to add it to the ``ray``
 repository.
 
+
+..
+    Advanced Customization
+    ~~~~~~~~~~~~~~~~~~~~~~
+
+    TODO add link to Run Iterator API and describe how to use it specifically
+    for custom integrations.
+
 .. _sgd-checkpointing:
 
 Checkpointing
