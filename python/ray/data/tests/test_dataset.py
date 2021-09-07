@@ -544,6 +544,7 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
+    assert ds.schema().names == ["one"]
 
 
 @pytest.mark.parametrize(

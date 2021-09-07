@@ -114,7 +114,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
 )
 
 py_test(
@@ -126,8 +126,29 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-apex.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6", "--framework=torch"]
 )
+
+# Once APEX supports multi-GPU.
+# py_test(
+#    name = "learning_cartpole_apex_tf_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/dqn"]
+# )
+
+# py_test(
+#    name = "learning_cartpole_apex_torch_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/dqn/cartpole-apex-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+# )
 
 # APPO
 py_test(
@@ -1345,6 +1366,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "evaluation/tests/test_postprocessing",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_postprocessing.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:ml", "evaluation"],
     size = "medium",
@@ -2499,21 +2527,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_tf",
+    name = "examples/parallel_evaluation_and_training_13_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=13"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_tf2",
+    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+)
+
+py_test(
+    name = "examples/parallel_evaluation_and_training_11_episodes_tf2",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=11"]
+)
+
+py_test(
+    name = "examples/parallel_evaluation_and_training_14_episodes_torch",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=14"]
 )
 
 py_test(

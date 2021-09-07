@@ -12,9 +12,9 @@ a2c-stateless-cartpole:
         num_gpus: 2
         num_workers: 23
         lr: 0.001
-        # Test w/ LSTMs.
+        # Test w/ GTrXL net.
         model:
-            use_lstm: true
+            use_attention: true
 
 appo-stateless-cartpole-no-vtrace:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
@@ -37,8 +37,8 @@ appo-stateless-cartpole-no-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # Test w/ LSTMs.
-            use_lstm: true
+            # Test w/ GTrXL net.
+            use_attention: true
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -62,8 +62,8 @@ appo-stateless-cartpole-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # Test w/ LSTMs.
-            use_lstm: true
+            # Test w/ GTrXL net.
+            use_attention: true
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -82,9 +82,9 @@ impala-stateless-cartpole:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-        # Test w/ LSTMs.
+        # Test w/ GTrXL net.
         model:
-            use_lstm: true
+            use_attention: true
 
 pg-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
@@ -103,8 +103,8 @@ pg-stateless-cartpole:
         model:
             fcnet_hiddens: [64]
             fcnet_activation: linear
-            # Test w/ LSTMs.
-            use_lstm: true
+            # Test w/ GTrXL net.
+            use_attention: true
 
 ppo-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
@@ -126,8 +126,8 @@ ppo-stateless-cartpole:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # Test w/ LSTMs.
-            use_lstm: true
+            # Test w/ GTrXL net.
+            use_attention: true
         # Double batch size (2 GPUs).
         train_batch_size: 8000
 
@@ -151,9 +151,8 @@ r2d2-stateless-cartpole:
         exploration_config:
           epsilon_timesteps: 50000
         model:
-            # Test w/ LSTMs.
-            use_lstm: true
-            lstm_cell_size: 64
+            # Test w/ GTrXL net.
+            use_attention: true
             # Use a very simple base-model.
             fcnet_hiddens: [64]
             fcnet_activation: linear
