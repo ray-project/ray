@@ -121,7 +121,6 @@ class GrpcClient {
       int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (use_tls_) {
-      std::cout << "Using TLS" << std::endl;
       std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
       std::string cacert = ReadFile(server_key_file);
       grpc::SslCredentialsOptions ssl_opts;
@@ -131,7 +130,6 @@ class GrpcClient {
           grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                     ssl_creds, argument);
     } else {
-      std::cout << "Not using TLS";
       channel =
           grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                     grpc::InsecureChannelCredentials(), argument);
