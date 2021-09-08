@@ -352,6 +352,7 @@ cc_test(
         "src/test/streaming_perf_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
