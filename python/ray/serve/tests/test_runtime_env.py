@@ -106,6 +106,9 @@ class Test:
 Test.deploy()
 handle = Test.get_handle()
 assert ray.get(handle.remote()) == "world"
+
+Test.options(num_replicas=2).deploy()
+assert ray.get(handle.remote()) == "world"
 """.format(
         use_ray_client=use_ray_client, client_addr=ray_start)
 

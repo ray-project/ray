@@ -11,6 +11,8 @@
   smoke_test:
       run:
         timeout: 900
+      cluster:
+        compute_template: 4gpus_64cpus.yaml
 
 # 2-GPU learning tests (CartPole and RepeatAfterMeEnv) for major algos.
 - name: multi_gpu_learning_tests
