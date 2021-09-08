@@ -22,7 +22,6 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.resource_spec import ResourceSpec
-from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -325,7 +324,7 @@ class Node:
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(self._session_dir,
-                                          "runtime_resources")
+                                             "runtime_resources")
         try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
