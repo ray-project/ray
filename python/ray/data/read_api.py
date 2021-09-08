@@ -489,15 +489,13 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
-               *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
+               ) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
         tables: A list of Ray object references to Arrow tables,
                 or its streaming format in bytes.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records from the tables.
@@ -508,16 +506,17 @@ def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
 
 
 @PublicAPI(stability="beta")
-def from_spark(df: "pyspark.sql.DataFrame", *,
+def from_spark(df: "pyspark.sql.DataFrame",
+               *,
                parallelism: Optional[int] = None) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
         spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
-        parallelism: The amount of parallelism to use for the dataset.
-        If not provided, it will be equal to the number of partitions of the
-        original Spark dataframe.
+            parallelism: The amount of parallelism to use for the dataset.
+            If not provided, it will be equal to the number of partitions of the
+            original Spark dataframe.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
