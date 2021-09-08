@@ -35,7 +35,7 @@
 
 # 2-GPU learning tests (StatelessCartPole) + use_attention=True for major
 # algos (that support RNN models).
-- name: multi_gpu_with_lstm_learning_tests
+- name: multi_gpu_with_attention_learning_tests
   cluster:
     app_config: app_config.yaml
     compute_template: 8gpus_96cpus.yaml
