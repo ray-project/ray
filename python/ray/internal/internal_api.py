@@ -64,10 +64,12 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
         raylet_address = "{}:{}".format(node_manager_address,
                                         node_manager_port)
 
-    channel = utils.init_grpc_channel(raylet_address, options=[
-                ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
-                ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-            ])
+    channel = utils.init_grpc_channel(
+        raylet_address,
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ])
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
@@ -94,8 +96,7 @@ def node_stats(node_manager_address=None,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ]
-    )
+        ])
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     node_stats = stub.GetNodeStats(

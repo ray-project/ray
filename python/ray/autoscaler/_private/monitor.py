@@ -115,7 +115,8 @@ class Monitor:
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
         options = (("grpc.enable_http_proxy", 0), )
-        gcs_channel = dashboard_utils.init_aiogrpc_channel(gcs_address, options)
+        gcs_channel = dashboard_utils.init_aiogrpc_channel(
+            gcs_address, options)
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 

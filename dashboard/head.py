@@ -39,7 +39,8 @@ async def make_gcs_grpc_channel(redis_client):
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
             options = (("grpc.enable_http_proxy", 0), )
-            channel = dashboard_utils.init_aiogrpc_channel(gcs_address, options)
+            channel = dashboard_utils.init_aiogrpc_channel(
+                gcs_address, options)
             return channel
         except Exception as ex:
             logger.error("Connect to GCS failed: %s, retry...", ex)

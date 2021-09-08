@@ -180,7 +180,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             return rest_response(success=False, message="Bad Request")
         try:
             options = (("grpc.enable_http_proxy", 0), )
-            channel = ray._private.utils.init_grpc_channel(f"{ip_address}:{port}", options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                f"{ip_address}:{port}", options=options)
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(

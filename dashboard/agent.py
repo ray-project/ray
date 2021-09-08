@@ -84,12 +84,14 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = dashboard_utils.add_port(self.server, f"[::]:{self.dashboard_agent_port}")
+        self.grpc_port = dashboard_utils.add_port(
+            self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = dashboard_utils.init_aiogrpc_channel(f"{self.ip}:{self.node_manager_port}", options)
+        self.aiogrpc_raylet_channel = dashboard_utils.init_aiogrpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options)
         self.http_session = None
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
