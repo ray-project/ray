@@ -71,13 +71,15 @@ class GrpcServer {
   void Run();
 
   // Shutdown this server
-  void Shutdown() {
+  void Shutdown(bool no_wait = false) {
     if (!is_closed_) {
       // Shutdown the server with an immediate deadline.
       // TODO(edoakes): do we want to do this in all cases?
-      auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
-                                   gpr_time_from_seconds(10, GPR_CLOCK_REALTIME));
-      server_->Shutdown(deadline);
+      // if(no_wait) {
+      //   server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
+      // } else {
+        server_->Shutdown();
+        // }
       for (const auto &cq : cqs_) {
         cq->Shutdown();
       }
