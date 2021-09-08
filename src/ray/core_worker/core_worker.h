@@ -402,6 +402,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
+  bool GetCurrentTaskRetryExceptions() const {
+    if (!options_.is_local_mode) {
+      return worker_context_.GetCurrentTask()->GetMessage().retry_exceptions();
+    } else {
+      return false;
+    }
+  }
+
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
