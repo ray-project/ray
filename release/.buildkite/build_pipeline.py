@@ -68,6 +68,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
+        "many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
