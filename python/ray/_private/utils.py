@@ -15,6 +15,7 @@ import threading
 import time
 from typing import Optional
 import uuid
+import grpc
 import warnings
 
 import inspect
@@ -1104,3 +1105,15 @@ def validate_namespace(namespace: str):
     elif namespace == "":
         raise ValueError("\"\" is not a valid namespace. "
                          "Pass None to not specify a namespace.")
+
+
+def init_grpc_channel(address, options=None):
+    if os.environ["RAY_CLIENT_TLS"] == "1":
+        with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
+            root_certs = f.read()
+        credentials = grpc.ssl_channel_credentials(root_certs)
+        channel = grpc.secure_channel(address, credentials, options=options)
+    else:
+        channel = grpc.insecure_channel(address, options=options)
+
+    return channel

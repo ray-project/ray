@@ -4,6 +4,7 @@ import logging
 from typing import Union
 from grpc.experimental import aio as aiogrpc
 
+import ray._private.utils as utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
@@ -46,8 +47,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = (("grpc.enable_http_proxy", 0), )
-                    channel = aiogrpc.insecure_channel(
-                        dashboard_rpc_address, options=options)
+                    channel = utils.init_grpc_channel(dashboard_rpc_address, options=options)
                     return event_pb2_grpc.ReportEventServiceStub(channel)
             except Exception:
                 logger.exception("Connect to dashboard failed.")

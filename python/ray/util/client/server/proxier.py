@@ -198,8 +198,8 @@ class ProxyManager():
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
-                channel=grpc.insecure_channel(
-                    f"localhost:{port}", options=GRPC_OPTIONS))
+                channel=ray._private.utils.init_grpc_channel(f"localhost:{port}", options=GRPC_OPTIONS)
+            )
             self.servers[client_id] = server
             return server
 

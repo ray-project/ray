@@ -12,12 +12,13 @@ import pkgutil
 import socket
 import time
 import traceback
+import grpc
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
 from typing import Any
-
+from grpc.experimental import aio as aiogrpc
 from google.protobuf.json_format import MessageToDict
 
 import ray.new_dashboard.consts as dashboard_consts
@@ -690,3 +691,15 @@ def async_loop_forever(interval_seconds, cancellable=False):
         return _looper
 
     return _wrapper
+
+
+def init_aiogrpc_channel(address, options):
+    if os.environ["RAY_CLIENT_TLS"] == "1":
+        with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
+            root_certs = f.read()
+        credentials = grpc.ssl_channel_credentials(root_certs)
+        channel = aiogrpc.secure_channel(address, credentials, options=options)
+    else:
+        channel = aiogrpc.insecure_channel(address, options=options)
+
+    return channel

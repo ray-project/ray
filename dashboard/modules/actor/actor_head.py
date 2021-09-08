@@ -51,7 +51,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = dashboard_utils.init_aiogrpc_channel(address, options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -180,8 +180,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             return rest_response(success=False, message="Bad Request")
         try:
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(
-                f"{ip_address}:{port}", options=options)
+            channel = ray._private.utils.init_grpc_channel(f"{ip_address}:{port}", options=options)
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(

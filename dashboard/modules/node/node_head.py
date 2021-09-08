@@ -66,7 +66,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = dashboard_utils.init_aiogrpc_channel(address, options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 

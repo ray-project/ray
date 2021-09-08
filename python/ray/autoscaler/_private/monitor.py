@@ -38,6 +38,7 @@ from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 from ray._raylet import connect_to_gcs, disconnect_from_gcs
+import ray.new_dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +114,8 @@ class Monitor:
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
-
         options = (("grpc.enable_http_proxy", 0), )
-        gcs_channel = grpc.insecure_channel(gcs_address, options=options)
+        gcs_channel = dashboard_utils.init_aiogrpc_channel(gcs_address, options)
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 

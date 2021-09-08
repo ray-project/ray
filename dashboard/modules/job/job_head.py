@@ -1,4 +1,6 @@
+import os
 import json
+import grpc
 import logging
 import asyncio
 
@@ -52,7 +54,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         ip = DataSource.node_id_to_ip[node_id]
         address = f"{ip}:{ports[1]}"
         options = (("grpc.enable_http_proxy", 0), )
-        channel = aiogrpc.insecure_channel(address, options=options)
+        channel = dashboard_utils.init_aiogrpc_channel(address, options)
+
         stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
         request = job_agent_pb2.InitializeJobEnvRequest(
             job_description=json.dumps(job_description_data))

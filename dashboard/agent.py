@@ -9,6 +9,7 @@ import socket
 import json
 import time
 import traceback
+import grpc
 
 from grpc.experimental import aio as aiogrpc
 
@@ -89,8 +90,7 @@ class DashboardAgent(object):
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}", options=options)
+        self.aiogrpc_raylet_channel = dashboard_utils.init_aiogrpc_channel(f"{self.ip}:{self.node_manager_port}", options)
         self.http_session = None
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)

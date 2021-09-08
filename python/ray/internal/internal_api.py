@@ -1,7 +1,10 @@
+import os
+
 import ray
 import ray._private.services as services
 import ray.worker
 import ray._private.profiling as profiling
+import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
 
@@ -60,13 +63,12 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     else:
         raylet_address = "{}:{}".format(node_manager_address,
                                         node_manager_port)
-    channel = grpc.insecure_channel(
-        raylet_address,
-        options=[
-            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
-            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ],
-    )
+
+    channel = utils.init_grpc_channel(raylet_address, options=[
+                ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+                ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+            ])
+
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(
@@ -87,13 +89,14 @@ def node_stats(node_manager_address=None,
     # We can ask any Raylet for the global memory info.
     assert (node_manager_address is not None and node_manager_port is not None)
     raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
-    channel = grpc.insecure_channel(
+    channel = utils.init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ],
+        ]
     )
+
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     node_stats = stub.GetNodeStats(
         node_manager_pb2.GetNodeStatsRequest(
