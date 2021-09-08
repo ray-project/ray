@@ -585,7 +585,7 @@ class NestedSpacesTest(unittest.TestCase):
         dict_space2 = deepcopy(DICT_SPACE)
         dict_space2.spaces["sensors"].spaces["position"] = spaces.Box(
             low=-100, high=100, shape=(4, ))
-        space2 = Repeated(DICT_SPACE, max_len=3)
+        space2 = Repeated(dict_space2, max_len=3)
         assert space1 != space2
 
 
