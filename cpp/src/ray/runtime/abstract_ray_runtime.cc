@@ -52,16 +52,6 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
-    auto redis_ip = ConfigInternal::Instance().redis_ip;
-    if (redis_ip.empty()) {
-      redis_ip = GetNodeIpAddress();
-    }
-    std::string redis_address =
-        redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
-    runtime->global_state_accessor_ =
-        ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-            redis_address, ConfigInternal::Instance().redis_password);
-
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
       // Load functions from code search path.
@@ -240,6 +230,26 @@ void AbstractRayRuntime::ExitActor() {
 const std::unique_ptr<ray::gcs::GlobalStateAccessor>
     &AbstractRayRuntime::GetGlobalStateAccessor() {
   return global_state_accessor_;
+}
+
+bool AbstractRayRuntime::WasCurrentActorRestarted() {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return false;
+  }
+
+  const auto &actor_id = GetCurrentActorID();
+  auto byte_ptr = global_state_accessor_->GetActorInfo(actor_id);
+  if (byte_ptr == nullptr) {
+    return false;
+  }
+
+  rpc::ActorTableData actor_table_data;
+  bool r = actor_table_data.ParseFromString(*byte_ptr);
+  if (!r) {
+    throw RayException("Received invalid protobuf data from GCS.");
+  }
+
+  return actor_table_data.num_restarts() != 0;
 }
 
 ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(

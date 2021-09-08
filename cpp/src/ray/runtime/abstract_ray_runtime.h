@@ -98,15 +98,19 @@ class AbstractRayRuntime : public RayRuntime {
 
   const std::unique_ptr<ray::gcs::GlobalStateAccessor> &GetGlobalStateAccessor();
 
+  bool WasCurrentActorRestarted();
+
+  virtual ActorID GetCurrentActorID() { return ActorID::Nil(); }
+
  protected:
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
   std::unique_ptr<ObjectStore> object_store_;
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor_;
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor_;
   void Execute(const TaskSpecification &task_spec);
 };
 }  // namespace internal

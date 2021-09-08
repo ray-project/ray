@@ -83,10 +83,17 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(2, *named_actor_obj1.Get());
   EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
 
+  EXPECT_FALSE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorCreationTask).Remote().Get());
+  EXPECT_FALSE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorTask).Remote().Get());
   named_actor_handle.Kill(false);
   std::this_thread::sleep_for(std::chrono::seconds(2));
   auto named_actor_obj2 = named_actor_handle.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(1, *named_actor_obj2.Get());
+  EXPECT_TRUE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorCreationTask).Remote().Get());
+  EXPECT_TRUE(*named_actor_handle.Task(&Counter::CheckRestartInActorTask).Remote().Get());
 
   named_actor_handle.Kill();
   std::this_thread::sleep_for(std::chrono::seconds(2));

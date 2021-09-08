@@ -73,9 +73,8 @@ void ProcessHelper::StopRayNode() {
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
     const std::string &redis_address, const std::string &redis_password) {
-  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
-  global_state_accessor.reset(
-      new ray::gcs::GlobalStateAccessor(redis_address, redis_password));
+  auto global_state_accessor =
+      std::make_unique<ray::gcs::GlobalStateAccessor>(redis_address, redis_password);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
   return global_state_accessor;
 }
@@ -128,7 +127,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
       if (!global_state_accessor) {
-        global_state_accessor = std::make_unique<ray::gcs::GlobalStateAccessor>(
+        global_state_accessor = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
             redis_address, ConfigInternal::Instance().redis_password);
         RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       }
