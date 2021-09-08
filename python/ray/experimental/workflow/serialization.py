@@ -6,7 +6,7 @@ from ray.types import ObjectRef
 from ray.experimental.workflow.common import calculate_identifier
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_storage
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
