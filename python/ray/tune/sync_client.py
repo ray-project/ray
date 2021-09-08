@@ -92,7 +92,9 @@ def get_cloud_sync_client(remote_path):
 
 @PublicAPI(stability="beta")
 class SyncClient:
-    """Client interface for interacting with remote storage options."""
+    """Client interface for interacting with remote storage options.
+    Runs on single thread.
+    """
 
     def sync_up(self, source, target):
         """Syncs up from source to target.
@@ -108,6 +110,12 @@ class SyncClient:
 
     def sync_down(self, source, target):
         """Syncs down from source to target.
+        Implementation can choose to be either synchronous or asynchronous.
+        Caller may call `close()` immediately after `sync_down()` even if
+        `sync_down()` is implemented in an async way. Implementation to make
+        sure that this does not crash.
+        Caller may call `sync_down()` multiple times after `close()` is called.
+        Implementation to make sure that this is handled gracefully.
 
         Args:
             source (str): Source path.
@@ -138,7 +146,7 @@ class SyncClient:
         pass
 
     def close(self):
-        """Clean up hook."""
+        """Release any resources."""
         pass
 
 
@@ -171,6 +179,8 @@ class CommandBasedClient(SyncClient):
                  delete_template=noop_template):
         """Syncs between two directories with the given command.
 
+        Note: After the client is closed, subsequent calls to the client
+            are no op.
         Arguments:
             sync_up_template (str): A runnable string template; needs to
                 include replacement fields '{source}' and '{target}'.
@@ -199,13 +209,8 @@ class CommandBasedClient(SyncClient):
         self._closed = False
 
     def _get_logfile(self):
-        if self._closed:
-            raise RuntimeError(
-                "[internalerror] The client has been closed. "
-                "Please report this stacktrace + your cluster configuration "
-                "on Github!")
-        else:
-            return self.logfile
+        assert not self._closed
+        return self.logfile
 
     def sync_up(self, source, target):
         return self._execute(self.sync_up_template, source, target)
@@ -214,6 +219,10 @@ class CommandBasedClient(SyncClient):
         return self._execute(self.sync_down_template, source, target)
 
     def delete(self, target):
+        if self._closed:
+            logger.warning(
+                "Sync client is already closed. Skipping subsequent calls.")
+            return False
         if self.is_running:
             logger.warning("Last sync client cmd still in progress, skipping.")
             return False
@@ -260,6 +269,10 @@ class CommandBasedClient(SyncClient):
 
     def _execute(self, sync_template, source, target):
         """Executes sync_template on source and target."""
+        if self._closed:
+            logger.warning(
+                "Sync client is already closed. Skipping subsequent calls.")
+            return False
         if self.is_running:
             logger.warning("Last sync client cmd still in progress, skipping.")
             return False

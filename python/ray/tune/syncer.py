@@ -36,6 +36,9 @@ CLOUD_SYNC_PERIOD = 300
 NODE_SYNC_PERIOD = 300
 
 _log_sync_warned = False
+# TODO(xwjiang): Currently there is no GC mechanism for _syncers.
+# One syncer per trial means a lot of syncers.
+# Could be a problem when trial number is big.
 _syncers = {}
 
 
@@ -209,6 +212,8 @@ class Syncer:
         self.sync_client.reset()
 
     def close(self):
+        # Force one last sync before closing out.
+        self.sync_down()
         self.sync_client.close()
 
     @property
