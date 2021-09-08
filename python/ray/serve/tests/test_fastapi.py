@@ -535,6 +535,25 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     assert resp.json()
 
 
+def test_fastapi_method_redefinition(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/a")
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def method(self):
+            return "hi get"
+
+        @app.post("/")  # noqa: F811 method redefinition
+        def method(self):
+            return "hi post"
+
+    A.deploy()
+    assert requests.get("http://localhost:8000/a/").json() == "hi get"
+    assert requests.post("http://localhost:8000/a/").json() == "hi post"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
