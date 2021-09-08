@@ -1856,7 +1856,7 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster,
     assert len(gpu_ids_res) == 4
 
 
-@pytest.mark.parametrize('execution_number', range(3))
+@pytest.mark.parametrize("execution_number", range(3))
 def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     # This test checks the race condition between remove / creation.
     # This test shouldn't be flaky. If it fails on the last ray.get
@@ -1874,7 +1874,8 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     for _ in range(num_nodes):
         nodes.append(
             cluster.add_node(
-                num_cpus=3, num_gpus=resource_quantity,
+                num_cpus=3,
+                num_gpus=resource_quantity,
                 resources=custom_resources))
     cluster.wait_for_nodes()
 
@@ -1909,9 +1910,7 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         # Randomly schedule tasks or actors on placement groups that
         # are not removed.
         for pg in pgs_unremoved:
-            tasks.append(
-                mock_task.options(
-                    placement_group=pg).remote())
+            tasks.append(mock_task.options(placement_group=pg).remote())
         # Remove the rest of placement groups.
         for pg in pgs_removed:
             remove_placement_group(pg)
@@ -1920,8 +1919,6 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         for pg in pgs_unremoved:
             remove_placement_group(pg)
 
-
-    num_pgs_to_create = num_pg
     pg_launchers = []
     for _ in range(3):
         pg_launchers.append(pg_launcher.remote(num_pg // 3))

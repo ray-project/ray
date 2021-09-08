@@ -15,7 +15,7 @@ from ray.util.placement_group import (placement_group, remove_placement_group)
 
 # TODO(sang): Increase the number in the actual stress test.
 # This number should be divisible by 3.
-resource_quantity = 999
+resource_quantity = 666
 num_nodes = 5
 custom_resources = {"pg_custom": resource_quantity}
 # Create pg that uses 1 resource of cpu & custom resource.
@@ -113,12 +113,12 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     for pg in pgs_unremoved:
         # TODO(sang): Comment in this line causes GCS actor management
         # failure. We need to fix it.
-        # if random() < .5:
-        tasks.append(mock_task.options(placement_group=pg).remote())
-        # else:
-        #     if actor_cnt < max_actor_cnt:
-        #         actors.append(MockActor.options(placement_group=pg).remote())
-        #         actor_cnt += 1
+        if random() < .5:
+            tasks.append(mock_task.options(placement_group=pg).remote())
+        else:
+            if actor_cnt < max_actor_cnt:
+                actors.append(MockActor.options(placement_group=pg).remote())
+                actor_cnt += 1
 
     # Remove the rest of placement groups.
     for pg in pgs_removed:

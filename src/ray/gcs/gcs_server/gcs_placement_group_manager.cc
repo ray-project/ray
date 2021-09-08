@@ -281,7 +281,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   }
 
   if (IsSchedulingInProgress()) {
-    RAY_LOG(DEBUG) << "Placement group scheduling is still in progress. New placement groups will be scheduled after the current scheduling is done.";
+    RAY_LOG(DEBUG) << "Placement group scheduling is still in progress. New placement "
+                      "groups will be scheduled after the current scheduling is done.";
     return;
   }
 
@@ -302,7 +303,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           });
       break;
     }
-    // If the placement group is not registered == removed, keep checking the next pending groups.
+    // If the placement group is not registered == removed, keep checking the next pending
+    // groups.
   }
 }
 
