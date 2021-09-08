@@ -25,8 +25,20 @@ BAZEL_ROOT=$(bazel info execution_root)
 
 printInfo "Generating compilation database ..."
 
-CC=clang bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
-    --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener
+case "${OSTYPE}" in
+  linux*)
+    printInfo "  Running on Linux, using clang to build C++ targets. Please make sure it is installed ..."
+    CC=clang bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+  darwin*)
+    printInfo "  Running on MacOS, assuming default C++ compiler is clang ..."
+    bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+  msys*)
+    printInfo "  Running on Windows, using clang-cl to build C++ targets. Please make sure it is installed ..."
+    CC=clang-cl bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+esac
 
 printInfo "Assembling compilation database ..."
 
@@ -70,9 +82,11 @@ if git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1 -fix; then
 else
   printError "clang-tidy failed. See above for details including suggested fixes."
   printError
-  printError "If you think a warning is too aggressive, the proposed fix is incorrect or are unsure about how to fix "
-  printError "a warning, feel free to raise the issue on the PR or Anyscale #learning-cplusplus Slack channel."
+  printError "If you think the warning is too aggressive, the proposed fix is incorrect or are unsure about how to"
+  printError "fix, feel free to raise the issue on the PR or Anyscale #learning-cplusplus Slack channel."
   printError
-  printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and "
-  printError "available in PATH, then run scripts/check-git-clang-tidy-output.sh from repo root."
+  printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and"
+  printError "available in PATH (version 12 is preferred). Then run"
+  printError "scripts/check-git-clang-tidy-output.sh"
+  printError "from repo root."
 fi
