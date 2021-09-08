@@ -87,6 +87,7 @@ class ClientBuilder:
         # Whether to allow connections to multiple clusters"
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
+        self._credentials = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -137,6 +138,7 @@ class ClientBuilder:
         client_info_dict = ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
+            _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
@@ -181,6 +183,10 @@ class ClientBuilder:
         if kwargs.get("allow_multiple") is True:
             self._allow_multiple_connections = True
             del kwargs["allow_multiple"]
+
+        if "_credentials" in kwargs.keys():
+            self._credentials = kwargs["_credentials"]
+            del kwargs["_credentials"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)

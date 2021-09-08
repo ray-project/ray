@@ -13,7 +13,8 @@ from pathlib import Path
 
 import ray
 from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.runtime_env.conda_utils import get_or_create_conda_env
+from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
+                                                  get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
@@ -75,7 +76,7 @@ def setup_conda_or_pip(runtime_env: dict,
         return
 
     logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
-    conda_dict = get_conda_dict(runtime_env, context.session_dir)
+    conda_dict = get_conda_dict(runtime_env, context.resources_dir)
     if isinstance(runtime_env.get("conda"), str):
         conda_env_name = runtime_env["conda"]
     else:
@@ -96,9 +97,8 @@ def setup_conda_or_pip(runtime_env: dict,
         # lock for all conda installs.
         # See https://github.com/ray-project/ray/issues/17086
         file_lock_name = "ray-conda-install.lock"
-        with FileLock(os.path.join(context.session_dir, file_lock_name)):
-            conda_dir = os.path.join(context.session_dir, "runtime_resources",
-                                     "conda")
+        with FileLock(os.path.join(context.resources_dir, file_lock_name)):
+            conda_dir = os.path.join(context.resources_dir, "conda")
             try_to_create_directory(conda_dir)
             conda_yaml_path = os.path.join(conda_dir, "environment.yml")
             with open(conda_yaml_path, "w") as file:
@@ -113,7 +113,8 @@ def setup_conda_or_pip(runtime_env: dict,
             conda_path = os.path.join(conda_dir, conda_env_name)
             _inject_ray_to_conda_site(conda_path, logger)
 
-    context.conda_env_name = conda_env_name
+    context.py_executable = "python"
+    context.command_prefix += get_conda_activate_commands(conda_env_name)
     logger.info(f"Finished setting up runtime environment at {conda_env_name}")
 
 
