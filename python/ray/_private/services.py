@@ -1929,8 +1929,7 @@ def start_ray_client_server(
     if redis_password:
         command.append("--redis-password=" + redis_password)
     if serialized_runtime_env:
-        command.append("--serialized-runtime-env=" +
-                       serialized_runtime_env_context)
+        command.append("--serialized-runtime-env=" + serialized_runtime_env)
     if serialized_runtime_env_context:
         command.append("--serialized-runtime-env-context=" +
                        serialized_runtime_env_context)
