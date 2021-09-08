@@ -588,6 +588,7 @@ cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -623,6 +624,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":reporter_rpc",
         ":stats_metric",
@@ -823,6 +825,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -990,6 +993,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":object_manager",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

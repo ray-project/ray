@@ -206,8 +206,7 @@ class Client:
             ray_actor_options["runtime_env"].setdefault(
                 "uris", curr_job_env.get("uris"))
         else:
-            ray_actor_options[
-                "runtime_env"] = ray.get_runtime_context().runtime_env
+            ray_actor_options["runtime_env"] = curr_job_env
 
         if "working_dir" in ray_actor_options["runtime_env"]:
             del ray_actor_options["runtime_env"]["working_dir"]
