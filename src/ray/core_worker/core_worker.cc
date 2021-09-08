@@ -1759,7 +1759,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
-  Status status;
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
     // it looks like two actors with two different namespaces become the
@@ -1781,9 +1780,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
                                   max_retries);
-    status = direct_task_submitter_->SubmitTask(task_spec);
+    io_service_.post(
+        [this, task_spec = std::move(task_spec)]() {
+          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+        },
+        "CoreWorker.SubmitTask");
   }
-  return status;
+  return Status::OK();
 }
 
 Status CoreWorker::CreatePlacementGroup(

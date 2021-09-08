@@ -1329,6 +1329,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
+  // A class for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
