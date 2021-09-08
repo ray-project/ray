@@ -88,8 +88,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
-  // Timeout waiting for GCS server reply, default is 2s.
-  const std::chrono::milliseconds timeout_ms_{2000};
+  // Timeout waiting for GCS server reply, default is inifinity.
+  const std::chrono::milliseconds timeout_ms_{0};
   std::unique_ptr<boost::asio::io_service::work> work_;
 };
 
