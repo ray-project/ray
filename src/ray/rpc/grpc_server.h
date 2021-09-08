@@ -78,8 +78,8 @@ class GrpcServer {
       // if(no_wait) {
       //   server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
       // } else {
-        server_->Shutdown();
-        // }
+      server_->Shutdown();
+      // }
       for (const auto &cq : cqs_) {
         cq->Shutdown();
       }
