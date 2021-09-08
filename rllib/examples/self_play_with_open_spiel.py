@@ -32,7 +32,7 @@ from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import register_env
+from ray.tune import CLIReporter, register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -61,7 +61,7 @@ parser.add_argument(
 parser.add_argument(
     "--stop-timesteps",
     type=int,
-    default=1000000,
+    default=10000000,
     help="Number of timesteps to train.")
 parser.add_argument(
     "--win-rate-threshold",
@@ -218,7 +218,18 @@ if __name__ == "__main__":
             stop=stop,
             checkpoint_at_end=True,
             checkpoint_freq=10,
-            verbose=1)
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "policy_reward_mean/main": "reward",
+                },
+                sort_by_metric=True,
+            ),
+        )
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
