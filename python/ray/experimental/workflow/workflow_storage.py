@@ -4,19 +4,23 @@ workflows.
 """
 
 import asyncio
+from collections import ChainMap
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
+import io
 
 import ray
+from ray import cloudpickle
 from ray._private import signature
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
-                                              WorkflowMetaData, WorkflowStatus,
-                                              WorkflowRef, StepType)
+from ray.experimental.workflow.common import (
+    Workflow, WorkflowData, StepID, WorkflowMetaData, WorkflowStatus,
+    WorkflowRef, StepType, calculate_identifiers)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
+from ray.types import ObjectRef
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -207,6 +211,11 @@ class WorkflowStorage:
                 workflows, object_refs, workflow_refs):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
+            # dereference arguments like Ray remote functions
+            flattened_args = [
+                ray.get(a) if isinstance(a, ray.ObjectRef) else a
+                for a in flattened_args
+            ]
             return signature.recover_args(flattened_args)
 
     def save_object_ref(self, obj_ref: ray.ObjectRef) -> None:
@@ -218,12 +227,7 @@ class WorkflowStorage:
         Returns:
             None
         """
-
-        async def _save_object_ref():
-            data = await obj_ref
-            await self._put(self._key_obj_id(obj_ref.hex()), data)
-
-        return asyncio_run(_save_object_ref())
+        return asyncio_run(self._save_object_ref(obj_ref))
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -237,7 +241,7 @@ class WorkflowStorage:
 
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
-            ref = ray.put(data)
+            ref = _put_obj_ref.remote((data, ))
             return ref
 
         return asyncio_run(_load_obj_ref())
@@ -341,6 +345,11 @@ class WorkflowStorage:
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )
 
+    async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
+        # TODO (Alex): We should do this in a remote task to exploit locality.
+        data = await obj_ref
+        await self._put(self._key_obj_id(identifier), data)
+
     async def _write_step_inputs(self, step_id: StepID,
                                  inputs: WorkflowData) -> None:
         """Save workflow inputs."""
@@ -354,6 +363,9 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
+        save_tasks.extend(
+            self._save_object_ref(obj_id, ref) for obj_id, ref in zip(
+                metadata["object_refs"], inputs.inputs.object_refs))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -366,7 +378,7 @@ class WorkflowStorage:
         assert not workflow.executed
         tasks = [
             self._write_step_inputs(w.step_id, w.data)
-            for w in workflow.iter_workflows_in_dag()
+            for w in workflow._iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))
 
@@ -460,13 +472,66 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
+    def _reduce_objectref(self, obj_ref: ObjectRef,
+                          upload_tasks: List[ObjectRef]):
+        @ray.remote
+        def put_helper(paths: List[str], obj: Any,
+                       wf_storage: WorkflowStorage) -> None:
+            return asyncio.get_event_loop().run_until_complete(
+                wf_storage._put(paths, obj))
+
+        # TODO (Alex): Ideally we could parallelize these hash calculations,
+        # but we need the result before we can return from this reducer.
+        identifier = calculate_identifiers([obj_ref]).pop()
+        paths = self._key_obj_id(identifier)
+        # TODO (Alex): We should dedupe these puts with the global coordinator.
+        task = put_helper.remote(paths, obj_ref, self)
+        upload_tasks.append(task)
+        return _load_object_ref, (paths, self)
+
     async def _put(self, paths: List[str], data: Any,
-                   is_json: bool = False) -> None:
+                   is_json: bool = False) -> str:
         try:
+            upload_tasks: List[ObjectRef] = []
+            if not is_json:
+                # Setup our custom serializer.
+                output_buffer = io.BytesIO()
+
+                # Cloudpickle doesn't support private dispatch tables, so we
+                # extend the cloudpickler instead to avoid changing
+                # cloudpickle's global dispatch table which is shared with
+                # `ray.put`. See
+                # https://github.com/cloudpipe/cloudpickle/issues/437
+                class ObjectRefPickler(cloudpickle.CloudPickler):
+                    _object_ref_reducer = {
+                        ray.ObjectRef: lambda ref: self._reduce_objectref(
+                            ref, upload_tasks)
+                    }
+                    dispatch_table = ChainMap(
+                        _object_ref_reducer,
+                        cloudpickle.CloudPickler.dispatch_table)
+                    dispatch = dispatch_table
+
+                pickler = ObjectRefPickler(output_buffer)
+                pickler.dump(data)
+                output_buffer.seek(0)
+                value = output_buffer.read()
+            else:
+                value = data
+
             key = self._storage.make_key(*paths)
-            await self._storage.put(key, data, is_json=is_json)
+
+            await self._storage.put(key, value, is_json=is_json)
+            # The serializer only kicks off the upload tasks, and returns
+            # the location they will be uploaded to in order to allow those
+            # uploads to be parallelized. We should wait for those uploads
+            # to be finished before we consider the object fully
+            # serialized.
+            ray.get(upload_tasks)
         except Exception as e:
             raise DataSaveError from e
+
+        return key
 
     async def _get(self,
                    paths: List[str],
@@ -476,7 +541,11 @@ class WorkflowStorage:
         ret = None
         try:
             key = self._storage.make_key(*paths)
-            ret = await self._storage.get(key, is_json=is_json)
+            unmarshaled = await self._storage.get(key, is_json=is_json)
+            if is_json:
+                ret = unmarshaled
+            else:
+                ret = cloudpickle.loads(unmarshaled)
         except KeyNotFoundError as e:
             err = e
         except Exception as e:
@@ -551,3 +620,23 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     if workflow_id is None:
         workflow_id = workflow_context.get_workflow_step_context().workflow_id
     return WorkflowStorage(workflow_id, store)
+
+
+def _load_object_ref(paths: List[str],
+                     wf_storage: WorkflowStorage) -> ObjectRef:
+    @ray.remote
+    def load_ref(paths: List[str], wf_storage: WorkflowStorage):
+        return asyncio.get_event_loop().run_until_complete(
+            wf_storage._get(paths))
+
+    return load_ref.remote(paths, wf_storage)
+
+
+@ray.remote
+def _put_obj_ref(ref: Tuple[ObjectRef]):
+    """
+    Return an ref to an object ref. (This can't be done with
+    `ray.put(obj_ref)`).
+
+    """
+    return ref[0]

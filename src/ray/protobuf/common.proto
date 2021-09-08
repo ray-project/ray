@@ -256,6 +256,10 @@ message ObjectReference {
   bytes object_id = 1;
   // The address of the object's owner.
   Address owner_address = 2;
+  // Language call site of the object reference (i.e., file and line number).
+  // Used to print debugging information if there is an error retrieving the
+  // object.
+  string call_site = 3;
 }
 
 message ObjectReferenceCount {

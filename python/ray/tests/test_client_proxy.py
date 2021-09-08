@@ -1,7 +1,6 @@
 from glob import glob
 import json
 import os
-import pickle
 import pytest
 import random
 import sys
@@ -10,6 +9,7 @@ from unittest.mock import patch
 
 import grpc
 import ray
+from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.job_config import JobConfig
 from ray._private.test_utils import run_string_as_driver
@@ -181,8 +181,8 @@ except Exception as e:
     error = e
 
 assert error is not None, "Connect did not fail!"
-assert "Init Failure From Server" in str(error), "Incorrect Error Message"
-assert "WEIRD_ERROR" in str(error), "Incorrect Error Message"
+assert "Initialization failure from server" in str(error), "Bad error msg"
+assert "WEIRD_ERROR" in str(error), "Bad error msg"
 """
 
 
@@ -279,6 +279,88 @@ def test_prepare_runtime_init_req_modified_job():
 def test_match_running_client_server(test_case):
     command, result = test_case
     assert proxier._match_running_client_server(command) == result
+
+
+@pytest.mark.parametrize("with_specific_server", [True, False])
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
+    """
+    Test that proxy manager can use internal kv with and without a
+    SpecificServer and that once a SpecificServer is started up, it
+    goes through it.
+    """
+
+    ray_instance = ray.init(_redis_password="test")
+    proxier.CHECK_PROCESS_INTERVAL_S = 1
+    os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"],
+        redis_password="test")
+    port_one, port_two = random.choices(range(45000, 45100), k=2)
+    pm._free_ports = [port_one, port_two]
+    client = "client1"
+
+    task_servicer = proxier.RayletServicerProxy(None, pm)
+
+    def make_internal_kv_calls():
+        response = task_servicer.KVPut(
+            ray_client_pb2.KVPutRequest(key=b"key", value=b"val"))
+        assert isinstance(response, ray_client_pb2.KVPutResponse)
+        assert not response.already_exists
+
+        response = task_servicer.KVPut(
+            ray_client_pb2.KVPutRequest(key=b"key", value=b"val2"))
+        assert isinstance(response, ray_client_pb2.KVPutResponse)
+        assert response.already_exists
+
+        response = task_servicer.KVGet(ray_client_pb2.KVGetRequest(key=b"key"))
+        assert isinstance(response, ray_client_pb2.KVGetResponse)
+        assert response.value == b"val"
+
+        response = task_servicer.KVPut(
+            ray_client_pb2.KVPutRequest(
+                key=b"key", value=b"val2", overwrite=True))
+        assert isinstance(response, ray_client_pb2.KVPutResponse)
+        assert response.already_exists
+
+        response = task_servicer.KVGet(ray_client_pb2.KVGetRequest(key=b"key"))
+        assert isinstance(response, ray_client_pb2.KVGetResponse)
+        assert response.value == b"val2"
+
+    with patch("ray.util.client.server.proxier._get_client_id_from_context"
+               ) as mock_get_client_id:
+        mock_get_client_id.return_value = client
+
+        if with_specific_server:
+            pm.create_specific_server(client)
+            assert pm.start_specific_server(client, JobConfig())
+            channel = pm.get_channel(client)
+            assert channel is not None
+            task_servicer.Init(
+                ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(JobConfig())))
+
+            # Mock out the internal kv calls in this process to raise an
+            # exception if they're called. This verifies that we are not
+            # making any calls in the proxier if there is a SpecificServer
+            # started up.
+            with patch(
+                    "ray.experimental.internal_kv._internal_kv_put"
+            ) as mock_put, patch(
+                    "ray.experimental.internal_kv._internal_kv_get"
+            ) as mock_get, patch(
+                    "ray.experimental.internal_kv._internal_kv_initialized"
+            ) as mock_initialized:
+                mock_put.side_effect = Exception("This shouldn't be called!")
+                mock_get.side_effect = Exception("This shouldn't be called!")
+                mock_initialized.side_effect = Exception(
+                    "This shouldn't be called!")
+                make_internal_kv_calls()
+        else:
+            make_internal_kv_calls()
 
 
 if __name__ == "__main__":

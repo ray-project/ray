@@ -404,6 +404,7 @@ def rollout(agent,
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
+
     # Agent has neither evaluation- nor rollout workers.
     else:
         from gym import envs

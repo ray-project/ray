@@ -198,3 +198,35 @@ Sub Workflows
 .. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/google_cloud_workflows/sub_workflows_workflow.py
    :caption: Workflow version:
    :language: python
+
+Prefect API Comparison
+~~~~~~~~~~~~~~~~~~~~~~
+
+The original source of these comparisons can be `found here <https://docs.prefect.io/core/advanced_tutorials/task-looping.html>`__.
+
+Looping
+^^^^^^^
+
+.. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/prefect/compute_fib_prefect.py.txt
+   :caption: Prefect version:
+   :language: python
+
+.. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/prefect/compute_fib_workflow.py
+   :caption: Workflow version:
+   :language: python
+
+AirFlow API Comparison
+~~~~~~~~~~~~~~~~~~~~~~
+
+The original source of these comparisons can be `found here <https://airflow.apache.org/docs/apache-airflow/stable/tutorial_taskflow_api.html>`__.
+
+ETL Workflow
+^^^^^^^^^^^^
+
+.. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/airflow/etl_airflow.py.txt
+   :caption: AirFlow version:
+   :language: python
+
+.. literalinclude:: ../../../python/ray/experimental/workflow/examples/comparisons/airflow/etl_workflow.py
+   :caption: Workflow version:
+   :language: python

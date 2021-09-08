@@ -468,3 +468,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, actor_register_async, true)
+
+/// Event severity threshold value
+RAY_CONFIG(std::string, event_level, "warning")

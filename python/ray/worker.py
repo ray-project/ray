@@ -27,10 +27,11 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-import ray._private.runtime_env as runtime_env_pkg
+from ray._private.runtime_env import working_dir as working_dir_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
+from ray.util.debug import log_once
 import ray
 import colorama
 import setproctitle
@@ -495,10 +496,11 @@ def get_gpu_ids():
     worker.check_connected()
 
     if worker.mode != WORKER_MODE:
-        logger.warning(
-            "`ray.get_gpu_ids()` will always return the empty list when "
-            "called from the driver. This is because Ray does not manage "
-            "GPU allocations to the driver process.")
+        if log_once("worker_get_gpu_ids_empty_from_driver"):
+            logger.warning(
+                "`ray.get_gpu_ids()` will always return the empty list when "
+                "called from the driver. This is because Ray does not manage "
+                "GPU allocations to the driver process.")
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
@@ -936,7 +938,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env_pkg.rewrite_runtime_env_uris(job_config)
+        working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1251,7 +1253,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            runtime_env_json="{}",
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1395,7 +1396,7 @@ def connect(node,
     # environment here. If it's ray client, the environmen will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
+        working_dir_pkg.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
