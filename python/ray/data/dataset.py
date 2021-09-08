@@ -1183,6 +1183,8 @@ class Dataset(Generic[T]):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
+                # TODO(Clark): Support batches containing our extension array
+                # TensorArray.
                 yield batch.values, target_col.values
 
         return tf.data.Dataset.from_generator(

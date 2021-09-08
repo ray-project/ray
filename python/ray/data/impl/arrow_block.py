@@ -42,7 +42,17 @@ class ArrowRow:
         return self.as_pydict().items()
 
     def __getitem__(self, key: str) -> Any:
-        return self._row[key][0].as_py()
+        col = self._row[key]
+        if len(col) == 0:
+            return None
+        item = col[0]
+        try:
+            # Try to interpret this as a pyarrow.Scalar value.
+            return item.as_py()
+        except AttributeError:
+            # Assume that this row is an element of an extension array, and
+            # that it is bypassing pyarrow's scalar model.
+            return item
 
     def __eq__(self, other: Any) -> bool:
         return self.as_pydict() == other
