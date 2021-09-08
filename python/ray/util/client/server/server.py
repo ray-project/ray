@@ -1,4 +1,5 @@
 import logging
+import os
 from concurrent import futures
 import grpc
 import base64
@@ -606,7 +607,15 @@ def serve(connection_str, ray_connect_handler=None):
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    server.add_insecure_port(connection_str)
+    if os.environ["RAY_SERVER_TLS"] == "1":
+        with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
+            root_certs = f.read()
+        with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:
+            private_key = f.read()
+        credentials = grpc.ssl_server_credentials([(root_certs, private_key)])
+        server.add_secure_port(connection_str, credentials)
+    else:
+        server.add_insecure_port(connection_str)
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,

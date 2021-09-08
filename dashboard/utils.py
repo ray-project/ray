@@ -703,3 +703,16 @@ def init_aiogrpc_channel(address, options):
         channel = aiogrpc.insecure_channel(address, options=options)
 
     return channel
+
+
+def add_port(server, address):
+    if os.environ["RAY_SERVER_TLS"] == "1":
+        with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
+            root_certs = f.read()
+        with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:
+            private_key = f.read()
+        credentials = grpc.ssl_server_credentials([(private_key, root_certs)])
+        return server.add_secure_port(address, credentials)
+    else:
+        return server.add_insecure_port(address)
+

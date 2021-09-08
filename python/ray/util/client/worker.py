@@ -29,6 +29,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+from ray._private import utils
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -98,15 +99,19 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
-        if secure and _credentials is None:
-            _credentials = grpc.ssl_channel_credentials()
-
-        if _credentials is not None:
-            self.channel = grpc.secure_channel(
-                conn_str, _credentials, options=GRPC_OPTIONS)
-        else:
-            self.channel = grpc.insecure_channel(
-                conn_str, options=GRPC_OPTIONS)
+        # if secure and _credentials is None:
+        #     _credentials = grpc.ssl_channel_credentials()
+        #
+        # if _credentials is not None:
+        #     self.channel = grpc.secure_channel(
+        #         conn_str, _credentials, options=GRPC_OPTIONS)
+        # else:
+        #     self.channel = grpc.insecure_channel(
+        #         conn_str, options=GRPC_OPTIONS)
+        #
+        print("DEBUG:", conn_str)
+        print("DEBUG:", GRPC_OPTIONS)
+        self.channel = utils.init_grpc_channel(conn_str, GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
