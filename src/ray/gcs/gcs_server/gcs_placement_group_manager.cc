@@ -285,25 +285,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     return;
   }
 
-  // while (!pending_placement_groups_.empty()) {
-  //   const auto placement_group = pending_placement_groups_.front();
-  //   pending_placement_groups_.pop_front();
-  //   const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  //   // Do not reschedule if the placement group has removed already.
-  //   if (registered_placement_groups_.contains(placement_group_id)) {
-  //     MarkSchedulingStarted(placement_group_id);
-  //     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
-  //         placement_group,
-  //         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-  //           OnPlacementGroupCreationFailed(std::move(placement_group));
-  //         },
-  //         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-  //           OnPlacementGroupCreationSuccess(std::move(placement_group));
-  //         });
-  //     break;
-  //   }
-  //   // If the placement group is not registered == removed, keep checking the next pending groups.
-  // }
+  while (!pending_placement_groups_.empty()) {
     const auto placement_group = pending_placement_groups_.front();
     pending_placement_groups_.pop_front();
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
@@ -318,7 +300,10 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
             OnPlacementGroupCreationSuccess(std::move(placement_group));
           });
+      break;
     }
+    // If the placement group is not registered == removed, keep checking the next pending groups.
+  }
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
