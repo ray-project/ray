@@ -1,3 +1,4 @@
+from copy import deepcopy
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
@@ -572,7 +573,7 @@ class NestedSpacesTest(unittest.TestCase):
             # the ray-kv indices before training.
             self.assertEqual(
                 to_list(seen[:][-1]), to_list(REPEATED_SAMPLES[i]))
-    
+
     def test_repeated_space_eq(self):
         # exact same should pass
         space1 = Repeated(DICT_SPACE, max_len=3)
