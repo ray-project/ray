@@ -35,10 +35,11 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads, bool use_tls,
                        int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
+      use_tls_(use_tls),
       is_closed_(true),
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {

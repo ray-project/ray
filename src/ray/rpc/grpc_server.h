@@ -61,7 +61,7 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port, int num_threads = 1,
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1, bool use_tls = true,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
 
   /// Destruct this gRPC server.
@@ -107,6 +107,8 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// Whether to use TLS.
+  bool use_tls_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
