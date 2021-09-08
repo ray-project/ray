@@ -128,14 +128,37 @@ class ActorMethod(ActorMethodBase):
     def __setstate__(self, state):
         self.__init__(state["actor"], state["method_name"])
 
+def __getstate(instance):
+    if hasattr(instance, "__getstate__"):
+        return instance.__getstate__()
+    else:
+        return self.__dict__
+
+def __setstate(instance, v):
+    if hasattr(instance, "__setstate__"):
+        return instance.__setstate__(v)
+    else:
+        instance.__dict__ = v
 
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
     the signatures of its methods etc."""
 
     def __init__(self, original_class: type):
+        has_getstate = "__getstate__" in dir(original_class)
+        has_setstate = "__setstate__" in dir(original_class)
+
+        if not has_getstate and not has_setstate:
+            # This is OK since we'll use default one defined
+            pass
+        elif not has_getstate:
+            raise ValueError("The class does not have '__getstate__' method")
+        elif not has_setstate:
+            raise ValueError("The class does not have '__setstate__' method")
+
         actor_methods = inspect.getmembers(original_class,
                                            is_function_or_method)
+
         self.cls = original_class
         self.module = original_class.__module__
         self.name = original_class.__name__
@@ -297,10 +320,6 @@ class VirtualActorClass(VirtualActorClassBase):
             pass
 
         metadata = VirtualActorMetadata(base_class)
-        if "__getstate__" not in metadata.methods:
-            raise ValueError("The class does not have '__getstate__' method")
-        if "__setstate__" not in metadata.methods:
-            raise ValueError("The class does not have '__setstate__' method")
 
         DerivedActorClass.__module__ = metadata.module
         name = f"VirtualActorClass({metadata.name})"
@@ -381,16 +400,16 @@ def _wrap_actor_method(cls: type, method_name: str):
     def _actor_method(state, *args, **kwargs):
         instance = cls.__new__(cls)
         if method_name != "__init__":
-            instance.__setstate__(state)
+            __setstate(instance, state)
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
         if isinstance(output, Workflow):
             if output.data.step_type == StepType.FUNCTION:
-                next_step = deref.step(instance.__getstate__(), output)
+                next_step = deref.step(__getstate(instance), output)
                 next_step.data.step_type = StepType.ACTOR_METHOD
                 return next_step, None
-            return instance.__getstate__(), output
-        return instance.__getstate__(), output
+            return __getstate(instance), output
+        return __getstate(instance), output
 
     return _actor_method
 
