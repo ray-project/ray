@@ -82,14 +82,6 @@ cc_grpc_library(
     deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
 )
 
-# gcs_service gRPC lib.
-cc_grpc_library(
-    name = "test_service_cc_grpc",
-    srcs = ["//src/ray/protobuf:test_service_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:test_service_cc_proto"],
-)
-
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
@@ -596,6 +588,7 @@ cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -631,6 +624,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":reporter_rpc",
         ":stats_metric",
@@ -1352,20 +1346,6 @@ cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
-    ],
-)
-
-cc_test(
-    name = "grpc_server_client_test",
-    size = "small",
-    srcs = [
-        "src/ray/rpc/test/grpc_server_client_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":grpc_common_lib",
-        ":test_service_cc_grpc",
     ],
 )
 
