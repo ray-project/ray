@@ -15,7 +15,7 @@ from ray._private import signature
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import (
     Workflow, WorkflowData, StepID, WorkflowMetaData, WorkflowStatus,
-    WorkflowRef, StepType, calculate_identifiers)
+    WorkflowRef, StepType)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import serialization
@@ -482,7 +482,7 @@ class WorkflowStorage:
                 wf_storage._put(paths, obj))
 
         manager = serialization.get_manager()
-        paths, task = ray.get(manager.save_objectref.remote((obj_ref,)))
+        paths, task = ray.get(manager.save_objectref.remote((obj_ref, )))
 
         if task:
             upload_tasks.append(task)

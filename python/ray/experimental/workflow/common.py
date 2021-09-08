@@ -13,7 +13,6 @@ import ray
 from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
-
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 
 # Alias types
@@ -112,7 +111,6 @@ def calculate_identifier(obj: Any) -> str:
     # Step 1: Serialize the object.
     # Step 2: Calculate its sha256 hash.
     # Step 3: Get the url safe, base64 representation of it.
-
 
     # TODO (Alex): Ideally we should use the existing ObjectRef serializer to
     # avoid duplicate serialization passes and support nested object refs.

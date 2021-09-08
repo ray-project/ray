@@ -248,9 +248,9 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     elif isinstance(status_filter, WorkflowStatus):
         status_filter = set({status_filter})
     elif isinstance(status_filter, set):
-        if all([isinstance(s, str) for s in status_filter]):
+        if all(isinstance(s, str) for s in status_filter):
             status_filter = {WorkflowStatus(s) for s in status_filter}
-        elif not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+        elif not all(isinstance(s, WorkflowStatus) for s in status_filter):
             raise TypeError("status_filter contains element which is not"
                             " a type of `WorkflowStatus or str`."
                             f" {status_filter}")
