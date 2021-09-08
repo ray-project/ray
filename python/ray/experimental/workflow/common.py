@@ -13,8 +13,6 @@ import ray
 from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
-MANAGEMENT_ACTOR_NAMESPACE = "workflow"
-
 # Alias types
 StepID = str
 WorkflowOutputType = ObjectRef

@@ -3,19 +3,23 @@ from dataclasses import dataclass
 from enum import Enum
 import ray
 from ray.types import ObjectRef
-from ray.experimental.workflow.common import calculate_identifier, MANAGEMENT_ACTOR_NAMESPACE
+from ray.experimental.workflow.common import calculate_identifier
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_storage
 from typing import Any, Dict, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
+
 MANAGEMENT_ACTOR_NAME = "StorageManagementActor"
+MANAGEMENT_ACTOR_NAMESPACE = "workflow"
+
 
 def init_manager(storage: Storage) -> None:
     handle = Manager.options(
-            name=MANAGEMENT_ACTOR_NAME,
-            namespace=MANAGEMENT_ACTOR_NAMESPACE,
-        lifetime="detached"
-                             ).remote(storage)
+        name=MANAGEMENT_ACTOR_NAME,
+        namespace=MANAGEMENT_ACTOR_NAMESPACE,
+        lifetime="detached").remote(storage)
     ray.get(handle.ping.remote())
 
 
@@ -39,8 +43,7 @@ class Upload:
 @ray.remote
 def _put_helper(paths: List[str], obj: Any,
                 wf_storage: "workflow_storage.WorkflowStorage") -> None:
-    asyncio.get_event_loop().run_until_complete(
-        wf_storage._put(paths, obj))
+    asyncio.get_event_loop().run_until_complete(wf_storage._put(paths, obj))
     return None
 
 
@@ -48,6 +51,7 @@ class _Manager:
     """
     Responsible for deduping the serialization/upload of object references.
     """
+
     def __init__(self, storage: Storage):
         self.uploads: Dict[ray.ObjectRef, Upload] = {}
         self.storage = storage
@@ -58,8 +62,9 @@ class _Manager:
         """
         return None
 
-
-    async def save_objectref(self, ref_tuple: Tuple[ray.ObjectRef], workflow_id: "str") -> Tuple[List[str], Optional[ray.ObjectRef]]:
+    async def save_objectref(
+            self, ref_tuple: Tuple[ray.ObjectRef],
+            workflow_id: "str") -> Tuple[List[str], Optional[ray.ObjectRef]]:
         """
         Serialize and upload an object reference exactly once.
 
@@ -72,9 +77,11 @@ class _Manager:
 
         if key not in self.uploads:
             identifier_ref = calculate_identifier.remote(ref)
-            self.uploads[key] = Upload(UploadState.IN_PROGRESS, identifier_ref, None)
+            self.uploads[key] = Upload(UploadState.IN_PROGRESS, identifier_ref,
+                                       None)
             identifier = await identifier_ref
-            wf_storage = workflow_storage.WorkflowStorage(workflow_id, self.storage)
+            wf_storage = workflow_storage.WorkflowStorage(
+                workflow_id, self.storage)
             paths = wf_storage._key_obj_id(identifier)
             # TODO(Alex): We should probably eventually remove this upload_task
             # so the ref can be freed.
@@ -83,5 +90,6 @@ class _Manager:
 
         info = self.uploads[key]
         return ray.get(info.paths), info.upload_task
+
 
 Manager = ray.remote(num_cpus=0)(_Manager)

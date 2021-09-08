@@ -482,7 +482,8 @@ class WorkflowStorage:
 
         from ray.experimental.workflow import serialization
         manager = serialization.get_manager()
-        paths, task = ray.get(manager.save_objectref.remote((obj_ref, ), self._workflow_id))
+        paths, task = ray.get(
+            manager.save_objectref.remote((obj_ref, ), self._workflow_id))
 
         if task:
             upload_tasks.append(task)

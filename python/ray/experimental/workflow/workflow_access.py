@@ -11,8 +11,8 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.experimental.workflow.common import (
-        StepID, WorkflowExecutionResult, MANAGEMENT_ACTOR_NAMESPACE)
+    from ray.experimental.workflow.common import (StepID,
+                                                  WorkflowExecutionResult)
 
 logger = logging.getLogger(__name__)
 
