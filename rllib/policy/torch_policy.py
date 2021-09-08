@@ -644,9 +644,11 @@ class TorchPolicy(Policy):
         batch_fetches = {}
         batch_fetches[LEARNER_STATS_KEY] = {}
         for i, batch in enumerate(device_batches):
-            batch_fetches[LEARNER_STATS_KEY][f"tower_{i}"] = self.extra_grad_info(batch)
+            batch_fetches[LEARNER_STATS_KEY][
+                f"tower_{i}"] = self.extra_grad_info(batch)
 
-        batch_fetches = merge_dicts(batch_fetches, self.extra_compute_grad_fetches())
+        batch_fetches = merge_dicts(batch_fetches,
+                                    self.extra_compute_grad_fetches())
 
         return batch_fetches
 
