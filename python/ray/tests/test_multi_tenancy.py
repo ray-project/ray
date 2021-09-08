@@ -12,13 +12,14 @@ from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
                                      run_string_as_driver_nonblocking)
+from ray._private.utils import init_grpc_channel
 
 
 def get_workers():
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     raylet["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
         worker for worker in stub.GetNodeStats(
