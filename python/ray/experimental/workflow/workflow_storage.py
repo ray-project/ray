@@ -18,6 +18,7 @@ from ray.experimental.workflow.common import (
     WorkflowRef, StepType, calculate_identifiers)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
+from ray.experimental.workflow import serialization
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
 from ray.types import ObjectRef
@@ -480,13 +481,12 @@ class WorkflowStorage:
             return asyncio.get_event_loop().run_until_complete(
                 wf_storage._put(paths, obj))
 
-        # TODO (Alex): Ideally we could parallelize these hash calculations,
-        # but we need the result before we can return from this reducer.
-        identifier = calculate_identifiers([obj_ref]).pop()
-        paths = self._key_obj_id(identifier)
-        # TODO (Alex): We should dedupe these puts with the global coordinator.
-        task = put_helper.remote(paths, obj_ref, self)
-        upload_tasks.append(task)
+        manager = serialization.get_manager()
+        paths, task = ray.get(manager.save_objectref.remote((obj_ref,)))
+
+        if task:
+            upload_tasks.append(task)
+
         return _load_object_ref, (paths, self)
 
     async def _put(self, paths: List[str], data: Any,

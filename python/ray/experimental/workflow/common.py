@@ -13,6 +13,9 @@ import ray
 from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
+
+MANAGEMENT_ACTOR_NAMESPACE = "workflow"
+
 # Alias types
 StepID = str
 WorkflowOutputType = ObjectRef
@@ -87,17 +90,7 @@ class WorkflowInputs:
 
 @ray.remote
 def _hash(obj: Any) -> bytes:
-    """
-    Calculates a sha256 hash of an object.
-    """
-    # TODO (Alex): Ideally we shouldn't let ray serialize obj to begin with.
-    # (1) It would save us an unnecessary serialization/deserialization. (2)
-    # Cloudpickle doesn't isn't always stable, so for some objects (i.e.
-    # functions) this could produce inconsistent results.
     m = hashlib.sha256()
-    # TODO (Alex): We should handle the nested ObjectRef case. This naive
-    # cloudpickle.dumps will return different a different hash when run on the
-    # recovered version of an object.
     m.update(cloudpickle.dumps(obj))
     return m.digest()
 
@@ -110,6 +103,24 @@ def calculate_identifiers(object_refs: List[ObjectRef]) -> List[str]:
     hashes = ray.get([_hash.remote(obj) for obj in object_refs])
     encoded = map(base64.urlsafe_b64encode, hashes)
     return [encoded_hash.decode("ascii") for encoded_hash in encoded]
+
+
+@ray.remote
+def calculate_identifier(obj: Any) -> str:
+    """Calculate a url-safe identifier for an object."""
+
+    # Step 1: Serialize the object.
+    # Step 2: Calculate its sha256 hash.
+    # Step 3: Get the url safe, base64 representation of it.
+
+
+    # TODO (Alex): Ideally we should use the existing ObjectRef serializer to
+    # avoid duplicate serialization passes and support nested object refs.
+    m = hashlib.sha256()
+    m.update(cloudpickle.dumps(obj))
+    hash = m.digest()
+    encoded = base64.urlsafe_b64encode(hash).decode("ascii")
+    return encoded
 
 
 @dataclass

@@ -12,13 +12,14 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
     from ray.experimental.workflow.common import (StepID,
-                                                  WorkflowExecutionResult)
+                                                  WorkflowExecutionResult,
+                                                  MANAGEMENT_ACTOR_NAMESPACE
+                                                  )
 
 logger = logging.getLogger(__name__)
 
 # The name contains the namespace "workflow".
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
-MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 
 
 @PublicAPI(stability="beta")

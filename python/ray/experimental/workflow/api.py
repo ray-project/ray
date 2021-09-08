@@ -11,6 +11,7 @@ from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
 from ray.experimental.workflow.common import (WorkflowStatus,
                                               ensure_ray_initialized)
+from ray.experimental.workflow import serialization_manager
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
 from ray.util.annotations import PublicAPI
@@ -60,6 +61,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
                                "different storage")
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
+    serialization_manager.init_manager()
 
 
 def make_step_decorator(step_options: Dict[str, Any]):
