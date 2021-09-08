@@ -88,8 +88,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 
-  // Timeout waiting for GCS server reply, default is inifinity.
-  const std::chrono::milliseconds timeout_ms_{0};
+  // Timeout waiting for GCS server reply, default is 2s.
+  const std::chrono::milliseconds timeout_ms_{2000};
   std::unique_ptr<boost::asio::io_service::work> work_;
 };
 
@@ -102,7 +102,7 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
+    promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
