@@ -202,15 +202,20 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
+        is_url = False
         if filesystem is not None:
             # If we provide a filesystem, _resolve_filesystem_and_path will not
             # slice off the protocol from the provided URI/path when resolved.
+            is_url = _is_url(path)
             path = _unwrap_protocol(path)
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
         if filesystem is None:
             filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
+        if is_url:
+            # URL-encode the path if it's a URL.
+            resolved_path = _encode_url(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
@@ -283,6 +288,16 @@ def _expand_directory(path: str,
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
+
+
+def _is_url(path) -> bool:
+    return isinstance(path, str) and "://" in path
+
+
+def _encode_url(path):
+    from urllib.parse import quote
+
+    return quote(path)
 
 
 def _unwrap_protocol(path):
