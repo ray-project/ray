@@ -98,8 +98,7 @@ def setup_conda_or_pip(runtime_env: dict,
         # See https://github.com/ray-project/ray/issues/17086
         file_lock_name = "ray-conda-install.lock"
         with FileLock(os.path.join(context.resources_dir, file_lock_name)):
-            conda_dir = os.path.join(context.resources_dir,
-                                     "runtime_resources", "conda")
+            conda_dir = os.path.join(context.resources_dir, "conda")
             try_to_create_directory(conda_dir)
             conda_yaml_path = os.path.join(conda_dir, "environment.yml")
             with open(conda_yaml_path, "w") as file:
