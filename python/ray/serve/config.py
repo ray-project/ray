@@ -49,8 +49,8 @@ class BackendConfig(BaseModel):
         extra = "forbid"
         arbitrary_types_allowed = True
 
-    def __reduce__(self):
-        raise RuntimeError("BackendConfig object should be be serialized.")
+    # def __reduce__(self):
+    #     raise RuntimeError("BackendConfig object should be be serialized.")
 
     # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
