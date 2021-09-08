@@ -374,9 +374,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                          bool filter_dead_nodes = true) const override {
-      return boost::none;
+    absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                         bool filter_dead_nodes = true) const override {
+      return absl::nullopt;
     }
 
     const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
