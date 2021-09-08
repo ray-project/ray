@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class VisionNetwork(TorchModelV2, nn.Module):
@@ -141,9 +141,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
             else:
                 self.last_layer_is_flattened = True
                 layers.append(nn.Flatten())
-                self.num_outputs = out_channels
 
         self._convs = nn.Sequential(*layers)
+
+        # If our num_outputs still unknown, we need to do a test pass to
+        # figure out the output dimensions. This could be the case, if we have
+        # the Flatten layer at the end.
+        if self.num_outputs is None:
+            # Create a B=1 dummy sample and push it through out conv-net.
+            dummy_in = torch.from_numpy(self.obs_space.sample()).permute(
+                2, 0, 1).unsqueeze(0).float()
+            dummy_out = self._convs(dummy_in)
+            self.num_outputs = dummy_out.shape[1]
 
         # Build the value layers
         self._value_branch_separate = self._value_branch = None

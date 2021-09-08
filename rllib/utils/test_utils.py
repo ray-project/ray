@@ -184,7 +184,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
-            (x.dtype == np.object or str(x.dtype) == "<U216"):
+            (x.dtype == np.object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -406,7 +406,14 @@ def run_learning_tests_from_yaml(
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            e["config"]["framework"] = "tf"
+            # If framework explicitly given, only test for that framework.
+            # Some algos do not have both versions available.
+            if "framework" in e["config"]:
+                frameworks = [e["config"]["framework"]]
+            else:
+                frameworks = ["tf", "torch"]
+                e["config"]["framework"] = "tf"
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 15min hardcoded for now.
@@ -420,15 +427,27 @@ def run_learning_tests_from_yaml(
                 e["stop"]["episode_reward_mean"] = \
                     e["pass_criteria"]["episode_reward_mean"]
 
+            keys = []
             # Generate the torch copy of the experiment.
-            e_torch = copy.deepcopy(e)
-            e_torch["config"]["framework"] = "torch"
-            k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
-            k_torch = re.sub("-tf-", "-torch-", k_tf)
-            experiments[k_tf] = e
-            experiments[k_torch] = e_torch
-            # Generate `checks` dict.
-            for k_ in [k_tf, k_torch]:
+            if len(frameworks) == 2:
+                e_torch = copy.deepcopy(e)
+                e_torch["config"]["framework"] = "torch"
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                keys.append(re.sub("-tf-", "-torch-", keys[0]))
+                experiments[keys[0]] = e
+                experiments[keys[1]] = e_torch
+            # tf-only.
+            elif frameworks[0] == "tf":
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                experiments[keys[0]] = e
+            # torch-only.
+            else:
+                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
+                experiments[keys[0]] = e
+
+            # Generate `checks` dict for all experiments (tf and/or torch).
+            for k_ in keys:
+                e = experiments[k_]
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
                     "min_timesteps": e["pass_criteria"]["timesteps_total"],
@@ -436,9 +455,8 @@ def run_learning_tests_from_yaml(
                     "failures": 0,
                     "passed": False,
                 }
-            # This key would break tune.
-            del e["pass_criteria"]
-            del e_torch["pass_criteria"]
+                # This key would break tune.
+                del e["pass_criteria"]
 
     # Print out the actual config.
     print("== Test config ==")
@@ -471,21 +489,32 @@ def run_learning_tests_from_yaml(
         for t in trials:
             experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
 
+            # If we have evaluation workers, use their rewards.
+            # This is useful for offline learning tests, where
+            # we evaluate against an actual environment.
+            check_eval = experiments[experiment]["config"].get(
+                "evaluation_interval", None) is not None
+
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
             else:
+                reward_mean = \
+                    t.last_result["evaluation"]["episode_reward_mean"] if \
+                    check_eval else t.last_result["episode_reward_mean"]
                 desired_reward = checks[experiment]["min_reward"]
-                desired_timesteps = checks[experiment]["min_timesteps"]
 
                 throughput = t.last_result["timesteps_total"] / \
                     t.last_result["time_total_s"]
-
+                desired_timesteps = checks[experiment]["min_timesteps"]
                 desired_throughput = \
                     desired_timesteps / t.stopping_criterion["time_total_s"]
 
-                if t.last_result["episode_reward_mean"] < desired_reward or \
-                        desired_throughput and throughput < desired_throughput:
+                # We failed to reach desired reward or the desired throughput.
+                if reward_mean < desired_reward or \
+                    (desired_throughput and
+                     throughput < desired_throughput):
                     checks[experiment]["failures"] += 1
+                # We succeeded!
                 else:
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
