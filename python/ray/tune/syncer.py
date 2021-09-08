@@ -450,7 +450,6 @@ class SyncerCallback(Callback):
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
         trial_syncer.sync_down_if_needed()
-        trial_syncer.close()
 
     def on_checkpoint(self, iteration: int, trials: List["Trial"],
                       trial: "Trial", checkpoint: Checkpoint, **info):
