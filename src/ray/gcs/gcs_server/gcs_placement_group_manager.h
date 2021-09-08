@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -269,6 +270,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   std::string DebugString() const;
 
  private:
+  friend class GcsPlacementGroupManagerTest;
+
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 

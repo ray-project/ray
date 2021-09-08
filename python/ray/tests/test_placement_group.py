@@ -3,6 +3,8 @@ import os
 import sys
 import time
 
+from random import random
+
 try:
     import pytest_timeout
 except ImportError:
@@ -1852,6 +1854,34 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster,
         gpu_ids_res.add(gpu_ids)
 
     assert len(gpu_ids_res) == 4
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_group_remove_stress(ray_start_cluster, connect_to_client):
+    cluster = ray_start_cluster
+    # 3 nodes.
+    num_gpus = 3000
+    num_gpus_per_node = num_gpus // 3
+    cluster.add_node(num_gpus=num_gpus_per_node)
+    cluster.add_node(num_gpus=num_gpus_per_node)
+    cluster.add_node(num_gpus=num_gpus_per_node)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_gpus=1, num_cpus=0)
+    def f():
+        pass
+
+    with connect_to_client_or_not(connect_to_client):
+        pgs = [ray.util.placement_group([{"GPU": 1}, {"GPU": 1}, {"GPU": 1}], strategy="STRICT_SPREAD") for _ in range(num_gpus_per_node)]
+        pgs_removed = []
+        pgs_unremoved = []
+        for pg in pgs:
+            if random() < .5:
+                pgs_removed.append(pg)
+                remove_placement_group(pg)
+            else:
+                pgs_unremoved.append(pg)
+        ray.get([pg.ready() for pg in pgs_unremoved], timeout=60)
 
 
 if __name__ == "__main__":

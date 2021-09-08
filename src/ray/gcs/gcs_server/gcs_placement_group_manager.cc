@@ -231,6 +231,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
             state == rpc::PlacementGroupTableData::PENDING ||
             state == rpc::PlacementGroupTableData::REMOVED)
       << "State: " << state;
+
   if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
     // NOTE: If a node is dead, the placement group scheduler should try to recover the
     // group by rescheduling the bundles of the dead node. This should have higher
@@ -274,25 +275,50 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
-  // Update the placement group load to report load information to the autoscaler.
-  if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
+  if (pending_placement_groups_.empty()) {
+    RAY_LOG(DEBUG) << "No additional placement groups to schedule. Stop scheduling.";
     return;
   }
-  const auto placement_group = pending_placement_groups_.front();
-  const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  // Do not reschedule if the placement group has removed already.
-  if (registered_placement_groups_.contains(placement_group_id)) {
-    MarkSchedulingStarted(placement_group_id);
-    gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
-        placement_group,
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-          OnPlacementGroupCreationFailed(std::move(placement_group));
-        },
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-          OnPlacementGroupCreationSuccess(std::move(placement_group));
-        });
+
+  if (IsSchedulingInProgress()) {
+    RAY_LOG(DEBUG) << "Placement group scheduling is still in progress. New placement groups will be scheduled after the current scheduling is done.";
+    return;
   }
-  pending_placement_groups_.pop_front();
+
+  // while (!pending_placement_groups_.empty()) {
+  //   const auto placement_group = pending_placement_groups_.front();
+  //   pending_placement_groups_.pop_front();
+  //   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  //   // Do not reschedule if the placement group has removed already.
+  //   if (registered_placement_groups_.contains(placement_group_id)) {
+  //     MarkSchedulingStarted(placement_group_id);
+  //     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
+  //         placement_group,
+  //         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+  //           OnPlacementGroupCreationFailed(std::move(placement_group));
+  //         },
+  //         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+  //           OnPlacementGroupCreationSuccess(std::move(placement_group));
+  //         });
+  //     break;
+  //   }
+  //   // If the placement group is not registered == removed, keep checking the next pending groups.
+  // }
+    const auto placement_group = pending_placement_groups_.front();
+    pending_placement_groups_.pop_front();
+    const auto &placement_group_id = placement_group->GetPlacementGroupID();
+    // Do not reschedule if the placement group has removed already.
+    if (registered_placement_groups_.contains(placement_group_id)) {
+      MarkSchedulingStarted(placement_group_id);
+      gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
+          placement_group,
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+            OnPlacementGroupCreationFailed(std::move(placement_group));
+          },
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+            OnPlacementGroupCreationSuccess(std::move(placement_group));
+          });
+    }
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
