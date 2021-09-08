@@ -423,9 +423,10 @@ def setup_working_dir(runtime_env: dict,
     if logger:
         prev_logger = _logger
         _logger = logger
-    if context.resources_dir:
-        prev_pkg_dir = PKG_DIR
-        PKG_DIR = context.resources_dir
+
+    assert context.resources_dir is not None
+    prev_pkg_dir = PKG_DIR
+    PKG_DIR = context.resources_dir
 
     working_dir = ensure_runtime_env_setup(runtime_env["uris"])
     context.command_prefix += [f"cd {working_dir}"]
@@ -437,7 +438,7 @@ def setup_working_dir(runtime_env: dict,
         python_path += os.pathsep + context.env_vars["PYTHONPATH"]
     context.env_vars["PYTHONPATH"] = python_path
 
-    if context.resources_dir:
-        PKG_DIR = prev_pkg_dir
+    PKG_DIR = prev_pkg_dir
+
     if logger:
         _logger = prev_logger
