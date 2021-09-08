@@ -32,7 +32,7 @@ from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def noop_logger_creator(config, logdir):
     return NoopLogger(config, logdir)
 
 
-@PublicAPI
+@DeveloperAPI
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
