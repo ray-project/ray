@@ -121,7 +121,7 @@
 
 - label: ":java: Streaming"
   conditions:
-    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED"]
+    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       //streaming:all

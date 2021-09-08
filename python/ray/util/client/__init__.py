@@ -7,6 +7,8 @@ import sys
 import logging
 import json
 import threading
+import grpc
+
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
@@ -32,6 +34,7 @@ class _ClientContext:
                 namespace: str = None,
                 *,
                 ignore_version: bool = False,
+                _credentials: Optional[grpc.ChannelCredentials] = None,
                 ray_init_kwargs: Optional[Dict[str, Any]] = None
                 ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -72,6 +75,7 @@ class _ClientContext:
             self.client_worker = Worker(
                 conn_str,
                 secure=secure,
+                _credentials=_credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
