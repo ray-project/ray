@@ -155,6 +155,12 @@ def read_datasource(datasource: Datasource[T],
 
     if ray_remote_args is None:
         ray_remote_args = {}
+    # Increase the read parallelism by default to maximize IO throughput. This
+    # is particularly important when reading from e.g., remote storage.
+    if "num_cpus" not in ray_remote_args:
+        # Note that the too many workers warning triggers at 4x subscription,
+        # so we go at 0.3 to avoid the warning message.
+        ray_remote_args["num_cpus"] = 0.3
     remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
