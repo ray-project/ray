@@ -509,7 +509,7 @@ def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
 
 @PublicAPI(stability="beta")
 def from_spark(df: "pyspark.sql.DataFrame", *,
-               parallelism: int = 0) -> Dataset[ArrowRow]:
+               parallelism: Optional[int] = None) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
