@@ -275,7 +275,7 @@ class Dataset(Generic[T]):
         better performance (you can implement filter by dropping records).
 
         Examples:
-            >>> ds.flat_map(lambda x: x % 2 == 0)
+            >>> ds.filter(lambda x: x % 2 == 0)
 
         Time complexity: O(dataset size / parallelism)
 
