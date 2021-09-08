@@ -49,6 +49,9 @@ class BackendConfig(BaseModel):
         extra = "forbid"
         arbitrary_types_allowed = True
 
+    def __reduce__(self):
+        raise RuntimeError("BackendConfig object should be be serialized.")
+
     # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):  # noqa 805
@@ -59,8 +62,8 @@ class BackendConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def to_proto_bytes(self, update_only=False):
-        data = self.dict(exclude_unset=update_only)
+    def to_proto_bytes(self):
+        data = self.dict()
         if "user_config" in data:
             data["user_config"] = pickle.dumps(data["user_config"])
         return BackendConfigProto(

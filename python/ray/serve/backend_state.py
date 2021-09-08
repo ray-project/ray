@@ -131,8 +131,8 @@ class ActorReplicaWrapper:
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name,
-                    self._detached)
+                    backend_info.backend_config.to_proto_bytes(),
+                    self._controller_name, self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
@@ -643,7 +643,7 @@ class BackendState:
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(
             (LongPollNamespace.BACKEND_CONFIGS, self._name),
-            self._target_info.backend_config,
+            self._target_info.backend_config.to_proto_bytes(),
         )
 
     def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:

@@ -40,8 +40,10 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config: BackendConfig, controller_name: str,
-                           detached: bool):
+                           backend_config_proto_bytes: bytes,
+                           controller_name: str, detached: bool):
+            backend_config = BackendConfig.from_proto_bytes(
+                backend_config_proto_bytes)
             backend = cloudpickle.loads(serialized_backend_def)
 
             if inspect.isfunction(backend):
@@ -275,8 +277,8 @@ class RayServeReplica:
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
 
-    def _update_backend_configs(self, new_config: BackendConfig) -> None:
-        self.config = new_config
+    def _update_backend_configs(self, new_config_bytes: bytes) -> None:
+        self.config = BackendConfig.from_proto_bytes(new_config_bytes)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()

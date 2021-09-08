@@ -78,7 +78,8 @@ class ReplicaSet:
             "deployment": self.backend_tag
         })
 
-    def set_max_concurrent_queries(self, backend_config: BackendConfig):
+    def set_max_concurrent_queries(self, backend_config_bytes: bytes):
+        backend_config = BackendConfig.from_proto_bytes(backend_config_bytes)
         new_value: int = backend_config.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
