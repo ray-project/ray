@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from ray.actor import ActorClass
-from ray.serve.config import ReplicaConfig, BackendConfig
+from ray.serve.config import BackendConfig, ReplicaConfig
 
 BackendTag = str
 EndpointTag = str
@@ -39,16 +39,3 @@ class BackendInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
-
-    def __reduce__(self):
-        # TODO(simon): This hack exist .. move to protobuf
-        def deserializer(data: dict):
-            data["backend_config"] = BackendConfig.from_proto_bytes(
-                data["backend_config"])
-            return BackendInfo(**data)
-
-        serialized_data = self.__dict__.copy()
-        serialized_data["backend_config"] = serialized_data[
-            "backend_config"].to_proto_bytes()
-
-        return deserializer, (serialized_data, )
