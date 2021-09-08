@@ -364,6 +364,12 @@ message ConnectionCleanupResponse {
   // Acknowledge cleanup request
 }
 
+message AcknowledgeRequest {
+  // Used to acknowledge that all requests up to the given req_id have been
+  // received
+  int32 req_id = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -376,9 +382,8 @@ message DataRequest {
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
     ConnectionCleanupRequest connection_cleanup = 8;
+    AcknowledgeRequest acknowledge = 9;
   }
-  // Thread that made this request
-  int64 thread_id = 9;
 }
 
 message DataResponse {

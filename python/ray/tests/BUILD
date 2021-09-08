@@ -49,7 +49,7 @@ py_test_module_list(
     "test_client.py",
     "test_client_builder.py",
     "test_client_init.py",
-    "test_client_multi.py",    
+    "test_client_multi.py",
     "test_client_proxy.py",
     "test_client_server.py",
     "test_client_references.py",
@@ -134,6 +134,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
+    "test_replay_cache.py"
   ],
   size = "small",
   extra_srcs = SRCS,

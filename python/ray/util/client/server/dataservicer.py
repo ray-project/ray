@@ -13,7 +13,7 @@ import time
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
-from ray.util.client.common import ReplayCache
+from ray.util.client.common import OrderedReplayCache
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
@@ -36,16 +36,16 @@ def _get_reconnecting_from_context(context: Any) -> bool:
     return val == "True"
 
 
-def _is_async(req: ray_client_pb2.DataRequest) -> bool:
+def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
     """
-    Returns True if the datarequest is asynchronous, false otherwise
+    Returns True if the response should to the given request should be cached,
+    false otherwise. At the moment the only requests we do not cache are
+    asynchronous gets, acks, and cleanup requests
     """
     req_type = req.WhichOneof("type")
-    if req_type == "get":
-        return req.get.asynchronous
-    if req_type == "release":
-        return True
-    return False
+    if req_type == "get" and req.get.asynchronous:
+        return False
+    return req_type not in ("acknowledge", "connection_cleanup")
 
 
 def fill_queue(
@@ -78,7 +78,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         # dictionary mapping client_id's to their reconnect grace periods
         self.reconnect_grace_periods: Dict[str, float] = {}
         # dictionary mapping client_id's to their replay cache
-        self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
+        self.replay_caches: Dict[str, OrderedReplayCache] = defaultdict(
+            OrderedReplayCache)
         # stopped event, useful for signally that the server is shut down
         self.stopped = threading.Event()
 
@@ -114,17 +115,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     yield req
                     continue
 
-                req_id = req.req_id
-                thread_id = req.thread_id
-
-                if not _is_async(req):
-                    # Check cache for request if it isn't blocking
-                    cached_result = replay_cache.check_cache(thread_id, req_id)
-                    if cached_result is not None:
-                        yield cached_result
+                assert isinstance(req, ray_client_pb2.DataRequest)
+                should_cache = _should_cache(req)
+                if should_cache:
+                    cached_resp = replay_cache.check_cache(req.req_id)
+                    if cached_resp is not None:
+                        yield cached_resp
                         continue
 
-                assert isinstance(req, ray_client_pb2.DataRequest)
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
@@ -172,15 +170,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     cleanup_resp = ray_client_pb2.ConnectionCleanupResponse()
                     resp = ray_client_pb2.DataResponse(
                         connection_cleanup=cleanup_resp)
+                elif req_type == "acknowledge":
+                    # Clean up acknowledged cache entries
+                    replay_cache.cleanup(req.acknowledge.req_id)
+                    continue
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
 
-                if not _is_async(req):
-                    # Update cache if the response isn't async
-                    replay_cache.update_cache(thread_id, req_id, resp)
-
+                if should_cache:
+                    replay_cache.update_cache(req.req_id, resp)
                 yield resp
         finally:
             logger.debug(f"Lost data connection from client {client_id}")

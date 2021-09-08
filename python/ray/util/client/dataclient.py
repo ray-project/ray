@@ -90,7 +90,11 @@ class DataClient:
         if response.req_id == 0:
             # This is not being waited for.
             logger.debug(f"Got unawaited response {response}")
-        elif response.req_id in self.asyncio_waiting_data:
+            return
+        # Acknowledge to server that response has been received -- server
+        # can clear cache entry
+        self._acknowledge(response.req_id)
+        if response.req_id in self.asyncio_waiting_data:
             # Async response. Check for callback and update outstanding
             # requests.
             callback = self.asyncio_waiting_data.pop(response.req_id)
@@ -107,6 +111,11 @@ class DataClient:
             with self.cv:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
+
+    def _acknowledge(self, req_id: int):
+        self.request_queue.put(
+            ray_client_pb2.DataRequest(
+                acknowledge=ray_client_pb2.AcknowledgeRequest(req_id=req_id)))
 
     def _process_rpc_error(self, e: grpc.RpcError) -> bool:
         """
@@ -175,7 +184,6 @@ class DataClient:
         self.request_queue.put(req)
         with self.outstanding_requests_lock:
             self.outstanding_requests[req_id] = req
-        req.thread_id = threading.get_ident()
         data = None
         with self.cv:
             self.cv.wait_for(
@@ -206,7 +214,6 @@ class DataClient:
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
         req_id = self._next_id()
-        req.thread_id = threading.get_ident()
         req.req_id = req_id
         self.asyncio_waiting_data[req_id] = callback
         with self.outstanding_requests_lock:

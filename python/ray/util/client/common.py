@@ -13,7 +13,7 @@ import inspect
 from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
-from typing import Any
+from typing import Any, OrderedDict
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -419,7 +419,7 @@ def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
     return client_id
 
 
-def _should_replace_cache(curr_id: int, old_id: int) -> bool:
+def _id_is_newer(id1: int, id2: int) -> bool:
     """
     We should only replace cache entries with the responses for newer IDs.
     Most of the time newer IDs will be the ones with higher value, except when
@@ -428,17 +428,19 @@ def _should_replace_cache(curr_id: int, old_id: int) -> bool:
     likely that the req_id counter rolled over, and the smaller id should
     still be used to replace the one in cache.
     """
-    if curr_id > old_id:
-        return True
-    diff = old_id - curr_id
-    return diff > (INT32_MAX // 2)
+    diff = abs(id2 - id1)
+    if diff > (INT32_MAX // 2):
+        # Rollover likely occurred. In this case the smaller ID is newer
+        return id1 < id2
+    return id1 > id2
 
 
 class ReplayCache:
     """
     Cache for blocking method calls. Needed to prevent retried requests from
     being applied multiple times on the server, for example when the client
-    disconnects.
+    disconnects. This is used to cache requests/responses sent through
+    unary-unary RPCs to the RayletServicer.
 
     Note that no clean up logic is used, the last response for each thread
     will always be remembered, so at most the cache will hold N entries,
@@ -489,7 +491,7 @@ class ReplayCache:
         9. A2 wakes up extremely late, but cache is now invalid
 
         In practice this is VERY unlikely to happen, but the error can at
-        least serve as a sanity check/catch invalid request id's.
+        least serve as a sanity check or catch invalid request id's.
         """
         with self.cv:
             if thread_id in self.cache:
@@ -499,8 +501,8 @@ class ReplayCache:
                         # The call was started, but the response hasn't yet
                         # been added to the cache. Let go of the lock and
                         # wait until the response is ready.
-                        self.state_cv.wait()
-                        cached_request_id, cached_resp = self.cache[request_id]
+                        self.cv.wait()
+                        cached_request_id, cached_resp = self.cache[thread_id]
                         if cached_request_id != request_id:
                             raise RuntimeError(
                                 "Cached response doesn't match the id of the "
@@ -509,7 +511,7 @@ class ReplayCache:
                                 "result of the caller is no longer needed. "
                                 f"({request_id} != {cached_request_id})")
                     return cached_resp
-                if not _should_replace_cache(request_id, cached_request_id):
+                if not _id_is_newer(request_id, cached_request_id):
                     raise RuntimeError(
                         "Attempting to replace newer cache entry with older "
                         "one. This might happen if this request was received "
@@ -524,18 +526,93 @@ class ReplayCache:
         Inserts `response` into the cache for `request_id`.
         """
         with self.cv:
-            self.cv.notify_all()
             cached_request_id, cached_resp = self.cache[thread_id]
             if cached_request_id != request_id or cached_resp is not None:
                 # The cache was overwritten by a newer requester between
                 # our call to check_cache and our call to update it.
                 # This can't happen if the assumption that the cached requests
                 # are all blocking on the client side, so if you encounter
-                # this check if any async requests are being cached.
+                # this, check if any async requests are being cached.
                 raise RuntimeError(
-                    "Attempting to update the cache, but placeholder's have "
+                    "Attempting to update the cache, but placeholder's "
                     "do not match the current request_id. This might happen "
                     "if this request was received out of order. The result "
                     f"of the caller is no longer needed. ({request_id} != "
                     f"{cached_request_id})")
             self.cache[thread_id] = (request_id, response)
+            self.cv.notify_all()
+
+
+class OrderedReplayCache:
+    """
+    Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
+    ack's from the client to determine when it can clean up cache entries.
+    """
+
+    def __init__(self):
+        self.last_received = 0
+        self.cv = threading.Condition()
+        self.cache: Dict[int, Any] = OrderedDict()
+
+    def check_cache(self, req_id: int) -> Optional[Any]:
+        """
+        Check the cache for a given thread, and see if the entry in the cache
+        matches the current request_id. Returns None if the request_id has
+        not been seen yet, otherwise returns the cached result.
+        """
+        with self.cv:
+            if _id_is_newer(self.last_received,
+                            req_id) or self.last_received == req_id:
+                # Request is for an id that has already been cleared from
+                # cache/acknowledged.
+                raise RuntimeError(
+                    "Attempting to accesss a cache entry that has already "
+                    "cleaned up. The client has already acknowledged "
+                    f"receiving this response. ({req_id}, "
+                    f"{self.last_received})")
+            if req_id in self.cache:
+                cached_resp = self.cache[req_id]
+                while cached_resp is None:
+                    # The call was started, but the response hasn't yet been
+                    # added to the cache. Let go of the lock and wait until
+                    # the response is ready
+                    self.cv.wait()
+                    if req_id not in self.cache:
+                        raise RuntimeError(
+                            "Cache entry was removed. This likely means that "
+                            "the result of this call is no longer needed.")
+                    cached_resp = self.cache[req_id]
+                return cached_resp
+            self.cache[req_id] = None
+        return None
+
+    def update_cache(self, req_id: int, resp: Any) -> None:
+        """
+        Inserts `response` into the cache for `request_id`.
+        """
+        with self.cv:
+            self.cv.notify_all()
+            if req_id not in self.cache:
+                raise RuntimeError(
+                    "Attempting to update the cache, but placeholder is "
+                    "missing. This might happen on a redundant call to "
+                    f"update_cache. ({req_id})")
+            self.cache[req_id] = resp
+
+    def cleanup(self, last_received: int) -> None:
+        """
+        Cleanup all of the cached requests up to last_received. Assumes that
+        the cache entries were inserted in ascending order.
+        """
+        with self.cv:
+            if _id_is_newer(last_received, self.last_received):
+                self.last_received = last_received
+            to_remove = []
+            for req_id in self.cache:
+                if _id_is_newer(last_received,
+                                req_id) or last_received == req_id:
+                    to_remove.append(req_id)
+                else:
+                    break
+            for req_id in to_remove:
+                del self.cache[req_id]
