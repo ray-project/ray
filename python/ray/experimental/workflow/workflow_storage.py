@@ -18,7 +18,6 @@ from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
                                               WorkflowRef, StepType)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow import serialization
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
 from ray.types import ObjectRef
@@ -481,8 +480,9 @@ class WorkflowStorage:
             return asyncio.get_event_loop().run_until_complete(
                 wf_storage._put(paths, obj))
 
+        from ray.experimental.workflow import serialization
         manager = serialization.get_manager()
-        paths, task = ray.get(manager.save_objectref.remote((obj_ref, )))
+        paths, task = ray.get(manager.save_objectref.remote((obj_ref, ), self._workflow_id))
 
         if task:
             upload_tasks.append(task)

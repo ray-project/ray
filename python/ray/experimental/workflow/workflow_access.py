@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # The name contains the namespace "workflow".
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 
 
 @PublicAPI(stability="beta")
