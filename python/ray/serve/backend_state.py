@@ -117,6 +117,9 @@ class ActorReplicaWrapper:
                 self._placement_group = ray.util.get_placement_group(
                     self._placement_group_name)
             except ValueError:
+                self._placement_group = None
+
+            if self._placement_group is None:
                 logger.debug(
                     "Creating placement group '{}' for deployment '{}'".format(
                         self._placement_group_name, self.backend_tag) +
@@ -130,6 +133,9 @@ class ActorReplicaWrapper:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=self._controller_namespace)
         except ValueError:
+            self._actor_handle = None
+
+        if self._actor_handle is None:
             logger.debug("Starting replica '{}' for deployment '{}'.".format(
                 self.replica_tag, self.backend_tag) +
                          f" component=serve deployment={self.backend_tag} "

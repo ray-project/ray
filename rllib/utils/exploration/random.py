@@ -12,6 +12,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.tf_ops import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -72,6 +73,10 @@ class Random(Exploration):
             # Function to produce random samples from primitive space
             # components: (Multi)Discrete or Box.
             def random_component(component):
+                # Have at least an additional shape of (1,), even if the
+                # component is Box(-1.0, 1.0, shape=()).
+                shape = component.shape or (1, )
+
                 if isinstance(component, Discrete):
                     return tf.random.uniform(
                         shape=(batch_size, ) + component.shape,
@@ -91,19 +96,19 @@ class Random(Exploration):
                             component.bounded_below.all():
                         if component.dtype.name.startswith("int"):
                             return tf.random.uniform(
-                                shape=(batch_size, ) + component.shape,
+                                shape=(batch_size, ) + shape,
                                 minval=component.low.flat[0],
                                 maxval=component.high.flat[0],
                                 dtype=component.dtype)
                         else:
                             return tf.random.uniform(
-                                shape=(batch_size, ) + component.shape,
+                                shape=(batch_size, ) + shape,
                                 minval=component.low,
                                 maxval=component.high,
                                 dtype=component.dtype)
                     else:
                         return tf.random.normal(
-                            shape=(batch_size, ) + component.shape,
+                            shape=(batch_size, ) + shape,
                             dtype=component.dtype)
                 else:
                     assert isinstance(component, Simplex), \
@@ -111,7 +116,7 @@ class Random(Exploration):
                         "sampling!".format(component)
                     return tf.nn.softmax(
                         tf.random.uniform(
-                            shape=(batch_size, ) + component.shape,
+                            shape=(batch_size, ) + shape,
                             minval=0.0,
                             maxval=1.0,
                             dtype=component.dtype))
@@ -129,8 +134,7 @@ class Random(Exploration):
             true_fn=true_fn,
             false_fn=false_fn)
 
-        # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-        logp = tf.zeros_like(tree.flatten(action)[0], dtype=tf.float32)[:1]
+        logp = zero_logps_from_actions(action)
         return action, logp
 
     def get_torch_exploration_action(self, action_dist: ActionDistribution,

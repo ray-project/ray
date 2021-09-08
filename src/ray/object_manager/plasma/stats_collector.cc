@@ -20,75 +20,77 @@
 namespace plasma {
 
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
-  const auto kDataSize = obj.GetObjectInfo().data_size;
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+
+  num_bytes_created_total_ += kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
-    num_bytes_created_by_worker_ += kDataSize;
+    num_bytes_created_by_worker_ += kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
     num_objects_restored_++;
-    num_bytes_restored_ += kDataSize;
+    num_bytes_restored_ += kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
     num_objects_received_++;
-    num_bytes_received_ += kDataSize;
+    num_bytes_received_ += kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
     num_objects_errored_++;
-    num_bytes_errored_ += kDataSize;
+    num_bytes_errored_ += kObjectSize;
   }
 
   RAY_CHECK(!obj.Sealed());
   num_objects_unsealed_++;
-  num_bytes_unsealed_ += kDataSize;
+  num_bytes_unsealed_ += kObjectSize;
 }
 
 void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   RAY_CHECK(obj.Sealed());
-  const auto kDataSize = obj.GetObjectInfo().data_size;
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
   num_objects_unsealed_--;
-  num_bytes_unsealed_ -= kDataSize;
+  num_bytes_unsealed_ -= kObjectSize;
 
   if (obj.GetRefCount() == 1) {
     if (obj.GetSource() == plasma::flatbuf::ObjectSource::CreatedByWorker) {
       num_objects_spillable_++;
-      num_bytes_spillable_ += kDataSize;
+      num_bytes_spillable_ += kObjectSize;
     }
   }
 
   // though this won't happen in practice but add it here for completeness.
   if (obj.GetRefCount() == 0) {
     num_objects_evictable_++;
-    num_bytes_evictable_ += kDataSize;
+    num_bytes_evictable_ += kObjectSize;
   }
 }
 
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
-  const auto kDataSize = obj.GetObjectInfo().data_size;
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
-    num_bytes_created_by_worker_ -= kDataSize;
+    num_bytes_created_by_worker_ -= kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
     num_objects_restored_--;
-    num_bytes_restored_ -= kDataSize;
+    num_bytes_restored_ -= kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
     num_objects_received_--;
-    num_bytes_received_ -= kDataSize;
+    num_bytes_received_ -= kObjectSize;
   } else if (kSource == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
     num_objects_errored_--;
-    num_bytes_errored_ -= kDataSize;
+    num_bytes_errored_ -= kObjectSize;
   }
 
   if (obj.GetRefCount() > 0) {
     num_objects_in_use_--;
-    num_bytes_in_use_ -= kDataSize;
+    num_bytes_in_use_ -= kObjectSize;
   }
 
   if (!obj.Sealed()) {
     num_objects_unsealed_--;
-    num_bytes_unsealed_ -= kDataSize;
+    num_bytes_unsealed_ -= kObjectSize;
     return;
   }
 
@@ -96,33 +98,33 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   if (obj.GetRefCount() == 1 &&
       kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_spillable_--;
-    num_bytes_spillable_ -= kDataSize;
+    num_bytes_spillable_ -= kObjectSize;
   }
 
   if (obj.GetRefCount() == 0) {
     num_objects_evictable_--;
-    num_bytes_evictable_ -= kDataSize;
+    num_bytes_evictable_ -= kObjectSize;
   }
 }
 
 void ObjectStatsCollector::OnObjectRefIncreased(const LocalObject &obj) {
-  const auto kDataSize = obj.GetObjectInfo().data_size;
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
   const bool kSealed = obj.Sealed();
 
   // object ref count bump from 0 to 1
   if (obj.GetRefCount() == 1) {
     num_objects_in_use_++;
-    num_bytes_in_use_ += kDataSize;
+    num_bytes_in_use_ += kObjectSize;
 
     if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
       num_objects_spillable_++;
-      num_bytes_spillable_ += kDataSize;
+      num_bytes_spillable_ += kObjectSize;
     }
 
     if (kSealed) {
       num_objects_evictable_--;
-      num_bytes_evictable_ -= kDataSize;
+      num_bytes_evictable_ -= kObjectSize;
     }
   }
 
@@ -130,12 +132,12 @@ void ObjectStatsCollector::OnObjectRefIncreased(const LocalObject &obj) {
   if (obj.GetRefCount() == 2 &&
       kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
     num_objects_spillable_--;
-    num_bytes_spillable_ -= kDataSize;
+    num_bytes_spillable_ -= kObjectSize;
   }
 }
 
 void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
-  const auto kDataSize = obj.GetObjectInfo().data_size;
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
   const bool kSealed = obj.Sealed();
 
@@ -143,23 +145,23 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   if (obj.GetRefCount() == 1) {
     if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
       num_objects_spillable_++;
-      num_bytes_spillable_ += kDataSize;
+      num_bytes_spillable_ += kObjectSize;
     }
   }
 
   // object ref count decrease from 1 to 0
   if (obj.GetRefCount() == 0) {
     num_objects_in_use_--;
-    num_bytes_in_use_ -= kDataSize;
+    num_bytes_in_use_ -= kObjectSize;
 
     if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker && kSealed) {
       num_objects_spillable_--;
-      num_bytes_spillable_ -= kDataSize;
+      num_bytes_spillable_ -= kObjectSize;
     }
 
     if (kSealed) {
       num_objects_evictable_++;
-      num_bytes_evictable_ += kDataSize;
+      num_bytes_evictable_ += kObjectSize;
     }
   }
 }
@@ -184,4 +186,17 @@ void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
   buffer << "- objects errored: " << num_objects_errored_ << "\n";
   buffer << "- bytes errored: " << num_bytes_errored_ << "\n";
 }
+
+int64_t ObjectStatsCollector::GetNumBytesInUse() const { return num_bytes_in_use_; }
+
+int64_t ObjectStatsCollector::GetNumBytesCreatedTotal() const {
+  return num_bytes_created_total_;
+}
+
+int64_t ObjectStatsCollector::GetNumBytesUnsealed() const { return num_bytes_unsealed_; }
+
+int64_t ObjectStatsCollector::GetNumObjectsUnsealed() const {
+  return num_objects_unsealed_;
+}
+
 }  // namespace plasma
