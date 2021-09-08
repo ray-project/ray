@@ -31,6 +31,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
+    RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
