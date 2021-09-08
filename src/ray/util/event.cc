@@ -122,7 +122,7 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 ///
 EventManager::EventManager() {
   RayLog::AddFatalLogCallbacks({[](const std::string &label, const std::string &content) {
-    RayEvent::ReportEvent("FATAL", label, content);
+    RayEvent::ReportEvent("FATAL", label, content, __FILE__, __LINE__);
   }});
 }
 
@@ -226,11 +226,14 @@ static void SetEventLevel(const std::string &event_level) {
 }
 
 void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
-                           const std::string &message) {
+                           const std::string &message, const char *file_name,
+                           int line_number) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
-  RayEvent(severity_ele, EventLevelToLogLevel(severity_ele), label) << message;
+  RayEvent(severity_ele, EventLevelToLogLevel(severity_ele), label, file_name,
+           line_number)
+      << message;
 }
 
 bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
@@ -251,7 +254,7 @@ RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) 
   case rpc::Event_Severity_FATAL:
     return RayLogLevel::ERROR;
   default:
-    RAY_LOG(FATAL) << "Can't cast severity " << severity;
+    RAY_LOG(ERROR) << "Can't cast severity " << severity;
   }
   return RayLogLevel::INFO;
 }
@@ -300,7 +303,7 @@ void RayEvent::SendMessage(const std::string &message) {
     event_id = empty_event_id_hex;
   }
   if (ray::RayLog::IsLevelEnabled(log_severity_)) {
-    ::ray::RayLog(__FILE__, __LINE__, log_severity_)
+    ::ray::RayLog(file_name_, line_number_, log_severity_)
         << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
   }
 }

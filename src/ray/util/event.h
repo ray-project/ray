@@ -45,7 +45,7 @@ namespace ray {
   ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type,      \
                   ray::RayEvent::EventLevelToLogLevel(                          \
                       ::ray::rpc::Event_Severity::Event_Severity_##event_type), \
-                  label)
+                  label, __FILE__, __LINE__)
 
 // interface of event reporter
 class BaseEventReporter {
@@ -193,8 +193,12 @@ class RayEventContext final {
 class RayEvent {
  public:
   RayEvent(rpc::Event_Severity severity, RayLogLevel log_severity,
-           const std::string &label)
-      : severity_(severity), log_severity_(log_severity), label_(label) {}
+           const std::string &label, const char *file_name, int line_number)
+      : severity_(severity),
+        log_severity_(log_severity),
+        label_(label),
+        file_name_(file_name),
+        line_number_(line_number) {}
 
   template <typename T>
   RayEvent &operator<<(const T &t) {
@@ -212,7 +216,8 @@ class RayEvent {
   }
 
   static void ReportEvent(const std::string &severity, const std::string &label,
-                          const std::string &message);
+                          const std::string &message, const char *file_name,
+                          int line_number);
 
   /// Return whether or not the event level is enabled in current setting.
   ///
@@ -242,6 +247,8 @@ class RayEvent {
   rpc::Event_Severity severity_;
   RayLogLevel log_severity_;
   std::string label_;
+  const char *file_name_;
+  int line_number_;
   json custom_fields_;
   std::ostringstream osstream_;
 };
