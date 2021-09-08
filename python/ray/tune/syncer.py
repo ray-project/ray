@@ -83,6 +83,7 @@ def log_sync_template(options=""):
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
     rsh = rsh.format(ssh_key=quote(ssh_key))
+    options += " --exclude='checkpoint_tmp*'"
     template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
     return template.format(options=options, rsh=quote(rsh))
 
