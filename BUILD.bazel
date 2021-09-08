@@ -612,6 +612,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":reporter_rpc",
         ":stats_metric",
