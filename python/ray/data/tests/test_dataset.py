@@ -673,6 +673,68 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write_create_dir(ray_start_regular_shared, fs, data_path,
+                                  endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path = os.path.join(data_path, "test_parquet_dir")
+    ds._set_uuid("data")
+    ds.write_parquet(path, filesystem=fs)
+
+    # Ensure that directory was created.
+    if fs is None:
+        assert os.path.isdir(path)
+    else:
+        assert fs.get_file_info(
+            _unwrap_protocol(path)).type == pa.fs.FileType.Directory
+
+    # Check that data was properly written to the directory.
+    path1 = os.path.join(path, "data_000000.parquet")
+    path2 = os.path.join(path, "data_000001.parquet")
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
+    assert df.equals(dfds)
+
+    # Ensure that directories that already exist are left alone and that the
+    # attempted creation still succeeds.
+    path3 = os.path.join(path, "data_0000002.parquet")
+    path4 = os.path.join(path, "data_0000003.parquet")
+    if fs is None:
+        os.rename(path1, path3)
+        os.rename(path2, path4)
+    else:
+        fs.move(_unwrap_protocol(path1), _unwrap_protocol(path3))
+        fs.move(_unwrap_protocol(path2), _unwrap_protocol(path4))
+    ds.write_parquet(path, filesystem=fs)
+
+    # Check that the original Parquet files were left untouched and that the
+    # new ones were added.
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options),
+        pd.read_parquet(path3, storage_options=storage_options),
+        pd.read_parquet(path4, storage_options=storage_options)
+    ])
+    assert pd.concat([df, df]).equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
 @pytest.mark.parametrize(
     "fs,data_path", [(None, lazy_fixture("local_path")),
                      (lazy_fixture("local_fs"), lazy_fixture("local_path")),
