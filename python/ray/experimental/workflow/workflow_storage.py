@@ -621,11 +621,8 @@ def _load_object_ref(paths: List[str],
                      wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
-        try:
-            return asyncio.get_event_loop().run_until_complete(
-                wf_storage._get(paths))
-        except Exception as e:
-            raise
+        return asyncio.get_event_loop().run_until_complete(
+            wf_storage._get(paths))
 
     return load_ref.remote(paths, wf_storage)
 

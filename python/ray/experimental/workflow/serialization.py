@@ -73,8 +73,8 @@ class Manager:
         Args:
             ref_tuple: A 1-element tuple which wraps the reference.
         """
-        wf_storage = workflow_storage.WorkflowStorage(
-            workflow_id, self.storage)
+        wf_storage = workflow_storage.WorkflowStorage(workflow_id,
+                                                      self.storage)
         ref, = ref_tuple
         # Use the hex as the key to avoid holding a reference to the object.
         key = ref.hex()
@@ -92,5 +92,3 @@ class Manager:
         identifer = await info.identifier_ref
         paths = wf_storage._key_obj_id(identifer)
         return paths, info.upload_task
-
-
