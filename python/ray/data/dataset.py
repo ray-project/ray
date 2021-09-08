@@ -1023,14 +1023,24 @@ class Dataset(Generic[T]):
                     f"is invalid. Supported batch type: {BatchType}")
 
         batcher = Batcher(batch_size=batch_size)
-        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
-            block_window = list(block_window)
-            ray.wait(block_window, num_returns=1, fetch_local=True)
-            block = ray.get(block_window[0])
+
+        def batch_block(block: ObjectRef[Block]):
+            block = ray.get(block)
             batcher.add(block)
             while batcher.has_batch():
                 yield format_batch(batcher.next_batch(), batch_format)
 
+        block_window = []  # Handle empty sliding window gracefully.
+        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
+            block_window = list(block_window)
+            ray.wait(block_window, num_returns=1, fetch_local=True)
+            yield from batch_block(block_window[0])
+
+        # Consume remainder of final block window.
+        for block in block_window[1:]:
+            yield from batch_block(block)
+
+        # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 

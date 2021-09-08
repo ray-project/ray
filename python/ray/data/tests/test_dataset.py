@@ -1387,6 +1387,16 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
+    batch_size = 2
+    batches = list(
+        ds.iter_batches(
+            prefetch_blocks=2, batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
 
 def test_iter_batches_grid(ray_start_regular_shared):
     # Tests slicing, batch combining, and partial batch dropping logic over
