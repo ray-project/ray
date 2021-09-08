@@ -474,19 +474,13 @@ class WorkflowStorage:
 
     def _reduce_objectref(self, obj_ref: ObjectRef,
                           upload_tasks: List[ObjectRef]):
-        @ray.remote
-        def put_helper(paths: List[str], obj: Any,
-                       wf_storage: WorkflowStorage) -> None:
-            return asyncio.get_event_loop().run_until_complete(
-                wf_storage._put(paths, obj))
-
         from ray.experimental.workflow import serialization
         manager = serialization.get_manager()
         paths, task = ray.get(
             manager.save_objectref.remote((obj_ref, ), self._workflow_id))
 
-        if task:
-            upload_tasks.append(task)
+        assert task
+        upload_tasks.append(task)
 
         return _load_object_ref, (paths, self)
 
@@ -627,8 +621,11 @@ def _load_object_ref(paths: List[str],
                      wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
-        return asyncio.get_event_loop().run_until_complete(
-            wf_storage._get(paths))
+        try:
+            return asyncio.get_event_loop().run_until_complete(
+                wf_storage._get(paths))
+        except Exception as e:
+            raise
 
     return load_ref.remote(paths, wf_storage)
 

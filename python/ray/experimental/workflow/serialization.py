@@ -36,18 +36,20 @@ class UploadState(Enum):
 @dataclass
 class Upload:
     state: UploadState
-    paths: ObjectRef[str]
+    identifier_ref: ObjectRef[str]
     upload_task: Optional[ray.ObjectRef]
 
 
 @ray.remote
-def _put_helper(paths: List[str], obj: Any,
+def _put_helper(identifier: str, obj: Any,
                 wf_storage: "workflow_storage.WorkflowStorage") -> None:
+    paths = wf_storage._key_obj_id(identifier)
     asyncio.get_event_loop().run_until_complete(wf_storage._put(paths, obj))
     return None
 
 
-class _Manager:
+@ray.remote(num_cpus=0)
+class Manager:
     """
     Responsible for deduping the serialization/upload of object references.
     """
@@ -64,13 +66,15 @@ class _Manager:
 
     async def save_objectref(
             self, ref_tuple: Tuple[ray.ObjectRef],
-            workflow_id: "str") -> Tuple[List[str], Optional[ray.ObjectRef]]:
+            workflow_id: "str") -> Tuple[List[str], ray.ObjectRef]:
         """
         Serialize and upload an object reference exactly once.
 
         Args:
             ref_tuple: A 1-element tuple which wraps the reference.
         """
+        wf_storage = workflow_storage.WorkflowStorage(
+            workflow_id, self.storage)
         ref, = ref_tuple
         # Use the hex as the key to avoid holding a reference to the object.
         key = ref.hex()
@@ -79,17 +83,14 @@ class _Manager:
             identifier_ref = calculate_identifier.remote(ref)
             self.uploads[key] = Upload(UploadState.IN_PROGRESS, identifier_ref,
                                        None)
-            identifier = await identifier_ref
-            wf_storage = workflow_storage.WorkflowStorage(
-                workflow_id, self.storage)
-            paths = wf_storage._key_obj_id(identifier)
             # TODO(Alex): We should probably eventually remove this upload_task
             # so the ref can be freed.
             self.uploads[key].upload_task = \
-                _put_helper.remote(paths, ref, wf_storage)
+                _put_helper.remote(identifier_ref, ref, wf_storage)
 
         info = self.uploads[key]
-        return ray.get(info.paths), info.upload_task
+        identifer = await info.identifier_ref
+        paths = wf_storage._key_obj_id(identifer)
+        return paths, info.upload_task
 
 
-Manager = ray.remote(num_cpus=0)(_Manager)
