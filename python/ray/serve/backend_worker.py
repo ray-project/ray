@@ -100,8 +100,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def reconfigure(self, user_config: Any) -> None:
             await self.backend.reconfigure(user_config)
 
-        async def drain_pending_queries(self):
-            return await self.backend.drain_pending_queries()
+        async def prepare_for_shutdown(self):
+            return await self.backend.prepare_for_shutdown()
 
         async def run_forever(self):
             while True:
@@ -294,7 +294,7 @@ class RayServeReplica:
         # Returns a small object for router to track request status.
         return b"", result
 
-    async def drain_pending_queries(self):
+    async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
 
         Trigger a graceful shutdown protocol that will wait for all the queued
@@ -312,3 +312,9 @@ class RayServeReplica:
                     f"Waiting for an additional {sleep_time}s to shut down "
                     f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
+
+        # Explicitly call the del method to trigger clean up.
+        # We set the del method to noop after succssifully calling it so the
+        # desctructor is called only once.
+        self.callable.__del__()
+        self.callable.__del__ = lambda _self: None

@@ -71,7 +71,7 @@ class ActorReplicaWrapper:
         self._backend_tag = backend_tag
 
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
         self._actor_resources = None
         self._health_check_ref = None
 
@@ -83,13 +83,13 @@ class ActorReplicaWrapper:
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_ready_obj_ref"]
-        del clean_dict["_drain_obj_ref"]
+        del clean_dict["_graceful_shutdown_ref"]
         return clean_dict
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -182,7 +182,7 @@ class ActorReplicaWrapper:
         """Request the actor to exit gracefully."""
         try:
             handle = ray.get_actor(self._actor_name)
-            self._drain_obj_ref = handle.drain_pending_queries.remote()
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
 
@@ -190,7 +190,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
+            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
             stopped = len(ready) == 1
             if stopped:
                 ray.kill(handle, no_restart=True)
