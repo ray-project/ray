@@ -109,6 +109,16 @@ ray::internal::ActorCreator<F> Actor(F create_func);
 template <typename T>
 boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
 
+/// Get a handle to a named actor of current job.
+/// Gets a handle to a named actor with the given name. The actor must have been created
+/// with name specified.
+///
+/// \param[in] actor_name The name of the named actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists or an
+/// empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
+
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
@@ -253,6 +263,11 @@ inline boost::optional<ActorHandle<T>> GetActorInternal(bool global,
 template <typename T>
 boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
   return GetActorInternal<T>(true, actor_name);
+}
+
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+  return GetActorInternal<T>(false, actor_name);
 }
 
 inline PlacementGroup CreatePlacementGroup(

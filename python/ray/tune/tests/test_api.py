@@ -1,11 +1,12 @@
 import pickle
 from collections import Counter
-import shutil
-import tempfile
 import copy
+import gym
 import numpy as np
 import os
+import shutil
 import sys
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -17,6 +18,7 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.callback import Callback
 from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
@@ -695,6 +697,51 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
+
+    # Test rerunning rllib trials with ERRORED_ONLY.
+    def testRerunRlLib(self):
+        class TestEnv(gym.Env):
+            counter = 0
+
+            def __init__(self, config):
+                self.observation_space = gym.spaces.Discrete(1)
+                self.action_space = gym.spaces.Discrete(1)
+                TestEnv.counter += 1
+
+            def reset(self):
+                return 0
+
+            def step(self, act):
+                return [0, 1, True, {}]
+
+        class FailureInjectionCallback(Callback):
+            def on_trial_start(self, trials, **info):
+                raise RuntimeError
+
+        with self.assertRaises(Exception):
+            tune.run(
+                "PPO",
+                config={
+                    "env": TestEnv,
+                    "framework": "torch",
+                    "num_workers": 0,
+                },
+                name="my_experiment",
+                callbacks=[FailureInjectionCallback()],
+                stop={"training_iteration": 1})
+        trials = tune.run(
+            "PPO",
+            config={
+                "env": TestEnv,
+                "framework": "torch",
+                "num_workers": 0,
+            },
+            name="my_experiment",
+            resume="ERRORED_ONLY",
+            stop={
+                "training_iteration": 1
+            }).trials
+        assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
