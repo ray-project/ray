@@ -23,9 +23,6 @@ from ray._raylet import connect_to_gcs
 # the agent has the necessary dependencies to be started.
 from ray.new_dashboard.optional_deps import aiohttp, hdrs
 
-# Currently, this is 2GiB, the max for a signed int.
-GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
-
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
@@ -42,8 +39,10 @@ async def make_gcs_grpc_channel(redis_client):
             logger.info("Connect to GCS at %s", gcs_address)
             options = (
                 ("grpc.enable_http_proxy", 0),
-                ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-                ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+                ("grpc.max_send_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+                ("grpc.max_receive_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
             )
             channel = aiogrpc.insecure_channel(gcs_address, options=options)
             return channel
