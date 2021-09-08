@@ -98,7 +98,8 @@ def _get_wheel_name(minor_version_number):
         ]
         assert len(matches) == 1, (
             f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*' instead of 1")
+            f"{minor_version_number}*-manylinux*' instead of 1.\n"
+            f"wheel matches: {matches}")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
@@ -137,7 +138,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+                    "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"

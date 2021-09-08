@@ -17,7 +17,7 @@ from ray._private.utils import binary_to_hex
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.new_dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
-from ray.test_utils import (
+from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,

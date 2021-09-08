@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker, LocalIterator
-from ray.test_utils import Semaphore
+from ray._private.test_utils import Semaphore
 
 
 def test_select_shards(ray_start_regular_shared):
