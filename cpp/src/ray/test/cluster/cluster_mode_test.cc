@@ -276,15 +276,42 @@ TEST(RayClusterModeTest, GetActorTest) {
   EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
 }
 
-TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
+ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
 
   ray::internal::PlacementGroupCreationOptions options{
       false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
-  auto first_placement_group = ray::CreatePlacementGroup(options);
-  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
+  return ray::CreatePlacementGroup(options);
+}
 
+TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
+  auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
   ray::RemovePlacementGroup(first_placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 1.0}})
+                    .SetPlacementGroup(placement_group, 0)
+                    .Remote();
+  auto r1 = actor1.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(*r1.Get(), 1);
+  ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, TaskWithPlacementGroup) {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+
+  auto r = ray::Task(Return1)
+               .SetResources({{"CPU", 1.0}})
+               .SetPlacementGroup(placement_group, 0)
+               .Remote();
+  EXPECT_EQ(*r.Get(), 1);
+  ray::RemovePlacementGroup(placement_group.GetID());
 }
 
 int main(int argc, char **argv) {
