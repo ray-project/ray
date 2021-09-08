@@ -159,8 +159,8 @@ def read_datasource(datasource: Datasource[T],
     # is particularly important when reading from e.g., remote storage.
     if "num_cpus" not in ray_remote_args:
         # Note that the too many workers warning triggers at 4x subscription,
-        # so we go at 0.3 to avoid the warning message.
-        ray_remote_args["num_cpus"] = 0.3
+        # so we go at 0.5 to avoid the warning message.
+        ray_remote_args["num_cpus"] = 0.5
     remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
