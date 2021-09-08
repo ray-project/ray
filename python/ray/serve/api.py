@@ -7,8 +7,8 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
-                    Type, Union, overload)
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
+                    overload)
 from weakref import WeakValueDictionary
 
 from fastapi import FastAPI, APIRouter
