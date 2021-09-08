@@ -2,7 +2,7 @@ Pygments==2.3.1
 setuptools==41.0.1
 docutils==0.15
 mock==1.0.1
-pillow==7.2.0
+pillow==8.3.2
 alabaster>=0.7,<0.8,!=0.7.5
 commonmark==0.8.1
 recommonmark==0.5.0
