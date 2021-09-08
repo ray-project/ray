@@ -67,25 +67,25 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_gpus"] = 0
-        config["buffer_size"] = 200
-        config["learning_starts"] = 100
-        config["train_batch_size"] = 100
-        config["rollout_fragment_length"] = 100
+        config["buffer_size"] = 100
+        config["learning_starts"] = 10
+        config["train_batch_size"] = 10
+        config["rollout_fragment_length"] = 5
         config["prioritized_replay"] = True
-        config["timesteps_per_iteration"] = 100
+        config["timesteps_per_iteration"] = 10
         # 0 metrics reporting delay, this makes sure timestep,
         # which lr depends on, is updated after each worker rollout.
         config["min_iter_time_s"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
-        # This makes sure learning schedule is checked every 50 timesteps.
-        config["optimizer"]["max_weight_sync_delay"] = 50
+        # This makes sure learning schedule is checked every 10 timesteps.
+        config["optimizer"]["max_weight_sync_delay"] = 10
         # Initial lr, doesn't really matter because of the schedule below.
         config["lr"] = 0.2
         lr_schedule = [
             [0, 0.2],
-            [1000, 0.1],
-            [2000, 0.01],
-            [3000, 0.001],
+            [50, 0.1],
+            [100, 0.01],
+            [150, 0.001],
         ]
         config["lr_schedule"] = lr_schedule
 
@@ -104,17 +104,17 @@ class TestApexDQN(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 10)  # 1000 timestep
+            lr = _step_n_times(trainer, 5)  # 50 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.1 here.
             self.assertLessEqual(lr, 0.15)
             self.assertGreaterEqual(lr, 0.05)
 
-            lr = _step_n_times(trainer, 10)  # 2000 timestep
+            lr = _step_n_times(trainer, 5)  # 100 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.01 here.
             self.assertLessEqual(lr, 0.02)
             self.assertGreaterEqual(lr, 0.005)
 
-            lr = _step_n_times(trainer, 10)  # 3000 timestep
+            lr = _step_n_times(trainer, 5)  # 150 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.001 here.
             self.assertLessEqual(lr, 0.002)
             self.assertGreaterEqual(lr, 0.0005)
