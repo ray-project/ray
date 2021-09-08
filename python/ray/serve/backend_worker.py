@@ -316,5 +316,9 @@ class RayServeReplica:
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after succssifully calling it so the
         # desctructor is called only once.
-        self.callable.__del__()
-        self.callable.__del__ = lambda _self: None
+        try:
+            self.callable.__del__()
+        except Exception:
+            logger.exception("Exception during graceful shutdown of replica.")
+        finally:
+            self.callable.__del__ = lambda _self: None
