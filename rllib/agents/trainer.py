@@ -1213,6 +1213,7 @@ class Trainer(Trainable):
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
@@ -1235,6 +1236,8 @@ class Trainer(Trainable):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to add the new policy also
+                to the evaluation WorkerSet.
 
         Returns:
             Policy: The newly added policy (the copy that got added to the
@@ -1256,7 +1259,7 @@ class Trainer(Trainable):
 
         # Run foreach_worker fn on all workers (incl. evaluation workers).
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
         # Return newly added policy (from the local rollout worker).
@@ -1718,7 +1721,7 @@ class Trainer(Trainable):
                     name,
                     lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
             else:
-                register_env(name, lambda config: env_object(config))
+                register_env(name, lambda cfg: env_object(cfg))
             return name
         elif env_object is None:
             return None

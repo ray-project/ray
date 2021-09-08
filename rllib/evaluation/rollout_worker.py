@@ -1,3 +1,4 @@
+import copy
 import gym
 import logging
 import platform
@@ -390,7 +391,11 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(
-            env_config or {}, worker_index, num_workers=num_workers)
+            env_config or {},
+            worker_index=worker_index,
+            vector_index=0,
+            num_workers=num_workers,
+        )
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
@@ -442,7 +447,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
-            self.env = env_creator(env_context)
+            self.env = env_creator(copy.deepcopy(self.env_context))
 
         if self.env is not None:
             # Validate environment (general validation function).
