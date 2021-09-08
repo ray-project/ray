@@ -3,8 +3,7 @@ import json
 import numpy as np
 import pytest
 
-import ray
-from ray.serve.utils import ServeEncoder, import_attr
+from ray.serve.utils import ServeEncoder
 
 
 def test_bytes_encoder():
@@ -22,27 +21,6 @@ def test_numpy_encoding():
     assert json.loads(json.dumps(floats, cls=ServeEncoder)) == data
     assert json.loads(json.dumps(ints, cls=ServeEncoder)) == data
     assert json.loads(json.dumps(uints, cls=ServeEncoder)) == data
-
-
-def test_import_attr():
-    assert (import_attr("ray.serve.BackendConfig") ==
-            ray.serve.config.BackendConfig)
-    assert (import_attr("ray.serve.config.BackendConfig") ==
-            ray.serve.config.BackendConfig)
-
-    policy_cls = import_attr("ray.serve.controller.TrafficPolicy")
-    assert policy_cls == ray.serve.controller.TrafficPolicy
-
-    policy = policy_cls({"endpoint1": 0.5, "endpoint2": 0.5})
-    with pytest.raises(ValueError):
-        policy.set_traffic_dict({"endpoint1": 0.5, "endpoint2": 0.6})
-    policy.set_traffic_dict({"endpoint1": 0.4, "endpoint2": 0.6})
-
-    print(repr(policy))
-
-    # Very meta...
-    import_attr_2 = import_attr("ray.serve.utils.import_attr")
-    assert import_attr_2 == import_attr
 
 
 if __name__ == "__main__":

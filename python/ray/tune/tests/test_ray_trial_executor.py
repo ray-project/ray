@@ -1,11 +1,12 @@
 # coding: utf-8
 import os
+import pytest
 import unittest
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune import Trainable
+from ray.tune import Trainable, TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import TRAINING_ITERATION
@@ -14,6 +15,43 @@ from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+
+
+class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "1"
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": 4,
+                "num_gpus": 2,
+            })
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+
+    # no autoscaler case, resource is not sufficient. Raise error.
+    def testRaiseErrorNoAutoscaler(self):
+        def train(config):
+            pass
+
+        with pytest.raises(TuneError) as cm:
+            tune.run(
+                train,
+                resources_per_trial={
+                    "cpu": 5,  # more than what the cluster can offer.
+                    "gpu": 3,
+                })
+        msg = ("You asked for 5.0 cpu and 3.0 gpu per trial, "
+               "but the cluster only has 4.0 cpu and 2.0 gpu. "
+               "Stop the tuning job and "
+               "adjust the resources requested per trial "
+               "(possibly via `resources_per_trial` "
+               "or via `num_workers` for rllib) "
+               "and/or add more resources to your Ray runtime.")
+        assert str(cm._excinfo[1]) == msg
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -357,9 +395,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         }
 
         if not available:
-            self.skipTest(f"Warning: Ray reported no available resources, "
-                          f"but this is an error on the Ray core side. "
-                          f"Skipping this test for now.")
+            self.skipTest("Warning: Ray reported no available resources, "
+                          "but this is an error on the Ray core side. "
+                          "Skipping this test for now.")
 
         self.assertDictEqual(
             available, {
@@ -421,6 +459,5 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

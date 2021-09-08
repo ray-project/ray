@@ -20,6 +20,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
+namespace core {
 
 struct WorkerThreadContext;
 
@@ -38,6 +39,8 @@ class WorkerContext {
   const PlacementGroupID &GetCurrentPlacementGroupId() const;
 
   bool ShouldCaptureChildTasksInPlacementGroup() const;
+
+  const std::string &GetCurrentSerializedRuntimeEnv() const;
 
   const std::unordered_map<std::string, std::string>
       &GetCurrentOverrideEnvironmentVariables() const;
@@ -95,6 +98,8 @@ class WorkerContext {
   PlacementGroupID current_actor_placement_group_id_;
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_;
+  // The JSON-serialized runtime env for the current actor or task.
+  std::string serialized_runtime_env_ = "{}";
   // The environment variable overrides for the current actor or task.
   std::unordered_map<std::string, std::string> override_environment_variables_;
   /// The id of the (main) thread that constructed this worker context.
@@ -107,4 +112,5 @@ class WorkerContext {
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
+}  // namespace core
 }  // namespace ray

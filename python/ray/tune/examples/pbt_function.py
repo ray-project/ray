@@ -79,16 +79,7 @@ def pbt_function(config, checkpoint_dir=None):
         )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
-    args, _ = parser.parse_known_args()
-    if args.smoke_test:
-        ray.init(num_cpus=2)  # force pausing to happen for test
-    else:
-        ray.init()
-
+def run_tune_pbt():
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
         perturbation_interval=4,
@@ -119,3 +110,26 @@ if __name__ == "__main__":
         })
 
     print("Best hyperparameters found were: ", analysis.best_config)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+    if args.smoke_test:
+        ray.init(num_cpus=2)  # force pausing to happen for test
+    else:
+        if args.server_address is not None:
+            ray.init(f"ray://{args.server_address}")
+        else:
+            ray.init()
+
+    run_tune_pbt()

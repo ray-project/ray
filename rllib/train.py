@@ -6,13 +6,14 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
+from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 try:
@@ -97,6 +98,12 @@ def create_parser(parser_creator=None):
         default="",
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
+    # This will override any framework setting found in a yaml file.
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "tfe", "torch"],
+        default=None,
+        help="The DL framework specifier.")
     parser.add_argument(
         "-v", action="store_true", help="Whether to use INFO level logging.")
     parser.add_argument(
@@ -105,14 +112,6 @@ def create_parser(parser_creator=None):
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
-    parser.add_argument(
-        "--torch",
-        action="store_true",
-        help="Whether to use PyTorch (instead of tf) as the DL framework.")
-    parser.add_argument(
-        "--eager",
-        action="store_true",
-        help="Whether to attempt to enable TF eager execution.")
     parser.add_argument(
         "--trace",
         action="store_true",
@@ -133,6 +132,17 @@ def create_parser(parser_creator=None):
         type=str,
         help="If specified, use config options from this file. Note that this "
         "overrides any trial-specific options set via flags above.")
+
+    # Obsolete: Use --framework=torch|tf2|tfe instead!
+    parser.add_argument(
+        "--torch",
+        action="store_true",
+        help="Whether to use PyTorch (instead of tf) as the DL framework.")
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+
     return parser
 
 
@@ -166,12 +176,24 @@ def run(args, parser):
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
-        if exp.get("config", {}).get("input") and \
-                not os.path.exists(exp["config"]["input"]):
+        input_ = exp.get("config", {}).get("input")
+        if input_ and input_ != "sampler":
+            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
-            exp["config"]["input"] = str(input_file)
+
+            def patch_path(path):
+                if os.path.exists(path):
+                    return path
+                else:
+                    abs_path = str(rllib_dir.absolute().joinpath(path))
+                    return abs_path if os.path.exists(abs_path) else path
+
+            abs_inputs = list(map(patch_path, inputs))
+            if not isinstance(input_, list):
+                abs_inputs = abs_inputs[0]
+
+            exp["config"]["input"] = abs_inputs
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
@@ -179,9 +201,13 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
 
         if args.torch:
+            deprecation_warning("--torch", "--framework=torch")
             exp["config"]["framework"] = "torch"
         elif args.eager:
+            deprecation_warning("--eager", "--framework=[tf2|tfe]")
             exp["config"]["framework"] = "tfe"
+        elif args.framework is not None:
+            exp["config"]["framework"] = args.framework
 
         if args.trace:
             if exp["config"]["framework"] not in ["tf2", "tfe"]:
@@ -196,6 +222,9 @@ def run(args, parser):
             verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
+        # Import this only here so that train.py also works with
+        # older versions (and user doesn't use `--ray-num-nodes`).
+        from ray.cluster_utils import Cluster
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
@@ -230,7 +259,11 @@ def run(args, parser):
     ray.shutdown()
 
 
-if __name__ == "__main__":
+def main():
     parser = create_parser()
     args = parser.parse_args()
     run(args, parser)
+
+
+if __name__ == "__main__":
+    main()

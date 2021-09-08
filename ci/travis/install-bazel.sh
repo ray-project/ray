@@ -55,12 +55,19 @@ else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
+  if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
+    "${target}" --user
+    # Add bazel to the path.
+    # shellcheck disable=SC2016
+    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+    # shellcheck disable=SC1090
+    source ~/.zshrc
+  elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
-    which bazel > /dev/null
   else
     "${target}" --user > /dev/null
   fi
+  which bazel
   rm -f "${target}"
 fi
 
@@ -81,9 +88,17 @@ if [ "${TRAVIS-}" = true ]; then
 fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
+  echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
+
+  # In Windows CI we want to use this to avoid long path issue
+  # https://docs.bazel.build/versions/main/windows.html#avoid-long-path-issues
+  if [ "${OSTYPE}" = msys ]; then
+    echo "startup --output_user_root=c:/tmp" >> ~/.bazelrc
+  fi
+
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -116,11 +131,20 @@ if [ "${CI-}" = true ]; then
 build --google_credentials="${translated_path}"
 EOF
   elif [ -n "${BUILDKITE-}" ]; then
-    echo "Using buildkite secret store to communicate with cache address"
 
+    if [ "${platform}" = "darwin" ]; then
+      echo "Using local disk cache on mac"
     cat <<EOF >> ~/.bazelrc
+build --disk_cache=/tmp/bazel-cache
+build --repository_cache=/tmp/bazel-repo-cache
+EOF
+    else
+      echo "Using buildkite secret store to communicate with cache address"
+      cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
+    fi
+
   else
     echo "Using remote build cache in read-only mode." 1>&2
     cat <<EOF >> ~/.bazelrc

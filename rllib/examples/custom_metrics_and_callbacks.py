@@ -18,7 +18,11 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=2000)
 
 
@@ -37,6 +41,7 @@ class MyCallbacks(DefaultCallbacks):
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
+                        policies: Dict[str, Policy],
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
         # Make sure this episode is ongoing.
         assert episode.length > 0, \
@@ -102,7 +107,7 @@ if __name__ == "__main__":
             "env": "CartPole-v0",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }).trials
@@ -117,7 +122,7 @@ if __name__ == "__main__":
     assert "callback_ok" in trials[0].last_result
 
     # Verify `on_learn_on_batch` custom metrics are there (per policy).
-    if args.torch:
+    if args.framework == "torch":
         info_custom_metrics = custom_metrics["default_policy"]
         print(info_custom_metrics)
         assert "sum_actions_in_train_batch" in info_custom_metrics

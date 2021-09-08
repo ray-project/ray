@@ -134,7 +134,7 @@ class SegmentTree:
             idx (int): The index to insert to. Must be in [0, `self.capacity`[
             val (float): The value to insert.
         """
-        assert 0 <= idx < self.capacity
+        assert 0 <= idx < self.capacity, f"idx={idx} capacity={self.capacity}"
 
         # Index of the leaf to insert into (always insert in "second half"
         # of the tree, the first half is reserved for already calculated
@@ -154,6 +154,13 @@ class SegmentTree:
     def __getitem__(self, idx: int) -> Any:
         assert 0 <= idx < self.capacity
         return self.value[idx + self.capacity]
+
+    def get_state(self):
+        return self.value
+
+    def set_state(self, state):
+        assert len(state) == self.capacity * 2
+        self.value = state
 
 
 class SumSegmentTree(SegmentTree):

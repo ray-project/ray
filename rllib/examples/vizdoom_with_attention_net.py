@@ -2,10 +2,17 @@ import argparse
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument(
     "--from-checkpoint",
     type=str,

@@ -27,7 +27,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
   }
@@ -50,7 +50,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
     auto iter = cluster_resource.find(node_id);
     ASSERT_TRUE(iter != cluster_resource.end());
-    ASSERT_EQ(iter->second.GetAvailableResources().GetResource(resource_name).ToDouble(),
+    ASSERT_EQ(iter->second.GetAvailableResources().GetResource(resource_name).Double(),
               resource_value);
   }
 

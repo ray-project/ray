@@ -1,3 +1,5 @@
+import os
+import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
 
 from ray.rllib.env import BaseEnv
@@ -7,6 +9,9 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -66,6 +71,7 @@ class DefaultCallbacks:
                         *,
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
@@ -75,6 +81,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
+            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
+                to policy objects. In single agent mode there will only be a
+                single "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -104,8 +113,9 @@ class DefaultCallbacks:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
-            policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
+                objects. In single agent mode there will only be a single
+                "default_policy".
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -139,7 +149,7 @@ class DefaultCallbacks:
             agent_id (str): Id of the current agent.
             policy_id (str): Id of the current policy for the agent.
             policies (dict): Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
+                agent mode there will only be a single "default_policy".
             postprocessed_batch (SampleBatch): The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
@@ -206,3 +216,174 @@ class DefaultCallbacks:
                 "trainer": trainer,
                 "result": result,
             })
+
+
+class MemoryTrackingCallbacks(DefaultCallbacks):
+    """MemoryTrackingCallbacks can be used to trace and track memory usage
+    in rollout workers.
+
+    The Memory Tracking Callbacks uses tracemalloc and psutil to track
+    python allocations during rollouts,
+    in training or evaluation.
+
+    The tracking data is logged to the custom_metrics of an episode and
+    can therefore be viewed in tensorboard
+    (or in WandB etc..)
+
+    Add MemoryTrackingCallbacks callback to the tune config
+    e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+
+    Note:
+        This class is meant for debugging and should not be used
+        in production code as tracemalloc incurs
+        a significant slowdown in execution speed.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Will track the top 10 lines where memory is allocated
+        tracemalloc.start(10)
+
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
+        snapshot = tracemalloc.take_snapshot()
+        top_stats = snapshot.statistics("lineno")
+
+        for stat in top_stats[:10]:
+            count = stat.count
+            size = stat.size
+
+            trace = str(stat.traceback)
+
+            episode.custom_metrics[f"tracemalloc/{trace}/size"] = size
+            episode.custom_metrics[f"tracemalloc/{trace}/count"] = count
+
+        process = psutil.Process(os.getpid())
+        worker_rss = process.memory_info().rss
+        worker_data = process.memory_info().data
+        worker_vms = process.memory_info().vms
+        episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
+        episode.custom_metrics["tracemalloc/worker/data"] = worker_data
+        episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
+
+
+class MultiCallbacks(DefaultCallbacks):
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
+
+    Example:
+
+        .. code-block:: python
+
+            'callbacks': MultiCallbacks([
+                MyCustomStatsCallbacks,
+                MyCustomVideoCallbacks,
+                MyCustomTraceCallbacks,
+                ....
+            ])
+    """
+
+    def __init__(self, callback_class_list):
+        super().__init__()
+        self._callback_class_list = callback_class_list
+
+        self._callback_list = []
+
+    def __call__(self, *args, **kwargs):
+        self._callback_list = [
+            callback_class() for callback_class in self._callback_class_list
+        ]
+
+        return self
+
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
+                         policies: Dict[PolicyID, Policy],
+                         episode: MultiAgentEpisode,
+                         env_index: Optional[int] = None,
+                         **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_start(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_episode_step(self,
+                        *,
+                        worker: "RolloutWorker",
+                        base_env: BaseEnv,
+                        policies: Optional[Dict[PolicyID, Policy]] = None,
+                        episode: MultiAgentEpisode,
+                        env_index: Optional[int] = None,
+                        **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_step(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_episode_end(
+                worker=worker,
+                base_env=base_env,
+                policies=policies,
+                episode=episode,
+                env_index=env_index,
+                **kwargs)
+
+    def on_postprocess_trajectory(
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            agent_id: AgentID, policy_id: PolicyID,
+            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_postprocess_trajectory(
+                worker=worker,
+                episode=episode,
+                agent_id=agent_id,
+                policy_id=policy_id,
+                policies=policies,
+                postprocessed_batch=postprocessed_batch,
+                original_batches=original_batches,
+                **kwargs)
+
+    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
+                      **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_sample_end(worker=worker, samples=samples, **kwargs)
+
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          result: dict, **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_learn_on_batch(
+                policy=policy,
+                train_batch=train_batch,
+                result=result,
+                **kwargs)
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_train_result(trainer=trainer, result=result, **kwargs)

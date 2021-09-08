@@ -7,7 +7,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
@@ -26,8 +26,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-# Deprecated class: Use a child class of `SampleCollector` instead.
-@PublicAPI
+@Deprecated(new="a child class of `SampleCollector`", error=False)
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
@@ -37,16 +36,10 @@ class SampleBatchBuilder:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    @PublicAPI
     def __init__(self):
-        deprecation_warning(
-            old="SampleBatchBuilder",
-            new="child class of `SampleCollector`",
-            error=False)
         self.buffers: Dict[str, List] = collections.defaultdict(list)
         self.count = 0
 
-    @PublicAPI
     def add_values(self, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch."""
 
@@ -54,7 +47,6 @@ class SampleBatchBuilder:
             self.buffers[k].append(v)
         self.count += 1
 
-    @PublicAPI
     def add_batch(self, batch: SampleBatch) -> None:
         """Add the given batch of values to this batch."""
 
@@ -62,7 +54,6 @@ class SampleBatchBuilder:
             self.buffers[k].extend(column)
         self.count += batch.count
 
-    @PublicAPI
     def build_and_reset(self) -> SampleBatch:
         """Returns a sample batch including all previously added values."""
 
@@ -100,7 +91,9 @@ class MultiAgentSampleBatchBuilder:
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
-        deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
+        if log_once("MultiAgentSampleBatchBuilder"):
+            deprecation_warning(
+                old="MultiAgentSampleBatchBuilder", error=False)
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.
@@ -202,8 +195,7 @@ class MultiAgentSampleBatchBuilder:
             post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id],
-                    getattr(policy, "_sess", None))
+                    policy, post_batches[agent_id], policy.get_session())
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 

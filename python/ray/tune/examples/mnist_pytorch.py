@@ -80,10 +80,14 @@ def get_data_loaders():
                 transform=mnist_transforms),
             batch_size=64,
             shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST("~/data", train=False, transform=mnist_transforms),
-        batch_size=64,
-        shuffle=True)
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data",
+                train=False,
+                download=True,
+                transform=mnist_transforms),
+            batch_size=64,
+            shuffle=True)
     return train_loader, test_loader
 
 
@@ -115,8 +119,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.")
-    args = parser.parse_args()
-    if args.ray_address:
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    elif args.ray_address:
         ray.init(address=args.ray_address)
     else:
         ray.init(num_cpus=2 if args.smoke_test else None)

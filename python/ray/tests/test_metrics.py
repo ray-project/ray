@@ -7,8 +7,8 @@ import ray
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.test_utils import (RayTestTimeoutException,
-                            wait_until_succeeded_without_exception)
+from ray._private.test_utils import (RayTestTimeoutException,
+                                     wait_until_succeeded_without_exception)
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -46,7 +46,7 @@ def test_worker_stats(shutdown_only):
 
     @ray.remote
     def f():
-        ray.show_in_dashboard("test")
+        ray.worker.show_in_dashboard("test")
         return os.getpid()
 
     @ray.remote
@@ -55,7 +55,7 @@ def test_worker_stats(shutdown_only):
             pass
 
         def f(self):
-            ray.show_in_dashboard("test")
+            ray.worker.show_in_dashboard("test")
             return os.getpid()
 
     # Test show_in_dashboard for remote functions.

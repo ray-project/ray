@@ -22,14 +22,17 @@ from ray.tune.result import (
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 
 
+@PublicAPI
 class Trainable:
     """Abstract class for trainable models, functions, etc.
 
@@ -73,6 +76,8 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
+        disable_ipython()
+
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
@@ -93,6 +98,8 @@ class Trainable:
         self._iterations_since_restore = 0
         self._restored = False
         self._trial_info = trial_info
+        self._stdout_file = stdout_file
+        self._stderr_file = stderr_file
 
         start_time = time.time()
         self.setup(copy.deepcopy(self.config))
@@ -313,7 +320,7 @@ class Trainable:
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
-        Subclasses should override ``_save()`` instead to save state.
+        Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
         Args:
@@ -490,6 +497,28 @@ class Trainable:
         """
         return False
 
+    def _update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Internal version of ``update_resources``."""
+        self._trial_info.trial_resources = new_resources
+        return self.update_resources(new_resources)
+
+    def update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Fires whenever Trainable resources are changed.
+
+        This method will be called before the checkpoint is loaded.
+
+        The current trial resources can also be obtained through
+        ``self.trial_resources``.
+
+        Args:
+            new_resources (PlacementGroupFactory|Resources):
+                Updated resources. Will be a PlacementGroupFactory if
+                trial uses placement groups and Resources otherwise.
+        """
+        return
+
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
 
@@ -609,6 +638,21 @@ class Trainable:
             return "default"
 
     @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        """Resources currently assigned to the trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_resources = self.trial_resources
+        """
+        if self._trial_info:
+            return self._trial_info.trial_resources
+        else:
+            return "default"
+
+    @property
     def iteration(self):
         """Current training iteration.
 
@@ -647,19 +691,10 @@ class Trainable:
             A dict that describes training progress.
 
         """
-        result = self._train()
-
-        if self._is_overridden("_train") and log_once("_train"):
+        if self._implements_method("_train") and log_once("_train"):
             logger.warning(
-                "Trainable._train is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.step instead.")
-        return result
-
-    def _train(self):
-        """This method is deprecated. Override 'Trainable.step' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._train is deprecated and is now removed. Override "
+                "Trainable.step instead.")
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -698,20 +733,10 @@ class Trainable:
             >>> trainable.save_checkpoint("/tmp/bad_example")
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
-        checkpoint = self._save(tmp_checkpoint_dir)
-
-        if self._is_overridden("_save") and log_once("_save"):
+        if self._implements_method("_save") and log_once("_save"):
             logger.warning(
-                "Trainable._save is deprecated and will be removed in a "
-                "future version of Ray. Override "
+                "Trainable._save is deprecated and is now removed. Override "
                 "Trainable.save_checkpoint instead.")
-        return checkpoint
-
-    def _save(self, tmp_checkpoint_dir):
-        """This method is deprecated. Override 'save_checkpoint' instead.
-
-        .. versionchanged:: 0.8.7
-        """
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint):
@@ -757,18 +782,10 @@ class Trainable:
                 returned by `save_checkpoint`. The directory structure
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
-        self._restore(checkpoint)
-        if self._is_overridden("_restore") and log_once("_restore"):
+        if self._implements_method("_restore") and log_once("_restore"):
             logger.warning(
-                "Trainable._restore is deprecated and will be removed in a "
-                "future version of Ray. Override Trainable.load_checkpoint "
-                "instead.")
-
-    def _restore(self, checkpoint):
-        """This method is deprecated. Override 'load_checkpoint' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._restore is deprecated and is now removed. "
+                "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
 
     def setup(self, config):
@@ -781,17 +798,10 @@ class Trainable:
                 Copy of `self.config`.
 
         """
-        self._setup(config)
-        if self._is_overridden("_setup") and log_once("_setup"):
+        if self._implements_method("_setup") and log_once("_setup"):
             logger.warning(
-                "Trainable._setup is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.setup instead.")
-
-    def _setup(self, config):
-        """This method is deprecated. Override 'setup' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._setup is deprecated and is now removed. Override "
+                "Trainable.setup instead.")
         pass
 
     def log_result(self, result):
@@ -806,18 +816,10 @@ class Trainable:
         Args:
             result (dict): Training result returned by step().
         """
-        self._log_result(result)
-        if self._is_overridden("_log_result") and log_once("_log_result"):
+        if self._implements_method("_log_result") and log_once("_log_result"):
             logger.warning(
-                "Trainable._log_result is deprecated and will be removed in "
-                "a future version of Ray. Override "
-                "Trainable.log_result instead.")
-
-    def _log_result(self, result):
-        """This method is deprecated. Override 'log_result' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._log_result is deprecated and is now removed. "
+                "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -831,17 +833,10 @@ class Trainable:
 
         .. versionadded:: 0.8.7
         """
-        self._stop()
-        if self._is_overridden("_stop") and log_once("trainable.cleanup"):
+        if self._implements_method("_stop") and log_once("_stop"):
             logger.warning(
-                "Trainable._stop is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.cleanup instead.")
-
-    def _stop(self):
-        """This method is deprecated. Override 'cleanup' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._stop is deprecated and is now removed. Override "
+                "Trainable.cleanup instead.")
         pass
 
     def _export_model(self, export_formats, export_dir):
@@ -856,5 +851,25 @@ class Trainable:
         """
         return {}
 
-    def _is_overridden(self, key):
-        return getattr(self, key).__code__ != getattr(Trainable, key).__code__
+    def _implements_method(self, key):
+        return hasattr(self, key) and callable(getattr(self, key))
+
+
+@PublicAPI
+class DistributedTrainable(Trainable):
+    """Common Trainable class for distributed training."""
+
+    def build_config(self, config: Dict):
+        """Builds config for distributed training.
+
+        Builds a deep copy of the input config and populates it with
+        metadata from this Trainable.
+
+        Useful for passing this Trainable's configs to each distributed
+        Trainable instance.
+        """
+        new_config = copy.deepcopy(config)
+        new_config[TRIAL_INFO] = self._trial_info
+        new_config[STDOUT_FILE] = self._stdout_file
+        new_config[STDERR_FILE] = self._stderr_file
+        return new_config

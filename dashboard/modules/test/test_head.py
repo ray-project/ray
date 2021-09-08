@@ -93,5 +93,11 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="OK", value=value, timestamp=time.time())
 
+    @routes.get("/test/file")
+    async def test_file(self, req) -> aiohttp.web.FileResponse:
+        file_path = req.query.get("path")
+        logger.info("test file: %s", file_path)
+        return aiohttp.web.FileResponse(file_path)
+
     async def run(self, server):
         pass

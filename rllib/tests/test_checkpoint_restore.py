@@ -57,17 +57,27 @@ CONFIGS = {
         "train_batch_size": 1000,
         "num_workers": 2,
     },
+    "SimpleQ": {
+        "explore": False,
+    },
     "SAC": {
         "explore": False,
     },
 }
 
 
-def ckpt_restore_test(alg_name, tfe=False):
-    config = CONFIGS[alg_name]
+def ckpt_restore_test(alg_name,
+                      tfe=False,
+                      object_store=False,
+                      replay_buffer=False):
+    config = CONFIGS[alg_name].copy()
+    # If required, store replay buffer data in checkpoints as well.
+    if replay_buffer:
+        config["store_buffer_in_checkpoints"] = True
+
     frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
-        for use_object_store in [False, True]:
+        for use_object_store in ([False, True] if object_store else [False]):
             print("use_object_store={}".format(use_object_store))
             cls = get_trainer_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
@@ -107,6 +117,14 @@ def ckpt_restore_test(alg_name, tfe=False):
                             list(s2_["state"].values()),
                             list(optim_state[i]["state"].values()))
 
+            # Compare buffer content with restored one.
+            if replay_buffer:
+                data = alg1.local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[42:42 + 42]
+                new_data = alg2.local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[42:42 + 42]
+                check(data, new_data)
+
             for _ in range(1):
                 if "DDPG" in alg_name or "SAC" in alg_name:
                     obs = np.clip(
@@ -129,10 +147,10 @@ def ckpt_restore_test(alg_name, tfe=False):
             alg2.stop()
 
 
-class TestCheckpointRestore(unittest.TestCase):
+class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=10, object_store_memory=1e9)
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls):
@@ -141,29 +159,58 @@ class TestCheckpointRestore(unittest.TestCase):
     def test_a3c_checkpoint_restore(self):
         ckpt_restore_test("A3C")
 
+    def test_ppo_checkpoint_restore(self):
+        ckpt_restore_test("PPO", object_store=True)
+
+
+class TestCheckpointRestoreOffPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_apex_ddpg_checkpoint_restore(self):
         ckpt_restore_test("APEX_DDPG")
+
+    def test_ddpg_checkpoint_restore(self):
+        ckpt_restore_test("DDPG", replay_buffer=True)
+
+    def test_dqn_checkpoint_restore(self):
+        ckpt_restore_test("DQN", object_store=True, replay_buffer=True)
+
+    def test_sac_checkpoint_restore(self):
+        ckpt_restore_test("SAC", replay_buffer=True)
+
+    def test_simpleq_checkpoint_restore(self):
+        ckpt_restore_test("SimpleQ", replay_buffer=True)
+
+
+class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
 
     def test_ars_checkpoint_restore(self):
         ckpt_restore_test("ARS")
 
-    def test_ddpg_checkpoint_restore(self):
-        ckpt_restore_test("DDPG")
-
-    def test_dqn_checkpoint_restore(self):
-        ckpt_restore_test("DQN")
-
     def test_es_checkpoint_restore(self):
         ckpt_restore_test("ES")
-
-    def test_ppo_checkpoint_restore(self):
-        ckpt_restore_test("PPO")
-
-    def test_sac_checkpoint_restore(self):
-        ckpt_restore_test("SAC")
 
 
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

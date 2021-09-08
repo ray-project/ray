@@ -12,7 +12,11 @@ from ray.rllib.examples.env.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--tf", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=200)
 
 
@@ -57,11 +61,11 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
                     None, IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE, {}),
             },
-            "policy_mapping_fn": lambda agent_id: agent_id,
+            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
         },
         "seed": tune.grid_search(seeds),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "tf" if tf else "torch",
+        "framework": args.framework,
     }
 
     return rllib_config, stop_config

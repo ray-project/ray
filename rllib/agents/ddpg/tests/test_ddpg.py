@@ -32,6 +32,7 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
+        config["seed"] = 42
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
         config["learning_starts"] = 0
@@ -84,16 +85,16 @@ class TestDDPG(unittest.TestCase):
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_action(obs, explore=False)
+            a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             for i in range(50):
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 self.assertEqual(trainer.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for i in range(50):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
                 self.assertEqual(trainer.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
@@ -109,25 +110,27 @@ class TestDDPG(unittest.TestCase):
             }
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_action(obs, explore=False)
+            deterministic_action = trainer.compute_single_action(
+                obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             # ts=1-49 (in random window).
             random_a = []
             for i in range(1, 50):
-                random_a.append(trainer.compute_action(obs, explore=True))
+                random_a.append(
+                    trainer.compute_single_action(obs, explore=True))
                 self.assertEqual(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 50 (a=deterministic_action + scale * N[0,1])
             for i in range(50):
-                a = trainer.compute_action(obs, explore=True)
+                a = trainer.compute_single_action(obs, explore=True)
                 self.assertEqual(trainer.get_policy().global_timestep, i + 51)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 50 (BUT: explore=False -> expect deterministic action).
             for i in range(50):
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 self.assertEqual(trainer.get_policy().global_timestep, i + 101)
                 check(a, deterministic_action)
             trainer.stop()
@@ -286,7 +289,7 @@ class TestDDPG(unittest.TestCase):
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
                 c, a, t = policy.critic_loss, policy.actor_loss, \
-                    policy.td_error
+                    policy.model.td_error
                 # Check pure loss values.
                 check(c, expect_c)
                 check(a, expect_a)
@@ -361,7 +364,7 @@ class TestDDPG(unittest.TestCase):
             prev_fw_loss = (c, a, t)
 
             # Update weights from our batch (n times).
-            for update_iteration in range(10):
+            for update_iteration in range(6):
                 print("train iteration {}".format(update_iteration))
                 if fw == "tf":
                     in_ = self._get_batch_helper(obs_size, actions, batch_size)
@@ -414,7 +417,7 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -422,7 +425,7 @@ class TestDDPG(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.ones(shape=(batch_size, )),
-        }
+        })
 
     def _ddpg_loss_helper(self, train_batch, weights, ks, fw, gamma,
                           huber_threshold, l2_reg, sess):
@@ -544,8 +547,10 @@ class TestDDPG(unittest.TestCase):
             for k, v in weights_dict.items() if re.search(
                 "default_policy/(actor_(hidden_0|out)|sequential(_1)?)/", k)
         }
-        model_dict["low_action"] = convert_to_torch_tensor(np.array([0.0]))
-        model_dict["action_range"] = convert_to_torch_tensor(np.array([1.0]))
+        model_dict["policy_model.action_out_squashed.low_action"] = \
+            convert_to_torch_tensor(np.array([0.0]))
+        model_dict["policy_model.action_out_squashed.action_range"] = \
+            convert_to_torch_tensor(np.array([1.0]))
         return model_dict
 
 

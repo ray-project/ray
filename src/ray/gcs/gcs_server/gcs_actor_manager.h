@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -45,7 +46,7 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -65,6 +66,26 @@ class GcsActor {
 
     actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+
+    actor_table_data_.set_ray_namespace(ray_namespace);
+
+    const auto &function_descriptor = task_spec.function_descriptor();
+    switch (function_descriptor.function_descriptor_case()) {
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.java_function_descriptor().class_name());
+      break;
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kPythonFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.python_function_descriptor().class_name());
+      break;
+    default:
+      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // easy equivalent to class_name for.
+      break;
+    }
+
+    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -94,6 +115,8 @@ class GcsActor {
   bool IsDetached() const;
   /// Get the name of this actor.
   std::string GetName() const;
+  /// Get the namespace of this actor.
+  std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
@@ -164,8 +187,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -185,6 +211,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -220,7 +250,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
-  ActorID GetActorIDByName(const std::string &name);
+  ActorID GetActorIDByName(const std::string &name,
+                           const std::string &ray_namespace) const;
+
+  /// Get names of named actors.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -382,6 +421,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    // Acotr's namespace and name are used for removing cached name when it's dead.
+    if (!actor.ray_namespace().empty()) {
+      actor_delta->set_ray_namespace(actor.ray_namespace());
+    }
+    if (!actor.name().empty()) {
+      actor_delta->set_name(actor.name());
+    }
     return actor_delta;
   }
 
@@ -410,8 +456,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// The actors are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
   std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_list_;
-  /// Maps actor names to their actor ID for lookups by name.
-  absl::flat_hash_map<std::string, ActorID> named_actors_;
+  /// Maps actor names to their actor ID for lookups by name, first keyed by their
+  /// namespace.
+  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, ActorID>>
+      named_actors_;
   /// The actors which dependencies have not been resolved.
   /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
   /// The actor whose dependencies are not resolved should be destroyed once it creator
@@ -441,6 +489,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
+  /// A callback to get the namespace an actor belongs to based on its job id. This is
+  /// necessary for actor creation.
+  std::function<std::string(const JobID &)> get_ray_namespace_;
+  RuntimeEnvManager &runtime_env_manager_;
+  /// Run a function on a delay. This is useful for guaranteeing data will be
+  /// accessible for a minimum amount of time.
+  std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+      run_delayed_;
+  const boost::posix_time::milliseconds actor_gc_delay_;
 
   // Debug info.
   enum CountType {
@@ -450,7 +507,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     KILL_ACTOR_REQUEST = 5,
-    CountType_MAX = 6,
+    LIST_NAMED_ACTORS_REQUEST = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

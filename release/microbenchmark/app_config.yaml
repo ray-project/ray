@@ -1,0 +1,11 @@
+base_image: "anyscale/ray:1.5.0-py37"
+env_vars: {}
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}

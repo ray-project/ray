@@ -568,6 +568,18 @@ pid_t GetParentPID() { return getppid(); }
 
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
+bool IsProcessAlive(pid_t pid) {
+#ifdef _WIN32
+  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  return false;
+#else
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  return true;
+#endif
+}
+
 }  // namespace ray
 
 namespace std {

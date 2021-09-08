@@ -19,7 +19,8 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -34,6 +35,16 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
+    # Experimental flag.
+    # If True, try to use a native (tf.keras.Model or torch.Module) default
+    # model instead of our built-in ModelV2 defaults.
+    # If False (default), use "classic" ModelV2 default models.
+    # Note that this currently only works for:
+    # 1) framework != torch AND
+    # 2) fully connected and CNN default networks as well as
+    # auto-wrapped LSTM- and attention nets.
+    "_use_default_native_models": False,
+
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
     # These are used if no custom model is specified and the input space is 1D.
@@ -120,17 +131,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
-    # Which framestacking size to use for Atari envs.
-    # "auto": Use a value of 4, but only if the env is an Atari env.
-    # > 1: Use the trajectory view API in the default VisionNets to request the
-    #      last n observations (single, grayscaled 84x84 image frames) as
-    #      inputs. The time axis in the so provided observation tensors
-    #      will come right after the batch axis (channels first format),
-    #      e.g. BxTx84x84, where T=num_framestacks.
-    # 0 or 1: No framestacking used.
-    # Use the deprecated `framestack=True`, to disable the above behavor and to
-    # enable legacy stacking behavior (w/o trajectory view API) instead.
-    "num_framestacks": "auto",
+    # Set to True to enable 4x stacking behavior.
+    "framestack": True,
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -155,8 +157,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
-    # Use `num_framestacks` (int) instead.
-    "framestack": True,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -230,8 +230,6 @@ class ModelCatalog:
             if action_space.dtype.name.startswith("int"):
                 low_ = np.min(action_space.low)
                 high_ = np.max(action_space.high)
-                assert np.all(action_space.low == low_)
-                assert np.all(action_space.high == high_)
                 dist_cls = TorchMultiCategorical if framework == "torch" \
                     else MultiCategorical
                 num_cats = int(np.product(action_space.shape))
@@ -392,10 +390,13 @@ class ModelCatalog:
                 model_cls = _global_registry.get(RLLIB_MODEL,
                                                  model_config["custom_model"])
 
+            # Only allow ModelV2 or native keras Models.
             if not issubclass(model_cls, ModelV2):
-                raise ValueError(
-                    "`model_cls` must be a ModelV2 sub-class, but is"
-                    " {}!".format(model_cls))
+                if framework not in ["tf", "tf2", "tfe"] or \
+                        not issubclass(model_cls, tf.keras.Model):
+                    raise ValueError(
+                        "`model_cls` must be a ModelV2 sub-class, but is"
+                        " {}!".format(model_cls))
 
             logger.info("Wrapping {} as {}".format(model_cls, model_interface))
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
@@ -406,15 +407,26 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or \
                         model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import \
-                        AttentionWrapper
-                    from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+                        AttentionWrapper, Keras_AttentionWrapper
+                    from ray.rllib.models.tf.recurrent_net import \
+                        LSTMWrapper, Keras_LSTMWrapper
 
                     wrapped_cls = model_cls
-                    forward = wrapped_cls.forward
-                    model_cls = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper
-                        if model_config.get("use_lstm") else AttentionWrapper)
-                    model_cls._wrapped_forward = forward
+                    # Wrapped (custom) model is itself a keras Model ->
+                    # wrap with keras LSTM/GTrXL (attention) wrappers.
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        model_cls = Keras_LSTMWrapper if \
+                            model_config.get("use_lstm") else \
+                            Keras_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    # Wrapped (custom) model is ModelV2 ->
+                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
+                    else:
+                        forward = wrapped_cls.forward
+                        model_cls = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, LSTMWrapper if
+                            model_config.get("use_lstm") else AttentionWrapper)
+                        model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -427,30 +439,51 @@ class ModelCatalog:
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
-                    # Try calling with kwargs first (custom ModelV2 should
-                    # accept these as kwargs, not get them from
-                    # config["custom_model_config"] anymore).
-                    try:
-                        instance = model_cls(obs_space, action_space,
-                                             num_outputs, model_config, name,
-                                             **customized_model_kwargs)
-                    except TypeError as e:
-                        # Keyword error: Try old way w/o kwargs.
-                        if "__init__() got an unexpected " in e.args[0]:
-                            instance = model_cls(obs_space, action_space,
-                                                 num_outputs, model_config,
-                                                 name, **model_kwargs)
-                            logger.warning(
-                                "Custom ModelV2 should accept all custom "
-                                "options as **kwargs, instead of expecting"
-                                " them in config['custom_model_config']!")
-                        # Other error -> re-raise.
-                        else:
-                            raise e
+                    if issubclass(model_cls, tf.keras.Model):
+                        instance = model_cls(
+                            input_space=obs_space,
+                            action_space=action_space,
+                            num_outputs=num_outputs,
+                            name=name,
+                            **customized_model_kwargs,
+                        )
+                    else:
+                        # Try calling with kwargs first (custom ModelV2 should
+                        # accept these as kwargs, not get them from
+                        # config["custom_model_config"] anymore).
+                        try:
+                            instance = model_cls(
+                                obs_space,
+                                action_space,
+                                num_outputs,
+                                model_config,
+                                name,
+                                **customized_model_kwargs,
+                            )
+                        except TypeError as e:
+                            # Keyword error: Try old way w/o kwargs.
+                            if "__init__() got an unexpected " in e.args[0]:
+                                instance = model_cls(
+                                    obs_space,
+                                    action_space,
+                                    num_outputs,
+                                    model_config,
+                                    name,
+                                    **model_kwargs,
+                                )
+                                logger.warning(
+                                    "Custom ModelV2 should accept all custom "
+                                    "options as **kwargs, instead of expecting"
+                                    " them in config['custom_model_config']!")
+                            # Other error -> re-raise.
+                            else:
+                                raise e
 
                 # User still registered TFModelV2's variables: Check, whether
                 # ok.
-                registered = set(instance.var_list)
+                registered = []
+                if not isinstance(instance, tf.keras.Model):
+                    registered = set(instance.var_list)
                 if len(registered) > 0:
                     not_registered = set()
                     for var in created:
@@ -528,22 +561,41 @@ class ModelCatalog:
                     model_config.get("use_attention"):
 
                 from ray.rllib.models.tf.attention_net import \
-                    AttentionWrapper
-                from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+                    AttentionWrapper, Keras_AttentionWrapper
+                from ray.rllib.models.tf.recurrent_net import LSTMWrapper, \
+                    Keras_LSTMWrapper
 
                 wrapped_cls = v2_class
-                forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper)
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        v2_class = Keras_LSTMWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, LSTMWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, AttentionWrapper)
-
-                v2_class._wrapped_forward = forward
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        v2_class = Keras_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, AttentionWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+
+            if issubclass(wrapper, tf.keras.Model):
+                model = wrapper(
+                    input_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    name=name,
+                    **dict(model_kwargs, **model_config),
+                )
+                return model
+
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
 
@@ -673,6 +725,9 @@ class ModelCatalog:
             model_name (str): Name to register the model under.
             model_class (type): Python class of the model.
         """
+        if tf is not None:
+            if issubclass(model_class, tf.keras.Model):
+                deprecation_warning(old="register_custom_model", error=False)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod
@@ -693,10 +748,10 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls: type, model_interface: type) -> type:
-        assert issubclass(model_cls, ModelV2), model_cls
-
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
+
+        assert issubclass(model_cls, ModelV2), model_cls
 
         class wrapper(model_interface, model_cls):
             pass
@@ -714,12 +769,16 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
+        Keras_FCNet = None
+        Keras_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
-                FullyConnectedNetwork as FCNet
+                FullyConnectedNetwork as FCNet, \
+                Keras_FullyConnectedNetwork as Keras_FCNet
             from ray.rllib.models.tf.visionnet import \
-                VisionNetwork as VisionNet
+                VisionNetwork as VisionNet, \
+                Keras_VisionNetwork as Keras_VisionNet
             from ray.rllib.models.tf.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "torch":
@@ -737,10 +796,6 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
-        # disabled.
-        num_framestacks = model_config.get("num_framestacks", "auto")
-
         # Tuple space, where at least one sub-space is image.
         # -> Complex input model.
         space_to_check = input_space if not hasattr(
@@ -751,17 +806,23 @@ class ModelCatalog:
                           for s in space_to_check.spaces)):
             return ComplexNet
 
-        # Single, flattenable/one-hot-abe space -> Simple FCNet.
+        # Single, flattenable/one-hot-able space -> Simple FCNet.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
-                len(input_space.shape) == 2 and (
-                num_framestacks == "auto" or num_framestacks <= 1)):
-            return FCNet
+                len(input_space.shape) == 2):
+            # Keras native requested AND no auto-rnn-wrapping.
+            if model_config.get("_use_default_native_models") and Keras_FCNet:
+                return Keras_FCNet
+            # Classic ModelV2 FCNet.
+            else:
+                return FCNet
 
         elif framework == "jax":
             raise NotImplementedError("No non-FC default net for JAX yet!")
 
         # Last resort: Conv2D stack for single image spaces.
+        if model_config.get("_use_default_native_models") and Keras_VisionNet:
+            return Keras_VisionNet
         return VisionNet
 
     @staticmethod
@@ -809,10 +870,3 @@ class ModelCatalog:
             elif config.get("use_lstm"):
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
-
-        if config.get("framestack") != DEPRECATED_VALUE:
-            # deprecation_warning(
-            #     old="framestack", new="num_framestacks (int)", error=False)
-            # If old behavior is desired, disable traj. view-style
-            # framestacking.
-            config["num_framestacks"] = 0

@@ -14,13 +14,17 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
+namespace core {
 
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
@@ -38,9 +42,11 @@ class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(),
-            /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
+        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        reference_counter_(std::shared_ptr<ReferenceCounter>(
+            new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
+                                 lineage_pinning_enabled))),
         manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
@@ -49,9 +55,14 @@ class TaskManagerTest : public ::testing::Test {
                  [this](const NodeID &node_id) { return all_nodes_alive_; },
                  [this](const ObjectID &object_id) {
                    objects_to_recover_.push_back(object_id);
-                 }) {}
+                 },
+                 [](const JobID &job_id, const std::string &type,
+                    const std::string &error_message,
+                    double timestamp) { return Status::OK(); }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
+  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
+  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   bool all_nodes_alive_ = true;
   std::vector<ObjectID> objects_to_recover_;
@@ -516,6 +527,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(num_retries_, 1);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

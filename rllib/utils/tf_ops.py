@@ -4,6 +4,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorStructType, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -37,6 +38,24 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+def get_gpu_devices():
+    """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
+
+    Supports both tf1.x and tf2.x.
+    """
+    if tfv == 1:
+        from tensorflow.python.client import device_lib
+        devices = device_lib.list_local_devices()
+    else:
+        try:
+            devices = tf.config.list_physical_devices()
+        except Exception:
+            devices = tf.config.experimental.list_physical_devices()
+
+    # Expect "GPU", but also stuff like: "XLA_GPU".
+    return [d.name for d in devices if "GPU" in d.device_type]
+
+
 def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
     from ray.rllib.models.catalog import ModelCatalog
 
@@ -60,11 +79,61 @@ def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
         )
 
 
+def get_tf_eager_cls_if_necessary(orig_cls, config):
+    cls = orig_cls
+    framework = config.get("framework", "tf")
+    if framework in ["tf2", "tf", "tfe"]:
+        if not tf1:
+            raise ImportError("Could not import tensorflow!")
+        if framework in ["tf2", "tfe"]:
+            assert tf1.executing_eagerly()
+
+            from ray.rllib.policy.tf_policy import TFPolicy
+
+            # Create eager-class.
+            if hasattr(orig_cls, "as_eager"):
+                cls = orig_cls.as_eager()
+                if config.get("eager_tracing"):
+                    cls = cls.with_tracing()
+            # Could be some other type of policy.
+            elif not issubclass(orig_cls, TFPolicy):
+                pass
+            else:
+                raise ValueError("This policy does not support eager "
+                                 "execution: {}".format(orig_cls))
+    return cls
+
+
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(
         tf.abs(x) < delta,
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
+    """Helper function useful for returning dummy logp's (0) for some actions.
+
+    Args:
+        actions (TensorStructType): The input actions. This can be any struct
+            of complex action components or a simple tensor of different
+            dimensions, e.g. [B], [B, 2], or {"a": [B, 4, 5], "b": [B]}.
+
+    Returns:
+        TensorType: A 1D tensor of 0.0 (dummy logp's) matching the batch
+            dim of `actions` (shape=[B]).
+    """
+    # Need to flatten `actions` in case we have a complex action space.
+    # Take the 0th component to extract the batch dim.
+    action_component = tree.flatten(actions)[0]
+    logp_ = tf.zeros_like(action_component, dtype=tf.float32)
+    # Logp's should be single values (but with the same batch dim as
+    # `deterministic_actions` or `stochastic_actions`). In case
+    # actions are just [B], zeros_like works just fine here, but if
+    # actions are [B, ...], we have to reduce logp back to just [B].
+    if len(logp_.shape) > 1:
+        logp_ = logp_[:, 0]
+    return logp_
 
 
 def one_hot(x, space):

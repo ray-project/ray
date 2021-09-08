@@ -1,13 +1,13 @@
 import math
 
 import torch
+from filelock import FileLock
 from torch.nn import functional as F
 import pytorch_lightning as pl
 from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 import os
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
-import tempfile
 from ray import tune
 
 
@@ -63,10 +63,12 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.log("ptl/val_accuracy", avg_acc)
 
 
-def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
+def train_mnist_tune(config, num_epochs=10, num_gpus=0):
+    data_dir = os.path.abspath("./data")
     model = LightningMNISTClassifier(config, data_dir)
-    dm = MNISTDataModule(
-        data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
+    with FileLock(os.path.expanduser("~/.data.lock")):
+        dm = MNISTDataModule(
+            data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
     metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
     trainer = pl.Trainer(
         max_epochs=num_epochs,
@@ -78,10 +80,6 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 
 
 def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
-    # Download data
-    MNISTDataModule(data_dir=data_dir).prepare_data()
-
     config = {
         "layer_1": tune.choice([32, 64, 128]),
         "layer_2": tune.choice([64, 128, 256]),
@@ -90,10 +88,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     trainable = tune.with_parameters(
-        train_mnist_tune,
-        data_dir=data_dir,
-        num_epochs=num_epochs,
-        num_gpus=gpus_per_trial)
+        train_mnist_tune, num_epochs=num_epochs, num_gpus=gpus_per_trial)
     analysis = tune.run(
         trainable,
         resources_per_trial={
@@ -115,9 +110,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         tune_mnist(num_samples=1, num_epochs=1, gpus_per_trial=0)
     else:
+        if args.server_address:
+            import ray
+            ray.init(f"ray://{args.server_address}")
+
         tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0)

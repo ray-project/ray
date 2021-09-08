@@ -6,16 +6,28 @@
 
 # ==== Ray core ====
 
+# API compatibility
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
+
 # All C++ code.
-/src/ray @ray-project/ray-core-cpp
+# /src/ray @ray-project/ray-core-cpp
+
+# Dependencies
+/python/setup.py @richardliaw @ericl @edoakes
 
 # Python worker.
-/python/ray/ @ray-project/ray-core-python
-!/python/ray/tune/ @ray-project/ray-core-python
-!/python/ray/rllib/ @ray-project/ray-core-python
+#/python/ray/ @ray-project/ray-core-python
+#!/python/ray/tune/ @ray-project/ray-core-python
+#!/python/ray/rllib/ @ray-project/ray-core-python
 
 # Java worker.
-/java/ @ray-project/ray-core-java
+#/java/ @ray-project/ray-core-java
+
+# Ray Client
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
 # ==== Libraries and frameworks ====
 
@@ -23,16 +35,15 @@
 /python/ray/tune/ @ray-project/ray-tune
 
 # RLlib.
-/python/ray/rllib/ @ray-project/rllib
+#/python/ray/rllib/ @ray-project/rllib
 
 # ==== Build and CI ====
 
 # Bazel.
-/BUILD.bazel @ray-project/ray-core
-/WORKSPACE @ray-project/ray-core
-/bazel/ @ray-project/ray-core
+#/BUILD.bazel @ray-project/ray-core
+#/WORKSPACE @ray-project/ray-core
+#/bazel/ @ray-project/ray-core
 
 # CI scripts.
-/.travis.yml @ray-project/ray-core
-/ci/travis/ @ray-project/ray-core
-
+#/.travis.yml @ray-project/ray-core
+#/ci/travis/ @ray-project/ray-core

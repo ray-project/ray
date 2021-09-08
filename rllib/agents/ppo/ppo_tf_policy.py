@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
@@ -29,13 +30,15 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-        policy: Policy, model: ModelV2, dist_class: Type[TFActionDistribution],
+        policy: Policy, model: Union[ModelV2, "tf.keras.Model"],
+        dist_class: Type[TFActionDistribution],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:
         policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
+        model (Union[ModelV2, tf.keras.Model]): The Model to calculate
+            the loss for.
         dist_class (Type[ActionDistribution]: The action distr. class.
         train_batch (SampleBatch): The training data.
 
@@ -43,7 +46,13 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch)
+    if isinstance(model, tf.keras.Model):
+        logits, state, extra_outs = model(train_batch)
+        value_fn_out = extra_outs[SampleBatch.VF_PREDS]
+    else:
+        logits, state = model.from_batch(train_batch)
+        value_fn_out = model.value_function()
+
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -51,10 +60,10 @@ def ppo_surrogate_loss(
         # Derive max_seq_len from the data itself, not from the seq_lens
         # tensor. This is in case e.g. seq_lens=[2, 3], but the data is still
         # 0-padded up to T=5 (as it's the case for attention nets).
-        B = tf.shape(train_batch["seq_lens"])[0]
+        B = tf.shape(train_batch[SampleBatch.SEQ_LENS])[0]
         max_seq_len = tf.shape(logits)[0] // B
 
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
         def reduce_mean_valid(t):
@@ -84,9 +93,9 @@ def ppo_surrogate_loss(
             1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
-    if policy.config["use_gae"]:
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        value_fn_out = model.value_function()
         vf_loss1 = tf.math.square(value_fn_out -
                                   train_batch[Postprocessing.VALUE_TARGETS])
         vf_clipped = prev_value_fn_out + tf.clip_by_value(
@@ -96,15 +105,14 @@ def ppo_surrogate_loss(
                                   train_batch[Postprocessing.VALUE_TARGETS])
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+    # Ignore the value function.
     else:
-        mean_vf_loss = tf.constant(0.0)
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       policy.kl_coeff * action_kl -
-                                       policy.entropy_coeff * curr_entropy)
+        vf_loss = mean_vf_loss = tf.constant(0.0)
+
+    total_loss = reduce_mean_valid(-surrogate_loss +
+                                   policy.kl_coeff * action_kl +
+                                   policy.config["vf_loss_coeff"] * vf_loss -
+                                   policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -112,6 +120,7 @@ def ppo_surrogate_loss(
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
+    policy._value_fn_out = value_fn_out
 
     return total_loss
 
@@ -134,14 +143,14 @@ def kl_and_loss_stats(policy: Policy,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
 
+# TODO: (sven) Deprecate once we only allow native keras models.
 def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
     """Defines extra fetches per action computation.
 
@@ -152,6 +161,10 @@ def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
         Dict[str, TensorType]: Dict with extra tf fetches to perform per
             action computation.
     """
+    # Keras models return values for each call in third return argument
+    # (dict).
+    if isinstance(policy.model, tf.keras.Model):
+        return {}
     # Return value function outputs. VF estimates will hence be added to the
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
@@ -177,7 +190,9 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
             tuples.
     """
     # Compute the gradients.
-    variables = policy.model.trainable_variables()
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.
@@ -267,9 +282,13 @@ class ValueNetworkMixin:
             @make_tf_callable(self.get_session())
             def value(**input_dict):
                 input_dict = SampleBatch(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                if isinstance(self.model, tf.keras.Model):
+                    _, _, extra_outs = self.model(input_dict)
+                    return extra_outs[SampleBatch.VF_PREDS][0]
+                else:
+                    model_out, _ = self.model(input_dict)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
@@ -329,17 +348,15 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+@Deprecated(
+    old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
 def postprocess_ppo_gae(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
         episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
-
-    # Stub serving backward compatibility.
-    deprecation_warning(
-        old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
-        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-        error=False)
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)
@@ -353,7 +370,7 @@ PPOTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     postprocess_fn=compute_gae_for_sample_batch,
     stats_fn=kl_and_loss_stats,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     extra_action_out_fn=vf_preds_fetches,
     before_init=setup_config,
     before_loss_init=setup_mixins,

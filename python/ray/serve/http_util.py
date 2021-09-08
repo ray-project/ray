@@ -2,8 +2,9 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
+import starlette.responses
 import starlette.requests
 
 from ray.serve.exceptions import RayServeException
@@ -101,47 +102,6 @@ class Response:
         await send({"type": "http.response.body", "body": self.body})
 
 
-def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
-    """Given ASGI app, return two async callables (on_startup, on_shutdown)
-
-    Detail spec at
-    https://asgi.readthedocs.io/en/latest/specs/lifespan.html
-    """
-    scope = {"type": "lifespan"}
-
-    class LifespanHandler:
-        def __init__(self, lifespan_type):
-            assert lifespan_type in {"startup", "shutdown"}
-            self.lifespan_type = lifespan_type
-
-        async def receive(self):
-            return {"type": f"lifespan.{self.lifespan_type}"}
-
-        async def send(self, msg):
-            # We are not doing a strict equality check here because sometimes
-            # starlette will output shutdown.complete on startup lifecycle
-            # event!
-            # https://github.com/encode/starlette/blob/5ee04ef9b1bc11dc14d299e6c855c9a3f7d5ff16/starlette/routing.py#L557 # noqa
-            if msg["type"].endswith(".complete"):
-                return
-            elif msg["type"].endswith(".failed"):
-                raise RayServeException(
-                    f"Failed to run {self.lifespan_type} events for asgi app. "
-                    f"Error: {msg.get('message', '')}")
-            else:
-                raise ValueError(f"Unknown ASGI type {msg}")
-
-    async def startup():
-        handler = LifespanHandler("startup")
-        await app(scope, handler.receive, handler.send)
-
-    async def shutdown():
-        handler = LifespanHandler("shutdown")
-        await app(scope, handler.receive, handler.send)
-
-    return startup, shutdown
-
-
 async def receive_http_body(scope, receive, send):
     body_buffer = []
     more_body = True
@@ -160,14 +120,13 @@ class ASGIHTTPSender:
 
     def __init__(self) -> None:
         self.status_code: Optional[int] = 200
-        self.header: Dict[str, str] = {}
+        self.headers: List[Tuple[bytes, bytes]] = []
         self.buffer: List[bytes] = []
 
     async def __call__(self, message):
         if (message["type"] == "http.response.start"):
             self.status_code = message["status"]
-            for key, value in message["headers"]:
-                self.header[key.decode()] = value.decode()
+            self.headers = message["headers"]
         elif (message["type"] == "http.response.body"):
             self.buffer.append(message["body"])
         else:
@@ -175,10 +134,10 @@ class ASGIHTTPSender:
                              "http.responses.{body,start}.")
 
     def build_starlette_response(self) -> starlette.responses.Response:
-        return starlette.responses.Response(
-            b"".join(self.buffer),
-            status_code=self.status_code,
-            headers=dict(self.header))
+        resp = starlette.responses.Response(
+            b"".join(self.buffer), status_code=self.status_code)
+        resp.raw_headers.extend(self.headers)
+        return resp
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
@@ -250,9 +209,22 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    # Remove endpoints that belong to other class based views.
     routes = fastapi_app.routes
     for route in routes:
+        if not isinstance(route, APIRoute):
+            continue
+
+        # If there is a response model, FastAPI creates a copy of the fields.
+        # But FastAPI creates the field incorrectly by missing the outer_type_.
+        if route.response_model:
+            original_resp_fields = (
+                route.response_field.outer_type_.__fields__)
+            cloned_resp_fields = (
+                route.secure_cloned_response_field.outer_type_.__fields__)
+            for key, field in cloned_resp_fields.items():
+                field.outer_type_ = original_resp_fields[key].outer_type_
+
+        # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
             routes.remove(route)

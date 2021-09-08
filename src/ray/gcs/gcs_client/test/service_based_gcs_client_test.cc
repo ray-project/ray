@@ -29,8 +29,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
-        "maximum_gcs_dead_node_cached_count,10");
+        R"(
+{
+  "ping_gcs_rpc_server_max_retries": 60,
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "maximum_gcs_dead_node_cached_count": 10
+}
+  )");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -44,6 +49,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.redis_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
+    // test targets.
+    config_.grpc_based_resource_broadcast = false;
 
     client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
@@ -124,11 +132,24 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  void AddJob(const JobID &job_id) {
+    auto job_table_data = std::make_shared<rpc::JobTableData>();
+    job_table_data->set_job_id(job_id.Binary());
+    AddJob(job_table_data);
+  }
+
   bool MarkJobFinished(const JobID &job_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
         job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  JobID GetNextJobID() {
+    std::promise<JobID> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    return promise.get_future().get();
   }
 
   bool SubscribeActor(
@@ -567,12 +588,19 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   WaitForExpectedCount(job_updates, 2);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestGetNextJobID) {
+  JobID job_id1 = GetNextJobID();
+  JobID job_id2 = GetNextJobID();
+  ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // NOTE: `TestActorSubscribeAll` will subscribe to all actor messages, so we need to
   // execute it before `TestActorInfo`, otherwise `TestActorSubscribeAll` will receive
   // messages from `TestActorInfo`.
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data1 = Mocker::GenActorTableData(job_id);
   auto actor_table_data2 = Mocker::GenActorTableData(job_id);
 
@@ -599,6 +627,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
@@ -838,6 +867,7 @@ TEST_F(ServiceBasedGcsClientTest,
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
@@ -989,6 +1019,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
@@ -1180,6 +1211,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
+  AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
   auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
 
@@ -1315,6 +1347,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   // Register actors.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   int actor_count = 5000;
   rpc::TaskSpec task_spec;
   rpc::TaskArg task_arg;
@@ -1343,6 +1376,7 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
+  AddJob(job_id);
   absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
@@ -1408,9 +1442,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

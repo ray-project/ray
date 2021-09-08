@@ -69,6 +69,21 @@ public final class Ray extends RayCall {
   }
 
   /**
+   * Store an object in the object store and assign its ownership to owner. This function is
+   * experimental.
+   *
+   * @param obj The Java object to be stored.
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
+   * @return A ObjectRef instance that represents the in-store object.
+   */
+  public static <T> ObjectRef<T> put(T obj, BaseActorHandle owner) {
+    return internal().put(obj, owner);
+  }
+
+  /**
    * Get an object by `ObjectRef` from the object store.
    *
    * @param objectRef The reference of the object to get.
@@ -150,6 +165,7 @@ public final class Ray extends RayCall {
    * @param name The name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
    *     Optional.empty()
+   * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return internal().getActor(name, false);
@@ -164,6 +180,7 @@ public final class Ray extends RayCall {
    * @param name The global name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
    *     Optional.empty()
+   * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
     return internal().getActor(name, true);

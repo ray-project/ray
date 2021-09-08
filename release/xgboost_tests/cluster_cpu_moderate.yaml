@@ -36,6 +36,3 @@ file_mounts: {
 }
 
 file_mounts_sync_continuously: false
-
-setup_commands:
-    - /bin/bash ~/xgboost_tests/setup_xgboost.sh

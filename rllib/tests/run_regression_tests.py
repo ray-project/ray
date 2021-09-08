@@ -36,7 +36,9 @@ parser.add_argument(
 parser.add_argument(
     "--yaml-dir",
     type=str,
+    required=True,
     help="The directory in which to find all yamls to test.")
+parser.add_argument("--num-cpus", type=int, default=5)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -79,13 +81,13 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        # Add torch option to exp configs.
-        for exp in experiments.values():
-            exp["config"]["framework"] = args.framework
-            if args.torch:
-                deprecation_warning(old="--torch", new="--framework=torch")
-                exp["config"]["framework"] = "torch"
-                args.framework = "torch"
+        # Add torch option to exp config.
+        exp = list(experiments.values())[0]
+        exp["config"]["framework"] = args.framework
+        if args.torch:
+            deprecation_warning(old="--torch", new="--framework=torch")
+            exp["config"]["framework"] = "torch"
+            args.framework = "torch"
 
         # Print out the actual config.
         print("== Test config ==")
@@ -95,16 +97,44 @@ if __name__ == "__main__":
         # reward.
         passed = False
         for i in range(3):
+            # Try starting a new ray cluster.
             try:
-                ray.init(num_cpus=5, local_mode=args.local_mode)
-                trials = run_experiments(experiments, resume=False, verbose=2)
-            finally:
-                ray.shutdown()
-                _register_all()
+                ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode)
+            # Allow running this script on existing cluster as well.
+            except ConnectionError:
+                ray.init()
+            else:
+                try:
+                    trials = run_experiments(
+                        experiments, resume=False, verbose=2)
+                finally:
+                    ray.shutdown()
+                    _register_all()
 
             for t in trials:
-                if (t.last_result["episode_reward_mean"] >=
-                        t.stopping_criterion["episode_reward_mean"]):
+                # If we have evaluation workers, use their rewards.
+                # This is useful for offline learning tests, where
+                # we evaluate against an actual environment.
+                check_eval = \
+                    exp["config"].get("evaluation_interval", None) is not None
+                reward_mean = \
+                    t.last_result["evaluation"]["episode_reward_mean"] if \
+                    check_eval else t.last_result["episode_reward_mean"]
+
+                # If we are using evaluation workers, we may have
+                # a stopping criterion under the "evaluation/" scope. If
+                # not, use `episode_reward_mean`.
+                if check_eval:
+                    min_reward = t.stopping_criterion.get(
+                        "evaluation/episode_reward_mean",
+                        t.stopping_criterion.get("episode_reward_mean"))
+                # Otherwise, expect `episode_reward_mean` to be set.
+                else:
+                    min_reward = t.stopping_criterion.get(
+                        "episode_reward_mean")
+
+                # If min reward not defined, always pass.
+                if min_reward is None or reward_mean >= min_reward:
                     passed = True
                     break
 

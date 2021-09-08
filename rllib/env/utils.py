@@ -1,4 +1,9 @@
+from gym import wrappers
+import os
+
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils import add_mixins
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
@@ -56,7 +61,7 @@ a) For Atari support: `pip install gym[atari] atari_py`.
    For VizDoom support: Install VizDoom
    (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
    `pip install vizdoomgym`.
-   For PyBullet support: `pip install pybullet pybullet_envs`.
+   For PyBullet support: `pip install pybullet`.
 b) To register your custom env, do `from ray import tune;
    tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config['env'] = [name]`.
@@ -64,3 +69,46 @@ c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
 """
         raise gym.error.Error(error_msg)
+
+
+class VideoMonitor(wrappers.Monitor):
+    # Same as original method, but doesn't use the StatsRecorder as it will
+    # try to add up multi-agent rewards dicts, which throws errors.
+    def _after_step(self, observation, reward, done, info):
+        if not self.enabled:
+            return done
+
+        # Use done["__all__"] b/c this is a multi-agent dict.
+        if done["__all__"] and self.env_semantics_autoreset:
+            # For envs with BlockingReset wrapping VNCEnv, this observation
+            # will be the first one of the new episode
+            self.reset_video_recorder()
+            self.episode_id += 1
+            self._flush()
+
+        # Record video
+        self.video_recorder.capture_frame()
+
+        return done
+
+
+def record_env_wrapper(env, record_env, log_dir, policy_config):
+    if record_env:
+        path_ = record_env if isinstance(record_env, str) else log_dir
+        # Relative path: Add logdir here, otherwise, this would
+        # not work for non-local workers.
+        if not os.path.isabs(path_):
+            path_ = os.path.join(log_dir, path_)
+        print(f"Setting the path for recording to {path_}")
+        wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
+            else wrappers.Monitor
+        wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
+        env = wrapper_cls(
+            env,
+            path_,
+            resume=True,
+            force=True,
+            video_callable=lambda _: True,
+            mode="evaluation"
+            if policy_config["in_evaluation"] else "training")
+    return env

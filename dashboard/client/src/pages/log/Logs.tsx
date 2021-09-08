@@ -50,16 +50,16 @@ const useLogs = (props: LogsProps) => {
   const urlFileName = searchMap.get("fileName");
   const el = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState<string>();
-  const [search, setSearch] = useState<{
-    keywords?: string;
-    lineNumber?: string;
-    fontSize?: number;
-    revert?: boolean;
-  }>();
+  const [search, setSearch] =
+    useState<{
+      keywords?: string;
+      lineNumber?: string;
+      fontSize?: number;
+      revert?: boolean;
+    }>();
   const [fileName, setFileName] = useState(searchMap.get("fileName") || "");
-  const [log, setLogs] = useState<
-    undefined | string | { [key: string]: string }[]
-  >();
+  const [log, setLogs] =
+    useState<undefined | string | { [key: string]: string }[]>();
   const [startTime, setStart] = useState<string>();
   const [endTime, setEnd] = useState<string>();
 

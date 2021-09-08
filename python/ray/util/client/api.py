@@ -1,14 +1,21 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
+import json
+
+import logging
+
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
-from typing import TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.actor import ActorClass
     from ray.remote_function import RemoteFunction
     from ray.util.client.common import ClientStub
     from ray.util.client.common import ClientActorHandle
     from ray.util.client.common import ClientObjectRef
+    from ray.core.generated.ray_client_pb2 import DataResponse
+
+logger = logging.getLogger(__name__)
 
 
 def as_bytes(value):
@@ -124,14 +131,30 @@ class ClientAPI:
         """
         return self.worker.close()
 
-    def get_actor(self, name: str) -> "ClientActorHandle":
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> "ClientActorHandle":
         """Returns a handle to an actor by name.
 
         Args:
             name: The name passed to this actor by
               Actor.options(name="name").remote()
         """
-        return self.worker.get_actor(name)
+        return self.worker.get_actor(name, namespace)
+
+    def list_named_actors(self, all_namespaces: bool = False) -> List[str]:
+        """List all named actors in the system.
+
+        Actors must have been created with Actor.options(name="name").remote().
+        This works for both detached & non-detached actors.
+
+        By default, only actors in the current namespace will be returned
+        and the returned entries will simply be their name.
+
+        If `all_namespaces` is set to True, all actors in the cluster will be
+        returned regardless of namespace, and the retunred entries will be of
+        the form '<namespace>/<name>'.
+        """
+        return self.worker.list_named_actors(all_namespaces)
 
     def kill(self, actor: "ClientActorHandle", *, no_restart=True):
         """kill forcibly stops an actor running in the cluster
@@ -247,9 +270,25 @@ class ClientAPI:
     def get_gpu_ids(self) -> list:
         return []
 
+    def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
+        logger.warning("Timeline will include events from other clients using "
+                       "this server.")
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
+        all_events = self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.TIMELINE)
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+        else:
+            return all_events
+
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
-        return self.is_initialized()
+        # NOTE(edoakes): the kv is always initialized because we initialize it
+        # manually in the proxier with a GCS client if Ray hasn't been
+        # initialized yet.
+        return True
 
     def _internal_kv_exists(self, key: bytes) -> bool:
         """Hook for internal_kv._internal_kv_exists."""
@@ -287,6 +326,10 @@ class ClientAPI:
         """Given a UUID, return the converted object"""
         return self.worker._get_converted(key)
 
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return self.worker._converted_key_exists(key)
+
     def __getattr__(self, key: str):
         if not key.startswith("_"):
             raise NotImplementedError(
@@ -294,3 +337,7 @@ class ClientAPI:
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
+
+    def _register_callback(self, ref: "ClientObjectRef",
+                           callback: Callable[["DataResponse"], None]) -> None:
+        self.worker.register_callback(ref, callback)

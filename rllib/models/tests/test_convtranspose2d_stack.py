@@ -1,4 +1,3 @@
-import cv2
 import gym
 import numpy as np
 import os
@@ -9,6 +8,7 @@ from ray.rllib.models.preprocessors import GenericPixelPreprocessor
 from ray.rllib.models.torch.modules.convtranspose2d_stack import \
     ConvTranspose2DStack
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.images import imread
 
 torch, nn = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -30,7 +30,7 @@ class TestConvTranspose2DStack(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent
         img_file = os.path.join(rllib_dir,
                                 "tests/data/images/obstacle_tower.png")
-        img = cv2.imread(img_file).astype(np.float32)
+        img = imread(img_file)
         # Preprocess.
         img = preprocessor.transform(img)
         # Make channels first.

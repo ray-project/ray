@@ -1,12 +1,11 @@
+import os
 import sys
 import socket
-import json
 import asyncio
 import logging
+import ipaddress
+import threading
 
-import aiohttp
-import aiohttp.web
-from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.services
@@ -15,7 +14,14 @@ import ray.new_dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray.new_dashboard.datacenter import DataOrganizer
+from ray.new_dashboard.utils import async_loop_forever
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -23,16 +29,79 @@ routes = dashboard_utils.ClassMethodRouteTable
 aiogrpc.init_grpc_aio()
 
 
-def gcs_node_info_to_dict(message):
-    return dashboard_utils.message_to_dict(
-        message, {"nodeId"}, including_default_value_fields=True)
+async def make_gcs_grpc_channel(redis_client):
+    while True:
+        try:
+            gcs_address = await redis_client.get(
+                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+            if not gcs_address:
+                raise Exception("GCS address not found.")
+            logger.info("Connect to GCS at %s", gcs_address)
+            options = (
+                ("grpc.enable_http_proxy", 0),
+                ("grpc.max_send_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+                ("grpc.max_receive_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+            )
+            channel = aiogrpc.insecure_channel(gcs_address, options=options)
+            return channel
+        except Exception as ex:
+            logger.error("Connect to GCS failed: %s, retry...", ex)
+            await asyncio.sleep(
+                dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
+
+
+class GCSHealthCheckThread(threading.Thread):
+    def __init__(self, redis_client):
+        self.thread_local_loop = asyncio.new_event_loop()
+        self.aiogrpc_gcs_channel = None
+        self.gcs_heartbeat_info_stub = None
+
+        async def on_startup():
+            aiogrpc.init_grpc_aio()
+            self.aiogrpc_gcs_channel = await (
+                make_gcs_grpc_channel(redis_client))
+            self.gcs_heartbeat_info_stub = (
+                gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+                    self.aiogrpc_gcs_channel))
+
+        self.startup_task = self.thread_local_loop.create_task(on_startup())
+
+        super().__init__(daemon=True)
+
+    async def _check_once(self) -> bool:
+        request = gcs_service_pb2.CheckAliveRequest()
+        try:
+            reply = await self.gcs_heartbeat_info_stub.CheckAlive(
+                request, timeout=dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT)
+            if reply.status.code != 0:
+                logger.exception(
+                    f"Failed to CheckAlive: {reply.status.message}")
+                return False
+        except aiogrpc.AioRpcError:  # Deadline Exceeded
+            logger.exception("Got AioRpcError when checking GCS is alive")
+            return False
+        return True
+
+    async def check_once(self) -> bool:
+        # Make sure startup is complete
+        if not self.startup_task.done():
+            return False
+        # Make the grpc call inside the thread loop so it's not blocked by
+        # potentially busy main loop.
+        return await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(self._check_once(),
+                                             self.thread_local_loop))
+
+    def run(self) -> None:
+        self.thread_local_loop.run_forever()
 
 
 class DashboardHead:
     def __init__(self, http_host, http_port, http_port_retries, redis_address,
                  redis_password, log_dir):
-        # NodeInfoGcsService
-        self._gcs_node_info_stub = None
+        self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
         # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
@@ -46,80 +115,33 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
 
-    async def _get_nodes(self):
-        """Read the client table.
-
-        Returns:
-            A dict of information about the nodes in the cluster.
-        """
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
-            request, timeout=2)
-        if reply.status.code == 0:
-            result = {}
-            for node_info in reply.node_info_list:
-                node_info_dict = gcs_node_info_to_dict(node_info)
-                result[node_info_dict["nodeId"]] = node_info_dict
-            return result
+    @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
+    async def _gcs_check_alive(self):
+        is_alive = await self.health_check_thread.check_once()
+        if is_alive:
+            self._gcs_rpc_error_counter = 0
         else:
-            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
-
-    async def _update_nodes(self):
-        while True:
-            try:
-                nodes = await self._get_nodes()
-
-                alive_node_ids = []
-                alive_node_infos = []
-                node_id_to_ip = {}
-                node_id_to_hostname = {}
-                for node in nodes.values():
-                    node_id = node["nodeId"]
-                    ip = node["nodeManagerAddress"]
-                    hostname = node["nodeManagerHostname"]
-                    node_id_to_ip[node_id] = ip
-                    node_id_to_hostname[node_id] = hostname
-                    assert node["state"] in ["ALIVE", "DEAD"]
-                    if node["state"] == "ALIVE":
-                        alive_node_ids.append(node_id)
-                        alive_node_infos.append(node)
-
-                agents = dict(DataSource.agents)
-                for node_id in alive_node_ids:
-                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
-                          f"{node_id}"
-                    agent_port = await self.aioredis_client.get(key)
-                    if agent_port:
-                        agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(alive_node_ids):
-                    agents.pop(node_id, None)
-
-                DataSource.node_id_to_ip.reset(node_id_to_ip)
-                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
-                DataSource.agents.reset(agents)
-                DataSource.nodes.reset(nodes)
-
-                self._gcs_rpc_error_counter = 0
-            except aiogrpc.AioRpcError:
-                logger.exception("Got AioRpcError when updating nodes.")
-                self._gcs_rpc_error_counter += 1
-                if self._gcs_rpc_error_counter > \
-                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
-                    logger.error(
-                        "Dashboard suicide, the GCS RPC error count %s > %s",
-                        self._gcs_rpc_error_counter,
-                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
-                    sys.exit(-1)
-            except Exception:
-                logger.exception("Error updating nodes.")
-            finally:
-                await asyncio.sleep(
-                    dashboard_consts.UPDATE_NODES_INTERVAL_SECONDS)
+            self._gcs_rpc_error_counter += 1
+            if self._gcs_rpc_error_counter > \
+                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR:
+                logger.error(
+                    "Dashboard exiting because it received too many GCS RPC "
+                    "errors count: %s, threshold is %s.",
+                    self._gcs_rpc_error_counter,
+                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR)
+                # TODO(fyrestone): Do not use ray.state in
+                # PrometheusServiceDiscoveryWriter.
+                # Currently, we use os._exit() here to avoid hanging at the ray
+                # shutdown(). Please refer to:
+                # https://github.com/ray-project/ray/issues/16328
+                os._exit(-1)
 
     def _load_modules(self):
         """Load dashboard head modules."""
@@ -153,27 +175,12 @@ class DashboardHead:
             loop=asyncio.get_event_loop())
 
         # Waiting for GCS is ready.
-        while True:
-            try:
-                gcs_address = await self.aioredis_client.get(
-                    dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
-                if not gcs_address:
-                    raise Exception("GCS address not found.")
-                logger.info("Connect to GCS at %s", gcs_address)
-                options = (("grpc.enable_http_proxy", 0), )
-                channel = aiogrpc.insecure_channel(
-                    gcs_address, options=options)
-            except Exception as ex:
-                logger.error("Connect to GCS failed: %s, retry...", ex)
-                await asyncio.sleep(
-                    dashboard_consts.CONNECT_GCS_INTERVAL_SECONDS)
-            else:
-                self.aiogrpc_gcs_channel = channel
-                break
+        self.aiogrpc_gcs_channel = await make_gcs_grpc_channel(
+            self.aioredis_client)
 
-        # Create a NodeInfoGcsServiceStub.
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            self.aiogrpc_gcs_channel)
+        self.health_check_thread = GCSHealthCheckThread(
+            redis_client=self.aioredis_client)
+        self.health_check_thread.start()
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -210,6 +217,8 @@ class DashboardHead:
             raise Exception(f"Failed to find a valid port for dashboard after "
                             f"{self.http_port_retries} retries: {last_ex}")
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
+        http_host = self.ip if ipaddress.ip_address(
+            http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
         # Write the dashboard head port to redis.
@@ -230,7 +239,7 @@ class DashboardHead:
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
-            self._update_nodes(),
+            self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
             DataOrganizer.organize(),

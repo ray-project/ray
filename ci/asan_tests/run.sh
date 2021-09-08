@@ -28,6 +28,6 @@ echo "git-sha: $git_sha"
 ./run_asan_tests.sh setup
 if [ -n "${git_sha}" ]
 then
-    git_sha="${git_sha}" ./run_asan_tests.sh recompile
+    GIT_SHA="${git_sha}" ./run_asan_tests.sh recompile
 fi
 ./run_asan_tests.sh run

@@ -1,3 +1,17 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/dependency_manager.h"
 
 namespace ray {
@@ -62,8 +76,8 @@ void DependencyManager::StartOrUpdateWaitRequest(
       auto it = GetOrInsertRequiredObject(obj_id, ref);
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
-        it->second.wait_request_id = object_manager_.Pull({ref},
-                                                          /*is_worker_request=*/true);
+        it->second.wait_request_id =
+            object_manager_.Pull({ref}, BundlePriority::WAIT_REQUEST);
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
                        << " request: " << it->second.wait_request_id;
       }
@@ -118,8 +132,7 @@ void DependencyManager::StartOrUpdateGetRequest(
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.
-    uint64_t new_request_id = object_manager_.Pull(refs,
-                                                   /*is_worker_request=*/true);
+    uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST);
     if (get_request.second != 0) {
       RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
                      << " request: " << get_request.second;
@@ -157,7 +170,10 @@ bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
-  auto inserted = queued_task_requests_.emplace(task_id, required_objects);
+
+  const auto required_ids = ObjectRefsToIds(required_objects);
+  absl::flat_hash_set<ObjectID> deduped_ids(required_ids.begin(), required_ids.end());
+  auto inserted = queued_task_requests_.emplace(task_id, std::move(deduped_ids));
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
                              << task_id;
   auto &task_entry = inserted.first->second;
@@ -168,15 +184,17 @@ bool DependencyManager::RequestTaskDependencies(
 
     auto it = GetOrInsertRequiredObject(obj_id, ref);
     it->second.dependent_tasks.insert(task_id);
+  }
 
+  for (const auto &obj_id : task_entry.dependencies) {
     if (local_objects_.count(obj_id)) {
       task_entry.num_missing_dependencies--;
     }
   }
 
   if (!required_objects.empty()) {
-    task_entry.pull_request_id = object_manager_.Pull(required_objects,
-                                                      /*is_worker_request=*/false);
+    task_entry.pull_request_id =
+        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
                    << " request: " << task_entry.pull_request_id;
   }

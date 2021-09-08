@@ -1,9 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+
 import pytest
+
 import requests
 
+from starlette.responses import RedirectResponse
+
 from ray import serve
-from ray.serve.constants import ALL_HTTP_METHODS
 
 
 def test_path_validation(serve_instance):
@@ -55,16 +58,16 @@ def test_routes_endpoint(serve_instance):
 
     assert len(routes) == 2, routes
     assert "/D1" in routes, routes
-    assert routes["/D1"] == ["D1", ALL_HTTP_METHODS], routes
+    assert routes["/D1"] == "D1", routes
     assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == ["D2", ALL_HTTP_METHODS], routes
+    assert routes["/hello/world"] == "D2", routes
 
     D1.delete()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1, routes
     assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == ["D2", ALL_HTTP_METHODS], routes
+    assert routes["/hello/world"] == "D2", routes
 
     D2.delete()
     routes = requests.get("http://localhost:8000/-/routes").json()
@@ -82,7 +85,7 @@ def test_routes_endpoint(serve_instance):
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1, routes
     assert "/hello" in routes, routes
-    assert routes["/hello"] == ["D3", ALL_HTTP_METHODS], routes
+    assert routes["/hello"] == "D3", routes
 
 
 def test_deployment_options_default_route(serve_instance):
@@ -95,16 +98,16 @@ def test_deployment_options_default_route(serve_instance):
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
     assert "/1" in routes, routes
-    assert routes["/1"] == ["1", ALL_HTTP_METHODS]
+    assert routes["/1"] == "1"
 
     D1.options(name="2").deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 2
     assert "/1" in routes, routes
-    assert routes["/1"] == ["1", ALL_HTTP_METHODS]
+    assert routes["/1"] == "1"
     assert "/2" in routes, routes
-    assert routes["/2"] == ["2", ALL_HTTP_METHODS]
+    assert routes["/2"] == "2"
 
 
 def test_path_prefixing(serve_instance):
@@ -168,6 +171,50 @@ def test_path_prefixing(serve_instance):
     check_req("/hello/world/") == "3"
     check_req("/hello/world/again/") == "4"
     check_req("/hello/world/again/hi") == '"hi"'
+
+
+@pytest.mark.parametrize("base_path", ["", "subpath"])
+def test_redirect(serve_instance, base_path):
+    app = FastAPI()
+
+    route_prefix = f"/{base_path}"
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class D:
+        @app.get("/")
+        def root(self):
+            return "hello from /"
+
+        @app.get("/redirect")
+        def redirect_root(self, request: Request):
+            root_path = request.scope.get("root_path")
+            if not root_path.endswith("/"):
+                root_path += "/"
+            return RedirectResponse(url=root_path)
+
+        @app.get("/redirect2")
+        def redirect_twice(self, request: Request):
+            root_path = request.scope.get("root_path")
+            if root_path.endswith("/"):
+                root_path = root_path[:-1]
+            return RedirectResponse(url=root_path +
+                                    app.url_path_for("redirect_root"))
+
+    D.deploy()
+
+    if route_prefix != "/":
+        route_prefix += "/"
+
+    r = requests.get(f"http://localhost:8000{route_prefix}redirect")
+    assert r.status_code == 200
+    assert len(r.history) == 1
+    assert r.json() == "hello from /"
+
+    r = requests.get(f"http://localhost:8000{route_prefix}redirect2")
+    assert r.status_code == 200
+    assert len(r.history) == 2
+    assert r.json() == "hello from /"
 
 
 if __name__ == "__main__":

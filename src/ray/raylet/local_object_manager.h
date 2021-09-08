@@ -41,13 +41,12 @@ class LocalObjectManager {
       size_t free_objects_batch_size, int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool,
-      bool automatic_object_deletion_enabled, int max_io_workers,
+      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber)
+      pubsub::SubscriberInterface *core_worker_subscriber)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -56,7 +55,6 @@ class LocalObjectManager {
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
-        automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(min_spilling_size),
@@ -142,8 +140,11 @@ class LocalObjectManager {
   /// Record object spilling stats to metrics.
   void RecordObjectSpillingStats() const;
 
-  /// Return the spilled object URL or the empty string.
-  std::string GetSpilledObjectURL(const ObjectID &object_id);
+  /// Return the spilled object URL if the object is spilled locally,
+  /// or the empty string otherwise.
+  /// If the external storage is cloud, this will always return an empty string.
+  /// In that case, the URL is supposed to be obtained by the object directory.
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
   std::string DebugString() const;
 
@@ -170,19 +171,13 @@ class LocalObjectManager {
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
 
-  // A callback for unpinning spilled objects. This should be invoked after the object
-  // has been spilled and after the object directory has been sent the spilled URL.
-  void UnpinSpilledObjectCallback(const ObjectID &object_id,
-                                  const std::string &object_url,
-                                  std::shared_ptr<size_t> num_remaining,
-                                  std::function<void(const ray::Status &)> callback,
-                                  ray::Status status);
-
-  /// Add objects' spilled URLs to the global object directory. Call the
-  /// callback once all URLs have been added.
-  void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
-                      const rpc::SpillObjectsReply &worker_reply,
-                      std::function<void(const ray::Status &)> callback);
+  /// Do operations that are needed after spilling objects such as
+  /// 1. Unpin the pending spilling object.
+  /// 2. Update the spilled URL to the owner.
+  /// 3. Update the spilled URL to the local directory if it doesn't
+  ///    use the external storages like S3.
+  void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                       const rpc::SpillObjectsReply &worker_reply);
 
   /// Delete spilled objects stored in given urls.
   ///
@@ -208,9 +203,6 @@ class LocalObjectManager {
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
-
-  /// Whether to enable automatic deletion when refs are gone out of scope.
-  bool automatic_object_deletion_enabled_;
 
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
@@ -289,7 +281,7 @@ class LocalObjectManager {
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  pubsub::SubscriberInterface *core_worker_subscriber_;
 
   ///
   /// Stats

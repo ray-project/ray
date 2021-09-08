@@ -84,18 +84,25 @@ raylet::RayletClient::RayletClient(
     instrumented_io_context &io_service,
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
-    rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
-    std::string *serialized_job_config)
+    rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
+    const Language &language, const std::string &ip_address, Status *status,
+    NodeID *raylet_id, int *port, std::string *serialized_job_config,
+    pid_t worker_shim_pid)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
+  // When the "shim process" which is used for setuping runtime_env is not needed,
+  // the worker_shim_pid will be 0.
+  if (worker_shim_pid == 0) {
+    worker_shim_pid = getpid();
+  }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
-      fbb.CreateString(*serialized_job_config));
+      worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      fbb.CreateString(ip_address),
+      /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -409,13 +416,28 @@ void raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  grpc_client_->PinObjectIDs(request, callback);
+  pins_in_flight_++;
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::PinObjectIDsReply &reply) {
+    pins_in_flight_--;
+    callback(status, reply);
+  };
+  grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
   grpc_client_->GlobalGC(request, callback);
+}
+
+void raylet::RayletClient::UpdateResourceUsage(
+
+    std::string &serialized_resource_usage_batch,
+    const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+  rpc::UpdateResourceUsageRequest request;
+  request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
+  grpc_client_->UpdateResourceUsage(request, callback);
 }
 
 void raylet::RayletClient::RequestResourceReport(
@@ -438,6 +460,12 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
+}
+
+void raylet::RayletClient::GetGcsServerAddress(
+    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
+  rpc::GetGcsServerAddressRequest request;
+  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray

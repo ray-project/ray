@@ -27,7 +27,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_compilation_and_learning_from_offline_file(self):
         """Test whether a MARWILTrainer can be built with all frameworks.
 
-        And learns from a historic-data file.
+        Learns from a historic-data file.
         To generate this data, first run:
         $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \
@@ -42,7 +42,9 @@ class TestMARWIL(unittest.TestCase):
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 2
+        config["evaluation_interval"] = 3
+        config["evaluation_num_episodes"] = 5
+        config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
@@ -57,7 +59,7 @@ class TestMARWIL(unittest.TestCase):
             for i in range(num_iterations):
                 eval_results = trainer.train().get("evaluation")
                 if eval_results:
-                    print("iter={} R={}".format(
+                    print("iter={} R={} ".format(
                         i, eval_results["episode_reward_mean"]))
                     # Learn until some reward is reached on an actual live env.
                     if eval_results["episode_reward_mean"] > min_reward:
@@ -73,6 +75,41 @@ class TestMARWIL(unittest.TestCase):
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)
 
+            trainer.stop()
+
+    def test_marwil_cont_actions_from_offline_file(self):
+        """Test whether MARWILTrainer runs with cont. actions.
+
+        Learns from a historic-data file.
+        To generate this data, first run:
+        $ ./train.py --run=PPO --env=Pendulum-v0 \
+          --stop='{"timesteps_total": 50000}' \
+          --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
+        """
+        rllib_dir = Path(__file__).parent.parent.parent.parent
+        print("rllib dir={}".format(rllib_dir))
+        data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
+        print("data_file={} exists={}".format(data_file,
+                                              os.path.isfile(data_file)))
+
+        config = marwil.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 1
+        config["evaluation_num_workers"] = 1
+        config["evaluation_interval"] = 3
+        config["evaluation_num_episodes"] = 5
+        config["evaluation_parallel_to_training"] = True
+        # Evaluate on actual environment.
+        config["evaluation_config"] = {"input": "sampler"}
+        # Learn from offline data.
+        config["input"] = [data_file]
+        config["input_evaluation"] = []  # disable (data has no action-probs)
+        num_iterations = 3
+
+        # Test for all frameworks.
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v0")
+            for i in range(num_iterations):
+                print(trainer.train())
             trainer.stop()
 
     def test_marwil_loss_function(self):
@@ -92,7 +129,7 @@ class TestMARWIL(unittest.TestCase):
         # Learn from offline data.
         config["input"] = [data_file]
 
-        for fw in framework_iterator(config, frameworks=["torch", "tf2"]):
+        for fw, sess in framework_iterator(config, session=True):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
@@ -106,9 +143,13 @@ class TestMARWIL(unittest.TestCase):
                 batch, 0.0, config["gamma"], 1.0, False, False)["advantages"]
             if fw == "torch":
                 cummulative_rewards = torch.tensor(cummulative_rewards)
-            batch = policy._lazy_tensor_dict(batch)
+            if fw != "tf":
+                batch = policy._lazy_tensor_dict(batch)
             model_out, _ = model.from_batch(batch)
             vf_estimates = model.value_function()
+            if fw == "tf":
+                model_out, vf_estimates = \
+                    policy.get_session().run([model_out, vf_estimates])
             adv = cummulative_rewards - vf_estimates
             if fw == "torch":
                 adv = adv.detach().cpu().numpy()
@@ -116,9 +157,12 @@ class TestMARWIL(unittest.TestCase):
             c_2 = 100.0 + 1e-8 * (adv_squared - 100.0)
             c = np.sqrt(c_2)
             exp_advs = np.exp(config["beta"] * (adv / c))
-            logp = policy.dist_class(model_out, model).logp(batch["actions"])
+            dist = policy.dist_class(model_out, model)
+            logp = dist.logp(batch["actions"])
             if fw == "torch":
                 logp = logp.detach().cpu().numpy()
+            elif fw == "tf":
+                logp = sess.run(logp)
             # Calculate all expected loss components.
             expected_vf_loss = 0.5 * adv_squared
             expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
@@ -131,13 +175,23 @@ class TestMARWIL(unittest.TestCase):
             postprocessed_batch = policy.postprocess_trajectory(batch)
             loss_func = marwil.marwil_tf_policy.marwil_loss if fw != "torch" \
                 else marwil.marwil_torch_policy.marwil_loss
-            loss_out = loss_func(policy, model, policy.dist_class,
-                                 policy._lazy_tensor_dict(postprocessed_batch))
+            if fw != "tf":
+                policy._lazy_tensor_dict(postprocessed_batch)
+                loss_out = loss_func(policy, model, policy.dist_class,
+                                     postprocessed_batch)
+            else:
+                loss_out, v_loss, p_loss = policy.get_session().run(
+                    [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
+                    feed_dict=policy._get_loss_inputs_dict(
+                        postprocessed_batch, shuffle=False))
 
             # Check all components.
             if fw == "torch":
                 check(policy.v_loss, expected_vf_loss, decimals=4)
                 check(policy.p_loss, expected_pol_loss, decimals=4)
+            elif fw == "tf":
+                check(v_loss, expected_vf_loss, decimals=4)
+                check(p_loss, expected_pol_loss, decimals=4)
             else:
                 check(policy.loss.v_loss, expected_vf_loss, decimals=4)
                 check(policy.loss.p_loss, expected_pol_loss, decimals=4)

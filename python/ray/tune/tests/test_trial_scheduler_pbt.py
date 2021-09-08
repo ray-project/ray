@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pickle
-import psutil
 import random
 import unittest
 import sys
@@ -12,6 +11,10 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray._private.test_utils import object_memory_usage
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 MB = 1024**2
 
@@ -29,14 +32,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=1,
-            object_store_memory=100 * MB,
-            _system_config={
-                # This test uses ray.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -68,7 +64,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.objects()) <= 12
+                assert object_memory_usage() <= (12 * 80e6)
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -97,13 +93,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=2,
-            _system_config={
-                # This test uses ray.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=2)
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
     def tearDown(self):
@@ -144,7 +134,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 if self.verbose:
                     print("Iteration", self.iter_)
                     print("=" * 10)
-                    print("Number of objects: ", len(ray.objects()))
+                    print("Object memory use: ", object_memory_usage())
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20

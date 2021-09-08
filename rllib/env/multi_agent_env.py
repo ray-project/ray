@@ -1,7 +1,7 @@
 from typing import Tuple, Dict, List
 import gym
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import MultiAgentDict, AgentID
 
 # If the obs space is Dict type, look for the global state under this key.
@@ -9,7 +9,7 @@ ENV_STATE = "state"
 
 
 @PublicAPI
-class MultiAgentEnv:
+class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
@@ -65,16 +65,22 @@ class MultiAgentEnv:
         The returns are dicts mapping from agent_id strings to values. The
         number of agents in the env can vary over time.
 
-        Returns
-        -------
-            obs (dict): New observations for each ready agent.
-            rewards (dict): Reward values for each ready agent. If the
-                episode is just started, the value will be None.
-            dones (dict): Done values for each ready agent. The special key
+        Returns:
+            Tuple[dict, dict, dict, dict]: Tuple with 1) new observations for
+                each ready agent, 2) reward values for each ready agent. If
+                the episode is just started, the value will be None.
+                3) Done values for each ready agent. The special key
                 "__all__" (required) is used to indicate env termination.
-            infos (dict): Optional info values for each agent id.
+                4) Optional info values for each agent id.
         """
         raise NotImplementedError
+
+    @PublicAPI
+    def render(self, mode=None) -> None:
+        """Tries to render the environment."""
+
+        # By default, do nothing.
+        pass
 
 # yapf: disable
 # __grouping_doc_begin__
@@ -125,7 +131,7 @@ class MultiAgentEnv:
 
 
 def make_multi_agent(env_name_or_creator):
-    """Convenience wrapper for any sigle-agent env to be converted into MA.
+    """Convenience wrapper for any single-agent env to be converted into MA.
 
     Agent IDs are int numbers starting from 0 (first agent).
 
@@ -169,10 +175,12 @@ def make_multi_agent(env_name_or_creator):
             self.observation_space = self.agents[0].observation_space
             self.action_space = self.agents[0].action_space
 
+        @override(MultiAgentEnv)
         def reset(self):
             self.dones = set()
             return {i: a.reset() for i, a in enumerate(self.agents)}
 
+        @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, done, info = {}, {}, {}, {}
             for i, action in action_dict.items():
@@ -181,5 +189,9 @@ def make_multi_agent(env_name_or_creator):
                     self.dones.add(i)
             done["__all__"] = len(self.dones) == len(self.agents)
             return obs, rew, done, info
+
+        @override(MultiAgentEnv)
+        def render(self, mode=None):
+            return self.agents[0].render(mode)
 
     return MultiEnv

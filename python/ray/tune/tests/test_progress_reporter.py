@@ -2,13 +2,14 @@ import pytest
 import collections
 import os
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 from ray import tune
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        best_trial_str, trial_progress_str)
+from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
+                                        _fair_filter_trials, best_trial_str,
+                                        detect_reporter, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -43,6 +44,18 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 |        00000 | TERMINATED | here  |   0 |       0   |       0    |
 +--------------+------------+-------+-----+-----------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
+
+EXPECTED_RESULT_4 = """Result logdir: /foo
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
++--------------+------------+-------+-----+-----+------------+
+|   Trial name | status     | loc   |   a |   b |   metric_1 |
+|--------------+------------+-------+-----+-----+------------|
+|        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00003 | RUNNING    | here  |   3 |   6 |        1.5 |
+|        00004 | RUNNING    | here  |   4 |   8 |        2   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
+|        00000 | TERMINATED | here  |   0 |   0 |        0   |
++--------------+------------+-------+-----+-----+------------+"""
 
 END_TO_END_COMMAND = """
 import ray
@@ -160,6 +173,39 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
+EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_ASC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00001 | TERMINATED | here  |   1 |        0.2 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
+EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
++--------------+------------+-------+-----+------------+
+|   Trial name | status     | loc   |   a |   metric_1 |
+|--------------+------------+-------+-----+------------|
+|        00004 | RUNNING    | here  |   4 |            |
+|        00003 | PENDING    | here  |   3 |            |
+|        00002 | TERMINATED | here  |   2 |        0.4 |
+|        00000 | TERMINATED | here  |   0 |        0.3 |
++--------------+------------+-------+-----+------------+
+... 1 more trials not shown (1 TERMINATED)"""
+
 VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
@@ -211,6 +257,7 @@ class ProgressReporterTest(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
 
     def mock_trial(self, status, i):
         mock = MagicMock()
@@ -403,12 +450,83 @@ class ProgressReporterTest(unittest.TestCase):
 
         reporter = TestReporter(mode="max")
         reporter.report(trials, done=False)
-
         assert EXPECTED_BEST_2 in reporter._output[0]
+
+    def testSortByMetric(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            if i < 3:
+                t.status = "TERMINATED"
+            elif i == 3:
+                t.status = "PENDING"
+            else:
+                t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+        # Set `metric_1` for terminated trails
+        trials[0].last_result["metric_1"] = 0.3
+        trials[1].last_result["metric_1"] = 0.2
+        trials[2].last_result["metric_1"] = 0.4
+
+        class TestReporter(CLIReporter):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+                self._output = ""
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output = progress_str
+
+        # Default reporter
+        reporter1 = TestReporter(
+            max_progress_rows=4, mode="max", metric="metric_1")
+        reporter1.report(trials, done=False)
+        print(reporter1._output)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter1._output
+
+        # Sort by metric (asc)
+        reporter2 = TestReporter(
+            max_progress_rows=4,
+            mode="min",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter2.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_ASC in reporter2._output
+
+        # Sort by metric (desc)
+        reporter3 = TestReporter(
+            max_progress_rows=4,
+            mode="max",
+            metric="metric_1",
+            sort_by_metric=True)
+        reporter3.report(trials, done=False)
+        print(reporter3._output)
+        assert EXPECTED_SORT_RESULT_DESC in reporter3._output
+
+        # Sort by metric when mode is None
+        reporter4 = TestReporter(
+            max_progress_rows=4, metric="metric_1", sort_by_metric=True)
+        reporter4.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter4._output
+
+        # Sort by metric when metric is None
+        reporter5 = TestReporter(
+            max_progress_rows=4, mode="max", sort_by_metric=True)
+        reporter5.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
 
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+            os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 assert EXPECTED_END_TO_END_START in output
@@ -478,6 +596,17 @@ class ProgressReporterTest(unittest.TestCase):
                 raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testReporterDetection(self):
+        """Test if correct reporter is returned from ``detect_reporter()``"""
+        reporter = detect_reporter()
+        self.assertTrue(isinstance(reporter, CLIReporter))
+        self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
+
+        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+            reporter = detect_reporter()
+            self.assertFalse(isinstance(reporter, CLIReporter))
+            self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
 
 if __name__ == "__main__":

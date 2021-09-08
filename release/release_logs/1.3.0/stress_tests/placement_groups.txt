@@ -1,0 +1,3 @@
+Avg placement group creating time: 0.768609554054404 ms
+Avg placement group removing time: 0.7591186996999492 ms
+Stress Test succeed.

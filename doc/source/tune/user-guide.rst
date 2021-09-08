@@ -284,7 +284,7 @@ Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
-Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
+Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -355,8 +355,11 @@ Handling Large Datasets
 You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
 
 Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
-Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
+Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will be automatically fetched
 and passed to your trainable as a parameter.
+
+.. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
+
 
 .. code-block:: python
 
@@ -585,6 +588,8 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+Make sure that worker nodes have the write access to the cloud storage. Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes. Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 .. _tune-docker:
 
@@ -769,6 +774,8 @@ By default, ``tune.run`` will continue executing until all trials have terminate
 
 This is useful when you are trying to setup a large hyperparameter experiment.
 
+.. _tune-env-vars:
+
 Environment variables
 ---------------------
 Some of Ray Tune's behavior can be configured using environment variables.
@@ -807,7 +814,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``1000`` for random/grid search and ``1`` for any other search algorithms.
+  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1`` for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
   instead of the legacy resource requests. Setting this to 1 enables legacy placement.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
@@ -831,7 +838,8 @@ These are the environment variables Ray Tune currently considers:
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
-  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results).
+  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
+  if used with ``checkpoint_at_end``.
 * **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
@@ -840,7 +848,15 @@ These are the environment variables Ray Tune currently considers:
   trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
   be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
+  for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 10 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
+  if no active trials are in ``RUNNING`` state for this amount of seconds.
+  If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
+  repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
+* **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

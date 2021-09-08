@@ -3,13 +3,19 @@ import pytest
 import time
 import sys
 import logging
+import queue
 import threading
 import _thread
 
 import ray.util.client.server.server as ray_client_server
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._private.client_mode_hook import _explicitly_enable_client_mode
+from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.client_mode_hook import disable_client_hook
+from ray._private.client_mode_hook import enable_client_mode
+from ray._private.test_utils import run_string_as_driver
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -45,6 +51,33 @@ def test_client_thread_safe(call_ray_stop_only):
         assert ray.get(fast.remote(), timeout=5) == "ok"
 
 
+# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# @pytest.mark.skip()
+def test_client_mode_hook_thread_safe(ray_start_regular_shared):
+    with ray_start_client_server():
+        with enable_client_mode():
+            assert client_mode_should_convert()
+            lock = threading.Lock()
+            lock.acquire()
+            q = queue.Queue()
+
+            def disable():
+                with disable_client_hook():
+                    q.put(client_mode_should_convert())
+                    lock.acquire()
+                q.put(client_mode_should_convert())
+
+            t = threading.Thread(target=disable)
+            t.start()
+            assert client_mode_should_convert()
+            lock.release()
+            t.join()
+            assert q.get(
+            ) is False, "Threaded disable_client_hook failed  to disable"
+            assert q.get(
+            ) is True, "Threaded disable_client_hook failed to re-enable"
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_interrupt_ray_get(call_ray_stop_only):
     import ray
@@ -75,6 +108,27 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
         # Assert we can still get new items after the interrupt.
         assert ray.get(fast.remote()) == "ok"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_get_list(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f():
+            return "OK"
+
+        assert ray.get([]) == []
+        assert ray.get([f.remote()]) == ["OK"]
+
+        refs = [f.remote() for _ in range(100)]
+        with ray.worker.data_client.lock:
+            req_id_before = ray.worker.data_client._req_id
+        assert ray.get(refs) == ["OK" for _ in range(100)]
+        # Only 1 RPC should be sent.
+        with ray.worker.data_client.lock:
+            assert ray.worker.data_client._req_id == req_id_before + 1, \
+                ray.worker.data_client._req_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -179,6 +233,8 @@ def test_wait(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+        SignalActor = create_remote_signal_actor(ray)
+        signaler = SignalActor.remote()
 
         @ray.remote
         def plus2(x):
@@ -219,6 +275,18 @@ def test_remote_functions(ray_start_regular_shared):
         assert [] == res[1]
         all_vals = ray.get(res[0])
         assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
+
+        # Timeout 0 on ray.wait leads to immediate return
+        # (not indefinite wait for first return as with timeout None):
+        unready_ref = signaler.wait.remote()
+        res = ray.wait([unready_ref], timeout=0)
+        # Not ready.
+        assert res[0] == [] and len(res[1]) == 1
+        ray.get(signaler.send.remote())
+        ready_ref = signaler.wait.remote()
+        # Ready.
+        res = ray.wait([ready_ref], timeout=10)
+        assert len(res[0]) == 1 and res[1] == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -340,9 +408,11 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert ray.get(x) == "Foo"
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
-        assert len(logs_with_id) >= 2
-        assert any((msg.find("get") >= 0 for msg in logs_with_id))
-        assert any((msg.find("put") >= 0 for msg in logs_with_id))
+        assert len(logs_with_id) >= 2, logs_with_id
+        assert any(
+            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any(
+            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -523,16 +593,16 @@ def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
 
-    _explicitly_enable_client_mode()
-    # No client connection.
-    with pytest.raises(Exception) as e:
-        ray.get_gpu_ids()
-    assert str(e.value) == "Ray Client is not connected."\
-        " Please connect by calling `ray.connect`."
+    with enable_client_mode():
+        # No client connection.
+        with pytest.raises(Exception) as e:
+            ray.get_gpu_ids()
+        assert str(e.value) == "Ray Client is not connected."\
+            " Please connect by calling `ray.connect`."
 
-    with ray_start_client_server():
-        # Now have a client connection.
-        assert ray.get_gpu_ids() == []
+        with ray_start_client_server():
+            # Now have a client connection.
+            assert ray.get_gpu_ids() == []
 
 
 def test_client_serialize_addon(call_ray_stop_only):
@@ -546,6 +616,48 @@ def test_client_serialize_addon(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get(ray.put(User(name="ray"))).name == "ray"
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+    import ray
+    with connect_to_client_or_not(connect_to_client):
+        if connect_to_client:
+            # Client mode is on.
+            assert client_mode_should_convert() is True
+            # We're connected to Ray client.
+            assert ray.util.client.ray.is_connected() is True
+        else:
+            assert client_mode_should_convert() is False
+            assert ray.util.client.ray.is_connected() is False
+
+
+object_ref_cleanup_script = """
+import ray
+
+ray.init("ray://localhost:50051")
+
+@ray.remote
+def f():
+    return 42
+
+@ray.remote
+class SomeClass:
+    pass
+
+
+obj_ref = f.remote()
+actor_ref = SomeClass.remote()
+"""
+
+
+def test_object_ref_cleanup():
+    # Checks no error output when running the script in
+    # object_ref_cleanup_script
+    # See https://github.com/ray-project/ray/issues/17968 for details
+    with ray_start_client_server():
+        result = run_string_as_driver(object_ref_cleanup_script)
+        assert result == ""
 
 
 if __name__ == "__main__":

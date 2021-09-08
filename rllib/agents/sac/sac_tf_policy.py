@@ -139,22 +139,33 @@ def postprocess_trajectory(
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
-                    ) -> Type[TFActionDistribution]:
+def _get_dist_class(policy: Policy,
+                    config: TrainerConfigDict,
+                    action_space: gym.spaces.Space) -> \
+        Type[TFActionDistribution]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
+        policy (Policy): The policy for which to return the action
+            dist class.
         config (TrainerConfigDict): The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
     """
-    if isinstance(action_space, Discrete):
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
+        return policy.dist_class
+    elif config["model"].get("custom_action_dist"):
+        action_dist_class, _ = ModelCatalog.get_action_dist(
+            action_space, config["model"], framework="tf")
+        return action_dist_class
+    elif isinstance(action_space, Discrete):
         return Categorical
     elif isinstance(action_space, Simplex):
         return Dirichlet
     else:
+        assert isinstance(action_space, Box)
         if config["normalize_actions"]:
             return SquashedGaussian if \
                 not config["_use_beta_distribution"] else Beta
@@ -202,7 +213,8 @@ def get_distribution_inputs_and_class(
     # policy components.
     distribution_inputs = model.get_policy_output(forward_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
 
     return distribution_inputs, action_dist_class, state_out
 
@@ -277,7 +289,8 @@ def sac_actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample simgle actions from distribution.
-        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
@@ -290,10 +303,12 @@ def sac_actor_critic_loss(
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+        q_t = model.get_q_values(
+            model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
-                model_out_t, train_batch[SampleBatch.ACTIONS])
+                model_out_t,
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
 
         # Q-values for current policy in given current state.
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
@@ -678,7 +693,7 @@ SACTFPolicy = build_tf_policy(
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[

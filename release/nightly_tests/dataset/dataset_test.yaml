@@ -1,0 +1,26 @@
+- name: inference
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: inference.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py
+    script: python inference.py
+  
+- name: shuffle_data_loader
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Chen Shen"
+
+  cluster:
+    app_config: shuffle_app_config.yaml
+    compute_template: shuffle_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python dataset_shuffle_data_loader.py

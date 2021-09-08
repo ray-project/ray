@@ -47,10 +47,10 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        B = len(train_batch["seq_lens"])
+        B = len(train_batch[SampleBatch.SEQ_LENS])
         max_seq_len = logits.shape[0] // B
         mask = sequence_mask(
-            train_batch["seq_lens"],
+            train_batch[SampleBatch.SEQ_LENS],
             max_seq_len,
             time_major=model.is_time_major())
         mask = torch.reshape(mask, [-1])
@@ -83,7 +83,8 @@ def ppo_surrogate_loss(
             1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
-    if policy.config["use_gae"]:
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
         vf_loss1 = torch.pow(
@@ -95,15 +96,14 @@ def ppo_surrogate_loss(
             vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+    # Ignore the value function.
     else:
-        mean_vf_loss = 0.0
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       policy.kl_coeff * action_kl -
-                                       policy.entropy_coeff * curr_entropy)
+        vf_loss = mean_vf_loss = 0.0
+
+    total_loss = reduce_mean_valid(-surrogate_loss +
+                                   policy.kl_coeff * action_kl +
+                                   policy.config["vf_loss_coeff"] * vf_loss -
+                                   policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss

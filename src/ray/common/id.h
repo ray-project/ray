@@ -109,6 +109,8 @@ class JobID : public BaseID<JobID> {
 
   static JobID FromInt(uint32_t value);
 
+  uint32_t ToInt();
+
   static constexpr size_t Size() { return kLength; }
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
@@ -390,8 +392,7 @@ T BaseID<T>::FromRandom() {
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data " << binary << " of size "
-      << binary.size();
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;

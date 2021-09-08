@@ -14,22 +14,25 @@ Lifetime of a Ray Serve Instance
 ================================
 
 Ray Serve instances run on top of Ray clusters and are started using :mod:`serve.start <ray.serve.start>`.
-Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create the backends and endpoints that will be used to serve your Python code (including ML models).
+Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
 The Serve instance will be torn down when the script exits.
 
 When running on a long-lived Ray cluster (e.g., one started using ``ray start`` and connected
-to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance as a long-running
+to using ``ray.init(address="auto", namespace="serve")``, you can also deploy a Ray Serve instance as a long-running
 service using ``serve.start(detached=True)``. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
-to update the Serve instance, you can run another script that connects to the Ray cluster and then
-calls :mod:`serve.connect <ray.serve.connect>`. Note that there can only be one detached Serve instance on each Ray cluster.
+to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
+
+All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the ``serve`` namespace.
+
+If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run ``serve.start()``. 
 
 Deploying on a Single Node
 ==========================
 
 While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suite your needs.
 There are two ways you can run Ray Serve on a single node, shown below.
-In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running backends.
+In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running deployments.
 
 1. Start Ray and deploy with Ray Serve all in a single Python file.
 
@@ -41,17 +44,18 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   # This will start Ray locally and start Serve on top of it.
   serve.start()
 
-  def my_backend_func(request):
+  @serve.deployment
+  def my_func(request):
     return "hello"
 
-  serve.create_backend("my_backend", my_backend_func)
+  my_func.deploy()
 
   # Serve will be shut down once the script exits, so keep it alive manually.
   while True:
       time.sleep(5)
-      print(serve.list_backends())
+      print(serve.list_deployments())
 
-2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto")`` in your Serve script(s). You can run multiple scripts to update your backends over time.
+2. First running ``ray start --head`` on the machine, then connecting to the running local Ray cluster using ``ray.init(address="auto", namespace="serve")`` in your Serve script(s) (this is the Ray namespace, not Kubernetes namespace, and you can specify any namespace that you like). You can run multiple scripts to update your deployments over time.
 
 .. code-block:: bash
 
@@ -64,12 +68,13 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   from ray import serve
 
   # This will connect to the running Ray cluster.
-  ray.init(address="auto")
+  ray.init(address="auto", namespace="serve")
 
-  def my_backend_func(request):
+  @serve.deployment
+  def my_func(request):
     return "hello"
 
-  serve.create_backend("my_backend", my_backend_func)
+  my_func.deploy()
 
 Deploying on Kubernetes
 =======================
@@ -156,7 +161,7 @@ Now, we just need to start the cluster:
       Session Affinity:  None
       Events:            <none>
 
-With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" backend:
+With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" deployment:
 
   .. code-block:: python
 
@@ -164,15 +169,16 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     from ray import serve
 
     # Connect to the running Ray cluster.
-    ray.init(address="auto")
+    ray.init(address="auto", namespace="serve")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
     serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
+
+    @serve.deployment(route_prefix="/hello")
     def hello(request):
         return "hello world"
 
-    serve.create_backend("hello_backend", hello)
-    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
+    hello.deploy()
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -217,14 +223,14 @@ Below is an example of what the Ray Dashboard might look like for a Serve deploy
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard.png
     :align: center
 
-Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
+Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
 To learn about the function of the controller and proxy actors, see the `Serve Architecture page <architecture.html>`__.
-In this example pictured above, we have a single-node cluster with a backend class called Counter with ``num_replicas=2`` in its :class:`~ray.serve.BackendConfig`.
+In this example pictured above, we have a single-node cluster with a deployment named Counter with ``num_replicas=2``.
 
 Logging
 -------
 
-Logging in Ray Serve is simple and uses Python's standard logging facility.
+Logging in Ray Serve uses Python's standard logging facility.
 
 .. note::
 
@@ -233,18 +239,18 @@ Logging in Ray Serve is simple and uses Python's standard logging facility.
 Tracing Backends and Replicas
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-When looking through log files of your Ray Serve application, it is useful to know which backend and replica each log line originated from.
-To automatically include the current backend tag and replica tag in your logs, simply call
-``logger = logging.getLogger("ray")``, and use ``logger`` within your backend code:
+When looking through log files of your Ray Serve application, it is useful to know which deployment and replica each log line originated from.
+To automatically include the current deployment and replica in your logs, simply call
+``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
   :lines: 1, 9, 11-13, 15-16
 
-Querying a Serve endpoint with the above backend will produce a log line like the following:
+Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
 .. code-block:: bash
 
-  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=my_backend replica=my_backend#jZlnUI
+  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve deployment=f replica=f#jZlnUI
 
 To write your own custom logger using Python's ``logging`` package, use the following method:
 
@@ -317,20 +323,20 @@ Now we are ready to start our Ray Serve deployment.  Start a long-running Ray cl
   ray start --head
   serve start
 
-Now run the following Python script to deploy a basic Serve backend with a Serve backend logger:
+Now run the following Python script to deploy a basic Serve deployment with a Serve deployment logger:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/backend_logger.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/deployment_logger.py
 
 Now `install and run Grafana <https://grafana.com/docs/grafana/latest/installation/>`__ and navigate to ``http://localhost:3000``, where you can log in with the default username "admin" and default password "admin".
 On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
 
 Now click "Explore" in the left-side panel.  You are ready to run some queries!
 
-To filter all these Ray logs for the ones relevant to our backend, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
+To filter all these Ray logs for the ones relevant to our deployment, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
 
 .. code-block:: shell 
 
-  {job="ray"} |= "backend=my_backend"
+  {job="ray"} |= "deployment=Counter"
 
 You should see something similar to the following:
 
@@ -351,18 +357,18 @@ The following metrics are exposed by Ray Serve:
 
    * - Name
      - Description
-   * - ``serve_backend_request_counter``
+   * - ``serve_deployment_request_counter``
      - The number of queries that have been processed in this replica.
-   * - ``serve_backend_error_counter``
-     - The number of exceptions that have occurred in the backend.
-   * - ``serve_backend_replica_starts``
+   * - ``serve_deployment_error_counter``
+     - The number of exceptions that have occurred in the deployment.
+   * - ``serve_deployment_replica_starts``
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_backend_queuing_latency_ms``
+   * - ``serve_deployment_queuing_latency_ms``
      - The latency for queries in the replica's queue waiting to be processed.
-   * - ``serve_backend_processing_latency_ms``
+   * - ``serve_deployment_processing_latency_ms``
      - The latency for queries to be processed.
    * - ``serve_replica_queued_queries``
-     - The current number of queries queued in the backend replicas.
+     - The current number of queries queued in the deployment replicas.
    * - ``serve_replica_processing_queries``
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
@@ -371,8 +377,8 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
-   * - ``backend_queued_queries`` 
-     - The number of queries for this backend waiting to be assigned to a replica.
+   * - ``serve_deployment_queued_queries`` 
+     - The number of queries for this deployment waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 
@@ -384,12 +390,12 @@ The metrics are updated once every ten seconds, and you will need to refresh the
 
 For example, after running the script for some time and refreshing ``localhost:8080`` you might see something that looks like::
 
-  ray_serve_backend_processing_latency_ms_count{...,backend="f",...} 99.0
-  ray_serve_backend_processing_latency_ms_sum{...,backend="f",...} 99279.30498123169
+  ray_serve_deployment_processing_latency_ms_count{...,deployment="f",...} 99.0
+  ray_serve_deployment_processing_latency_ms_sum{...,deployment="f",...} 99279.30498123169
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your backend, and tag it with the current backend or replica.
+You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py

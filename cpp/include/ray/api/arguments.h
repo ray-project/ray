@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -6,10 +19,8 @@
 
 #include <msgpack.hpp>
 
-#include "ray/common/task/task_util.h"
-
 namespace ray {
-namespace api {
+namespace internal {
 
 /// Check T is ObjectRef or not.
 template <typename T>
@@ -21,52 +32,32 @@ struct is_object_ref<ObjectRef<T>> : std::true_type {};
 class Arguments {
  public:
   template <typename ArgType>
-  static void WrapArgsImpl(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                           ArgType &arg) {
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ArgType &&arg) {
     static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
 
     msgpack::sbuffer buffer = Serializer::Serialize(arg);
-    auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
+    TaskArg task_arg;
+    task_arg.buf = std::move(buffer);
     /// Pass by value.
-    auto task_arg = new TaskArgByValue(std::make_shared<::ray::RayObject>(
-        memory_buffer, nullptr, std::vector<ObjectID>()));
-    task_args->emplace_back(task_arg);
+    task_args->emplace_back(std::move(task_arg));
   }
 
   template <typename ArgType>
-  static void WrapArgsImpl(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                           ObjectRef<ArgType> &arg) {
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ObjectRef<ArgType> &arg) {
     /// Pass by reference.
-    auto task_arg = new TaskArgByReference(arg.ID(), rpc::Address());
-    task_args->emplace_back(task_arg);
+    TaskArg task_arg{};
+    task_arg.id = arg.ID();
+    task_args->emplace_back(std::move(task_arg));
   }
 
   template <typename... OtherArgTypes>
-  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                       OtherArgTypes &... args) {
-    (void)std::initializer_list<int>{(WrapArgsImpl(task_args, args), 0)...};
+  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&... args) {
+    (void)std::initializer_list<int>{
+        (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
     /// Silence gcc warning error.
     (void)task_args;
   }
-
-  template <typename ArgType>
-  static void UnwrapArgsImpl(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                             int &arg_index, std::shared_ptr<ArgType> *arg) {
-    auto arg_buffer = args_buffer[arg_index]->GetData();
-    *arg = Serializer::Deserialize<std::shared_ptr<ArgType>>(
-        (const char *)arg_buffer->Data(), arg_buffer->Size());
-
-    arg_index++;
-  }
-
-  template <typename... OtherArgTypes>
-  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                         int &arg_index, std::shared_ptr<OtherArgTypes> *... args) {
-    (void)std::initializer_list<int>{
-        (UnwrapArgsImpl(args_buffer, arg_index, args), 0)...};
-  }
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

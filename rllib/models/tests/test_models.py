@@ -2,6 +2,9 @@ from gym.spaces import Box
 import numpy as np
 import unittest
 
+import ray
+import ray.rllib.agents.ppo as ppo
+from ray.rllib.examples.models.modelv3 import RNNModel
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.utils.framework import try_import_tf
@@ -33,6 +36,14 @@ class TestTFModel(TFModelV2):
 class TestModels(unittest.TestCase):
     """Tests ModelV2 classes and their modularization capabilities."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_tf_modelv2(self):
         obs_space = Box(-1.0, 1.0, (3, ))
         action_space = Box(-1.0, 1.0, (2, ))
@@ -51,6 +62,23 @@ class TestModels(unittest.TestCase):
         self.assertTrue("fc_net.base_model.fc_out.bias:0" in vars)
         self.assertTrue("fc_net.base_model.value_out.kernel:0" in vars)
         self.assertTrue("fc_net.base_model.value_out.bias:0" in vars)
+
+    def test_modelv3(self):
+        config = {
+            "env": "CartPole-v0",
+            "model": {
+                "custom_model": RNNModel,
+                "custom_model_config": {
+                    "hiddens_size": 64,
+                    "cell_size": 128,
+                },
+            },
+            "num_workers": 0,
+        }
+        trainer = ppo.PPOTrainer(config=config)
+        for _ in range(2):
+            results = trainer.train()
+            print(results)
 
 
 if __name__ == "__main__":

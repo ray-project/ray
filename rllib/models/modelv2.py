@@ -163,14 +163,10 @@ class ModelV2:
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
-            info:
-                learner:
-                    model:
-                        key1: metric1
-                        key2: metric2
+        info.learner.[policy_id, e.g. "default_policy"].model.key1=metric1
 
         Returns:
-            Dict of string keys to scalar tensors.
+            Dict[str, TensorType]: The custom metrics for this model.
         """
         return {}
 
@@ -210,7 +206,7 @@ class ModelV2:
             restored = input_dict.copy(shallow=True)
             # Backward compatibility.
             if seq_lens is None:
-                seq_lens = input_dict.seq_lens
+                seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
             if not state:
                 state = []
                 i = 0
@@ -264,7 +260,8 @@ class ModelV2:
         while "state_in_{}".format(i) in input_dict:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        ret = self.__call__(input_dict, states,
+                            input_dict.get(SampleBatch.SEQ_LENS))
         return ret
 
     def import_from_h5(self, h5_file: str) -> None:
@@ -332,71 +329,6 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
-
-    # TODO: (sven) Experimental method.
-    def get_input_dict(self,
-                       sample_batch: SampleBatch,
-                       index: Union[int, str] = "last") -> SampleBatch:
-        """Creates single ts input-dict at given index from a SampleBatch.
-
-        Args:
-            sample_batch (SampleBatch): A single-trajectory SampleBatch object
-                to generate the compute_actions input dict from.
-            index (Union[int, str]): An integer index value indicating the
-                position in the trajectory for which to generate the
-                compute_actions input dict. Set to "last" to generate the dict
-                at the very end of the trajectory (e.g. for value estimation).
-                Note that "last" is different from -1, as "last" will use the
-                final NEXT_OBS as observation input.
-
-        Returns:
-            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
-        """
-        last_mappings = {
-            SampleBatch.OBS: SampleBatch.NEXT_OBS,
-            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
-            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
-        }
-
-        input_dict = {}
-        for view_col, view_req in self.view_requirements.items():
-            # Create batches of size 1 (single-agent input-dict).
-            data_col = view_req.data_col or view_col
-            if index == "last":
-                data_col = last_mappings.get(data_col, data_col)
-                # Range needed.
-                if view_req.shift_from is not None:
-                    data = sample_batch[view_col][-1]
-                    traj_len = len(sample_batch[data_col])
-                    missing_at_end = traj_len % view_req.batch_repeat_value
-                    obs_shift = -1 if data_col in [
-                        SampleBatch.OBS, SampleBatch.NEXT_OBS
-                    ] else 0
-                    from_ = view_req.shift_from + obs_shift
-                    to_ = view_req.shift_to + obs_shift + 1
-                    if to_ == 0:
-                        to_ = None
-                    input_dict[view_col] = np.array([
-                        np.concatenate([
-                            data, sample_batch[data_col][-missing_at_end:]
-                        ])[from_:to_]
-                    ])
-                # Single index.
-                else:
-                    data = sample_batch[data_col][-1]
-                    input_dict[view_col] = np.array([data])
-            else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = sample_batch[data_col][index[0]:index[1] + 1
-                                                  if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = sample_batch[data_col][
-                        index:index + 1 if index != -1 else None]
-
-        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @DeveloperAPI

@@ -1,16 +1,15 @@
+import socket
+from contextlib import closing
 from typing import Dict, List, Union
 import copy
-import json
 import glob
 import logging
-import numbers
 import os
 import inspect
 import threading
 import time
 import uuid
-from collections import defaultdict, deque
-from collections.abc import Mapping, Sequence
+from collections import defaultdict
 from datetime import datetime
 from threading import Thread
 from typing import Optional
@@ -18,6 +17,11 @@ from typing import Optional
 import numpy as np
 import ray
 import psutil
+
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.util.ml_utils.dict import merge_dicts, deep_update, flatten_dict, \
+                                    unflatten_dict, unflatten_list_dict, \
+                                    unflattened_lookup  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +171,10 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def seek(self, *args, **kwargs):
+        self.stream1.seek(*args, **kwargs)
+        self.stream2.seek(*args, **kwargs)
+
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
@@ -175,6 +183,36 @@ class Tee(object):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
 
+    @property
+    def encoding(self):
+        if hasattr(self.stream1, "encoding"):
+            return self.stream1.encoding
+        return self.stream2.encoding
+
+    @property
+    def error(self):
+        if hasattr(self.stream1, "error"):
+            return self.stream1.error
+        return self.stream2.error
+
+    @property
+    def newlines(self):
+        if hasattr(self.stream1, "newlines"):
+            return self.stream1.newlines
+        return self.stream2.newlines
+
+    def detach(self):
+        raise NotImplementedError
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def readline(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def tell(self, *args, **kwargs):
+        raise NotImplementedError
+
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -182,194 +220,6 @@ def date_str():
 
 def is_nan_or_inf(value):
     return np.isnan(value) or np.isinf(value)
-
-
-def env_integer(key, default):
-    # TODO(rliaw): move into ray.constants
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-        raise ValueError(f"Found {key} in environment, but value must "
-                         f"be an integer. Got: {value}.")
-    return default
-
-
-def merge_dicts(d1, d2):
-    """
-    Args:
-        d1 (dict): Dict 1.
-        d2 (dict): Dict 2.
-
-    Returns:
-         dict: A new dict that is d1 and d2 deep merged.
-    """
-    merged = copy.deepcopy(d1)
-    deep_update(merged, d2, True, [])
-    return merged
-
-
-def deep_update(original,
-                new_dict,
-                new_keys_allowed=False,
-                allow_new_subkey_list=None,
-                override_all_if_type_changes=None):
-    """Updates original dict with values from new_dict recursively.
-
-    If new key is introduced in new_dict, then if new_keys_allowed is not
-    True, an error will be thrown. Further, for sub-dicts, if the key is
-    in the allow_new_subkey_list, then new subkeys can be introduced.
-
-    Args:
-        original (dict): Dictionary with default values.
-        new_dict (dict): Dictionary with values to be updated
-        new_keys_allowed (bool): Whether new keys are allowed.
-        allow_new_subkey_list (Optional[List[str]]): List of keys that
-            correspond to dict values where new subkeys can be introduced.
-            This is only at the top level.
-        override_all_if_type_changes(Optional[List[str]]): List of top level
-            keys with value=dict, for which we always simply override the
-            entire value (dict), iff the "type" key in that value dict changes.
-    """
-    allow_new_subkey_list = allow_new_subkey_list or []
-    override_all_if_type_changes = override_all_if_type_changes or []
-
-    for k, value in new_dict.items():
-        if k not in original and not new_keys_allowed:
-            raise Exception("Unknown config parameter `{}` ".format(k))
-
-        # Both orginal value and new one are dicts.
-        if isinstance(original.get(k), dict) and isinstance(value, dict):
-            # Check old type vs old one. If different, override entire value.
-            if k in override_all_if_type_changes and \
-                "type" in value and "type" in original[k] and \
-                    value["type"] != original[k]["type"]:
-                original[k] = value
-            # Allowed key -> ok to add new subkeys.
-            elif k in allow_new_subkey_list:
-                deep_update(original[k], value, True)
-            # Non-allowed key.
-            else:
-                deep_update(original[k], value, new_keys_allowed)
-        # Original value not a dict OR new value not a dict:
-        # Override entire value.
-        else:
-            original[k] = value
-    return original
-
-
-def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
-    if prevent_delimiter and any(delimiter in key for key in dt):
-        # Raise if delimiter is any of the keys
-        raise ValueError(
-            "Found delimiter `{}` in key when trying to flatten array."
-            "Please avoid using the delimiter in your specification.")
-    while any(isinstance(v, dict) for v in dt.values()):
-        remove = []
-        add = {}
-        for key, value in dt.items():
-            if isinstance(value, dict):
-                for subkey, v in value.items():
-                    if prevent_delimiter and delimiter in subkey:
-                        # Raise  if delimiter is in any of the subkeys
-                        raise ValueError(
-                            "Found delimiter `{}` in key when trying to "
-                            "flatten array. Please avoid using the delimiter "
-                            "in your specification.")
-                    add[delimiter.join([key, str(subkey)])] = v
-                remove.append(key)
-        dt.update(add)
-        for k in remove:
-            del dt[k]
-    return dt
-
-
-def unflatten_dict(dt, delimiter="/"):
-    """Unflatten dict. Does not support unflattening lists."""
-    dict_type = type(dt)
-    out = dict_type()
-    for key, val in dt.items():
-        path = key.split(delimiter)
-        item = out
-        for k in path[:-1]:
-            item = item.setdefault(k, dict_type())
-        item[path[-1]] = val
-    return out
-
-
-def unflatten_list_dict(dt, delimiter="/"):
-    """Unflatten nested dict and list.
-
-    This function now has some limitations:
-    (1) The keys of dt must be str.
-    (2) If unflattened dt (the result) contains list, the index order must be
-        ascending when accessing dt. Otherwise, this function will throw
-        AssertionError.
-    (3) The unflattened dt (the result) shouldn't contain dict with number
-        keys.
-
-    Be careful to use this function. If you want to improve this function,
-    please also improve the unit test. See #14487 for more details.
-
-    Args:
-        dt (dict): Flattened dictionary that is originally nested by multiple
-            list and dict.
-        delimiter (str): Delimiter of keys.
-
-    Example:
-        >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}
-        >>> unflatten_list_dict(dt)
-        {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
-    """
-    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() \
-        else type(dt)
-    out = out_type()
-    for key, val in dt.items():
-        path = key.split(delimiter)
-
-        item = out
-        for i, k in enumerate(path[:-1]):
-            next_type = list if path[i + 1].isdigit() else dict
-            if isinstance(item, dict):
-                item = item.setdefault(k, next_type())
-            elif isinstance(item, list):
-                if int(k) >= len(item):
-                    item.append(next_type())
-                    assert int(k) == len(item) - 1
-                item = item[int(k)]
-
-        if isinstance(item, dict):
-            item[path[-1]] = val
-        elif isinstance(item, list):
-            item.append(val)
-            assert int(path[-1]) == len(item) - 1
-    return out
-
-
-def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
-    """
-    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
-    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
-    """
-    if flat_key in lookup:
-        return lookup[flat_key]
-    keys = deque(flat_key.split(delimiter))
-    base = lookup
-    while keys:
-        key = keys.popleft()
-        try:
-            if isinstance(base, Mapping):
-                base = base[key]
-            elif isinstance(base, Sequence):
-                base = base[int(key)]
-            else:
-                raise KeyError()
-        except KeyError as e:
-            if "default" in kwargs:
-                return kwargs["default"]
-            raise e
-    return base
 
 
 def _to_pinnable(obj):
@@ -493,6 +343,14 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
         cloudpickle.dump(state, f)
 
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def find_free_port():
+    """Finds a free port on the current node."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
@@ -727,10 +585,15 @@ def create_logdir(dirname: str, local_dir: str):
 
 def validate_warmstart(parameter_names: List[str],
                        points_to_evaluate: List[Union[List, Dict]],
-                       evaluated_rewards: List):
+                       evaluated_rewards: List,
+                       validate_point_name_lengths: bool = True):
     """Generic validation of a Searcher's warm start functionality.
-    Raises exceptions in case of type and length mismatches betwee
+    Raises exceptions in case of type and length mismatches between
     parameters.
+
+    If ``validate_point_name_lengths`` is False, the equality of lengths
+    between ``points_to_evaluate`` and ``parameter_names`` will not be
+    validated.
     """
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
@@ -743,7 +606,8 @@ def validate_warmstart(parameter_names: List[str],
                     f"points_to_evaluate expected to include list or dict, "
                     f"got {point}.")
 
-            if not len(point) == len(parameter_names):
+            if validate_point_name_lengths and (
+                    not len(point) == len(parameter_names)):
                 raise ValueError("Dim of point {}".format(point) +
                                  " and parameter_names {}".format(
                                      parameter_names) + " do not match.")
@@ -760,29 +624,43 @@ def validate_warmstart(parameter_names: List[str],
                 " do not match.")
 
 
-class SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+    It can be used for actor placement.
 
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
+    If using Ray Client, this will return the resource key for the node that
+    is running the client server.
 
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
+    Returns:
+        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
 
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
 
-            return super(SafeFallbackEncoder, self).default(value)
+def force_on_current_node(task_or_actor):
+    """Given a task or actor, place it on the current node.
 
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
+    If using Ray Client, the current node is the client server node.
+
+    Args:
+        task_or_actor: A Ray remote function or class to place on the
+            current node.
+
+    Returns:
+        The provided task or actor, but with options modified to force
+            placement on the current node.
+    """
+    node_resource_key = get_current_node_resource_key()
+    options = {"resources": {node_resource_key: 0.01}}
+    return task_or_actor.options(**options)
 
 
 if __name__ == "__main__":

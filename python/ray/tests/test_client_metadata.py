@@ -35,6 +35,10 @@ def test_get_runtime_context(ray_start_regular_shared):
         assert isinstance(rtc, RuntimeContext)
         assert isinstance(rtc.node_id, NodeID)
         assert len(rtc.node_id.hex()) == 56
+        assert isinstance(rtc.namespace, str)
+
+        # Ensure this doesn't throw
+        ray.get_runtime_context().get()
 
         with pytest.raises(Exception):
             _ = rtc.task_id

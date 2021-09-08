@@ -13,7 +13,7 @@ LARGE_INTEGER = 100000000
 # Min and Max outputs (clipped) from an NN-output layer interpreted as the
 # log(x) of some x (e.g. a stddev of a normal
 # distribution).
-MIN_LOG_NN_OUTPUT = -20
+MIN_LOG_NN_OUTPUT = -5
 MAX_LOG_NN_OUTPUT = 2
 
 
@@ -280,10 +280,10 @@ def convert_to_numpy(x, reduce_floats=False):
     def mapping(item):
         if torch and isinstance(item, torch.Tensor):
             ret = item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
-        elif tf and isinstance(item, tf.Tensor):
+                item.detach().cpu().numpy()
+        elif tf and isinstance(item, (tf.Tensor, tf.Variable)):
             assert tf.executing_eagerly()
-            ret = item.cpu().numpy()
+            ret = item.numpy()
         else:
             ret = item
         if reduce_floats and isinstance(ret, np.ndarray) and \

@@ -8,8 +8,8 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import (generate_system_config_map, wait_for_condition,
-                            SignalActor)
+from ray._private.test_utils import (generate_system_config_map,
+                                     wait_for_condition, SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -255,14 +255,96 @@ def test_wait_for_nodes(ray_start_cluster_head):
     ],
     indirect=True)
 def test_ray_client(call_ray_start):
-    from ray.util.client import ray
-    ray.connect("localhost:20000")
+    from ray.util.client import ray as ray_client
+    ray.client("localhost:20000").connect()
 
     @ray.remote
     def f():
         return "hello client"
 
-    assert ray.get(f.remote()) == "hello client"
+    assert ray_client.get(f.remote()) == "hello client"
+
+
+def test_detached_actor_autoscaling(ray_start_cluster_head):
+    """Make sure that a detached actor, which belongs to a dead job, can start
+    workers on nodes that were added after the job ended.
+    """
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes(2)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.handles = []
+
+        def start_actors(self, n):
+            self.handles.extend([Actor.remote() for _ in range(n)])
+
+        def get_children(self):
+            return self.handles
+
+        def ping(self):
+            pass
+
+    main_actor = Actor.options(lifetime="detached", name="main").remote()
+    ray.get(main_actor.ping.remote())
+
+    ray.shutdown()
+    ray.init(address=cluster.address, namespace="default_test_namespace")
+
+    main_actor = ray.get_actor("main")
+    num_to_start = int(ray.available_resources().get("CPU", 0) + 1)
+    print(f"Starting {num_to_start} actors")
+    ray.get(main_actor.start_actors.remote(num_to_start))
+
+    actor_handles = ray.get(main_actor.get_children.remote())
+
+    up, down = ray.wait(
+        [actor.ping.remote() for actor in actor_handles],
+        timeout=5,
+        num_returns=len(actor_handles))
+    assert len(up) == len(actor_handles) - 1
+    assert len(down) == 1
+
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes(3)
+    up, down = ray.wait(
+        [actor.ping.remote() for actor in actor_handles],
+        timeout=5,
+        num_returns=len(actor_handles))
+    assert len(up) == len(actor_handles)
+    assert len(down) == 0
+
+
+def test_multi_node_pgs(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes(2)
+    ray.init(address=cluster.address)
+
+    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(4)]
+
+    ready, not_ready = ray.wait(
+        [pg.ready() for pg in pgs], timeout=5, num_returns=4)
+    assert len(ready) == 2
+    assert len(not_ready) == 2
+
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes(3)
+    ready, not_ready = ray.wait(
+        [pg.ready() for pg in pgs], timeout=5, num_returns=4)
+    assert len(ready) == 4
+    assert len(not_ready) == 0
+
+    for i in range(4, 10):
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes(i)
+        print(".")
+        more_pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(2)]
+        ready, not_ready = ray.wait(
+            [pg.ready() for pg in more_pgs], timeout=5, num_returns=2)
+        assert len(ready) == 2
 
 
 if __name__ == "__main__":

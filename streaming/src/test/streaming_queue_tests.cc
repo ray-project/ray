@@ -55,25 +55,26 @@ TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
              60 * 1000);
 }
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
+TEST_P(StreamingExactlySameTest, Hold) {}
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 
-INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingExactlySameTest,
-                        testing::Values(0, 1, 5, 9));
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
+
+INSTANTIATE_TEST_SUITE_P(StreamingTest, StreamingExactlySameTest,
+                         testing::Values(0, 1, 5, 9));
 
 }  // namespace streaming
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 8);
+  RAY_CHECK(argc == 7);
   ray::TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
   ray::streaming::node_manager_port = std::stoi(std::string(argv[2]));
   ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[3]);
   ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[4]);
   ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[6]);
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[7]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[6]);
   return RUN_ALL_TESTS();
 }

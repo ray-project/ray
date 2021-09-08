@@ -17,6 +17,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
+import sys
 import time
 
 import ray
@@ -91,6 +92,15 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    # Call (base) PPO's config validation function first.
+    # Note that this will not touch or check on the train_batch_size=-1
+    # setting.
+    ppo.validate_config(config)
+
+    # Error if run on Win.
+    if sys.platform in ["win32", "cygwin"]:
+        raise ValueError("DD-PPO not supported on Win yet! "
+                         "Due to usage of torch.distributed.")
 
     # Auto-train_batch_size: Calculate from rollout len and envs-per-worker.
     if config["train_batch_size"] == -1:
@@ -121,8 +131,6 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
-    # Call (base) PPO's config validation function.
-    ppo.validate_config(config)
 
 
 def execution_plan(workers: WorkerSet,
@@ -151,9 +159,9 @@ def execution_plan(workers: WorkerSet,
     # Get setup tasks in order to throw errors on failure.
     ray.get([
         worker.setup_torch_data_parallel.remote(
-            address,
-            i,
-            len(workers.remote_workers()),
+            url=address,
+            world_rank=i,
+            world_size=len(workers.remote_workers()),
             backend=config["torch_distributed_backend"])
         for i, worker in enumerate(workers.remote_workers())
     ])

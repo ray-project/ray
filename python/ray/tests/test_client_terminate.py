@@ -4,7 +4,7 @@ import time
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.exceptions import RayTaskError
 from ray.exceptions import WorkerCrashedError
@@ -22,10 +22,11 @@ def valid_exceptions(use_force):
 
 def _all_actors_dead(ray):
     import ray as real_ray
+    import ray._private.gcs_utils as gcs_utils
 
     def _all_actors_dead_internal():
-        return all(actor["State"] == real_ray.gcs_utils.ActorTableData.DEAD
-                   for actor in list(real_ray.actors().values()))
+        return all(actor["State"] == gcs_utils.ActorTableData.DEAD
+                   for actor in list(real_ray.state.actors().values()))
 
     return _all_actors_dead_internal
 
@@ -113,10 +114,10 @@ def test_kill_cancel_metadata(ray_start_regular):
             pass
 
         def mock_terminate(term, metadata):
-            raise MetadataIsCorrectlyPassedException(metadata[0][0])
+            raise MetadataIsCorrectlyPassedException(metadata[1][0])
 
         # Mock stub's Terminate method to raise an exception.
-        ray.api.worker.server.Terminate = mock_terminate
+        ray.get_context().api.worker.server.Terminate = mock_terminate
 
         # Verify the expected exception is raised with ray.kill.
         # Check that argument of the exception matches "key" from the

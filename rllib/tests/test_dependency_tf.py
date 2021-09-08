@@ -9,9 +9,9 @@ if __name__ == "__main__":
 
     from ray.rllib.agents.a3c import A2CTrainer
     assert "tensorflow" not in sys.modules, \
-        "TF initially present, when it shouldn't."
+        "`tensorflow` initially present, when it shouldn't!"
 
-    # note: no ray.init(), to test it works without Ray
+    # Note: No ray.init(), to test it works without Ray
     trainer = A2CTrainer(
         env="CartPole-v0", config={
             "framework": "torch",
@@ -19,7 +19,9 @@ if __name__ == "__main__":
         })
     trainer.train()
 
-    assert "tensorflow" not in sys.modules, "TF should not be imported"
+    assert "tensorflow" not in sys.modules, \
+        "`tensorflow` should not be imported after creating and " \
+        "training A3CTrainer!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TF_IMPORT"]

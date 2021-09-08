@@ -5,6 +5,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -34,6 +35,19 @@ public interface RayRuntime {
    * @return A ObjectRef instance that represents the in-store object.
    */
   <T> ObjectRef<T> put(T obj);
+
+  /**
+   * Store an object in the object store, and assign its ownership to owner. This function is
+   * experimental.
+   *
+   * @param obj The Java object to be stored.
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
+   * @return A ObjectRef instance that represents the in-store object.
+   */
+  <T> ObjectRef<T> put(T obj, BaseActorHandle owner);
 
   /**
    * Get an object from the object store.
@@ -134,7 +148,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -240,4 +254,7 @@ public interface RayRuntime {
    * @return True if the placement group is created. False otherwise.
    */
   boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
+
+  /** Create concurrency group instance at runtime. */
+  ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
 }

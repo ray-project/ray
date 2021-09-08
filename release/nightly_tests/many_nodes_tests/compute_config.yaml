@@ -1,0 +1,18 @@
+cloud_id: cld_4F7k8814aZzGG8TNUGPKnc
+
+region: us-west-2
+
+head_node_type:
+    name: head_node
+    instance_type: m4.16xlarge
+    resources:
+      cpu: 64
+
+worker_node_types:
+   - name: worker_node
+     instance_type: m4.large
+     min_workers: 500
+     max_workers: 500
+     use_spot: false
+     resources:
+      cpu: 2

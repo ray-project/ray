@@ -62,7 +62,7 @@ cdef class BaseID:
         return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
-        return self.binary() != other.binary()
+        return type(self) != type(other) or self.binary() != other.binary()
 
     def __bytes__(self):
         return self.binary()
@@ -234,6 +234,9 @@ cdef class JobID(BaseID):
     def size(cls):
         return CJobID.Size()
 
+    def int(self):
+        return self.data.ToInt()
+
     def binary(self):
         return self.data.Binary()
 
@@ -259,6 +262,7 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
+
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
@@ -300,6 +304,28 @@ cdef class ActorID(BaseID):
 
     cdef size_t hash(self):
         return self.data.Hash()
+
+
+cdef class ClientActorRef(ActorID):
+
+    def __init__(self, id: bytes):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+
+    def __dealloc__(self):
+        if client is None or client.ray is None:
+            # The client package or client.ray object might be set
+            # to None when the script exits. Should be safe to skip
+            # call_release in this case, since the client should have already
+            # disconnected at this point.
+            return
+        if client.ray.is_connected() and not self.data.IsNil():
+            client.ray.call_release(self.id)
+
+    @property
+    def id(self):
+        return self.binary()
 
 
 cdef class FunctionID(UniqueID):

@@ -383,7 +383,7 @@ def rollout(agent,
         episodes = 0
         while keep_going(steps, num_steps, episodes, num_episodes):
             saver.begin_rollout()
-            eval_result = agent._evaluate()["evaluation"]
+            eval_result = agent.evaluate()["evaluation"]
             # Increase timestep and episode counters.
             eps = agent.config["evaluation_num_episodes"]
             episodes += eps
@@ -404,6 +404,7 @@ def rollout(agent,
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
+
     # Agent has neither evaluation- nor rollout workers.
     else:
         from gym import envs
@@ -463,7 +464,7 @@ def rollout(agent,
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
                     if p_use_lstm:
-                        a_action, p_state, _ = agent.compute_action(
+                        a_action, p_state, _ = agent.compute_single_action(
                             a_obs,
                             state=agent_states[agent_id],
                             prev_action=prev_actions[agent_id],
@@ -471,7 +472,7 @@ def rollout(agent,
                             policy_id=policy_id)
                         agent_states[agent_id] = p_state
                     else:
-                        a_action = agent.compute_action(
+                        a_action = agent.compute_single_action(
                             a_obs,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
@@ -506,7 +507,7 @@ def rollout(agent,
             episodes += 1
 
 
-if __name__ == "__main__":
+def main():
     parser = create_parser()
     args = parser.parse_args()
 
@@ -522,3 +523,7 @@ if __name__ == "__main__":
             "--out as well!")
 
     run(args, parser)
+
+
+if __name__ == "__main__":
+    main()

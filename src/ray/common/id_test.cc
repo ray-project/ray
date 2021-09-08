@@ -37,6 +37,12 @@ const static JobID kDefaultJobId = JobID::FromInt(199);
 
 const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
+TEST(JobIDTest, TestJobID) {
+  uint32_t id = 100;
+  JobID job_id = JobID::FromInt(id);
+  ASSERT_EQ(job_id.ToInt(), id);
+}
+
 TEST(ActorIDTest, TestActorID) {
   {
     // test from binary

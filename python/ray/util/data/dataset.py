@@ -3,10 +3,12 @@ from typing import Callable, List, Iterable, Iterator
 
 import pandas as pd
 
+from ray.util.annotations import Deprecated
 from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
-                           T, U)
+                           T, U, _ActorSet, from_items)
 
 
+@Deprecated
 class MLDataset(ParallelIterator[pd.DataFrame]):
     """A distributed ML dataset implemented based on ParallelIterator
 
@@ -17,12 +19,34 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             larger than zero, and 0 means unknown.
     """
 
-    def __init__(self, actor_sets: List["_ActorSet"], name: str,
+    def __init__(self, actor_sets: List[_ActorSet], name: str,
                  parent_iterators: List[ParallelIterator[pd.DataFrame]],
                  batch_size: int, repeated: bool):
         super(MLDataset, self).__init__(actor_sets, name, parent_iterators)
         self._batch_size = batch_size
         self._repeated = repeated
+
+    @classmethod
+    def from_modin(cls, df, num_shards: int = 2):
+        """Create a MLDataset from a Modin Dataframe.
+
+        Args:
+            df (modin.pandas.DataFrame): A Modin Dataframe.
+            num_shards (int): The number of worker actors to create.
+        """
+        try:
+            import modin.pandas as pd
+        except ImportError:
+            raise ImportError("Cannot convert from Modin because "
+                              "Modin is not installed.") from None
+        if not isinstance(df, (pd.DataFrame, pd.Series)):
+            raise ValueError("Must provide a modin.pandas DataFrame or Series")
+        from modin.distributed.dataframe.pandas.partitions import (
+            unwrap_partitions)
+
+        parts = unwrap_partitions(df)
+        modin_iter = from_items(parts, num_shards=num_shards, repeat=False)
+        return cls.from_parallel_it(modin_iter, batch_size=0, repeated=False)
 
     @staticmethod
     def from_parallel_it(para_it: ParallelIterator[pd.DataFrame],

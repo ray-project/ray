@@ -1,14 +1,15 @@
 import copy
 from six.moves import queue
 import threading
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.util.iter import _NextValueNotReady
 
 tf1, tf, tfv = try_import_tf()
 
@@ -66,12 +67,12 @@ class LearnerThread(threading.Thread):
         while not self.stopped:
             self.step()
 
-    def step(self) -> None:
+    def step(self) -> Optional[_NextValueNotReady]:
         with self.queue_timer:
             try:
                 batch, _ = self.minibatch_buffer.get()
             except queue.Empty:
-                return
+                return _NextValueNotReady()
 
         with self.grad_timer:
             fetches = self.local_worker.learn_on_batch(batch)

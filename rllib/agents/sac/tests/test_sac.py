@@ -1,4 +1,3 @@
-import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
@@ -57,6 +56,8 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        np.random.seed(42)
+        torch.manual_seed(42)
         ray.init()
 
     @classmethod
@@ -68,6 +69,7 @@ class TestSAC(unittest.TestCase):
         config = sac.DEFAULT_CONFIG.copy()
         config["Q_model"] = sac.DEFAULT_CONFIG["Q_model"].copy()
         config["num_workers"] = 0  # Run locally.
+        config["n_step"] = 3
         config["twin_q"] = True
         config["clip_actions"] = False
         config["normalize_actions"] = True
@@ -79,6 +81,8 @@ class TestSAC(unittest.TestCase):
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
         config["buffer_size"] = 40000
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -98,9 +102,8 @@ class TestSAC(unittest.TestCase):
                 print("Env={}".format(env))
                 if env == RandomEnv:
                     config["env_config"] = {
-                        "observation_space": Tuple(
-                            [simple_space,
-                             Discrete(2), image_space]),
+                        "observation_space": Tuple((simple_space, Discrete(2),
+                                                    image_space)),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:
@@ -115,32 +118,23 @@ class TestSAC(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+
+                # Test, whether the replay buffer is saved along with
+                # a checkpoint (no point in doing it for all frameworks since
+                # this is framework agnostic).
+                if fw == "tf" and env == "CartPole-v0":
+                    checkpoint = trainer.save()
+                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer.restore(checkpoint)
+                    # Get some data from the buffer and compare.
+                    data = trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    check(data, new_data)
+                    new_trainer.stop()
+
                 trainer.stop()
-
-    def test_sac_fake_multi_gpu_learning(self):
-        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(sac.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        config["clip_actions"] = False
-        config["initial_alpha"] = 0.001
-        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
-        config["env_config"] = {"config": {"repeat_delay": 0}}
-
-        for _ in framework_iterator(config, frameworks="torch"):
-            trainer = sac.SACTrainer(config=config, env=env)
-            num_iterations = 50
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(f"R={results['episode_reward_mean']}")
-                if results["episode_reward_mean"] > 30.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
-            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -252,6 +246,9 @@ class TestSAC(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
+                # Have to add this here (not a parameter in tf, but must be
+                # one in torch, so it gets properly copied to the GPU(s)).
+                model_dict["target_entropy"] = policy.model.target_entropy
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)
 
@@ -426,9 +423,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.003)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -443,12 +440,13 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.003)
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -456,7 +454,7 @@ class TestSAC(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.random.random(size=(batch_size, )),
-        }
+        })
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
                          sess):

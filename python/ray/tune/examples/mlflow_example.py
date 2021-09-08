@@ -85,12 +85,33 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--tracking-uri",
+        type=str,
+        help="The tracking URI for the MLflow "
+        "tracking server.")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        import ray
+        ray.init(f"ray://{args.server_address}")
+
+    if args.server_address and not args.tracking_uri:
+        raise RuntimeError("If running this example with Ray Client, "
+                           "the tracking URI for your tracking server should"
+                           "be explicitly passed in.")
 
     if args.smoke_test:
         mlflow_tracking_uri = os.path.join(tempfile.gettempdir(), "mlruns")
     else:
-        mlflow_tracking_uri = None
+        mlflow_tracking_uri = args.tracking_uri
 
     tune_function(mlflow_tracking_uri, finish_fast=args.smoke_test)
     if not args.smoke_test:

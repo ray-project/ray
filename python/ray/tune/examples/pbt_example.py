@@ -89,9 +89,18 @@ if __name__ == "__main__":
         "--cluster",
         action="store_true",
         help="Distribute tuning on a cluster")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
-    if args.cluster:
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    elif args.cluster:
         ray.init(address="auto")
     elif args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test

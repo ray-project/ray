@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
@@ -42,7 +42,7 @@ def _check_trial_running(trial):
 
 
 def _get_running_trials(runner):
-    return [t for t in runner.get_trials() if t.status == Trial.RUNNING]
+    return [t for t in runner.get_live_trials() if t.status == Trial.RUNNING]
 
 
 def _start_new_cluster():

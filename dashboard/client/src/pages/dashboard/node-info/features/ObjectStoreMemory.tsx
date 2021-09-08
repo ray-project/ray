@@ -61,8 +61,8 @@ export const WorkerObjectStoreMemory: WorkerFeatureRenderFn = () => (
   </Typography>
 );
 
-export const workerObjectStoreMemoryAccessor: Accessor<WorkerFeatureData> = () =>
-  0;
+export const workerObjectStoreMemoryAccessor: Accessor<WorkerFeatureData> =
+  () => 0;
 
 const objectStoreMemoryFeature: NodeInfoFeature = {
   id: "objectStoreMemory",

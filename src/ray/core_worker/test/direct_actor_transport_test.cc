@@ -22,7 +22,12 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
+// clang-format off
+#include "mock/ray/core_worker/task_manager.h"
+// clang-format on
+
 namespace ray {
+namespace core {
 
 using ::testing::_;
 using ::testing::ElementsAre;
@@ -66,6 +71,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
+  int64_t ClientProcessedUpToSeqno() override { return acked_seqno; }
+
   bool ReplyPushTask(Status status = Status::OK(), size_t index = 0) {
     if (callbacks.size() == 0) {
       return false;
@@ -79,28 +86,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   rpc::Address addr;
   std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   std::vector<uint64_t> received_seq_nos;
-};
-
-class MockTaskFinisher : public TaskFinisherInterface {
- public:
-  MockTaskFinisher() {}
-
-  MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
-                                         const rpc::Address &addr));
-  MOCK_METHOD5(PendingTaskFailed,
-               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception,
-                    bool immediately_mark_object_fail));
-
-  MOCK_METHOD2(OnTaskDependenciesInlined,
-               void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
-
-  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
-
-  MOCK_METHOD4(MarkPendingTaskFailed,
-               void(const TaskID &task_id, const TaskSpecification &spec,
-                    rpc::ErrorType error_type,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
+  int64_t acked_seqno = 0;
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
@@ -108,18 +94,21 @@ class DirectActorSubmitterTest : public ::testing::Test {
   DirectActorSubmitterTest()
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        task_finisher_(std::make_shared<MockTaskFinisher>()),
+        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         submitter_(
             std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
             }),
-            store_, task_finisher_) {}
+            store_, task_finisher_, [this](const ActorID &actor_id, int64_t num_queued) {
+              last_queue_warning_ = num_queued;
+            }) {}
 
   int num_clients_connected_ = 0;
+  int64_t last_queue_warning_ = 0;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  std::shared_ptr<MockTaskFinisher> task_finisher_;
+  std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
@@ -154,6 +143,36 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   // not reset `received_seq_nos`.
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+}
+
+TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.ConnectActor(actor_id, addr, 0);
+
+  for (int i = 0; i < 7500; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    worker_client_->acked_seqno = i;
+  }
+  ASSERT_EQ(last_queue_warning_, 0);
+
+  for (int i = 7500; i < 15000; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    /* no ack */
+  }
+  ASSERT_EQ(last_queue_warning_, 5000);
+
+  for (int i = 15000; i < 35000; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    /* no ack */
+  }
+  ASSERT_EQ(last_queue_warning_, 20000);
 }
 
 TEST_F(DirectActorSubmitterTest, TestDependencies) {
@@ -609,6 +628,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
   StopIOService();
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

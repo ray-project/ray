@@ -7,7 +7,6 @@ from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
 import ray
-import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
@@ -77,8 +76,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     message="Invalid config, could not load YAML.")
 
             payload = {
-                "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"]
+                "min_workers": cfg.get("min_workers", "unspecified"),
+                "max_workers": cfg.get("max_workers", "unspecified")
             }
 
             try:

@@ -20,13 +20,17 @@ def urlsplit(url):
         "fragment": split_on_anchor[1] if len(split_on_anchor) > 1 else None,
     }
 
-def auto_http_archive(*, name=None, url=None, urls=True,
-                      build_file=None, build_file_content=None,
-                      strip_prefix=True, **kwargs):
+def auto_http_archive(
+        *,
+        name = None,
+        url = None,
+        urls = True,
+        build_file = None,
+        build_file_content = None,
+        strip_prefix = True,
+        **kwargs):
     """ Intelligently choose mirrors based on the given URL for the download.
-
     Either url or urls is required.
-
     If name         == None , it is auto-deduced, but this is NOT recommended.
     If urls         == True , mirrors are automatically chosen.
     If build_file   == True , it is auto-deduced.
@@ -37,14 +41,11 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
     canonical_url = url if url != None else urls[0]
     url_parts = urlsplit(canonical_url)
-    url_except_scheme = (canonical_url.replace(url_parts["scheme"] + "://", "")
-                         if url_parts["scheme"] != None else canonical_url)
+    url_except_scheme = (canonical_url.replace(url_parts["scheme"] + "://", "") if url_parts["scheme"] != None else canonical_url)
     url_path_parts = url_parts["path"]
     url_filename = url_path_parts[-1]
-    url_filename_parts = (url_filename.rsplit(".", 2)
-                          if (tuple(url_filename.lower().rsplit(".", 2)[-2:])
-                              in DOUBLE_SUFFIXES_LOWERCASE)
-                          else url_filename.rsplit(".", 1))
+    url_filename_parts = (url_filename.rsplit(".", 2) if (tuple(url_filename.lower().rsplit(".", 2)[-2:]) in
+                                                          DOUBLE_SUFFIXES_LOWERCASE) else url_filename.rsplit(".", 1))
     is_github = url_parts["netloc"] == ["github", "com"]
 
     if name == None:  # Deduce "com_github_user_project_name" from "https://github.com/user/project-name/..."
@@ -55,9 +56,11 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
     if urls == True:
         prefer_url_over_mirrors = is_github
-        urls = [mirror_prefix + url_except_scheme
-                for mirror_prefix in mirror_prefixes
-                if not canonical_url.startswith(mirror_prefix)]
+        urls = [
+            mirror_prefix + url_except_scheme
+            for mirror_prefix in mirror_prefixes
+            if not canonical_url.startswith(mirror_prefix)
+        ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
         print("No implicit mirrors used because urls were explicitly provided")
@@ -67,15 +70,27 @@ def auto_http_archive(*, name=None, url=None, urls=True,
         if prefix_without_v.startswith("v") and prefix_without_v[1:2].isdigit():
             # GitHub automatically strips a leading 'v' in version numbers
             prefix_without_v = prefix_without_v[1:]
-        strip_prefix = (url_path_parts[1] + "-" + prefix_without_v
-                        if is_github and url_path_parts[2:3] == ["archive"]
-                        else url_filename_parts[0])
+        strip_prefix = (url_path_parts[1] + "-" + prefix_without_v if is_github and url_path_parts[2:3] == ["archive"] else url_filename_parts[0])
 
-    return http_archive(name=name, url=url, urls=urls, build_file=build_file,
-                        build_file_content=build_file_content,
-                        strip_prefix=strip_prefix, **kwargs)
+    return http_archive(
+        name = name,
+        url = url,
+        urls = urls,
+        build_file = build_file,
+        build_file_content = build_file_content,
+        strip_prefix = strip_prefix,
+        **kwargs
+    )
 
 def ray_deps_setup():
+    # Explicitly bring in protobuf dependency to work around
+    # https://github.com/ray-project/ray/issues/14117
+    http_archive(
+        name = "com_google_protobuf",
+        strip_prefix = "protobuf-3.16.0",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz"],
+        sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
+    )
 
     auto_http_archive(
         name = "com_github_antirez_redis",
@@ -103,13 +118,13 @@ def ray_deps_setup():
         urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
         sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
     )
-    
+
     auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
         build_file = "//bazel:BUILD.redis",
         strip_prefix = None,
         url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
-      sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
+        sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
     auto_http_archive(
@@ -137,7 +152,7 @@ def ray_deps_setup():
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
         sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
-        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.bz2",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
@@ -162,26 +177,14 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/3306848f697568aacf4bcca330f6bdd5ce671899.tar.gz",
-        sha256 = "79ae337dab8e9ee6bd97a9f7134929bb1ddc7f83be9a564295b895865efe7dba",
+        url = "https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz",
+        sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
     )
 
     auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
-    )
-
-    auto_http_archive(
-        name = "com_github_google_glog",
-        url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
-        sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
-        patches = [
-            "//thirdparty/patches:glog-log-pid-tid.patch",
-            "//thirdparty/patches:glog-stack-trace.patch",
-            "//thirdparty/patches:glog-suffix-log.patch",
-            "//thirdparty/patches:glog-dump-stacktrack.patch",
-        ],
     )
 
     auto_http_archive(
@@ -198,15 +201,15 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
-        ]
+        ],
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/aa844899c937bde5d2b24f276b59997e5b668bde.tar.gz",
-        sha256 = "327a3883d24cf5d81954b8b8713867ecf2289092c7a39a9dc25a9947cf5b8b78",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20210324.2.tar.gz",
+        sha256 = "59b862f50e710277f8ede96f083a5bb8d7c9595376146838b9580be90374ee1f",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -219,17 +222,18 @@ def ray_deps_setup():
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "//thirdparty/patches:prometheus-windows-zlib.patch",
             "//thirdparty/patches:prometheus-windows-pollfd.patch",
-        ]
+        ],
     )
 
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
-        sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.38.1.tar.gz",
+        sha256 = "f60e5b112913bf776a22c16a3053cc02cf55e60bf27a959fd54d7aaf8e2da6e8",
         patches = [
             "//thirdparty/patches:grpc-cython-copts.patch",
             "//thirdparty/patches:grpc-python.patch",
+            "//thirdparty/patches:grpc-windows-python-header-path.patch",
         ],
     )
 
@@ -239,8 +243,8 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
         name = "boringssl",
         # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
-        url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
-        sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
+        url = "https://github.com/google/boringssl/archive/688fc5cf5428868679d2ae1072cad81055752068.tar.gz",
+        sha256 = "f8616dff15cb8aad6705af53c7caf7a5f1103b6aaf59c76b55995e179d47f89c",
     )
 
     auto_http_archive(
@@ -265,3 +269,12 @@ def ray_deps_setup():
         urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
         sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )
+
+    http_archive(
+        name = "nlohmann_json",
+        strip_prefix = "json-3.9.1",
+        urls = ["https://github.com/nlohmann/json/archive/v3.9.1.tar.gz"],
+        sha256 = "4cf0df69731494668bdd6460ed8cb269b68de9c19ad8c27abc24cd72605b2d5b",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.nlohmann_json",
+    )
+
