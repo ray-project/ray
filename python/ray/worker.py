@@ -1393,9 +1393,10 @@ def connect(node,
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environmen will be prepared
+    # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
+        working_dir_pkg.PKG_DIR = worker.node.get_runtime_env_dir_path()
         working_dir_pkg.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.

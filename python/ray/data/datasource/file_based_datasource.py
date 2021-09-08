@@ -120,6 +120,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
+        filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block
