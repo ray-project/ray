@@ -1,37 +1,7 @@
-.. _datasets_advanced:
+.. _datasets_tensor_support:
 
-Advanced Datasets Usage
+Datasets Tensor Support
 =======================
-
-Sharding datasets
------------------
-
-Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is supported if you pass in a list of actor handles to the ``split()`` function along with the number of desired splits. This is a common pattern useful for loading and splitting data between distributed training actors:
-
-.. code-block:: python
-
-    @ray.remote(num_gpus=1)
-    class Worker:
-        def __init__(self, rank: int):
-            pass
-
-        def train(self, shard: ray.data.Dataset[int]) -> int:
-            for batch in shard.iter_batches(batch_size=256):
-                pass
-            return shard.count()
-
-    workers = [Worker.remote(i) for i in range(16)]
-    # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
-
-    ds = ray.data.range(10000)
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-
-    shards = ds.split(n=16, locality_hints=workers)
-    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
-    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
-
-    ray.get([w.train.remote(s) for s in shards])
-    # -> [650, 650, ...]
 
 Tensor-typed values
 -------------------
@@ -97,13 +67,13 @@ Automatic conversion between the Pandas and Arrow extension types/arrays keeps t
 Reading existing serialized tensor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you already have a Parquet dataset with columns containing serialized tensors, you can have these tensor columns cast to our tensor extension type at read-time by giving a simple schema for the tensor columns. Note that these tensors must have been serialized as their raw NumPy ndarray bytes in C-contiguous order (e.g. serialized via ``arr.tobytes()``).
+If you already have a Parquet dataset with columns containing serialized tensors, you can have these tensor columns cast to our tensor extension type at read-time by giving a simple schema for the tensor columns. Note that these tensors must have been serialized as their raw NumPy ndarray bytes in C-contiguous order (e.g. serialized via ``ndarray.tobytes()``).
 
 .. code-block:: python
 
+    import ray
     import numpy as np
     import pandas as pd
-    from ray.data.extensions import TensorDtype, TensorArray
 
     path = "/tmp/some_path"
 
@@ -136,6 +106,8 @@ If your serialized tensors don't fit the above constraints (e.g. they're stored 
 .. code-block:: python
 
     import pickle
+    import pyarrow as pa
+    from ray.data.extensions import TensorArray
 
     # Create a DataFrame with a list of pickled ndarrays as a column.
     arr = np.arange(24).reshape((3, 2, 2, 2))
@@ -181,7 +153,10 @@ Now that the tensor column is properly typed and in a ``Dataset``, we can perfor
     ds = ds.map_batches(lambda x: 2 * (x + 1), format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
     print(ds)
-    # -> Dataset(num_blocks=1, num_rows=3, schema=<class 'int', class ray.data.extensions.tensor_extension.ArrowTensorType>)
+    # -> Dataset(
+    #        num_blocks=1, num_rows=3,
+    #        schema=<class 'int',
+    #            class ray.data.extensions.tensor_extension.ArrowTensorType>)
     print([row["two"] for row in ds.take(5)])
     # -> [2, 4, 6, 8, 10]
 
@@ -206,6 +181,8 @@ End-to-end workflow with our Pandas extension type
 If working with in-memory Pandas DataFrames that you want to analyze, manipulate, store, and eventually read, the Pandas/Arrow extension types/arrays make it easy to extend this end-to-end workflow to tensor columns.
 
 .. code-block:: python
+
+    from ray.data.extensions import TensorDtype
 
     # Create a DataFrame with a list of ndarrays as a column.
     df = pd.DataFrame({
@@ -303,17 +280,3 @@ This feature currently comes with a few known limitations that we are either act
  * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``_tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
  * Ingesting tables with tensor columns into pytorch via ``ds.to_torch()`` is blocked by pytorch supporting tensor creation from objects that implement the `__array__` interface. See `issue <https://github.com/pytorch/pytorch/issues/51156>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18314>`__.
  * Ingesting tables with tensor columns into TensorFlow via ``ds.to_tf()`` is blocked by a Pandas fix for properly interpreting extension arrays in ``DataFrame.values`` being released. See `PR <https://github.com/pandas-dev/pandas/pull/43160>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18315>`__.
-
-Custom datasources
-------------------
-
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
-
-.. code-block:: python
-
-    # Read from a custom datasource.
-    ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
-
-    # Write to a custom datasource.
-    ds.write_datasource(YourCustomDatasource(), **write_args)
-

@@ -219,7 +219,7 @@ Datasets can be written to local or remote storage using ``.write_csv()``, ``.wr
     ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
     # -> /tmp/output2/data0.csv
 
-You can also convert a ``Dataset`` to Ray-comptabile distributed DataFrames:
+You can also convert a ``Dataset`` to Ray-compatibile distributed DataFrames:
 
 .. code-block:: python
 
@@ -287,7 +287,7 @@ By default, transformations are executed using Ray tasks. For transformations th
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
 
-Consuming datasets
+Exchanging datasets
 -------------------
 
 Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``. This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
@@ -305,10 +305,45 @@ Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` 
     ray.get(consume.remote(ds))
     # -> 200
 
-Advanced usage
---------------
+Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is supported if you pass in a list of actor handles to the ``split()`` function along with the number of desired splits. This is a common pattern useful for loading and splitting data between distributed training actors:
 
-See the `advanced usage page </data/dataset-advanced>` for docs on dataset sharding, tensor datasets, using tensor columns in your tables, and implementing your own custom datasource.
+.. code-block:: python
+
+    @ray.remote(num_gpus=1)
+    class Worker:
+        def __init__(self, rank: int):
+            pass
+
+        def train(self, shard: ray.data.Dataset[int]) -> int:
+            for batch in shard.iter_batches(batch_size=256):
+                pass
+            return shard.count()
+
+    workers = [Worker.remote(i) for i in range(16)]
+    # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
+
+    ds = ray.data.range(10000)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+
+    shards = ds.split(n=16, locality_hints=workers)
+    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
+    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
+
+    ray.get([w.train.remote(s) for s in shards])
+    # -> [650, 650, ...]
+
+Custom datasources
+------------------
+
+Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+
+.. code-block:: python
+
+    # Read from a custom datasource.
+    ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
+
+    # Write to a custom datasource.
+    ds.write_datasource(YourCustomDatasource(), **write_args)
 
 Contributing
 ------------

@@ -239,6 +239,34 @@ def test_tensor_array_reductions(ray_start_regular_shared):
                                 reducer(arr, axis=0, **np_kwargs))
 
 
+def test_arrow_tensor_array_getitem(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = ArrowTensorArray.from_numpy(arr)
+
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
+
+    # Test __iter__.
+    for t_subarr, subarr in zip(t_arr, arr):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test to_pylist.
+    np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+
+    # Test slicing and indexing.
+    t_arr2 = t_arr[1:]
+
+    np.testing.assert_array_equal(t_arr2.to_numpy(), arr[1:])
+
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)

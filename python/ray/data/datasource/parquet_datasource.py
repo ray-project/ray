@@ -110,10 +110,11 @@ class ParquetDatasource(FileBasedDatasource):
                 inferred_schema = _block_udf(dummy_table).schema
                 inferred_schema = inferred_schema.with_metadata(
                     schema.metadata)
-            except Exception as e:
+            except Exception:
                 logger.info(
                     "Failed to infer schema of dataset by passing dummy table "
-                    f"through UDF: {e}")
+                    "through UDF due to the following exception:",
+                    exc_info=True)
                 inferred_schema = schema
         else:
             inferred_schema = schema

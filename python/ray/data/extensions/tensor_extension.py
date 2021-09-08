@@ -1194,6 +1194,11 @@ class ArrowTensorArray(pa.ExtensionArray):
             # Use overridden __getitem__ method.
             yield self.__getitem__(i)
 
+    def to_pylist(self):
+        # Override pa.Array.to_pylist() due to a lack of ExtensionScalar
+        # support (see comment in __getitem__).
+        return list(self)
+
     @classmethod
     def from_numpy(cls, arr):
         """
@@ -1265,18 +1270,27 @@ class ArrowTensorArray(pa.ExtensionArray):
         data_buffer = buffers[3]
         storage_list_type = self.storage.type
         ext_dtype = storage_list_type.value_type.to_pandas_dtype()
+        shape = self.type.shape
+        # Size in bytes of the underlying ndarray item.
+        item_byte_width = storage_list_type.value_type.bit_width // 8
+        # Number of items per inner ndarray.
+        num_items_per_element = np.prod(shape) if shape else 1
+        # Base offset into data buffer, e.g. due to zero-copy slice.
+        buffer_offset = self.offset * num_items_per_element
+        # Offset (in bytes) of array data in buffer.
+        offset = item_byte_width * buffer_offset
         if index is not None:
             # Getting a single tensor element of the array.
             offset_buffer = buffers[1]
             offset_array = np.ndarray(
                 (len(self), ), buffer=offset_buffer, dtype=self.OFFSET_DTYPE)
-            offset = (offset_array[index] +
-                      self.offset) * storage_list_type.value_type.bit_width
-            shape = self.type.shape
+            # Offset into array to reach logical index.
+            index_offset = offset_array[index]
+            # Add the index offset to the base offset.
+            offset += item_byte_width * index_offset
         else:
             # Getting the entire array of tensors.
-            offset = 0
-            shape = (len(self), ) + self.type.shape
+            shape = (len(self), ) + shape
         # TODO(Clark): Support strides?
         return np.ndarray(
             shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
