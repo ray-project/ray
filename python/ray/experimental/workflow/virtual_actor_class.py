@@ -4,6 +4,7 @@ import inspect
 import logging
 from typing import List, TYPE_CHECKING, Any, Tuple, Dict
 import uuid
+import json
 import weakref
 import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
@@ -130,15 +131,15 @@ class ActorMethod(ActorMethodBase):
 
 def __getstate(instance):
     if hasattr(instance, "__getstate__"):
-        return instance.__getstate__()
+        state = instance.__getstate__()
     else:
-        return self.__dict__
+        state = json.dumps(instance.__dict__)
 
 def __setstate(instance, v):
     if hasattr(instance, "__setstate__"):
         return instance.__setstate__(v)
     else:
-        instance.__dict__ = v
+        instance.__dict__ = json.loads(v)
 
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
@@ -384,7 +385,7 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
                 f"Virtual actor '{actor_id}' has not been initialized. "
                 "We cannot get the latest state for the "
                 "readonly virtual actor.") from e
-        instance.__setstate__(state)
+        __setstate(instance, state)
         method = getattr(instance, method_name)
         return method(*args, **kwargs)
 
