@@ -26,6 +26,10 @@
 #include "mock/ray/core_worker/task_manager.h"
 // clang-format on
 
+// clang-format off
+#include "mock/ray/core_worker/task_manager.h"
+// clang-format on
+
 namespace ray {
 namespace core {
 
