@@ -544,13 +544,21 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     logger.error(
                         f"Server startup failed for client: {client_id}, "
                         f"using JobConfig: {job_config}!")
+                    # TODO(architkulkarni): Once the client server runtime env
+                    # setup is moved into the runtime env agent, revisit this
+                    # and double check where the error logs end up being saved.
+                    try:
+                        with open("/tmp/ray/session_latest/logs/"
+                                  f"ray_client_server_{server.port}.err") as f:
+                            runtime_env_error_str = f.read()
+                    except FileNotFoundError:
+                        runtime_env_error_str = "(File not found)"
                     raise RuntimeError(
                         "Starting Ray client server failed. This is most "
                         "likely because the runtime_env failed to be "
-                        f"installed. See ray_client_server_{server.port}.err "
-                        "on the head node of the cluster for the relevant "
-                        "logs.  By default these are located at "
-                        "/tmp/ray/session_latest/logs.")
+                        f"installed. Printing the contents of "
+                        f"ray_client_server_{server.port}.err below: \n"
+                        f"{runtime_env_error_str}")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")
