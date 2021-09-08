@@ -38,7 +38,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # the core worker to resolve the value. This is to make sure
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
-    obj_ref = ray.ObjectRef(binary, call_site)
+    obj_ref = ray.ObjectRef(binary, owner_address, call_site)
 
     # TODO(edoakes): we should be able to just capture a reference
     # to 'self' here instead, but this function is itself pickled
@@ -225,15 +225,20 @@ class SerializationContext:
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex(),
+                                       object_ref.owner_address(),
                                        object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ObjectDeletedError(object_ref.hex(),
+                                          object_ref.owner_address(),
                                           object_ref.call_site())
             elif error_type == ErrorType.Value("OWNER_DIED"):
-                return OwnerDiedError(object_ref.hex(), object_ref.call_site())
+                return OwnerDiedError(object_ref.hex(),
+                                      object_ref.owner_address(),
+                                      object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectReconstructionFailedError(object_ref.hex(),
-                                                       object_ref.call_site())
+                return ObjectReconstructionFailedError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:

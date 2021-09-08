@@ -3,7 +3,9 @@ from traceback import format_exception
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+from ray.core.generated.common_pb2 import Address
 import ray.ray_constants as ray_constants
+from ray._raylet import WorkerID
 import colorama
 import setproctitle
 
@@ -289,8 +291,9 @@ class ObjectUnreachableError(RayError):
         object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex, call_site):
+    def __init__(self, object_ref_hex, owner_address, call_site):
         self.object_ref_hex = object_ref_hex
+        self.owner_address = owner_address
         self.call_site = call_site.replace(
             ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
 
@@ -318,7 +321,7 @@ class ObjectLostError(ObjectUnreachableError):
     def __str__(self):
         return super().__str__() + "\n\n" + (
             f"All copies of {self.object_ref_hex} have been lost due to node "
-            "failure. Check cluster logs (/tmp/ray/session_latest/logs) for "
+            "failure. Check cluster logs (`/tmp/ray/session_latest/logs`) for "
             "more information about the failure.")
 
 
@@ -345,14 +348,27 @@ class OwnerDiedError(ObjectUnreachableError):
     """
 
     def __str__(self):
+        log_loc = "`/tmp/ray/session_latest/logs`"
+        if self.owner_address:
+            try:
+                addr = Address()
+                addr.ParseFromString(self.owner_address)
+                ip_addr = addr.ip_address
+                worker_id = WorkerID(addr.worker_id)
+                log_loc = (
+                    f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
+                    f" at IP address {ip_addr}")
+            except Exception:
+                # Catch all to make sure we always at least print the default
+                # message.
+                pass
+
         return super().__str__() + "\n\n" + (
             "The object's owner has exited. This is the Python "
             "worker that first created the ObjectRef via `.remote()` or "
             "`ray.put()`. "
-            "Check cluster logs for more "
-            "information about the Python worker failure ("
-            "/tmp/ray/session_latest/logs/*worker*{} at IP address {}"
-            ").")
+            f"Check cluster logs ({log_loc}) for more "
+            "information about the Python worker failure.")
 
 
 class ObjectReconstructionFailedError(ObjectUnreachableError):
