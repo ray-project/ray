@@ -528,7 +528,7 @@ def get_replica_context() -> ReplicaContext:
 
 @PublicAPI(stability="beta")
 def ingress(app: Union["FastAPI", "APIRouter", Callable]):
-    """Mark a ASGI application ingress for Serve.
+    """Mark an ASGI application ingress for Serve.
 
     Args:
         app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
@@ -562,7 +562,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class FastAPIWrapper(cls):
+        class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -599,8 +599,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     asyncio.get_event_loop().run_until_complete(
                         self._serve_asgi_lifespan.shutdown())
 
-        FastAPIWrapper.__name__ = cls.__name__
-        return FastAPIWrapper
+        ASGIAppWrapper.__name__ = cls.__name__
+        return ASGIAppWrapper
 
     return decorator
 

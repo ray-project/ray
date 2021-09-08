@@ -392,7 +392,6 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
-<<<<<<< HEAD
 def test_asgi_compatible(serve_instance):
     async def homepage(_):
         return starlette.responses.JSONResponse({"hello": "world"})
@@ -408,7 +407,8 @@ def test_asgi_compatible(serve_instance):
 
     resp = requests.get("http://localhost:8000/MyApp/")
     assert resp.json() == {"hello": "world"}
-=======
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
@@ -553,7 +553,6 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     TestDeployment.deploy()
     resp = requests.get("http://localhost:8000/")
     assert resp.json()
->>>>>>> c0ea2755a0da330be8f729b2fe107043e76b382d
 
 
 if __name__ == "__main__":
