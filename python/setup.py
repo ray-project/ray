@@ -33,6 +33,10 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
 CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
 
+# In automated builds, we do a few adjustments before building. For instance,
+# the bazel environment is set up slightly differently, and symlinks are
+# replaced with junctions in Windows. This variable is set e.g. in our conda
+# feedstock.
 is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
