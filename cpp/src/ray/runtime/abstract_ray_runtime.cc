@@ -44,8 +44,6 @@ using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
-std::unique_ptr<ray::gcs::GlobalStateAccessor>
-    AbstractRayRuntime::global_state_accessor_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
@@ -54,16 +52,15 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
-    if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-      auto redis_ip = ConfigInternal::Instance().redis_ip;
-      if (redis_ip.empty()) {
-        redis_ip = GetNodeIpAddress();
-      }
-      std::string redis_address =
-          redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
-      global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-          redis_address, ConfigInternal::Instance().redis_password);
+    auto redis_ip = ConfigInternal::Instance().redis_ip;
+    if (redis_ip.empty()) {
+      redis_ip = GetNodeIpAddress();
     }
+    std::string redis_address =
+        redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
+    runtime->global_state_accessor_ =
+        ProcessHelper::GetInstance().CreateGlobalStateAccessor(
+            redis_address, ConfigInternal::Instance().redis_password);
 
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
@@ -83,7 +80,6 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 
 void AbstractRayRuntime::DoShutdown() {
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
-    global_state_accessor_ = nullptr;
     ProcessHelper::GetInstance().RayStop();
   }
 }

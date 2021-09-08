@@ -25,40 +25,6 @@ namespace internal {
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-/// IP address by which the local node can be reached *from* the `address`.
-///
-/// The behavior should be the same as `node_ip_address_from_perspective` from Ray Python
-/// code. See
-/// https://stackoverflow.com/questions/2674314/get-local-ip-address-using-boost-asio.
-///
-/// TODO(kfstorm): Make this function shared code and migrate Python & Java to use this
-/// function.
-///
-/// \param address The IP address and port of any known live service on the network
-/// you care about.
-/// \return The IP address by which the local node can be reached from the address.
-std::string GetNodeIpAddress(const std::string &address) {
-  std::vector<std::string> parts;
-  boost::split(parts, address, boost::is_any_of(":"));
-  RAY_CHECK(parts.size() == 2);
-  try {
-    boost::asio::io_service netService;
-    boost::asio::ip::udp::resolver resolver(netService);
-    boost::asio::ip::udp::resolver::query query(boost::asio::ip::udp::v4(), parts[0],
-                                                parts[1]);
-    boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
-    boost::asio::ip::udp::endpoint ep = *endpoints;
-    boost::asio::ip::udp::socket socket(netService);
-    socket.connect(ep);
-    boost::asio::ip::address addr = socket.local_endpoint().address();
-    return addr.to_string();
-  } catch (std::exception &e) {
-    RAY_LOG(FATAL) << "Could not get the node IP address with socket. Exception: "
-                   << e.what();
-    return "";
-  }
-}
-
 std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resources) {
   std::ostringstream oss;
   oss << "{";
@@ -162,8 +128,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
       if (!global_state_accessor) {
-        global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
-            redis_address, ConfigInternal::Instance().redis_password));
+        global_state_accessor = std::make_unique<ray::gcs::GlobalStateAccessor>(
+            redis_address, ConfigInternal::Instance().redis_password);
         RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       }
       session_dir = *global_state_accessor->GetInternalKV("session_dir");

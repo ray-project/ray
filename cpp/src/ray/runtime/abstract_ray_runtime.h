@@ -106,7 +106,7 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor_;
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor_;
   void Execute(const TaskSpecification &task_spec);
 };
 }  // namespace internal
