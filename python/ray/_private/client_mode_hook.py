@@ -91,11 +91,17 @@ def client_mode_hook(func):
     return wrapper
 
 
-def client_mode_should_convert():
+def client_mode_should_convert(function_name: Optional[str] = None):
     # This is for testing with RAY_CLIENT_MODE.
     # When RAY_CLIENT_MODE=1, it means that for all the tests
     # will run with client mode.
     # is_client_mode_enabled will be set to be off when client is off
+    print("ABC", function_name)
+    if function_name is not None and not function_name.startswith("_") and function_name not in  {"status", "init", "is_initialized", "shutdown", "_internal_kv_initialized"}:
+        import ray
+        if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0" and not ray.is_initialized():
+            print("RE INIT")
+            ray.init()
     return (is_client_mode_enabled or is_client_mode_enabled_by_default) and \
       _get_client_hook_status_on_thread()
 
