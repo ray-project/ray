@@ -116,12 +116,12 @@ class ServeController:
             async with self.write_lock:
                 try:
                     self.http_state.update()
-                except Exception as e:
-                    logger.error(f"Exception updating HTTP state: {e}")
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
                 try:
                     self.backend_state_manager.update()
-                except Exception as e:
-                    logger.error(f"Exception updating backend state: {e}")
+                except Exception:
+                    logger.exception("Exception updating backend state.")
             self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
