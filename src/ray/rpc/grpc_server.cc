@@ -17,6 +17,8 @@
 #include <grpcpp/impl/service_type.h>
 
 #include <boost/asio/detail/socket_holder.hpp>
+#include <fstream>
+#include <sstream>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_server.h"
@@ -46,6 +48,13 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads, b
   cqs_.resize(num_threads_);
 }
 
+std::string GrpcServer::ReadFile(std::string filename) {
+  std::ifstream t(filename);
+  std::stringstream buffer;
+  buffer << t.rdbuf();
+  return buffer.str();
+};
+
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
@@ -64,7 +73,31 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  use_tls_ = std::strcmp(std::getenv("RAY_SERVER_TLS"), "0") != 0;
+  if (use_tls_) {
+    std::cout << "Look at me I'm using authentication (std::cout)" << std::endl;
+
+    std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
+    std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
+
+    // Create credentials from hardcoded location
+    std::string rootcert = "";  // for verifying clients
+    std::string servercert = ReadFile(server_cert_file);
+    std::string serverkey = ReadFile(server_key_file);
+    grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey.c_str(),
+                                                              servercert.c_str()};
+//    grpc::SslServerCredentialsOptions ssl_opts;
+    grpc::SslServerCredentialsOptions ssl_opts(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);
+    ssl_opts.pem_root_certs = rootcert;
+    ssl_opts.pem_key_cert_pairs.push_back(pkcp);
+
+    // Create server credentials
+    std::shared_ptr<grpc::ServerCredentials> server_creds;
+    server_creds = grpc::SslServerCredentials(ssl_opts);
+    builder.AddListeningPort(server_address, server_creds, &port_);
+  } else {
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  }
   // Register all the services to this server.
   if (services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;

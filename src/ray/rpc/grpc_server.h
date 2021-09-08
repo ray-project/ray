@@ -19,6 +19,8 @@
 #include <boost/asio.hpp>
 #include <thread>
 #include <utility>
+#include <fstream>
+#include <sstream>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -87,7 +89,10 @@ class GrpcServer {
     }
   }
 
-  /// Get the port of this gRPC server.
+  /// Read a file
+  std::string ReadFile(std::string filename);
+
+      /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
 
   /// Register a grpc service. Multiple services can be registered to the same server.
