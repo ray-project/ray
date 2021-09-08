@@ -37,7 +37,13 @@ async def make_gcs_grpc_channel(redis_client):
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
-            options = (("grpc.enable_http_proxy", 0), )
+            options = (
+                ("grpc.enable_http_proxy", 0),
+                ("grpc.max_send_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+                ("grpc.max_receive_message_length",
+                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+            )
             channel = aiogrpc.insecure_channel(gcs_address, options=options)
             return channel
         except Exception as ex:
