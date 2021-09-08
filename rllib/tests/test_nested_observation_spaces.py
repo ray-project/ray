@@ -572,6 +572,21 @@ class NestedSpacesTest(unittest.TestCase):
             # the ray-kv indices before training.
             self.assertEqual(
                 to_list(seen[:][-1]), to_list(REPEATED_SAMPLES[i]))
+    
+    def test_repeated_space_eq(self):
+        # exact same should pass
+        space1 = Repeated(DICT_SPACE, max_len=3)
+        space2 = Repeated(DICT_SPACE, max_len=3)
+        assert space1 == space2
+        # change max_length to fail
+        space2 = Repeated(DICT_SPACE, max_len=5)
+        assert space1 != space2
+        # change something in the child space to fail
+        dict_space2 = deepcopy(DICT_SPACE)
+        dict_space2.spaces["sensors"].spaces["position"] = spaces.Box(
+            low=-100, high=100, shape=(4, ))
+        space2 = Repeated(DICT_SPACE, max_len=3)
+        assert space1 != space2
 
 
 if __name__ == "__main__":

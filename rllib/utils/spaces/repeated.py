@@ -29,3 +29,8 @@ class Repeated(gym.Space):
     def contains(self, x):
         return (isinstance(x, list) and len(x) <= self.max_len
                 and all(self.child_space.contains(c) for c in x))
+    
+    def __eq__(self, other):
+        return (isinstance(other, Repeated)
+                and self.child_space == other.child_space
+                and self.max_len == other.max_len)
