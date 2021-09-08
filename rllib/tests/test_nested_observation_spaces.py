@@ -171,18 +171,17 @@ class TorchSpyModel(TorchModelV2, nn.Module):
 
     def forward(self, input_dict, state, seq_lens):
         pos = input_dict["obs"]["sensors"]["position"].detach().cpu().numpy()
-        front_cam = input_dict["obs"]["sensors"]["front_cam"][
-            0].detach().cpu().numpy()
-        task = input_dict["obs"]["inner_state"]["job_status"][
-            "task"].detach().cpu().numpy()
+        front_cam = input_dict["obs"]["sensors"]["front_cam"][0].detach().cpu(
+        ).numpy()
+        task = input_dict["obs"]["inner_state"]["job_status"]["task"].detach(
+        ).cpu().numpy()
         ray.experimental.internal_kv._internal_kv_put(
             "torch_spy_in_{}".format(TorchSpyModel.capture_index),
             pickle.dumps((pos, front_cam, task)),
             overwrite=True)
         TorchSpyModel.capture_index += 1
-        return self.fc({
-            "obs": input_dict["obs"]["sensors"]["position"]
-        }, state, seq_lens)
+        return self.fc({"obs": input_dict["obs"]["sensors"]["position"]},
+                       state, seq_lens)
 
     def value_function(self):
         return self.fc.value_function()
@@ -206,9 +205,8 @@ class TorchRepeatedSpyModel(TorchModelV2, nn.Module):
             pickle.dumps(input_dict["obs"].unbatch_all()),
             overwrite=True)
         TorchRepeatedSpyModel.capture_index += 1
-        return self.fc({
-            "obs": input_dict["obs"].values["location"][:, 0]
-        }, state, seq_lens)
+        return self.fc({"obs": input_dict["obs"].values["location"][:, 0]},
+                       state, seq_lens)
 
     def value_function(self):
         return self.fc.value_function()
@@ -252,14 +250,13 @@ class DictSpyModel(TFModelV2):
             DictSpyModel.capture_index += 1
             return np.array(0, dtype=np.int64)
 
-        spy_fn = tf1.py_func(
-            spy, [
-                input_dict["obs"]["sensors"]["position"],
-                input_dict["obs"]["sensors"]["front_cam"][0],
-                input_dict["obs"]["inner_state"]["job_status"]["task"]
-            ],
-            tf.int64,
-            stateful=True)
+        spy_fn = tf1.py_func(spy, [
+            input_dict["obs"]["sensors"]["position"],
+            input_dict["obs"]["sensors"]["front_cam"][0],
+            input_dict["obs"]["inner_state"]["job_status"]["task"]
+        ],
+                             tf.int64,
+                             stateful=True)
 
         with tf1.control_dependencies([spy_fn]):
             output = self._main_layer(
@@ -293,14 +290,13 @@ class TupleSpyModel(TFModelV2):
             TupleSpyModel.capture_index += 1
             return np.array(0, dtype=np.int64)
 
-        spy_fn = tf1.py_func(
-            spy, [
-                input_dict["obs"][0],
-                input_dict["obs"][1][0],
-                input_dict["obs"][2],
-            ],
-            tf.int64,
-            stateful=True)
+        spy_fn = tf1.py_func(spy, [
+            input_dict["obs"][0],
+            input_dict["obs"][1][0],
+            input_dict["obs"][2],
+        ],
+                             tf.int64,
+                             stateful=True)
 
         with tf1.control_dependencies([spy_fn]):
             output = tf1.layers.dense(input_dict["obs"][0], self.num_outputs)
@@ -321,42 +317,40 @@ class NestedSpacesTest(unittest.TestCase):
         self.assertRaisesRegexp(
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
-            lambda: PGTrainer(
-                env="CartPole-v0",
-                config={
-                    "model": {
-                        "custom_model": "invalid",
-                    },
-                    "framework": "torch",
-                }))
+            lambda: PGTrainer(env="CartPole-v0",
+                              config={
+                                  "model": {
+                                      "custom_model": "invalid",
+                                  },
+                                  "framework": "torch",
+                              }))
 
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
             ValueError, "State output is not a list",
-            lambda: PGTrainer(
-                env="CartPole-v0", config={
-                    "model": {
-                        "custom_model": "invalid2",
-                    },
-                    "framework": "tf",
-                }))
+            lambda: PGTrainer(env="CartPole-v0",
+                              config={
+                                  "model": {
+                                      "custom_model": "invalid2",
+                                  },
+                                  "framework": "tf",
+                              }))
 
     def do_test_nested_dict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        pg = PGTrainer(
-            env="nested",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 5,
-                "train_batch_size": 5,
-                "model": {
-                    "custom_model": "composite",
-                    "use_lstm": test_lstm,
-                },
-                "framework": "tf",
-            })
+        pg = PGTrainer(env="nested",
+                       config={
+                           "num_workers": 0,
+                           "rollout_fragment_length": 5,
+                           "train_batch_size": 5,
+                           "model": {
+                               "custom_model": "composite",
+                               "use_lstm": test_lstm,
+                           },
+                           "framework": "tf",
+                       })
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
         DictSpyModel.capture_index = 0
@@ -378,17 +372,16 @@ class NestedSpacesTest(unittest.TestCase):
     def do_test_nested_tuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        pg = PGTrainer(
-            env="nested2",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 5,
-                "train_batch_size": 5,
-                "model": {
-                    "custom_model": "composite2",
-                },
-                "framework": "tf",
-            })
+        pg = PGTrainer(env="nested2",
+                       config={
+                           "num_workers": 0,
+                           "rollout_fragment_length": 5,
+                           "train_batch_size": 5,
+                           "model": {
+                               "custom_model": "composite2",
+                           },
+                           "framework": "tf",
+                       })
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
         TupleSpyModel.capture_index = 0
@@ -450,16 +443,21 @@ class NestedSpacesTest(unittest.TestCase):
                 "train_batch_size": 5,
                 "multiagent": {
                     "policies": {
-                        "tuple_policy": (
-                            None, TUPLE_SPACE, act_space,
-                            {"model": {"custom_model": "tuple_spy"}}),
-                        "dict_policy": (
-                            None, DICT_SPACE, act_space,
-                            {"model": {"custom_model": "dict_spy"}}),
+                        "tuple_policy": (None, TUPLE_SPACE, act_space, {
+                            "model": {
+                                "custom_model": "tuple_spy"
+                            }
+                        }),
+                        "dict_policy": (None, DICT_SPACE, act_space, {
+                            "model": {
+                                "custom_model": "dict_spy"
+                            }
+                        }),
                     },
                     "policy_mapping_fn": lambda aid, **kwargs: {
                         "tuple_agent": "tuple_policy",
-                        "dict_agent": "dict_policy"}[aid],
+                        "dict_agent": "dict_policy"
+                    }[aid],
                 },
                 "framework": "tf",
             })
@@ -509,17 +507,16 @@ class NestedSpacesTest(unittest.TestCase):
     def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
-        a2c = A2CTrainer(
-            env="nested",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 5,
-                "train_batch_size": 5,
-                "model": {
-                    "custom_model": "composite",
-                },
-                "framework": "torch",
-            })
+        a2c = A2CTrainer(env="nested",
+                         config={
+                             "num_workers": 0,
+                             "rollout_fragment_length": 5,
+                             "train_batch_size": 5,
+                             "model": {
+                                 "custom_model": "composite",
+                             },
+                             "framework": "torch",
+                         })
 
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
@@ -546,17 +543,16 @@ class NestedSpacesTest(unittest.TestCase):
     def test_torch_repeated(self):
         ModelCatalog.register_custom_model("r1", TorchRepeatedSpyModel)
         register_env("repeat", lambda _: RepeatedSpaceEnv())
-        a2c = A2CTrainer(
-            env="repeat",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 5,
-                "train_batch_size": 5,
-                "model": {
-                    "custom_model": "r1",
-                },
-                "framework": "torch",
-            })
+        a2c = A2CTrainer(env="repeat",
+                         config={
+                             "num_workers": 0,
+                             "rollout_fragment_length": 5,
+                             "train_batch_size": 5,
+                             "model": {
+                                 "custom_model": "r1",
+                             },
+                             "framework": "torch",
+                         })
 
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
@@ -571,8 +567,8 @@ class NestedSpacesTest(unittest.TestCase):
 
             # Only look at the last entry (-1) in `seen` as we reset (re-use)
             # the ray-kv indices before training.
-            self.assertEqual(
-                to_list(seen[:][-1]), to_list(REPEATED_SAMPLES[i]))
+            self.assertEqual(to_list(seen[:][-1]),
+                             to_list(REPEATED_SAMPLES[i]))
 
     def test_repeated_space_eq(self):
         # exact same should pass

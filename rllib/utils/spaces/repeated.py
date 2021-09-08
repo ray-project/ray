@@ -14,7 +14,6 @@ class Repeated(gym.Space):
     See also: documentation for rllib.models.RepeatedValues, which shows how
         the lists are represented as batched input for ModelV2 classes.
     """
-
     def __init__(self, child_space: gym.Space, max_len: int):
         super().__init__()
         self.child_space = child_space
@@ -33,4 +32,4 @@ class Repeated(gym.Space):
     def __eq__(self, other):
         return (isinstance(other, Repeated)
                 and self.child_space == other.child_space
-                and self.max_len == other.max_len) 
+                and self.max_len == other.max_len)
