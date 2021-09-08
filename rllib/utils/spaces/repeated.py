@@ -33,4 +33,4 @@ class Repeated(gym.Space):
     def __eq__(self, other):
         return (isinstance(other, Repeated)
                 and self.child_space == other.child_space
-                and self.max_len == other.max_len)
+                and self.max_len == other.max_len) 
