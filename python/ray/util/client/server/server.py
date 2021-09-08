@@ -612,7 +612,7 @@ def serve(connection_str, ray_connect_handler=None):
             root_certs = f.read()
         with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:
             private_key = f.read()
-        credentials = grpc.ssl_server_credentials([(root_certs, private_key)])
+        credentials = grpc.ssl_server_credentials([(private_key, root_certs)])
         server.add_secure_port(connection_str, credentials)
     else:
         server.add_insecure_port(connection_str)
