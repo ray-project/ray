@@ -120,7 +120,7 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                service_ready = bool(self.ping_server())
+                service_ready = self.ping_server()
                 if service_ready:
                     break
                 # Ray is not ready yet, wait a timeout
@@ -305,7 +305,7 @@ class Worker:
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
-        resp = self.server.WaitObject(req, metadata=self.metadata)
+        resp = self.data_client.WaitObject(req)
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
@@ -448,10 +448,10 @@ class Worker:
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
+        term = ray_client_pb2.TerminateRequest(actor=term_actor)
+        term.client_id = self._client_id
         try:
-            term = ray_client_pb2.TerminateRequest(actor=term_actor)
-            term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            self.data_client.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -465,16 +465,18 @@ class Worker:
         term_object.id = obj.id
         term_object.force = force
         term_object.recursive = recursive
+        term = ray_client_pb2.TerminateRequest(task_object=term_object)
+        term.client_id = self._client_id
         try:
-            term = ray_client_pb2.TerminateRequest(task_object=term_object)
-            term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            self.data_client.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
-    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
+    # Not using streaming RPC, so unordered w.r.t. other requests.
+    def get_cluster_info(self,
+                         req_type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
-        req.type = type
+        req.type = req_type
         resp = self.server.ClusterInfo(req, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
@@ -512,14 +514,12 @@ class Worker:
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(
             all_namespaces=all_namespaces)
-        return json.loads(
-            self.server.ListNamedActors(req,
-                                        metadata=self.metadata).actors_json)
+        return json.loads(self.data_client.ListNamedActors(req).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:
             return self.get_cluster_info(
-                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED) is not None
         return False
 
     def ping_server(self) -> bool:

@@ -339,8 +339,6 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
-// TODO: add other mutation requests that should be serialized, e.g.
-// TerminateRequest.
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -348,11 +346,20 @@ message DataRequest {
   oneof type {
     GetRequest get = 2;
     PutRequest put = 3;
+    WaitRequest wait = 9;
     ReleaseRequest release = 4;
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
     ClientTask task = 8;
+    TerminateRequest terminate = 10;
+    ClusterInfoRequest cluster_info = 11;
+    ClientListNamedActorsRequest list_named_actors = 12;
+    KVGetRequest kv_get = 13;
+    KVPutRequest kv_put = 14;
+    KVDelRequest kv_del = 15;
+    KVListRequest kv_list = 16;
+    KVExistsRequest kv_exists = 17;
   }
 }
 
@@ -362,11 +369,20 @@ message DataResponse {
   oneof type {
     GetResponse get = 2;
     PutResponse put = 3;
+    WaitResponse wait = 9;
     ReleaseResponse release = 4;
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
     ClientTaskTicket task_ticket = 8;
+    TerminateResponse terminate = 10;
+    ClusterInfoResponse cluster_info = 11;
+    ClientListNamedActorsResponse list_named_actors = 12;
+    KVGetResponse kv_get = 13;
+    KVPutResponse kv_put = 14;
+    KVDelResponse kv_del = 15;
+    KVListResponse kv_list = 16;
+    KVExistsResponse kv_exists = 17;
   }
 }
 

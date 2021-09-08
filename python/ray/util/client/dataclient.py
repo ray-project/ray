@@ -207,6 +207,12 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.put
 
+    def WaitObject(self, request: ray_client_pb2.WaitRequest
+                   ) -> ray_client_pb2.WaitResponse:
+        req = ray_client_pb2.DataRequest(wait=request, )
+        resp = self._blocking_send(req)
+        return resp.wait
+
     def ReleaseObject(self,
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
@@ -217,3 +223,52 @@ class DataClient:
                  callback: ResponseCallable):
         datareq = ray_client_pb2.DataRequest(task=request)
         self._async_send(datareq, callback)
+
+    def Terminate(self, request: ray_client_pb2.TerminateRequest
+                  ) -> ray_client_pb2.TerminateResponse:
+        req = ray_client_pb2.DataRequest(terminate=request, )
+        resp = self._blocking_send(req)
+        return resp.terminate
+
+    def ListNamedActors(self,
+                        request: ray_client_pb2.ClientListNamedActorsRequest
+                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        req = ray_client_pb2.DataRequest(list_named_actors=request, )
+        resp = self._blocking_send(req)
+        return resp.list_named_actors
+
+    def ClusterInfo(self, request: ray_client_pb2.ClusterInfoRequest
+                    ) -> ray_client_pb2.ClusterInfoResponse:
+        req = ray_client_pb2.DataRequest(cluster_info=request, )
+        resp = self._blocking_send(req)
+        return resp.cluster_info
+
+    def KVGet(self, request: ray_client_pb2.KVGetRequest
+              ) -> ray_client_pb2.KVGetResponse:
+        req = ray_client_pb2.DataRequest(kv_get=request, )
+        resp = self._blocking_send(req)
+        return resp.kv_get
+
+    def KVExists(self, request: ray_client_pb2.KVExistsRequest
+                 ) -> ray_client_pb2.KVExistsResponse:
+        req = ray_client_pb2.DataRequest(kv_exists=request, )
+        resp = self._blocking_send(req)
+        return resp.kv_exists
+
+    def KVPut(self, request: ray_client_pb2.KVPutRequest
+              ) -> ray_client_pb2.KVPutResponse:
+        req = ray_client_pb2.DataRequest(kv_put=request, )
+        resp = self._blocking_send(req)
+        return resp.kv_put
+
+    def KVDel(self, request: ray_client_pb2.KVDelRequest
+              ) -> ray_client_pb2.KVDelResponse:
+        req = ray_client_pb2.DataRequest(kv_del=request, )
+        resp = self._blocking_send(req)
+        return resp.kv_del
+
+    def KVList(self, request: ray_client_pb2.KVListRequest
+               ) -> ray_client_pb2.KVListResponse:
+        req = ray_client_pb2.DataRequest(kv_list=request, )
+        resp = self._blocking_send(req)
+        return resp.kv_list
