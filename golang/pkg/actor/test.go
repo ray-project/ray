@@ -8,31 +8,31 @@ import (
 )
 
 func init() {
-    ray.RegisterType(reflect.TypeOf((*Count)(nil)))
+    ray.RegisterActorType(reflect.TypeOf((*Counter)(nil)))
 }
 
-type Count struct {
+type Counter struct {
     value int
 }
 
-func (c *Count) Init() {
+func (c *Counter) Init() {
 
 }
 
-func (c *Count) Increase1() {
+func (c *Counter) Increase1() {
     c.Increase(1)
 }
 
-func (c *Count) Increase(i int) {
+func (c *Counter) Increase(i int) {
     c.value += i
 }
 
-func (c *Count) Get() int {
+func (c *Counter) Get() int {
     util.Logger.Debugf("invoke actor method")
     return c.value
 }
 
-func (c *Count) Hello() string {
+func (c *Counter) Hello() string {
     util.Logger.Debugf("invoke actor hello method")
     return "hello"
 }

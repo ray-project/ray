@@ -15,7 +15,7 @@ import (
     "unsafe"
 
     "github.com/golang/protobuf/proto"
-    ray_rpc "github.com/ray-project/ray-go-worker/pkg/ray/generated"
+    ray_generated "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
     "github.com/vmihailenco/msgpack/v5"
 )
@@ -29,25 +29,25 @@ func init() {
     typesMap["string"] = reflect.TypeOf("")
 }
 
-func Init(address, _redis_password string) {
-    innerInit(address, _redis_password, ray_rpc.WorkerType_DRIVER)
+func Init(address, redis_password string) {
+    innerInit(address, redis_password, ray_generated.WorkerType_DRIVER)
 }
 
-func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
+func innerInit(address, redis_password string, workerType ray_generated.WorkerType) {
     util.Logger.Debug("Initializing runtime with config")
-    gsa, err := NewGlobalStateAccessor(address, _redis_password)
+    gsa, err := NewGlobalStateAccessor(address, redis_password)
     if err != nil {
         panic(err)
     }
     // for driver
-    if workerType == ray_rpc.WorkerType_DRIVER {
+    if workerType == ray_generated.WorkerType_DRIVER {
         SetJobId(gsa.GetNextJobID())
         raySessionDir := gsa.GetInternalKV(sessionDir)
         if raySessionDir == "" {
             panic(fmt.Errorf("failed to get session dir"))
         }
         SetSessionDir(raySessionDir)
-        gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
+        gcsNodeInfo := &ray_generated.GcsNodeInfo{}
         localIp, err := util.GetLocalIp()
         if err != nil {
             panic(err)
@@ -84,7 +84,7 @@ func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         C.CString(GetNodeManagerAddress()), C.int(GetNodeManagerPort()),
         C.CString(GetNodeManagerAddress()),
         C.CString("GOLANG"), C.int(GetJobId()), C.CString(addressInfo[0]), C.int(addressPort),
-        C.CString(_redis_password), C.CString(serializedJobConfig))
+        C.CString(redis_password), C.CString(serializedJobConfig))
 }
 
 func innerRun() {
@@ -93,7 +93,7 @@ func innerRun() {
     util.Logger.Infof("ray worker exiting...")
 }
 
-func RegisterType(t reflect.Type) error {
+func RegisterActorType(t reflect.Type) error {
     typeName := getRegisterTypeKey(t.Elem())
     typesMap[typeName] = t.Elem()
     util.Logger.Debugf("register type: %s", typeName)
@@ -116,14 +116,14 @@ type ActorCreator struct {
     registerTypeName string
 }
 
-// 创建actor
+// Create Actor
 func (ac *ActorCreator) Remote() *ActorHandle {
     var res *C.char
     dataLen := C.go_worker_CreateActor(C.CString(ac.registerTypeName), &res)
     if dataLen > 0 {
         return &ActorHandle{
             actorId:   res,
-            language:  ray_rpc.Language_GOLANG,
+            language:  ray_generated.Language_GOLANG,
             actorType: typesMap[ac.registerTypeName],
         }
     }
@@ -132,7 +132,7 @@ func (ac *ActorCreator) Remote() *ActorHandle {
 
 type ActorHandle struct {
     actorId   *C.char
-    language  ray_rpc.Language
+    language  ray_generated.Language
     actorType reflect.Type
 }
 
@@ -141,7 +141,7 @@ type Param interface {
 
 type Convert func(a, i Param)
 
-func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller {
+func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *actorTaskCaller {
     methodType := reflect.TypeOf(f)
     methodName := GetFunctionName(f)
     lastIndex := strings.LastIndex(methodName, ".")
@@ -154,7 +154,7 @@ func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller
         methodReturnTypes = append(methodReturnTypes, methodType.Out(i))
     }
 
-    return &ActorTaskCaller{
+    return &actorTaskCaller{
         actorHandle:             ah,
         invokeMethod:            methodType,
         invokeMethodName:        methodName,
@@ -163,7 +163,7 @@ func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller
     }
 }
 
-type ActorTaskCaller struct {
+type actorTaskCaller struct {
     actorHandle             *ActorHandle
     invokeMethod            reflect.Type
     invokeMethodName        string
@@ -177,7 +177,7 @@ func GetFunctionName(i interface{}) string {
 
 type ID unsafe.Pointer
 
-func (atc *ActorTaskCaller) Remote() *ObjectRef {
+func (atc *actorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
     var returObjectIdArrayPointer *unsafe.Pointer = nil
@@ -209,7 +209,7 @@ type ObjectRef struct {
     returnTypes     []reflect.Type
 }
 
-type ObjectId []byte
+type objectId []byte
 
 func (or *ObjectRef) Get() []interface{} {
     //returnObjectIdsSize := len(or.returnObjectIds)
@@ -240,9 +240,4 @@ func (or *ObjectRef) Get() []interface{} {
         returnGoValues[index] = returnGoValue
     }
     return returnGoValues
-}
-
-//export SayHello
-func SayHello(str *C.char) {
-    fmt.Println(C.GoString(str) + " in go")
 }
