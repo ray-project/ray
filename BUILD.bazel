@@ -583,7 +583,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":ray_util",
         ":reporter_rpc",
