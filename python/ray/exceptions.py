@@ -281,11 +281,9 @@ class ObjectStoreFullError(RayError):
             "to list active objects in the cluster.")
 
 
-# TODO(XXX): Replace with ObjectLostError for backwards compatibility once all
-# Python tests pass.
-class ObjectUnreachableError(RayError):
-    """Generic error for objects that are unreachable due to node failure or
-    system error.
+class ObjectLostError(RayError):
+    """Indicates that the object is lost from distributed memory, due to
+    node failure or system error.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -297,7 +295,7 @@ class ObjectUnreachableError(RayError):
         self.call_site = call_site.replace(
             ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
 
-    def __str__(self):
+    def _base_str(self):
         msg = f"Failed to retrieve object {self.object_ref_hex}. "
         if self.call_site:
             msg += (f"The ObjectRef was created at: {self.call_site}")
@@ -309,23 +307,14 @@ class ObjectUnreachableError(RayError):
                 "`ray.init()`.")
         return msg
 
-
-class ObjectLostError(ObjectUnreachableError):
-    """Indicates that the object is lost from distributed memory, due to
-    node failure or system error.
-
-    Attributes:
-        object_ref_hex: Hex ID of the object.
-    """
-
     def __str__(self):
-        return super().__str__() + "\n\n" + (
+        return self._base_str() + "\n\n" + (
             f"All copies of {self.object_ref_hex} have been lost due to node "
             "failure. Check cluster logs (`/tmp/ray/session_latest/logs`) for "
             "more information about the failure.")
 
 
-class ObjectDeletedError(ObjectUnreachableError):
+class ObjectDeletedError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
 
@@ -334,12 +323,12 @@ class ObjectDeletedError(ObjectUnreachableError):
     """
 
     def __str__(self):
-        return super().__str__() + "\n\n" + (
+        return self._base_str() + "\n\n" + (
             "The object has already been deleted by the reference counting "
             "protocol. This should not happen.")
 
 
-class OwnerDiedError(ObjectUnreachableError):
+class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
     reference to the object.
 
@@ -363,7 +352,7 @@ class OwnerDiedError(ObjectUnreachableError):
                 # message.
                 pass
 
-        return super().__str__() + "\n\n" + (
+        return self._base_str() + "\n\n" + (
             "The object's owner has exited. This is the Python "
             "worker that first created the ObjectRef via `.remote()` or "
             "`ray.put()`. "
@@ -371,7 +360,7 @@ class OwnerDiedError(ObjectUnreachableError):
             "information about the Python worker failure.")
 
 
-class ObjectReconstructionFailedError(ObjectUnreachableError):
+class ObjectReconstructionFailedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
     reference to the object.
 
@@ -380,8 +369,8 @@ class ObjectReconstructionFailedError(ObjectUnreachableError):
     """
 
     def __str__(self):
-        return super().__str__() + "\n\n" + (
-            f"The object cannot be reconstructed "
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed "
             "because the maximum number of task retries has been exceeded.")
 
 
