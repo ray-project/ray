@@ -9,15 +9,16 @@ except ImportError:
     pytest_timeout = None
 
 import ray
+import ray.cluster_utils
+import ray._private.gcs_utils as gcs_utils
+
 from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
     generate_system_config_map, get_other_nodes,
     kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
     get_error_message)
-import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
-import ray._private.gcs_utils as gcs_utils
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
                                       get_current_placement_group)
