@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Dict, Sequence, Any
 import copy
 import inspect
 import logging
@@ -13,6 +13,9 @@ from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
 from ray.tune.utils import date_str, detect_checkpoint_function
+
+from ray.util.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +77,7 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
+@DeveloperAPI
 class Experiment:
     """Tracks experiment specifications.
 
@@ -99,6 +103,9 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
     """
+
+    # keys that will be present in `public_spec` dict
+    PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
                  name,
@@ -324,6 +331,15 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
+
+    @property
+    def public_spec(self) -> Dict[str, Any]:
+        """Returns the spec dict with only the public-facing keys.
+
+        Intended to be used for passing information to callbacks,
+        Searchers and Schedulers.
+        """
+        return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
 def convert_to_experiment_list(experiments):

@@ -5,7 +5,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import get_other_nodes
+from ray._private.test_utils import get_other_nodes
 
 
 def update_progress(result):

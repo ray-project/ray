@@ -1,5 +1,6 @@
 import os
 import importlib
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                                RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
+from ray.worker import init as ray_driver_init
 
 logger = logging.getLogger(__name__)
 
@@ -27,22 +29,36 @@ class ClientContext:
     ray_commit: str
     protocol_version: Optional[str]
     _num_clients: int
+    _context_to_restore: Optional[ray.util.client.RayAPIStub]
 
     def __enter__(self) -> "ClientContext":
+        self._swap_context()
         return self
 
     def __exit__(self, *exc) -> None:
-        self.disconnect()
+        self._disconnect_with_context(False)
+        self._swap_context()
 
     def disconnect(self) -> None:
+        self._swap_context()
+        self._disconnect_with_context(True)
+        self._swap_context()
+
+    def _swap_context(self):
+        if self._context_to_restore is not None:
+            self._context_to_restore = ray.util.client.ray.set_context(
+                self._context_to_restore)
+
+    def _disconnect_with_context(self, force_disconnect: bool) -> None:
         """
-        Disconnect Ray. This either disconnects from the remote Client Server
-        or shuts the current driver down.
+        Disconnect Ray. If it's a ray client and created with `allow_multiple`,
+        it will do nothing. For other cases this either disconnects from the
+        remote Client Server or shuts the current driver down.
         """
         if ray.util.client.ray.is_connected():
-            # This is only a client connected to a server.
-            ray.util.client_connect.disconnect()
-            ray._private.client_mode_hook._explicitly_disable_client_mode()
+            if ray.util.client.ray.is_default() or force_disconnect:
+                # This is the only client connection
+                ray.util.client_connect.disconnect()
         elif ray.worker.global_worker.node is None:
             # Already disconnected.
             return
@@ -67,6 +83,11 @@ class ClientBuilder:
         self.address = address
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
+        self._remote_init_kwargs = {}
+        # Whether to allow connections to multiple clusters"
+        # " (allow_multiple=True).
+        self._allow_multiple_connections = False
+        self._credentials = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -97,17 +118,41 @@ class ClientBuilder:
                 includes the server's version of Python & Ray as well as the
                 dashboard_url.
         """
+        # If it has already connected to the cluster with allow_multiple=True,
+        # connect to the default one is not allowed.
+        # But if it has connected to the default one, connect to other clients
+        # with allow_multiple=True is allowed
+        default_cli_connected = ray.util.client.ray.is_connected()
+        has_cli_connected = ray.util.client.num_connected_contexts() > 0
+        if not self._allow_multiple_connections and \
+           not default_cli_connected and has_cli_connected:
+            raise ValueError(
+                "The client has already connected to the cluster "
+                "with allow_multiple=True. Please set allow_multiple=True"
+                " to proceed")
+
+        old_ray_cxt = None
+        if self._allow_multiple_connections:
+            old_ray_cxt = ray.util.client.ray.set_context(None)
+
         client_info_dict = ray.util.client_connect.connect(
-            self.address, job_config=self._job_config)
+            self.address,
+            job_config=self._job_config,
+            _credentials=self._credentials,
+            ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
-        return ClientContext(
+        cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
-            _num_clients=client_info_dict["num_clients"])
+            _num_clients=client_info_dict["num_clients"],
+            _context_to_restore=ray.util.client.ray.get_context())
+        if self._allow_multiple_connections:
+            ray.util.client.ray.set_context(old_ray_cxt)
+        return cxt
 
     def _fill_defaults_from_env(self):
         # Check environment variables for default values
@@ -134,11 +179,27 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
-        if not kwargs:
-            return self
-        unknown = ", ".join(kwargs)
-        raise RuntimeError(
-            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+
+        if kwargs.get("allow_multiple") is True:
+            self._allow_multiple_connections = True
+            del kwargs["allow_multiple"]
+
+        if "_credentials" in kwargs.keys():
+            self._credentials = kwargs["_credentials"]
+            del kwargs["_credentials"]
+
+        if kwargs:
+            expected_sig = inspect.signature(ray_driver_init)
+            extra_args = set(kwargs.keys()).difference(
+                expected_sig.parameters.keys())
+            if len(extra_args) > 0:
+                raise RuntimeError("Got unexpected kwargs: {}".format(
+                    ", ".join(extra_args)))
+            self._remote_init_kwargs = kwargs
+            unknown = ", ".join(kwargs)
+            logger.info("Passing the following kwargs to ray.init() "
+                        f"on the server: {unknown}")
+        return self
 
 
 class _LocalClientBuilder(ClientBuilder):
@@ -155,7 +216,8 @@ class _LocalClientBuilder(ClientBuilder):
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
             protocol_version=None,
-            _num_clients=1)
+            _num_clients=1,
+            _context_to_restore=None)
 
 
 def _split_address(address: str) -> Tuple[str, str]:

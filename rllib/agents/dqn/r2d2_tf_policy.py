@@ -27,7 +27,7 @@ tf1, tf, tfv = try_import_tf()
 def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space, config: TrainerConfigDict
                      ) -> Tuple[ModelV2, ActionDistribution]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -38,7 +38,7 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         q_model
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
 
     # Create the policy's models.
@@ -81,22 +81,22 @@ def r2d2_loss(policy: Policy, model, _,
         model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
         policy,
-        policy.target_q_model,
+        policy.target_model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
     if not hasattr(policy, "target_q_func_vars"):
-        policy.target_q_func_vars = policy.target_q_model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
     dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
@@ -140,7 +140,8 @@ def r2d2_loss(policy: Policy, model, _,
                 config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
-        seq_mask = tf.sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                    T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.

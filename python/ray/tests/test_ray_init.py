@@ -1,6 +1,7 @@
 import os
 import sys
 
+import logging
 import pytest
 import redis
 import unittest.mock
@@ -9,7 +10,9 @@ import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
+from ray.util.client.worker import Worker
+import grpc
 
 
 @pytest.fixture
@@ -173,11 +176,11 @@ def test_ray_init_invalid_keyword_with_client(shutdown_only):
 
 
 def test_ray_init_valid_keyword_with_client(shutdown_only):
-    with pytest.raises(RuntimeError) as excinfo:
-        # num_cpus is a valid argument for regular ray.init, but not for
-        # init(ray://)
-        ray.init("ray://127.0.0.0", num_cpus=1)
-    assert "num_cpus" in str(excinfo.value)
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+        # logging_level should be passed to the server
+        with ray.init("ray://localhost:50051", logging_level=logging.INFO):
+            pass
 
 
 def test_env_var_override():
@@ -213,6 +216,48 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+
+
+class Credentials(grpc.ChannelCredentials):
+    def __init__(self, name):
+        self.name = name
+
+
+class Stop(Exception):
+    def __init__(self, credentials):
+        self.credentials = credentials
+
+
+def test_ray_init_credentials_with_client(monkeypatch):
+    def mock_init(self,
+                  conn_str="",
+                  secure=False,
+                  metadata=None,
+                  connection_retries=3,
+                  _credentials=None):
+        raise (Stop(_credentials))
+
+    monkeypatch.setattr(Worker, "__init__", mock_init)
+    with pytest.raises(Stop) as stop:
+        with ray_start_client_server(_credentials=Credentials("test")):
+            pass
+
+    assert stop.value.credentials.name == "test"
+
+
+def test_ray_init_credential(monkeypatch):
+    def mock_secure_channel(conn_str,
+                            credentials,
+                            options=None,
+                            compression=None):
+        raise (Stop(credentials))
+
+    monkeypatch.setattr(grpc, "secure_channel", mock_secure_channel)
+
+    with pytest.raises(Stop) as stop:
+        ray.init("ray://127.0.0.1", _credentials=Credentials("test"))
+
+    assert stop.value.credentials.name == "test"
 
 
 if __name__ == "__main__":

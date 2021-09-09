@@ -13,7 +13,19 @@ You can install the latest official version of Ray as follows. Official releases
 
 .. code-block:: bash
 
-  pip install -U ray
+  pip install -U ray  # minimal install
+
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U 'ray[default]'`
+
+To install Ray libraries:
+
+.. code-block:: bash
+
+  pip install -U ray[tune]  # installs Ray + dependencies for Ray Tune
+  pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
+  pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
+
 
 **Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
@@ -26,7 +38,10 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip install -U [link to wheel]
+  pip install -U LINK_TO_WHEEL.whl  # minimal install
+
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U 'ray[default]' @ LINK_TO_WHEEL.whl`
 
 
 ===================  ===================  ======================
@@ -47,10 +62,10 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
-.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
+.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-win_amd64.whl
@@ -65,13 +80,20 @@ You can install the Ray wheels of any particular commit on ``master`` with the f
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}.whl
 
 For example, here are the Ray 2.0.0.dev0 wheels for Python 3.7, MacOS for commit ``ba6cebe30fab6925e5b2d9e859ad064d53015246``:
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+
+There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the :ref:`Nightlies section <install-nightlies>`.
+Here's a summary of the variations:
+
+* For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
+
+* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instad of ``macosx_10_15``.
 
 .. _ray-install-java:
 

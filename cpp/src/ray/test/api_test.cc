@@ -20,7 +20,7 @@
 #include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
-using namespace ray::api;
+// using namespace ray;
 
 int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
@@ -85,57 +85,57 @@ TEST(RayApiTest, LogTest) {
 TEST(RayApiTest, TaskOptionsCheckTest) {
   std::unordered_map<std::string, double> map;
   map.emplace("", 1);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 0);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 2.0);
-  CheckTaskOptions(map);
+  ray::internal::CheckTaskOptions(map);
   map.emplace("dummy1", 2.5);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 0.5);
-  CheckTaskOptions(map);
+  ray::internal::CheckTaskOptions(map);
 }
 
 TEST(RayApiTest, PutTest) {
-  RayConfig config;
+  ray::RayConfig config;
   config.local_mode = true;
-  Ray::Init(config);
+  ray::Init(config);
 
-  auto obj1 = Ray::Put(1);
+  auto obj1 = ray::Put(1);
   auto i1 = obj1.Get();
   EXPECT_EQ(1, *i1);
 }
 
 TEST(RayApiTest, StaticGetTest) {
-  RayConfig config;
+  ray::RayConfig config;
   config.local_mode = true;
-  Ray::Init(config);
+  ray::Init(config);
   /// `Get` member function
-  auto obj_ref1 = Ray::Put(100);
+  auto obj_ref1 = ray::Put(100);
   auto res1 = obj_ref1.Get();
   EXPECT_EQ(100, *res1);
 
   /// `Get` static function
-  auto obj_ref2 = Ray::Put(200);
-  auto res2 = Ray::Get(obj_ref2);
+  auto obj_ref2 = ray::Put(200);
+  auto res2 = ray::Get(obj_ref2);
   EXPECT_EQ(200, *res2);
 }
 
 TEST(RayApiTest, WaitTest) {
-  RayConfig config;
+  ray::RayConfig config;
   config.local_mode = true;
-  Ray::Init(config);
-  auto r0 = Ray::Task(Return1).Remote();
-  auto r1 = Ray::Task(Plus1).Remote(3);
-  auto r2 = Ray::Task(Plus).Remote(2, 3);
-  std::vector<ObjectRef<int>> objects = {r0, r1, r2};
-  WaitResult<int> result = Ray::Wait(objects, 3, 1000);
+  ray::Init(config);
+  auto r0 = ray::Task(Return1).Remote();
+  auto r1 = ray::Task(Plus1).Remote(3);
+  auto r2 = ray::Task(Plus).Remote(2, 3);
+  std::vector<ray::ObjectRef<int>> objects = {r0, r1, r2};
+  auto result = ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
-  std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(objects);
+  std::vector<std::shared_ptr<int>> getResult = ray::Get<int>(objects);
   EXPECT_EQ(getResult.size(), 3);
   EXPECT_EQ(*getResult[0], 1);
   EXPECT_EQ(*getResult[1], 4);
@@ -143,10 +143,10 @@ TEST(RayApiTest, WaitTest) {
 }
 
 TEST(RayApiTest, CallWithValueTest) {
-  auto r0 = Ray::Task(Return1).Remote();
-  auto r1 = Ray::Task(Plus1).Remote(3);
-  auto r2 = Ray::Task(Plus).Remote(2, 3);
-  auto r3 = Ray::Task(Triple).Remote(1, 2, 3);
+  auto r0 = ray::Task(Return1).Remote();
+  auto r1 = ray::Task(Plus1).Remote(3);
+  auto r2 = ray::Task(Plus).Remote(2, 3);
+  auto r3 = ray::Task(Triple).Remote(1, 2, 3);
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
@@ -160,11 +160,11 @@ TEST(RayApiTest, CallWithValueTest) {
 }
 
 TEST(RayApiTest, CallWithObjectTest) {
-  auto rt0 = Ray::Task(Return1).Remote();
-  auto rt1 = Ray::Task(Plus1).Remote(rt0);
-  auto rt2 = Ray::Task(Plus).Remote(rt1, 3);
-  auto rt3 = Ray::Task(Plus1).Remote(3);
-  auto rt4 = Ray::Task(Plus).Remote(rt2, rt3);
+  auto rt0 = ray::Task(Return1).Remote();
+  auto rt1 = ray::Task(Plus1).Remote(rt0);
+  auto rt2 = ray::Task(Plus).Remote(rt1, 3);
+  auto rt3 = ray::Task(Plus1).Remote(3);
+  auto rt4 = ray::Task(Plus).Remote(rt2, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -180,10 +180,10 @@ TEST(RayApiTest, CallWithObjectTest) {
 }
 
 TEST(RayApiTest, ActorTest) {
-  RayConfig config;
+  ray::RayConfig config;
   config.local_mode = true;
-  Ray::Init(config);
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  ray::Init(config);
+  auto actor = ray::Actor(Counter::FactoryCreate).Remote();
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
   auto rt3 = actor.Task(&Counter::Add).Remote(3);
@@ -203,6 +203,36 @@ TEST(RayApiTest, ActorTest) {
   EXPECT_EQ(return5, 6);
 }
 
+TEST(RayApiTest, GetActorTest) {
+  ray::ActorHandle<Counter> actor =
+      ray::Actor(Counter::FactoryCreate).SetName("named_actor").Remote();
+  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
+}
+
+TEST(RayApiTest, GetGlobalActorTest) {
+  ray::ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate)
+                                        .SetMaxRestarts(1)
+                                        .SetGlobalName("named_actor")
+                                        .Remote();
+  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetGlobalActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
+}
+
 TEST(RayApiTest, CompareWithFuture) {
   // future from a packaged_task
   std::packaged_task<int(int)> task(Plus1);
@@ -215,14 +245,24 @@ TEST(RayApiTest, CompareWithFuture) {
   int rt2 = f2.get();
 
   // Ray API
-  RayConfig config;
+  ray::RayConfig config;
   config.local_mode = true;
-  Ray::Init(config);
-  auto f3 = Ray::Task(Plus1).Remote(1);
+  ray::Init(config);
+  auto f3 = ray::Task(Plus1).Remote(1);
   int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);
   EXPECT_EQ(rt2, 2);
   EXPECT_EQ(rt3, 2);
   t.join();
+}
+
+TEST(RayApiTest, CreateAndRemovePlacementGroup) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+  ray::internal::PlacementGroupCreationOptions options1{
+      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+  auto first_placement_group = ray::CreatePlacementGroup(options1);
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
 }

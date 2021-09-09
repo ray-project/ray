@@ -1,12 +1,17 @@
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
+from abc import ABC
+import warnings
 
 from ray.tune.checkpoint_manager import Checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
+    from ray.tune.stopper import Stopper
 
 
-class Callback:
+@PublicAPI(stability="beta")
+class Callback(ABC):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -41,11 +46,30 @@ class Callback:
 
     """
 
-    def setup(self):
+    # arguments here match Experiment.public_spec
+    def setup(self,
+              stop: Optional["Stopper"] = None,
+              num_samples: Optional[int] = None,
+              total_num_samples: Optional[int] = None,
+              **info):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
         variables, etc.)
+
+        Arguments:
+            stop (dict | callable | :class:`Stopper`): Stopping criteria.
+                If ``time_budget_s`` was passed to ``tune.run``, a
+                ``TimeoutStopper`` will be passed here, either by itself
+                or as a part of a ``CombinedStopper``.
+            num_samples (int): Number of times to sample from the
+                hyperparameter space. Defaults to 1. If `grid_search` is
+                provided as an argument, the grid will be repeated
+                `num_samples` of times. If this is -1, (virtually) infinite
+                samples are generated until a stopping condition is met.
+            total_num_samples (int): Total number of samples factoring
+                in grid search samplers.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
@@ -168,6 +192,15 @@ class Callback:
         """
         pass
 
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Called after experiment is over and all trials have concluded.
+
+        Arguments:
+            trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
 
 class CallbackList:
     """Call multiple callbacks at once."""
@@ -175,9 +208,19 @@ class CallbackList:
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
 
-    def setup(self):
+    def setup(self, **info):
         for callback in self._callbacks:
-            callback.setup()
+            try:
+                callback.setup(**info)
+            except TypeError as e:
+                if "argument" in str(e):
+                    warnings.warn(
+                        "Please update `setup` method in callback "
+                        f"`{callback.__class__}` to match the method signature"
+                        " in `ray.tune.callback.Callback`.", FutureWarning)
+                    callback.setup()
+                else:
+                    raise e
 
     def on_step_begin(self, **info):
         for callback in self._callbacks:
@@ -214,3 +257,7 @@ class CallbackList:
     def on_checkpoint(self, **info):
         for callback in self._callbacks:
             callback.on_checkpoint(**info)
+
+    def on_experiment_end(self, **info):
+        for callback in self._callbacks:
+            callback.on_experiment_end(**info)

@@ -65,9 +65,9 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+      int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
+      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -265,11 +265,6 @@ class PullManager {
                                       uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
-  /// Trigger out-of-memory handling if the first request in the queue needs
-  /// more space than the bytes available. This is needed to make room for the
-  /// request.
-  void TriggerOutOfMemoryHandlingIfNeeded();
-
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
@@ -285,8 +280,6 @@ class PullManager {
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  /// The minimum number of pull bundles to keep active.
-  const int min_active_pulls_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
@@ -324,10 +317,6 @@ class PullManager {
 
   /// The number of currently active bundles.
   int64_t num_active_bundles_ = 0;
-
-  /// Triggered when the first request in the queue can't be pulled due to
-  /// out-of-memory. This callback should try to make more bytes available.
-  std::function<void()> object_store_full_callback_;
 
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
@@ -369,6 +358,10 @@ class PullManager {
 
   /// The total size of pinned objects.
   int64_t pinned_objects_size_ = 0;
+
+  // A callback to get the spilled object URL if the object is spilled locally.
+  // It will return an empty string otherwise.
+  std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

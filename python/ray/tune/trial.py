@@ -1,17 +1,19 @@
-from typing import Callable, Dict, Sequence, Union
+from collections import deque
+import copy
 import json
+import logging
+from numbers import Number
+import os
+import platform
+import re
+import shutil
+import time
+from typing import Callable, Dict, Sequence, Union
+import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from collections import deque
-import copy
-import logging
-import platform
-import shutil
-import uuid
-import time
-import os
-from numbers import Number
+from ray.exceptions import GetTimeoutError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -27,9 +29,11 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT = 15
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +53,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -77,23 +82,47 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner):
-    """Returns a checkpoint deleter callback for a runner."""
-    if not runner:
-        return lambda checkpoint: None
+class CheckpointDeleter:
+    """Checkpoint deleter callback for a runner."""
 
-    def delete(checkpoint):
+    def __init__(self,
+                 trial_id,
+                 runner,
+                 node_ip,
+                 timeout: int = CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT):
+        self.trial_id = trial_id
+        self.runner = runner
+        self.node_ip = node_ip
+        self._runner_ip = None
+        self.timeout = timeout
+
+    @property
+    def runner_ip(self):
+        if not self._runner_ip:
+            try:
+                self._runner_ip = ray.get(
+                    self.runner.get_current_ip.remote(), timeout=self.timeout)
+            except GetTimeoutError:
+                pass
+        return self._runner_ip
+
+    def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
             checkpoint (Checkpoint): Checkpoint to delete.
         """
+        if not self.runner:
+            return
+
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
                          checkpoint.value)
             checkpoint_path = checkpoint.value
+
             # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
+            if self.runner_ip != self.node_ip and os.path.exists(
+                    checkpoint_path):
                 try:
                     checkpoint_dir = TrainableUtil.find_checkpoint_dir(
                         checkpoint_path)
@@ -102,9 +131,7 @@ def checkpoint_deleter(trial_id, runner):
                     logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
-            runner.delete_checkpoint.remote(checkpoint.value)
-
-    return delete
+            self.runner.delete_checkpoint.remote(checkpoint.value)
 
 
 class TrialInfo:
@@ -156,6 +183,7 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -308,7 +336,8 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner))
+            CheckpointDeleter(self._trainable_name(), self.runner,
+                              self.node_ip))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -401,6 +430,18 @@ class Trial:
         return bool(self.placement_group_factory)
 
     def reset(self):
+        # If there is `default_resource_request` associated with the trainable,
+        # clear `resources` and `placement_group_factory`.
+        # This is mainly relevant for RLlib tuning jobs, where we save users
+        # of the trouble to specify the resources themselves by having some
+        # default resources for popular RLlib algorithms.
+        trainable_cls = self.get_trainable_cls()
+        clear_resources = (trainable_cls and
+                           trainable_cls.default_resource_request(self.config))
+        resources = self.resources if not clear_resources else None
+        placement_group_factory = (self.placement_group_factory
+                                   if not clear_resources else None)
+
         return Trial(
             self.trainable_name,
             config=self.config,
@@ -408,8 +449,8 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=self.resources,
-            placement_group_factory=self.placement_group_factory,
+            resources=resources,
+            placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -458,14 +499,16 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(
-            self._trainable_name(), runner)
+        self.checkpoint_manager.delete = CheckpointDeleter(
+            self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        if self.checkpoint_manager.delete:
+            self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
@@ -652,7 +695,8 @@ class Trial:
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
-        return generated_dirname.replace("/", "_")
+        # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
+        return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
         self._state_valid = False

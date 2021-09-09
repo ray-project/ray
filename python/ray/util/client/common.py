@@ -216,6 +216,11 @@ class ClientActorHandle(ClientStub):
                                        is_function_or_method)).keys())
 
     def __del__(self) -> None:
+        if ray is None:
+            # The ray API stub might be set to None when the script exits.
+            # Should be safe to skip call_release in this case, since the
+            # client should have already disconnected at this point.
+            return
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
 
@@ -259,8 +264,9 @@ class ClientRemoteMethod(ClientStub):
         self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote method cannot be called directly. "
-                        f"Use {self._name}.remote() instead")
+        raise TypeError("Actor methods cannot be called directly. Instead "
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return return_refs(ray.call_remote(self, *args, **kwargs))

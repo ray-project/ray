@@ -77,7 +77,7 @@ class CoreWorkerDirectActorTaskSubmitter
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing) {
     next_queueing_warn_threshold_ =
-        RayConfig::instance().actor_excess_queueing_warn_threshold();
+        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -781,7 +781,8 @@ class CoreWorkerDirectTaskReceiver {
       std::function<Status(const TaskSpecification &task_spec,
                            const std::shared_ptr<ResourceMappingType> resource_ids,
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
+                           ReferenceCounter::ReferenceTableProto *borrower_refs,
+                           bool *is_application_level_error)>;
 
   using OnTaskDone = std::function<Status()>;
 

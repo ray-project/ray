@@ -5,18 +5,21 @@ import logging
 import traceback
 
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 _session = None
 
 
+@PublicAPI
 def is_session_enabled() -> bool:
     """Returns True if running within an Tune process."""
     global _session
     return _session is not None
 
 
+@PublicAPI
 def get_session():
     global _session
     if not _session:
@@ -46,7 +49,9 @@ def init(reporter, ignore_reinit_error=True):
             "A Tune session already exists in the current process. "
             "If you are using ray.init(local_mode=True), "
             "you must set ray.init(..., num_cpus=1, num_gpus=1) to limit "
-            "available concurrency.")
+            "available concurrency. If you are supplying a wrapped "
+            "Searcher(concurrency, repeating) or customized SearchAlgo. "
+            "Please try limiting the concurrency to 1 there.")
         if ignore_reinit_error:
             logger.warning(reinit_msg)
             return
@@ -67,6 +72,7 @@ def shutdown():
     _session = None
 
 
+@PublicAPI
 def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
@@ -116,6 +122,7 @@ def save_checkpoint(checkpoint):
         "Deprecated method. Use `tune.checkpoint_dir` instead.")
 
 
+@PublicAPI
 @contextmanager
 def checkpoint_dir(step):
     """Returns a checkpoint dir inside a context.
@@ -181,6 +188,7 @@ def checkpoint_dir(step):
         _session.set_checkpoint(_checkpoint_dir)
 
 
+@DeveloperAPI
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
@@ -191,6 +199,7 @@ def get_trial_dir():
         return _session.logdir
 
 
+@DeveloperAPI
 def get_trial_name():
     """Trial name for the corresponding trial.
 
@@ -201,6 +210,7 @@ def get_trial_name():
         return _session.trial_name
 
 
+@DeveloperAPI
 def get_trial_id():
     """Trial id for the corresponding trial.
 
@@ -211,6 +221,7 @@ def get_trial_id():
         return _session.trial_id
 
 
+@DeveloperAPI
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 

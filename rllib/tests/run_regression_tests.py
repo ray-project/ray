@@ -38,6 +38,7 @@ parser.add_argument(
     type=str,
     required=True,
     help="The directory in which to find all yamls to test.")
+parser.add_argument("--num-cpus", type=int, default=5)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -96,12 +97,19 @@ if __name__ == "__main__":
         # reward.
         passed = False
         for i in range(3):
+            # Try starting a new ray cluster.
             try:
-                ray.init(num_cpus=5, local_mode=args.local_mode)
-                trials = run_experiments(experiments, resume=False, verbose=2)
-            finally:
-                ray.shutdown()
-                _register_all()
+                ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode)
+            # Allow running this script on existing cluster as well.
+            except ConnectionError:
+                ray.init()
+            else:
+                try:
+                    trials = run_experiments(
+                        experiments, resume=False, verbose=2)
+                finally:
+                    ray.shutdown()
+                    _register_all()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
@@ -122,9 +130,11 @@ if __name__ == "__main__":
                         t.stopping_criterion.get("episode_reward_mean"))
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = t.stopping_criterion["episode_reward_mean"]
+                    min_reward = t.stopping_criterion.get(
+                        "episode_reward_mean")
 
-                if reward_mean >= min_reward:
+                # If min reward not defined, always pass.
+                if min_reward is None or reward_mean >= min_reward:
                     passed = True
                     break
 

@@ -19,13 +19,29 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/stats/metric.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_handling, "Request number are handling in grpc server",
+             ("Method"), (), ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
+             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
-    : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
+GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+                       int64_t keepalive_time_ms)
+    : name_(std::move(name)),
+      port_(port),
+      is_closed_(true),
+      num_threads_(num_threads),
+      keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
 }
 
@@ -41,6 +57,11 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                             RayConfig::instance().grpc_keepalive_timeout_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
+
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
@@ -110,6 +131,9 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   while (cqs_[index]->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
+    // A new call is needed after the server sends a reply, no matter the reply is
+    // successful or failed.
+    bool need_new_call = false;
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
@@ -123,6 +147,8 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         server_call->OnReplySent();
         // The rpc call has finished and can be deleted now.
         delete_call = true;
+        // A new call should be suplied.
+        need_new_call = true;
         break;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
@@ -130,16 +156,21 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       }
     } else {
       // `ok == false` will occur in two situations:
-      // First, the server has been shut down, the server call's status is PENDING
-      // Second, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY
+
+      // First, server has sent reply to client and failed, the server call's status is
+      // SENDING_REPLY.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
+        // A new call should be suplied.
+        need_new_call = true;
       }
+
+      // Second, the server has been shut down, the server call's status is PENDING.
+      // And don't need to do anything other than deleting this call.
       delete_call = true;
     }
     if (delete_call) {
-      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+      if (need_new_call && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
         // Create a new `ServerCall` to accept the next incoming request.
         server_call->GetServerCallFactory().CreateCall();
       }

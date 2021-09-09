@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import click
 from datetime import datetime
@@ -23,9 +23,11 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -322,13 +324,32 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
-        self._callbacks.setup()
-
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
+
+    def setup_experiments(self, experiments: List[Experiment],
+                          total_num_samples: int) -> None:
+        """Obtains any necessary information from experiments.
+
+        Mainly used to setup callbacks.
+
+        Args:
+            experiments (List[Experiment]): List of Experiments
+                to use.
+            total_num_samples (int): Total number of samples
+                factoring in grid search samplers.
+        """
+        experiment = experiments[0]
+        spec = experiment.public_spec if experiment else {}
+        spec["total_num_samples"] = total_num_samples
+        self._callbacks.setup(**spec)
+
+    def end_experiment_callbacks(self) -> None:
+        """Calls ``on_experiment_end`` method in callbacks."""
+        self._callbacks.on_experiment_end(trials=self._trials)
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
@@ -349,6 +370,43 @@ class TrialRunner:
     @property
     def scheduler_alg(self):
         return self._scheduler_alg
+
+    def _run_and_catch(self, func):
+        """Run the corresponding `func`.
+
+        First try to run the function with trials as argument. If the function
+        is expecting TrialRunner instead, catch that exception and run with
+        TrialRunner as argument.
+
+        Note, this is as best as we can do to urge people to migrate while
+        "try" not to break the API. However, since none of TrialExecutor's
+        method guarantees transactional semantics or idempotency, Executor
+        may behave strange in the following scenario:
+
+        def func(trial_runner):
+          non_idempotent_blob
+          f(trial_runner)  # throws AttributeError
+
+        With _run_and_catch, non_idempotent_blob is executed twice, which may
+        lead to weird behaviors.
+        """
+        try:
+            func(self.get_trials())
+        except AttributeError as e:
+            if str(e) != "'list' object has no attribute 'get_trials'":
+                raise
+            else:
+                logger.warning(
+                    "TrialExecutor is migrating off of TrialRunner "
+                    "interface. Expect List[Trial] to be passed in directly. "
+                    "See details at "
+                    "https://github.com/ray-project/ray/issues/17665. "
+                    "Please finish the migration ASAP. "
+                    "Although we try to catch exception and recover from "
+                    "caller side, but as there is no atomicity nor "
+                    "idempotency guaranteed by TrialExecutor API contract, "
+                    "weird behaviors may happen.")
+                func(self)
 
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
@@ -478,6 +536,19 @@ class TrialRunner:
             else:
                 self.add_trial(trial)
 
+    def update_pending_trial_resources(
+            self, resources: Union[dict, PlacementGroupFactory]):
+        """Update trial resources when resuming from checkpoint.
+
+        Only updating the pending ones.
+        """
+        assert resources
+        if isinstance(resources, dict) and "gpu" not in resources:
+            resources["gpu"] = 0
+        for trial in self._trials:
+            if trial.status == Trial.PENDING:
+                trial.update_resources(resources=resources)
+
     def is_finished(self):
         """Returns whether all trials have finished running."""
         # The checks here are partly redundant but optimized for quick
@@ -501,7 +572,7 @@ class TrialRunner:
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self)
+            self._run_and_catch(self.trial_executor.on_step_begin)
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
@@ -553,7 +624,7 @@ class TrialRunner:
                     timeout = 0.1
                 self._process_events(timeout=timeout)  # blocking
             else:
-                self.trial_executor.on_no_available_trials(self)
+                self._run_and_catch(self.trial_executor.on_no_available_trials)
 
         self._stop_experiment_if_needed()
 
@@ -570,7 +641,7 @@ class TrialRunner:
             if self.is_finished():
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self)
+            self._run_and_catch(self.trial_executor.on_step_end)
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
@@ -1188,7 +1259,12 @@ class TrialRunner:
         self._live_trials.discard(trial)
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self)
+        self._run_and_catch(self.trial_executor.cleanup)
+
+    def cleanup(self):
+        """Cleanup trials and callbacks."""
+        self.cleanup_trials()
+        self.end_experiment_callbacks()
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""

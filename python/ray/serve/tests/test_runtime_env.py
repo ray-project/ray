@@ -6,7 +6,7 @@ import tempfile
 import subprocess
 
 import ray
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -105,6 +105,9 @@ class Test:
 
 Test.deploy()
 handle = Test.get_handle()
+assert ray.get(handle.remote()) == "world"
+
+Test.options(num_replicas=2).deploy()
 assert ray.get(handle.remote()) == "world"
 """.format(
         use_ray_client=use_ray_client, client_addr=ray_start)

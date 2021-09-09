@@ -1,9 +1,18 @@
+from collections import Counter
+import copy
 import gym
 import logging
 import numpy as np
+import re
+import time
+from typing import Any, Dict, List
+import yaml
 
+import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
+from ray.rllib.utils.numpy import LARGE_INTEGER
+from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -173,8 +182,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, \
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
-    # String comparison.
-    elif hasattr(x, "dtype") and x.dtype == np.object:
+    # String/byte comparisons.
+    elif hasattr(x, "dtype") and \
+            (x.dtype == np.object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -279,14 +289,14 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 def check_compute_single_action(trainer,
                                 include_state=False,
                                 include_prev_action_reward=False):
-    """Tests different combinations of arguments for trainer.compute_action.
+    """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
         trainer (Trainer): The Trainer object to test.
         include_state (bool): Whether to include the initial state of the
-            Policy's Model in the `compute_action` call.
+            Policy's Model in the `compute_single_action` call.
         include_prev_action_reward (bool): Whether to include the prev-action
-            and -reward in the `compute_action` call.
+            and -reward in the `compute_single_action` call.
 
     Raises:
         ValueError: If anything unexpected happens.
@@ -301,7 +311,7 @@ def check_compute_single_action(trainer,
 
     for what in [pol, trainer]:
         if what is trainer:
-            method_to_test = trainer.compute_action
+            method_to_test = trainer.compute_single_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
             worker_set = getattr(trainer, "workers",
@@ -326,12 +336,6 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
-                # Framestacking w/ traj. view API.
-                framestacks = pol.config["model"].get("num_framestacks",
-                                                      "auto")
-                if isinstance(framestacks, int) and framestacks > 1:
-                    obs = np.stack(
-                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
@@ -367,3 +371,168 @@ def check_compute_single_action(trainer,
                         "Returned action ({}) of trainer/policy {} not in "
                         "Env's action_space "
                         "({})!".format(action, what, action_space))
+
+
+def run_learning_tests_from_yaml(
+        yaml_files: List[str],
+        *,
+        max_num_repeats: int = 2,
+        smoke_test: bool = False,
+) -> Dict[str, Any]:
+    """Runs the given experiments in yaml_files and returns results dict.
+
+    Args:
+        yaml_files (List[str]): List of yaml file names.
+        max_num_repeats (int): How many times should we repeat a failed
+            experiment?
+    """
+    print("Will run the following yaml files:")
+    for yaml_file in yaml_files:
+        print("->", yaml_file)
+
+    # All trials we'll ever run in this test script.
+    all_trials = []
+    # The experiments (by name) we'll run up to `max_num_repeats` times.
+    experiments = {}
+    # The results per experiment.
+    checks = {}
+
+    start_time = time.monotonic()
+
+    # Loop through all collected files and gather experiments.
+    # Augment all by `torch` framework.
+    for yaml_file in yaml_files:
+        tf_experiments = yaml.load(open(yaml_file).read())
+
+        # Add torch version of all experiments to the list.
+        for k, e in tf_experiments.items():
+            # If framework explicitly given, only test for that framework.
+            # Some algos do not have both versions available.
+            if "framework" in e["config"]:
+                frameworks = [e["config"]["framework"]]
+            else:
+                frameworks = ["tf", "torch"]
+                e["config"]["framework"] = "tf"
+
+            # For smoke-tests, we just run for n min.
+            if smoke_test:
+                # 15min hardcoded for now.
+                e["stop"]["time_total_s"] = 900
+                # Don't stop smoke tests b/c of any reward received.
+                e["pass_criteria"]["episode_reward_mean"] = float("inf")
+                # Same for timesteps.
+                e["pass_criteria"]["timesteps_total"] = LARGE_INTEGER
+            else:
+                # We also stop early, once we reach the desired reward.
+                e["stop"]["episode_reward_mean"] = \
+                    e["pass_criteria"]["episode_reward_mean"]
+
+            keys = []
+            # Generate the torch copy of the experiment.
+            if len(frameworks) == 2:
+                e_torch = copy.deepcopy(e)
+                e_torch["config"]["framework"] = "torch"
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                keys.append(re.sub("-tf-", "-torch-", keys[0]))
+                experiments[keys[0]] = e
+                experiments[keys[1]] = e_torch
+            # tf-only.
+            elif frameworks[0] == "tf":
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                experiments[keys[0]] = e
+            # torch-only.
+            else:
+                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
+                experiments[keys[0]] = e
+
+            # Generate `checks` dict for all experiments (tf and/or torch).
+            for k_ in keys:
+                e = experiments[k_]
+                checks[k_] = {
+                    "min_reward": e["pass_criteria"]["episode_reward_mean"],
+                    "min_timesteps": e["pass_criteria"]["timesteps_total"],
+                    "time_total_s": e["stop"]["time_total_s"],
+                    "failures": 0,
+                    "passed": False,
+                }
+                # This key would break tune.
+                del e["pass_criteria"]
+
+    # Print out the actual config.
+    print("== Test config ==")
+    print(yaml.dump(experiments))
+
+    # Keep track of those experiments we still have to run.
+    # If an experiment passes, we'll remove it from this dict.
+    experiments_to_run = experiments.copy()
+
+    try:
+        ray.init(address="auto")
+    except ConnectionError:
+        ray.init()
+
+    for i in range(max_num_repeats):
+        # We are done.
+        if len(experiments_to_run) == 0:
+            print("All experiments finished.")
+            break
+
+        print(f"Starting learning test iteration {i}...")
+
+        # Run remaining experiments.
+        trials = run_experiments(experiments_to_run, resume=False, verbose=2)
+        all_trials.extend(trials)
+
+        # Check each trial for whether we passed.
+        # Criteria is to a) reach reward AND b) to have reached the throughput
+        # defined by `timesteps_total` / `time_total_s`.
+        for t in trials:
+            experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
+
+            # If we have evaluation workers, use their rewards.
+            # This is useful for offline learning tests, where
+            # we evaluate against an actual environment.
+            check_eval = experiments[experiment]["config"].get(
+                "evaluation_interval", None) is not None
+
+            if t.status == "ERROR":
+                checks[experiment]["failures"] += 1
+            else:
+                reward_mean = \
+                    t.last_result["evaluation"]["episode_reward_mean"] if \
+                    check_eval else t.last_result["episode_reward_mean"]
+                desired_reward = checks[experiment]["min_reward"]
+
+                throughput = t.last_result["timesteps_total"] / \
+                    t.last_result["time_total_s"]
+                desired_timesteps = checks[experiment]["min_timesteps"]
+                desired_throughput = \
+                    desired_timesteps / t.stopping_criterion["time_total_s"]
+
+                # We failed to reach desired reward or the desired throughput.
+                if reward_mean < desired_reward or \
+                    (desired_throughput and
+                     throughput < desired_throughput):
+                    checks[experiment]["failures"] += 1
+                # We succeeded!
+                else:
+                    checks[experiment]["passed"] = True
+                    del experiments_to_run[experiment]
+
+    ray.shutdown()
+
+    time_taken = time.monotonic() - start_time
+
+    # Create results dict and write it to disk.
+    result = {
+        "time_taken": time_taken,
+        "trial_states": dict(Counter([trial.status for trial in all_trials])),
+        "last_update": time.time(),
+        "passed": [k for k, exp in checks.items() if exp["passed"]],
+        "failures": {
+            k: exp["failures"]
+            for k, exp in checks.items() if exp["failures"] > 0
+        }
+    }
+
+    return result

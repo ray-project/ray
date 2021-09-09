@@ -43,7 +43,7 @@ GetRemoteFunctions();
 BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
-namespace api {
+namespace internal {
 
 using ray::core::RayFunction;
 
@@ -76,10 +76,11 @@ class TaskExecutor {
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<ray::RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
-      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+      bool *is_application_level_error);
 
   virtual ~TaskExecutor(){};
 
@@ -87,5 +88,5 @@ class TaskExecutor {
   AbstractRayRuntime &abstract_ray_tuntime_;
   static std::shared_ptr<msgpack::sbuffer> current_actor_;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

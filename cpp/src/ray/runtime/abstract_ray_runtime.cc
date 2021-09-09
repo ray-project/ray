@@ -22,7 +22,6 @@
 
 #include "../config_internal.h"
 #include "../util/function_helper.h"
-#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
 
@@ -39,7 +38,7 @@ msgpack::sbuffer PackError(std::string error_msg) {
   return sbuffer;
 }
 }  // namespace internal
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
@@ -116,7 +115,7 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 }
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    std::vector<ray::api::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
@@ -125,11 +124,12 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, nullptr, std::vector<ObjectID>()));
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{});
+                                                           ray::rpc::Address{},
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -139,7 +139,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
 
 InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const RemoteFunctionHolder &remote_function_holder,
-                                    std::vector<ray::api::TaskArg> &args,
+                                    std::vector<ray::internal::TaskArg> &args,
                                     const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
@@ -152,7 +152,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
 }
 
 std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                     std::vector<ray::api::TaskArg> &args,
+                                     std::vector<ray::internal::TaskArg> &args,
                                      const CallOptions &task_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::NORMAL_TASK, remote_function_holder, args, ActorID::Nil());
@@ -161,7 +161,8 @@ std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function
 
 std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<ray::api::TaskArg> &args, const ActorCreationOptions &create_options) {
+    std::vector<ray::internal::TaskArg> &args,
+    const ActorCreationOptions &create_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_CREATION_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec, create_options).Binary();
@@ -169,7 +170,7 @@ std::string AbstractRayRuntime::CreateActor(
 
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
-    std::vector<ray::api::TaskArg> &args, const CallOptions &call_options) {
+    std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
@@ -199,28 +200,13 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string GetFullName(bool global, const std::string &name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
-}
-
-/// TODO(qicosmos): Now only support global name, will support the name of a current job.
 std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  auto full_actor_name = GetFullName(global, actor_name);
-  auto pair = core_worker.GetNamedActorHandle(actor_name, "");
-  if (!pair.second.ok()) {
-    RAY_LOG(WARNING) << pair.second.message();
+  auto actor_id = task_submitter_->GetActor(global, actor_name);
+  if (actor_id.IsNil()) {
     return "";
   }
 
-  std::string actor_id;
-  auto actor_handle = pair.first;
-  RAY_CHECK(actor_handle);
-  return actor_handle->GetActorID().Binary();
+  return actor_id.Binary();
 }
 
 void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_restart) {
@@ -241,5 +227,44 @@ void AbstractRayRuntime::ExitActor() {
   throw RayIntentionalSystemExitException("SystemExit");
 }
 
-}  // namespace api
+const std::unique_ptr<ray::gcs::GlobalStateAccessor>
+    &AbstractRayRuntime::GetGlobalStateAccessor() {
+  return global_state_accessor_;
+}
+
+bool AbstractRayRuntime::WasCurrentActorRestarted() {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return false;
+  }
+
+  const auto &actor_id = GetCurrentActorID();
+  auto byte_ptr = global_state_accessor_->GetActorInfo(actor_id);
+  if (byte_ptr == nullptr) {
+    return false;
+  }
+
+  rpc::ActorTableData actor_table_data;
+  bool r = actor_table_data.ParseFromString(*byte_ptr);
+  if (!r) {
+    throw RayException("Received invalid protobuf data from GCS.");
+  }
+
+  return actor_table_data.num_restarts() != 0;
+}
+
+ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  return task_submitter_->CreatePlacementGroup(create_options);
+}
+
+void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
+  return task_submitter_->RemovePlacementGroup(group_id);
+}
+
+bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
+                                                 int timeout_seconds) {
+  return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
+}
+
+}  // namespace internal
 }  // namespace ray

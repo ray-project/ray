@@ -21,7 +21,10 @@
 #include "unistd.h"
 #endif
 
-Counter::Counter(int init) { count = init; }
+Counter::Counter(int init) {
+  count = init;
+  is_restared = ray::WasCurrentActorRestarted();
+}
 
 Counter *Counter::FactoryCreate() { return new Counter(0); }
 
@@ -42,7 +45,7 @@ int Counter::Add(int x) {
 }
 
 int Counter::Exit() {
-  ray::api::Ray::ExitActor();
+  ray::ExitActor();
   return 1;
 }
 
@@ -71,8 +74,13 @@ uint64_t Counter::GetPid() {
 #endif
 }
 
+bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
+
+bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
+
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
-           &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc);
+           &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc,
+           &Counter::CheckRestartInActorCreationTask, &Counter::CheckRestartInActorTask);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);

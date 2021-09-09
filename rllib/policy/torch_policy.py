@@ -587,6 +587,11 @@ class TorchPolicy(Policy):
                 "sgd_minibatch_size", self.config["train_batch_size"]) // \
             len(self.devices)
 
+        # Set Model to train mode.
+        if self.model_gpu_towers:
+            for t in self.model_gpu_towers:
+                t.train()
+
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
@@ -652,6 +657,16 @@ class TorchPolicy(Policy):
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
         assert len(self.devices) == 1
+
+        # If not done yet, see whether we have to zero-pad this batch.
+        if not postprocessed_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                batch=postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
         postprocessed_batch.is_training = True
         self._lazy_tensor_dict(postprocessed_batch, device=self.devices[0])
@@ -844,7 +859,7 @@ class TorchPolicy(Policy):
         # returned empty internal states list).
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
-                self._dummy_batch["seq_lens"] = np.array([1.0])
+                self._dummy_batch[SampleBatch.SEQ_LENS] = np.array([1.0])
 
         state_ins = []
         i = 0
@@ -859,7 +874,7 @@ class TorchPolicy(Policy):
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
 
-        seq_lens = self._dummy_batch["seq_lens"]
+        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
@@ -869,14 +884,14 @@ class TorchPolicy(Policy):
                 opset_version=onnx,
                 do_constant_folding=True,
                 input_names=list(dummy_inputs.keys()) +
-                ["state_ins", "seq_lens"],
+                ["state_ins", SampleBatch.SEQ_LENS],
                 output_names=["output", "state_outs"],
                 dynamic_axes={
                     k: {
                         0: "batch_size"
                     }
                     for k in list(dummy_inputs.keys()) +
-                    ["state_ins", "seq_lens"]
+                    ["state_ins", SampleBatch.SEQ_LENS]
                 })
         else:
             traced = torch.jit.trace(self.model,
@@ -989,9 +1004,10 @@ class TorchPolicy(Policy):
                     results[shard_idx] = (all_grads, grad_info)
             except Exception as e:
                 with lock:
-                    results[shard_idx] = ValueError(
+                    results[shard_idx] = (ValueError(
                         e.args[0] + "\n" +
-                        "In tower {} on device {}".format(shard_idx, device))
+                        "In tower {} on device {}".format(shard_idx, device)),
+                                          e)
 
         # Single device (GPU) or fake-GPU case (serialize for better
         # debugging).
@@ -1001,8 +1017,8 @@ class TorchPolicy(Policy):
                 _worker(shard_idx, model, sample_batch, device)
                 # Raise errors right away for better debugging.
                 last_result = results[len(results) - 1]
-                if isinstance(last_result, ValueError):
-                    raise last_result
+                if isinstance(last_result[0], ValueError):
+                    raise last_result[0] from last_result[1]
         # Multi device (GPU) case: Parallelize via threads.
         else:
             threads = [
@@ -1022,8 +1038,8 @@ class TorchPolicy(Policy):
         outputs = []
         for shard_idx in range(len(sample_batches)):
             output = results[shard_idx]
-            if isinstance(output, Exception):
-                raise output
+            if isinstance(output[0], Exception):
+                raise output[0] from output[1]
             outputs.append(results[shard_idx])
         return outputs
 

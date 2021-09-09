@@ -41,6 +41,7 @@ class MyCallbacks(DefaultCallbacks):
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
+                        policies: Dict[str, Policy],
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
         # Make sure this episode is ongoing.
         assert episode.length > 0, \
