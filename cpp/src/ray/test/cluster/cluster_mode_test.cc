@@ -222,7 +222,7 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
   EXPECT_EQ(*r1.Get(), 1);
 
   auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-                    .SetResources({{"CPU", 100.0}})
+                    .SetResources({{"CPU", 10000.0}})
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
   std::vector<ray::ObjectRef<int>> objects{r2};
@@ -292,7 +292,7 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
 }
 
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
-  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 100}}};
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
   ray::internal::PlacementGroupCreationOptions options{
       false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
@@ -310,7 +310,12 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .SetPlacementGroup(placement_group, 0)
                     .Remote();
   auto r1 = actor1.Task(&Counter::Plus1).Remote();
-  EXPECT_EQ(*r1.Get(), 1);
+  std::vector<ray::ObjectRef<int>> objects{r1};
+  auto result = ray::Wait(objects, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 1);
+  EXPECT_EQ(result.unready.size(), 0);
+  auto result_vector = ray::Get(objects);
+  EXPECT_EQ(*(result_vector[0]), 1);
 
   // Exceeds the resources of PlacementGroup.
   auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
@@ -318,10 +323,10 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .SetPlacementGroup(placement_group, 0)
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
-  std::vector<ray::ObjectRef<int>> objects{r2};
-  auto result = ray::Wait(objects, 1, 1000);
-  EXPECT_EQ(result.ready.size(), 0);
-  EXPECT_EQ(result.unready.size(), 1);
+  std::vector<ray::ObjectRef<int>> objects2{r2};
+  auto result2 = ray::Wait(objects2, 1, 1000);
+  EXPECT_EQ(result2.ready.size(), 0);
+  EXPECT_EQ(result2.unready.size(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
 }
 
