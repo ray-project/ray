@@ -79,10 +79,10 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
               AsyncRegisterActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
-  actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
+  ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  actor_task_submitter->SubmitTask(task_spec);
+  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
   EXPECT_CALL(*task_finisher,
               PendingTaskFailed(task_spec.TaskId(),
                                 rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
@@ -103,10 +103,10 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
               AsyncRegisterActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
-  actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
+  ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  actor_task_submitter->SubmitTask(task_spec);
+  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
   EXPECT_CALL(*task_finisher, PendingTaskFailed(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }
