@@ -58,11 +58,19 @@ enum class PlacementStrategy {
   UNRECOGNIZED = -1
 };
 
+enum PlacementGroupState {
+  PENDING = 0,
+  CREATED = 1,
+  REMOVED = 2,
+  RESCHEDULING = 3,
+};
+
 struct PlacementGroupCreationOptions {
   bool global;
   std::string name;
   std::vector<std::unordered_map<std::string, double>> bundles;
   PlacementStrategy strategy;
+  PlacementGroupState state;
 };
 
 }  // namespace internal

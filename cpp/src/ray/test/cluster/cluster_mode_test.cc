@@ -284,6 +284,15 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   auto first_placement_group = ray::CreatePlacementGroup(options);
   EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
 
+  auto groups = ray::GetAllPlacementGroups();
+  EXPECT_EQ(groups.size(), 1);
+
+  auto placement_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(placement_group.GetID(), first_placement_group.GetID());
+
+  auto placement_group1 = ray::GetPlacementGroup("first_placement_group");
+  EXPECT_EQ(placement_group1.GetID(), first_placement_group.GetID());
+
   ray::RemovePlacementGroup(first_placement_group.GetID());
 }
 

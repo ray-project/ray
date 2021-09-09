@@ -49,7 +49,6 @@ class TaskSubmitter {
     return true;
   }
 
- protected:
   std::string GetFullName(bool global, const std::string &name) const {
     if (name.empty()) {
       return "";

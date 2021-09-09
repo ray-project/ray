@@ -156,5 +156,18 @@ void LocalModeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
   placement_groups_.erase(group_id);
 }
 
+std::vector<PlacementGroup> LocalModeTaskSubmitter::GetAllPlacementGroups() {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroupById(const std::string &id) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroup(const std::string &name,
+                                                         bool global) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
 }  // namespace internal
 }  // namespace ray

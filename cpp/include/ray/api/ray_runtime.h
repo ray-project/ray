@@ -73,6 +73,9 @@ class RayRuntime {
   virtual bool WaitPlacementGroupReady(const std::string &group_id,
                                        int timeout_seconds) = 0;
   virtual bool WasCurrentActorRestarted() = 0;
+  virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
+  virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
+  virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global) = 0;
 };
 }  // namespace internal
 }  // namespace ray
