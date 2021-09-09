@@ -296,6 +296,9 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 
     ray_instance = ray.init(_redis_password="test")
     proxier.CHECK_PROCESS_INTERVAL_S = 1
+    # The timeout has likely been set to 1 in an earlier test. Increase timeout
+    # to wait for the channel to become ready.
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
     pm = proxier.ProxyManager(
         ray_instance["redis_address"],

@@ -13,7 +13,8 @@ import inspect
 from ray.util.inspect import is_cython, is_function_or_method
 import json
 import threading
-from typing import Any, OrderedDict
+from collections import OrderedDict
+from typing import Any
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -616,3 +617,4 @@ class OrderedReplayCache:
                     break
             for req_id in to_remove:
                 del self.cache[req_id]
+            self.cv.notify_all()
