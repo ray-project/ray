@@ -227,10 +227,10 @@ def test_runtime_install_error_message(call_ray_start):
     """
     with pytest.raises(ConnectionAbortedError) as excinfo:
         ray.client("localhost:25031").env({
-            "pip": ["anyscale-this-doesnt-exist"]
+            "pip": ["ray-this-doesnt-exist"]
         }).connect()
     assert (
-        "No matching distribution found for anyscale-this-doesnt-exist" in str(
+        "No matching distribution found for ray-this-doesnt-exist" in str(
             excinfo.value))
 
     ray.util.disconnect()
