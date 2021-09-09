@@ -273,11 +273,11 @@ void RayEvent::SendMessage(const std::string &message) {
                                        ? RayEventContext::Instance()
                                        : RayEventContext::GlobalInstance();
 
-  static const int event_id_size = 18;
-  static const std::string empty_event_id_hex(event_id_size * 2, 'f');
+  static const int kEventIDSize = 18;
+  static const std::string empty_event_id_hex(kEventIDSize * 2, 'f');
   std::string event_id;
   if (IsLevelEnabled(severity_)) {
-    std::string event_id_buffer = std::string(event_id_size, ' ');
+    std::string event_id_buffer = std::string(kEventIDSize, ' ');
     FillRandom(&event_id_buffer);
     event_id = StringToHex(event_id_buffer);
     rpc::Event event;

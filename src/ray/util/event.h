@@ -192,6 +192,8 @@ class RayEventContext final {
 // for sending
 class RayEvent {
  public:
+  // We require file_name to be a string which has static storage before RayEvent
+  // deconstructed. Otherwise we might have memory issues.
   RayEvent(rpc::Event_Severity severity, RayLogLevel log_severity,
            const std::string &label, const char *file_name, int line_number)
       : severity_(severity),
