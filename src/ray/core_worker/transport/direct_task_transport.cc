@@ -41,17 +41,17 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec, [this, actor_id, task_id](Status status) {
-                       if (status.ok()) {
-                         RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-                         task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                             rpc::Address());
-                       } else {
-                         RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                                        << " with status: " << status.ToString();
-                         RAY_UNUSED(task_finisher_->PendingTaskFailed(
-                             task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
-                       }
-                     }));
+            if (status.ok()) {
+              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                                  rpc::Address());
+            } else {
+              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
+                             << " with status: " << status.ToString();
+              RAY_UNUSED(task_finisher_->PendingTaskFailed(
+                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
+            }
+          }));
       return;
     }
 
@@ -107,28 +107,29 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
   };
   if (task_spec.IsActorCreationTask()) {
-      // Registeration for named actor is done in sync way.
-      // The reason is that for named actor, usually we'll need be able to list them
-      // TODO (yic): Also make registeration for named actor async
-      if (!task_spec.GetMessage().actor_creation_task_spec().name().empty()) {
-        auto status = actor_creator_->RegisterActor(task_spec);
-        if(!status.ok()) {
-          return status;
-        }
-        after_resolver_cb(status);
-        return Status::OK();
-      } else {
-        RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-            task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
-                        this](Status status) mutable {
-                         if (!status.ok()) {
-                           RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
-                                          << ". Error message: " << status.ToString();
-                         } else {
-                           resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
-                         }
-                       }));
+    // Registeration for named actor is done in sync way.
+    // The reason is that for named actor, usually we'll need be able to list them
+    // TODO (yic): Also make registeration for named actor async
+    if (!task_spec.GetMessage().actor_creation_task_spec().name().empty()) {
+      auto status = actor_creator_->RegisterActor(task_spec);
+      if (!status.ok()) {
+        return status;
       }
+      after_resolver_cb(status);
+      return Status::OK();
+    } else {
+      RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+          task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
+                      this](Status status) mutable {
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Failed to register actor: "
+                             << task_spec.ActorCreationId()
+                             << ". Error message: " << status.ToString();
+            } else {
+              resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
+            }
+          }));
+    }
   } else {
     resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
   }
