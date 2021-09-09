@@ -4,6 +4,7 @@ import logging
 import math
 import numpy as np
 import os
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
@@ -410,7 +411,7 @@ class TFPolicy(Policy):
     @override(Policy)
     def compute_actions_from_input_dict(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: Union[SampleBatch, Dict[str, TensorType]],
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
@@ -431,6 +432,7 @@ class TFPolicy(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else len(input_dict) if isinstance(input_dict, SampleBatch) \
             else obs_batch.shape[0]
 
         return fetched
@@ -885,7 +887,11 @@ class TFPolicy(Policy):
             if hasattr(self, "_input_dict"):
                 for key, value in input_dict.items():
                     if key in self._input_dict:
-                        builder.add_feed_dict({self._input_dict[key]: value})
+                        # Handle complex/nested spaces as well.
+                        tree.map_structure(
+                            lambda k, v: builder.add_feed_dict({k: v}),
+                            self._input_dict[key], value,
+                        )
             # For policies that inherit directly from TFPolicy.
             else:
                 builder.add_feed_dict({
@@ -1026,8 +1032,12 @@ class TFPolicy(Policy):
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for key, placeholder in self._loss_input_dict.items():
-            feed_dict[placeholder] = train_batch[key]
+        for key, placeholders in self._loss_input_dict.items():
+            tree.map_structure(
+                lambda ph, v: feed_dict.__setitem__(ph, v),
+                placeholders,
+                train_batch[key],
+            )
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))

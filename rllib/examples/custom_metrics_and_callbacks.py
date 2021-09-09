@@ -57,7 +57,7 @@ class MyCallbacks(DefaultCallbacks):
                        env_index: int, **kwargs):
         # Make sure this episode is really done.
         assert episode.batch_builder.policy_collectors[
-            "default_policy"].buffers["dones"][-1], \
+            "default_policy"].batches[-1]["dones"][-1], \
             "ERROR: `on_episode_end()` should only be called " \
             "after episode is done!"
         pole_angle = np.mean(episode.user_data["pole_angles"])

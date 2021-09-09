@@ -545,6 +545,7 @@ class DynamicTFPolicy(TFPolicy):
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
+            # This is a tower, input placeholders already exist.
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
             # All others.
@@ -553,10 +554,15 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
+                    flatten = view_col not in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
+                              self.config["preprocessor_pref"] is not None
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,
                         name=view_col,
-                        time_axis=time_axis)
+                        time_axis=time_axis,
+                        flatten=flatten,
+                    )
         dummy_batch = self._get_dummy_batch_from_view_requirements(
             batch_size=32)
 
