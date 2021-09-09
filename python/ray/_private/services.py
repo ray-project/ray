@@ -1927,7 +1927,7 @@ def start_ray_client_server(
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:
         command.append(
-            "--serialized-runtime-env-context={serialized_runtime_env_context}"
+            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
     if metrics_agent_port:
         command.append(f"--metrics-agent-port={metrics_agent_port}")
