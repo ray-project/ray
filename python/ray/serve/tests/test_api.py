@@ -255,7 +255,7 @@ def test_shutdown_destructor(serve_instance):
     A.delete()
     ray.get(signal.wait.remote(), timeout=10)
 
-    # If the desctructor errored, it should be logged but also cleaned up.
+    # If the destructor errored, it should be logged but also cleaned up.
     @serve.deployment
     class B:
         def __del__(self):

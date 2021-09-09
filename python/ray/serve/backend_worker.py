@@ -315,7 +315,7 @@ class RayServeReplica:
 
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after succssifully calling it so the
-        # desctructor is called only once.
+        # destructor is called only once.
         try:
             self.callable.__del__()
         except Exception:
