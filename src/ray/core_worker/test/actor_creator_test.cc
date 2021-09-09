@@ -69,7 +69,7 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
     ASSERT_TRUE(status.ok());
     cnt++;
   };
-  actor_creator->AsyncRegisterActor(task_spec, per_finish_cb);
+  ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, per_finish_cb).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   for (int i = 0; i < 100; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
