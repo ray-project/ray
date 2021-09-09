@@ -280,7 +280,7 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
 
   ray::internal::PlacementGroupCreationOptions options{
-      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+      false, name, bundles, ray::internal::PlacementStrategy::PACK};
   return ray::CreatePlacementGroup(options);
 }
 
