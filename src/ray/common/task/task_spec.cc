@@ -403,6 +403,9 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
+WorkerCacheKey::WorkerCacheKey(const JobID &job_id)
+    : WorkerCacheKey(job_id, {}, "", {}) {}
+
 WorkerCacheKey::WorkerCacheKey(
     const JobID &job_id,
     const std::unordered_map<std::string, std::string> override_environment_variables,

@@ -48,10 +48,11 @@ class MockWorkerPool : public WorkerPoolInterface {
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {
-        task_spec.OverrideEnvironmentVariables(), task_spec.SerializedRuntimeEnv(), {}};
-    const int runtime_env_hash = env.IntHash();
-    callbacks[runtime_env_hash].push_back(callback);
+    const WorkerCacheKey env = {task_spec.JobId(),
+                                task_spec.OverrideEnvironmentVariables(),
+                                task_spec.SerializedRuntimeEnv(),
+                                {}};
+    callbacks[env.Hash()].push_back(callback);
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
@@ -87,7 +88,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     }
   }
 
-  size_t CallbackSize(int runtime_env_hash) {
+  size_t CallbackSize(RuntimeEnvHash runtime_env_hash) {
     auto cb_it = callbacks.find(runtime_env_hash);
     if (cb_it != callbacks.end()) {
       auto &list = cb_it->second;
@@ -97,7 +98,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
-  std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
+  std::unordered_map<RuntimeEnvHash, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
 };
 
@@ -119,7 +120,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
                    std::string serialized_runtime_env = "{}") {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
-  JobID job_id = RandomJobId();
+  JobID job_id = JobID::Nil();
   rpc::Address address;
   spec_builder.SetCommonTaskSpec(
       id, "dummy_task", Language::PYTHON,
@@ -361,9 +362,11 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {
-      /*override_environment_variables=*/{}, serialized_runtime_env_A, {}};
-  const int runtime_env_hash_A = env_A.IntHash();
+  const WorkerCacheKey env_A = {task_A.GetTaskSpecification().JobId(),
+                                /*override_environment_variables=*/{},
+                                serialized_runtime_env_A,
+                                {}};
+  const auto runtime_env_hash_A = env_A.Hash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));

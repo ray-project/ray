@@ -214,7 +214,6 @@ class RayletClient : public RayletClientInterface {
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
   /// \param job_id The job ID of the driver or worker.
-  /// \param runtime_env_hash The hash of the runtime env of the worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
@@ -230,8 +229,7 @@ class RayletClient : public RayletClientInterface {
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
-               rpc::WorkerType worker_type, const JobID &job_id,
-               const int &runtime_env_hash, const Language &language,
+               rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
                int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
 

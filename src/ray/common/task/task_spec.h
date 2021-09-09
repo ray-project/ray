@@ -274,6 +274,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 /// Class used to cache workers, keyed by runtime_env.
 class WorkerCacheKey {
  public:
+  /// Constructor for a default runtime env.
+  ///
+  WorkerCacheKey(const JobID &job_id);
+
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///

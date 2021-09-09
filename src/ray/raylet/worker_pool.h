@@ -410,7 +410,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      const RuntimeEnvHash runtime_env_hash = 0,
+      RuntimeEnvHash runtime_env_hash = 0,
       const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",

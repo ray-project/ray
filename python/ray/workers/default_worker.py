@@ -113,12 +113,6 @@ parser.add_argument(
     help="Specify the backup count of rotated log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
 parser.add_argument(
-    "--runtime-env-hash",
-    required=False,
-    type=int,
-    default=0,
-    help="The computed hash of the runtime env for this worker.")
-parser.add_argument(
     "--worker-shim-pid",
     required=False,
     type=int,
@@ -194,7 +188,6 @@ if __name__ == "__main__":
     ray.worker.connect(
         node,
         mode=mode,
-        runtime_env_hash=args.runtime_env_hash,
         runtime_env_json=args.serialized_runtime_env,
         worker_shim_pid=args.worker_shim_pid,
         ray_debugger_external=args.ray_debugger_external)

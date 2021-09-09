@@ -175,7 +175,7 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
-    const RuntimeEnvHash runtime_env_hash, const std::string &serialized_runtime_env,
+    RuntimeEnvHash runtime_env_hash, const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
@@ -190,6 +190,10 @@ Process WorkerPool::StartWorkerProcess(
       return Process();
     }
     job_config = &it->second;
+
+    if (!runtime_env_hash) {
+      runtime_env_hash = WorkerCacheKey(job_id).Hash();
+    }
   }
 
   auto &state = GetStateForLanguage(language);
@@ -329,9 +333,6 @@ Process WorkerPool::StartWorkerProcess(
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
     }
-
-    worker_command_args.push_back("--runtime-env-hash=" +
-                                  std::to_string(runtime_env_hash));
 
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
@@ -570,6 +571,10 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.registered_io_workers.insert(worker);
     io_worker_state.num_starting_io_workers--;
+  } else {
+    // All task/actor workers should have a runtime env hash computed from
+    // their job ID and (optionally) custom runtime environment.
+    RAY_CHECK(worker->GetRuntimeEnvHash());
   }
 
   // This is a workaround to finish driver registration after all initial workers are
@@ -766,6 +771,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Try to dispatch a task to this worker.
   bool worker_used = false;
   auto runtime_env_hash = worker->GetRuntimeEnvHash();
+  RAY_LOG(DEBUG) << "PushWorker with runtime env " << runtime_env_hash;
   auto &waiting_tasks = state.waiting_tasks_by_env_hash[runtime_env_hash];
   while (!worker_used && !waiting_tasks.empty()) {
     auto &task_info = waiting_tasks.front();

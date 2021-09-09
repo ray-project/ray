@@ -132,8 +132,6 @@ table RegisterClientRequest {
   worker_shim_pid: long;
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
-  // The hash of the runtime env for this worker.
-  runtime_env_hash: int;
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
