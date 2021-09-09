@@ -54,6 +54,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
+        # XXX(edoakes).
+        self._working_dir_uri_to_env: Dict[str, str]
 
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
@@ -86,6 +88,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
                     runtime_env, context, logger=per_job_logger)
+
+                # XXX: pass
+                for uri in runtime_env.get("uris", []):
+                    self._working_dir_uri_to_env[uri] = serialized_runtime_env
+
                 return context
 
             loop = asyncio.get_event_loop()
@@ -160,7 +167,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         # Only a single URI is currently supported.
         assert len(request.uris) == 1
-        if self._working_dir_manager.delete_uri(request.uris[0]):
+
+        # XXX
+        # Should we check that it exists to be sure?
+        uri = request.uris[0]
+        del self._env_cache[self._working_dir_uri_to_env[uri]]
+
+        if self._working_dir_manager.delete_uri(uri):
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
         else:
