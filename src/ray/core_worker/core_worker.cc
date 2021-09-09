@@ -1780,11 +1780,29 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
                                   max_retries);
-    io_service_.post(
-        [this, task_spec = std::move(task_spec)]() {
-          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-        },
-        "CoreWorker.SubmitTask");
+
+    if (actor_name.empty()) {
+      io_service_.post(
+          [this, task_spec = std::move(task_spec)]() {
+            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
+                task_spec, [this, task_spec](Status status) {
+                  if (!status.ok()) {
+                    RAY_LOG(ERROR)
+                        << "Failed to register actor: " << task_spec.ActorCreationId()
+                        << ". Error message: " << status.ToString();
+                  } else {
+                    direct_task_submitter_->SubmitTask(task_spec);
+                  }
+                }));
+          },
+          "ActorCreator.AsyncRegisterActor");
+    } else {
+      auto status = actor_creator_->RegisterActor(task_spec);
+      if (!status.ok()) {
+        return status;
+      }
+      return direct_task_submitter_->SubmitTask(task_spec);
+    }
   }
   return Status::OK();
 }
