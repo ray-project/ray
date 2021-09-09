@@ -88,7 +88,7 @@ from ray.state import (  # noqa: E402
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
+    SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
     init, is_initialized, put, kill, remote, shutdown, wait,
 )
 import ray.internal  # noqa: E402

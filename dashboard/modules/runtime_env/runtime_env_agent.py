@@ -149,11 +149,19 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context)
 
-    async def DeleteRuntimeEnv(self, request, context):
-        # TODO(guyang.sgy): Delete runtime env local files.
-        return runtime_env_agent_pb2.DeleteRuntimeEnvReply(
+    async def DeleteURIs(self, request, context):
+        logger.info(f"Got request to delete URIS: {request.uris}.")
+
+        return runtime_env_agent_pb2.DeleteURIsReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
             error_message="Not implemented.")
+
+        # Del code from util worker.
+        path = request.uris[0]
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(str(path))
+        else:
+            path.unlink()
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

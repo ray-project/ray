@@ -524,8 +524,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER &&
-       options_.worker_type != WorkerType::UTIL_WORKER),
+       options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
@@ -2923,20 +2922,6 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
                         nullptr);
-  }
-}
-
-void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
-                                       rpc::RunOnUtilWorkerReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  if (options_.run_on_util_worker_handler) {
-    std::vector<std::string> args(request.args().begin(), request.args().end());
-
-    options_.run_on_util_worker_handler(request.request(), args);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  } else {
-    send_reply_callback(Status::NotImplemented("RunOnUtilWorker is not supported"),
-                        nullptr, nullptr);
   }
 }
 
