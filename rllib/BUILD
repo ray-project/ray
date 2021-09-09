@@ -1751,57 +1751,57 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
-# Test train/rollout scripts (w/o confirming rollout performance).
+# Test [train|evaluate].py scripts (w/o confirming evaluation performance).
 py_test(
-    name = "test_rollout_no_learning_1",
-    main = "tests/test_rollout.py",
+    name = "test_rllib_evaluate_1",
+    main = "tests/test_rllib_train_and_evaluate.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
-    data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutSimple1"]
+    data = ["train.py", "evaluate.py"],
+    srcs = ["tests/test_rllib_train_and_evaluate.py"],
+    args = ["TestEvaluate1"]
 )
 
 py_test(
-    name = "test_rollout_no_learning_2",
-    main = "tests/test_rollout.py",
+    name = "test_rllib_evaluate_2",
+    main = "tests/test_rllib_train_and_evaluate.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
-    data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutSimple2"]
+    data = ["train.py", "evaluate.py"],
+    srcs = ["tests/test_rllib_train_and_evaluate.py"],
+    args = ["TestEvaluate2"]
 )
 
 py_test(
-    name = "test_rollout_no_learning_3",
-    main = "tests/test_rollout.py",
+    name = "test_rllib_evaluate_3",
+    main = "tests/test_rllib_train_and_evaluate.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
-    data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutSimple3"]
+    data = ["train.py", "evaluate.py"],
+    srcs = ["tests/test_rllib_train_and_evaluate.py"],
+    args = ["TestEvaluate3"]
 )
 
 py_test(
-    name = "test_rollout_no_learning_4",
-    main = "tests/test_rollout.py",
+    name = "test_rllib_evaluate_4",
+    main = "tests/test_rllib_train_and_evaluate.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
-    data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutSimple4"]
+    data = ["train.py", "evaluate.py"],
+    srcs = ["tests/test_rllib_train_and_evaluate.py"],
+    args = ["TestEvaluate4"]
 )
 
-# Test train/rollout scripts (and confirm `rllib rollout` performance is same
+# Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
 # as the final one from the `rllib train` run).
 py_test(
-    name = "test_rollout_w_learning",
-    main = "tests/test_rollout.py",
+    name = "test_rllib_train_and_evaluate",
+    main = "tests/test_rllib_train_and_evaluate.py",
     tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
-    data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutLearntPolicy"]
+    data = ["train.py", "evaluate.py"],
+    srcs = ["tests/test_rllib_train_and_evaluate.py"],
+    args = ["TestTrainAndEvaluate"]
 )
 
 py_test(

@@ -25,15 +25,15 @@ from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
 EXAMPLE_USAGE = """
 Example usage via RLlib CLI:
-    rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example usage via executable:
-    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    ./evaluate.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example usage w/o checkpoint (for testing purposes):
-    ./rollout.py --run PPO --env CartPole-v0 --episodes 500
+    ./evaluate.py --run PPO --env CartPole-v0 --episodes 500
 """
 
 # Note: if you use any custom models or envs, register them here first, e.g.:
