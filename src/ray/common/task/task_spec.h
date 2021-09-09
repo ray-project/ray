@@ -34,6 +34,8 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
+using RuntimeEnvHash = size_t;
+
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
 struct ConcurrencyGroup {
@@ -104,7 +106,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnv() const;
 
-  int GetRuntimeEnvHash() const;
+  RuntimeEnvHash GetRuntimeEnvHash() const;
 
   size_t NumArgs() const;
 
@@ -296,13 +298,7 @@ class WorkerCacheKey {
   ///
   /// \return The hash of the override_environment_variables and the serialized
   /// runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
+  RuntimeEnvHash Hash() const;
 
  private:
   const JobID job_id_;

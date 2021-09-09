@@ -126,11 +126,11 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
-void Worker::SetRuntimeEnvHash(int runtime_env_hash) {
+void Worker::SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) {
   runtime_env_hash_ = runtime_env_hash;
 }
 
-int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
+RuntimeEnvHash Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.IsNil())

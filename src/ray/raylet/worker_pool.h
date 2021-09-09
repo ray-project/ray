@@ -41,9 +41,6 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
-// TODO(swang): Are we worried about hash collisions with int type?
-using RuntimeEnvHash = int;
-
 enum PopWorkerStatus {
   // OK.
   // A registered worker will be returned with callback.

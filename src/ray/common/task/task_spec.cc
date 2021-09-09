@@ -140,9 +140,10 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
+RuntimeEnvHash TaskSpecification::GetRuntimeEnvHash() const {
   const auto &override_env_vars = OverrideEnvironmentVariables();
-  if (!HasRuntimeEnv() && override_env_vars.empty()) {
+  const auto &job_id = JobId();
+  if (!HasRuntimeEnv() && override_env_vars.empty() && job_id.IsNil()) {
     return 0;
   }
 
@@ -150,9 +151,9 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {JobId(), override_env_vars, SerializedRuntimeEnv(),
+  WorkerCacheKey env = {job_id, override_env_vars, SerializedRuntimeEnv(),
                         required_resource};
-  return env.IntHash();
+  return env.Hash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -423,10 +424,12 @@ bool WorkerCacheKey::EnvIsEmpty() const {
          required_resources.empty();
 }
 
-std::size_t WorkerCacheKey::Hash() const {
+RuntimeEnvHash WorkerCacheKey::Hash() const {
   // Cache the hash value.
   if (!hash_) {
-    hash_ = job_id_.Hash();
+    if (!job_id_.IsNil()) {
+      hash_ = job_id_.Hash();
+    }
     if (!EnvIsEmpty()) {
       std::vector<std::pair<std::string, std::string>> env_vars(
           override_environment_variables.begin(), override_environment_variables.end());
@@ -455,8 +458,6 @@ std::size_t WorkerCacheKey::Hash() const {
   }
   return hash_;
 }
-
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());

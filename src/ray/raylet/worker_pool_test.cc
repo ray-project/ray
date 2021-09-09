@@ -192,6 +192,8 @@ class WorkerPoolMock : public WorkerPool {
     return idle_of_all_languages_;
   }
 
+  // TODO: Remove this; workers should only be created through worker pool's
+  // public interfaces.
   std::shared_ptr<WorkerInterface> CreateWorker(
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
@@ -214,6 +216,10 @@ class WorkerPoolMock : public WorkerPool {
                                  "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
+
+    WorkerCacheKey env = {job_id, {}, "", {}};
+    worker_->SetRuntimeEnvHash(env.Hash());
+
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
@@ -1018,6 +1024,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
 
   // The driver of job 1 is already registered. Here we register the driver for job 2.
   RegisterDriver(Language::PYTHON, job_id);
+  WorkerCacheKey env = {job_id, {}, "", {}};
+  auto runtime_env_hash = env.Hash();
 
   ///
   /// Register 7 workers (2 more than soft limit).
@@ -1027,7 +1035,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   for (int i = 0; i < num_workers; i++) {
     PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+        Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status, {}, runtime_env_hash);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
@@ -1119,7 +1127,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   {
     PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
+        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
                                               [](Status, int) {}));
@@ -1130,7 +1138,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   {
     PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
+        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, JobID::Nil(), &status);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
                                               [](Status, int) {}));
