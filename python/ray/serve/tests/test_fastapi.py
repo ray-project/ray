@@ -11,6 +11,9 @@ from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.applications import Starlette
+import starlette.responses
+from starlette.routing import Route
 
 import ray
 from ray import serve
@@ -387,6 +390,23 @@ def test_fastapi_duplicate_routes(serve_instance):
     for version in ["v1", "v2"]:
         resp = requests.get(f"http://localhost:8000/api/{version}/ignored")
         assert resp.status_code == 404
+
+
+def test_asgi_compatible(serve_instance):
+    async def homepage(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    app = Starlette(routes=[Route("/", homepage)])
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyApp:
+        pass
+
+    MyApp.deploy()
+
+    resp = requests.get("http://localhost:8000/MyApp/")
+    assert resp.json() == {"hello": "world"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

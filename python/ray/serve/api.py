@@ -7,10 +7,11 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
-                    Type, Union, overload)
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
+                    overload)
 from weakref import WeakValueDictionary
 
+from fastapi import FastAPI, APIRouter
 from starlette.requests import Request
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
@@ -29,9 +30,6 @@ from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger, LoggingContext)
-
-if TYPE_CHECKING:
-    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
@@ -530,12 +528,12 @@ def get_replica_context() -> ReplicaContext:
 
 
 @PublicAPI(stability="beta")
-def ingress(app: Union["FastAPI", "APIRouter"]):
-    """Mark a FastAPI application ingress for Serve.
+def ingress(app: Union["FastAPI", "APIRouter", Callable]):
+    """Mark an ASGI application ingress for Serve.
 
     Args:
-        app(FastAPI,APIRouter): the app or router object serve as ingress
-            for this deployment.
+        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
+            as ingress for this backend. It can be any ASGI compatible object.
 
     Example:
     >>> app = FastAPI()
@@ -556,7 +554,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        make_fastapi_class_based_view(app, cls)
+        if isinstance(app, (FastAPI, APIRouter)):
+            make_fastapi_class_based_view(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
         # this ingress deployment. We don't use copy.copy here to avoid
@@ -564,7 +563,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class FastAPIWrapper(cls):
+        class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -601,8 +600,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                     asyncio.get_event_loop().run_until_complete(
                         self._serve_asgi_lifespan.shutdown())
 
-        FastAPIWrapper.__name__ = cls.__name__
-        return FastAPIWrapper
+        ASGIAppWrapper.__name__ = cls.__name__
+        return ASGIAppWrapper
 
     return decorator
 
