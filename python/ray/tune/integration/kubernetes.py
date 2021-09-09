@@ -2,11 +2,11 @@ import os
 from typing import Any, Optional, Tuple
 import subprocess
 
-import ray
 from ray import logger
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
+from ray.util.services import get_node_ip_address
 
 
 def try_import_kubernetes():
@@ -68,7 +68,7 @@ class KubernetesSyncer(NodeSyncer):
             raise ImportError(
                 "kubernetes is not installed on this machine/container. "
                 "Try: pip install kubernetes")
-        self.local_ip = ray.util.get_node_ip_address()
+        self.local_ip = get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None
         self.worker_node = None
