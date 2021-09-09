@@ -311,6 +311,10 @@ def run(args, parser):
         config["evaluation_num_workers"] = config.get("num_workers", 0)
     if not config.get("evaluation_num_episodes"):
         config["evaluation_num_episodes"] = 1
+    # Hard-override this as it raises a warning by Trainer otherwise.
+    # Makes no sense anyways, to have it set to None as we don't call
+    # `Trainer.train()` here.
+    config["evaluation_interval"] = 1
 
     # Rendering and video recording settings.
     if args.no_render:
