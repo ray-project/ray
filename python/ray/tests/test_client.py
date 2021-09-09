@@ -18,6 +18,20 @@ from ray._private.client_mode_hook import enable_client_mode
 from ray._private.test_utils import run_string_as_driver
 
 
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+    import ray
+    with connect_to_client_or_not(connect_to_client):
+        if connect_to_client:
+            # Client mode is on.
+            assert client_mode_should_convert()
+            # We're connected to Ray client.
+            assert ray.util.client.ray.is_connected()
+        else:
+            assert not client_mode_should_convert()
+            assert not ray.util.client.ray.is_connected()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_client_thread_safe(call_ray_stop_only):
     import ray
@@ -616,20 +630,6 @@ def test_client_serialize_addon(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get(ray.put(User(name="ray"))).name == "ray"
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_client_context_manager(ray_start_regular_shared, connect_to_client):
-    import ray
-    with connect_to_client_or_not(connect_to_client):
-        if connect_to_client:
-            # Client mode is on.
-            assert client_mode_should_convert() is True
-            # We're connected to Ray client.
-            assert ray.util.client.ray.is_connected() is True
-        else:
-            assert client_mode_should_convert() is False
-            assert ray.util.client.ray.is_connected() is False
 
 
 object_ref_cleanup_script = """
