@@ -77,8 +77,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     for pg in pgs_removed:
         remove_placement_group(pg)
 
-    # ray.get([pg.ready() for pg in pgs_unremoved])
-    [pg.wait(timeout_seconds=30) for pg in pgs_unremoved]
+    ray.get([pg.ready() for pg in pgs_unremoved])
     ray.get(tasks)
     ray.get([actor.ping.remote() for actor in actors])
     # Since placement groups are scheduled, remove them.
@@ -128,8 +127,7 @@ if __name__ == "__main__":
             total_removing_time += (end - start)
 
     # Validate the correctness.
-    time.sleep(10)
-    assert ray.available_resources()[
+    assert ray.cluster_resources()[
         "pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
 
     # Scenario 2:
