@@ -1885,6 +1885,8 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     # This test shouldn't be flaky. If it fails on the last ray.get
     # that highly likely indicates a real bug.
     # It also runs 3 times to make sure the test consistently passes.
+    # When 999 resource quantity is used, it fails about every other time
+    # when the test was written.
     cluster = ray_start_cluster
     resource_quantity = 999
     num_nodes = 5

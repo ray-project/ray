@@ -286,7 +286,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     return;
   }
 
-  while (!pending_placement_groups_.empty()) {
+  bool is_new_placement_group_scheduled = false;
+  while (!pending_placement_groups_.empty() || !is_new_placement_group_scheduled) {
     const auto placement_group = pending_placement_groups_.front();
     pending_placement_groups_.pop_front();
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
@@ -301,10 +302,9 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
             OnPlacementGroupCreationSuccess(std::move(placement_group));
           });
-      break;
+      is_new_placement_group_scheduled = true;
     }
-    // If the placement group is not registered == removed, keep checking the next pending
-    // groups.
+    // If the placement group is not registered == removed.
   }
 }
 
@@ -630,6 +630,10 @@ void GcsPlacementGroupManager::CollectStats() const {
 
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
+  // To avoid scheduling exhaution in some race conditions.
+  // Note that we don't currently have a known race condition that requires this, but we
+  // added as a safety check. https://github.com/ray-project/ray/pull/18419
+  SchedulePendingPlacementGroups();
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
