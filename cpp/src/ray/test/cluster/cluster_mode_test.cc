@@ -286,6 +286,18 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
 
 TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
+               ray::internal::RayException);
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 100}}};
+
+  ray::internal::PlacementGroupCreationOptions options{
+      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+  auto first_placement_group = ray::CreatePlacementGroup(options);
+  EXPECT_FALSE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 3));
   ray::RemovePlacementGroup(first_placement_group.GetID());
 }
 
@@ -299,6 +311,17 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .Remote();
   auto r1 = actor1.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(*r1.Get(), 1);
+
+  // Exceeds the resources of PlacementGroup.
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 2.0}})
+                    .SetPlacementGroup(placement_group, 0)
+                    .Remote();
+  auto r2 = actor2.Task(&Counter::Plus1).Remote();
+  std::vector<ray::ObjectRef<int>> objects{r2};
+  auto result = ray::Wait(objects, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 0);
+  EXPECT_EQ(result.unready.size(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
 }
 
