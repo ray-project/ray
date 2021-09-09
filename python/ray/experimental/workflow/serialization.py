@@ -57,7 +57,7 @@ def _put_helper(identifier: str, obj: Any,
         raise NotImplementedError("Workflow does not support checkpointing "
                                   "nested object references yet.")
     paths = wf_storage._key_obj_id(identifier)
-    asyncio.get_event_loop().run_until_complete(wf_storage._put(paths, obj))
+    asyncio.get_event_loop().run_until_complete(wf_storage._put(paths, obj, update=False))
 
 
 @ray.remote(num_cpus=0)
@@ -107,8 +107,7 @@ class Manager:
         paths = wf_storage._key_obj_id(identifer)
         return paths, info.upload_task
 
-    async def get_num_uploads(self):
-        """
-        For testing purposes.
-        """
-        return self._num_uploads
+    async def export_stats(self) -> Dict[str, Any]:
+        return {
+            "num_uploads": self._num_uploads
+        }

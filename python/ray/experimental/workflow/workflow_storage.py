@@ -148,6 +148,7 @@ class WorkflowStorage:
             if exception is None:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
+                print("(save_step_output) PUTTING", ret)
                 tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
@@ -238,7 +239,6 @@ class WorkflowStorage:
         Returns:
             The object ref.
         """
-
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
             ref = _put_obj_ref.remote((data, ))
@@ -354,6 +354,15 @@ class WorkflowStorage:
                                  inputs: WorkflowData) -> None:
         """Save workflow inputs."""
         metadata = inputs.to_metadata()
+
+        # upload_tasks = []
+        # object_ref_paths = []
+        # for ref in inputs.inputs.object_refs:
+        #     _, (paths, _) = self._reduce_objectref(ref, upload_tasks)
+        #     object_ref_paths.append(paths)
+
+        # metadata["object_refs"] = paths
+
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
@@ -363,9 +372,9 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
-        save_tasks.extend(
-            self._save_object_ref(obj_id, ref) for obj_id, ref in zip(
-                metadata["object_refs"], inputs.inputs.object_refs))
+        save_tasks.extend([self._save_object_ref(identifier, obj_ref) for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs)])
+
+        # save_tasks.extend(upload_tasks)
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -482,12 +491,23 @@ class WorkflowStorage:
         assert task
         upload_tasks.append(task)
 
-        print("REDUCED OBJECT REF")
-
         return _load_object_ref, (paths, self)
 
     async def _put(self, paths: List[str], data: Any,
-                   is_json: bool = False) -> str:
+                   is_json: bool = False,
+                   update: bool = True) -> str:
+        """
+        Serialize and put an object in the object store.
+
+        Args:
+            paths: The path components to store the object at.
+            data: The data to be stored.
+            is_json: If true, json encode the data, otherwise pickle it.
+            update: If false, do not upload data when the path already exists.
+        """
+        key = self._storage.make_key(*paths)
+        if (not update) and self._storage.scan_prefix(key):
+            return key
         try:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
@@ -516,7 +536,6 @@ class WorkflowStorage:
             else:
                 value = data
 
-            key = self._storage.make_key(*paths)
 
             await self._storage.put(key, value, is_json=is_json)
             # The serializer only kicks off the upload tasks, and returns
