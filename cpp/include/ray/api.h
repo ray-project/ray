@@ -109,6 +109,16 @@ ray::internal::ActorCreator<F> Actor(F create_func);
 template <typename T>
 boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
 
+/// Get a handle to a named actor of current job.
+/// Gets a handle to a named actor with the given name. The actor must have been created
+/// with name specified.
+///
+/// \param[in] actor_name The name of the named actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists or an
+/// empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
+
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
@@ -146,6 +156,9 @@ void RemovePlacementGroup(const std::string &placement_group_id);
 /// \param[in] timeout_seconds Timeout in seconds.
 /// \return True if the placement group is created. False otherwise.
 bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds);
+
+/// Returns true if the current actor was restarted, otherwise false.
+bool WasCurrentActorRestarted();
 
 // --------- inline implementation ------------
 
@@ -255,6 +268,11 @@ boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
   return GetActorInternal<T>(true, actor_name);
 }
 
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+  return GetActorInternal<T>(false, actor_name);
+}
+
 inline PlacementGroup CreatePlacementGroup(
     const ray::internal::PlacementGroupCreationOptions &create_options) {
   return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
@@ -266,6 +284,10 @@ inline void RemovePlacementGroup(const std::string &placement_group_id) {
 
 inline bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds) {
   return ray::internal::GetRayRuntime()->WaitPlacementGroupReady(id, timeout_seconds);
+}
+
+inline bool WasCurrentActorRestarted() {
+  return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
 }
 
 }  // namespace ray

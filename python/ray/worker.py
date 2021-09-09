@@ -27,7 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-import ray._private.runtime_env as runtime_env_pkg
+from ray._private.runtime_env import working_dir as working_dir_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -938,7 +938,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env_pkg.rewrite_runtime_env_uris(job_config)
+        working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1253,7 +1253,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            runtime_env_json="{}",
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1394,10 +1393,11 @@ def connect(node,
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environmen will be prepared
+    # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
+        working_dir_pkg.PKG_DIR = worker.node.get_runtime_env_dir_path()
+        working_dir_pkg.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

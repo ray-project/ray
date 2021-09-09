@@ -60,7 +60,7 @@ class RayConfig {
   type name##_ = ReadEnv<type>("RAY_" #name, #type, default_value); \
                                                                     \
  public:                                                            \
-  inline type name() { return name##_; }
+  inline type &name() { return name##_; }
 
 #include "ray/common/ray_config_def.h"
 /// -------------------------------------------------------------------------

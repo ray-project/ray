@@ -108,15 +108,37 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
+JobID LocalModeTaskSubmitter::GetCurrentJobID() const {
+  return local_mode_ray_tuntime_.GetCurrentJobID();
+}
+
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                             const ActorCreationOptions &create_options) {
   Submit(invocation, create_options);
+  auto full_actor_name = GetFullName(create_options.global, create_options.name);
+  if (!full_actor_name.empty()) {
+    absl::MutexLock lock(&named_actors_mutex_);
+    named_actors_.emplace(std::move(full_actor_name), invocation.actor_id);
+  }
+
   return invocation.actor_id;
 }
 
 ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
                                                  const CallOptions &call_options) {
   return Submit(invocation, {});
+}
+
+ActorID LocalModeTaskSubmitter::GetActor(bool global,
+                                         const std::string &actor_name) const {
+  auto full_actor_name = GetFullName(global, actor_name);
+  absl::MutexLock lock(&named_actors_mutex_);
+  auto it = named_actors_.find(full_actor_name);
+  if (it == named_actors_.end()) {
+    return ActorID::Nil();
+  }
+
+  return it->second;
 }
 
 ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
@@ -133,5 +155,6 @@ ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
 void LocalModeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
   placement_groups_.erase(group_id);
 }
+
 }  // namespace internal
 }  // namespace ray

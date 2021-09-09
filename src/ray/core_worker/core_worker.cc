@@ -180,7 +180,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-                 std::unordered_map<std::string, std::string>(), options_.log_dir);
+                 std::unordered_map<std::string, std::string>(), options_.log_dir,
+                 RayConfig::instance().event_level());
   }
 
 #ifndef _WIN32

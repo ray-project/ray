@@ -211,6 +211,30 @@ def test_startup_error_yields_clean_result(shutdown_only):
     server.stop(0)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 25031 "
+        "--port 0 --redis-password=password"
+    ],
+    indirect=True)
+def test_runtime_install_error_message(call_ray_start):
+    """
+    Check that an error while preparing the runtime environment for the client
+    server yields an actionable, clear error on the *client side*.
+    """
+    with pytest.raises(ConnectionAbortedError) as excinfo:
+        ray.client("localhost:25031").env({
+            "pip": ["ray-this-doesnt-exist"]
+        }).connect()
+    assert ("No matching distribution found for ray-this-doesnt-exist" in str(
+        excinfo.value))
+
+    ray.util.disconnect()
+
+
 def test_prepare_runtime_init_req_fails():
     """
     Check that a connection that is initiated with a non-Init request
@@ -294,6 +318,9 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 
     ray_instance = ray.init(_redis_password="test")
     proxier.CHECK_PROCESS_INTERVAL_S = 1
+    # The timeout has likely been set to 1 in an earlier test. Increase timeout
+    # to wait for the channel to become ready.
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
     pm = proxier.ProxyManager(
         ray_instance["redis_address"],
@@ -338,7 +365,7 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
             pm.create_specific_server(client)
             assert pm.start_specific_server(client, JobConfig())
             channel = pm.get_channel(client)
-            grpc.channel_ready_future(channel).result(timeout=5)
+            assert channel is not None
             task_servicer.Init(
                 ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(JobConfig())))
