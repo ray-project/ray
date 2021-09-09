@@ -277,6 +277,10 @@ def maybe_fetch_api_token():
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
 
 
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
+
+
 class ReleaseTestTimeoutError(RuntimeError):
     pass
 
@@ -517,6 +521,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         schema=schema,
         sql=sql,
     )
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -876,8 +902,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1193,6 +1223,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1452,7 +1483,8 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1467,6 +1499,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
@@ -1683,6 +1716,8 @@ def run_test_config(
         result = {"status": "timeout", "last_logs": "Test timed out."}
 
     logger.info(f"Final results: {result}")
+
+    log_results_and_artifacts(result)
 
     shutil.rmtree(temp_dir)
 

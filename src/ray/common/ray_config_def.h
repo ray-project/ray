@@ -402,6 +402,9 @@ RAY_CONFIG(int, publish_batch_size, 5000)
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 
+/// The maximum batch size for OBOD report.
+RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
+
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
@@ -462,3 +465,6 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
+
+/// Event severity threshold value
+RAY_CONFIG(std::string, event_level, "warning")

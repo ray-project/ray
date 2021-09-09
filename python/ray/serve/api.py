@@ -106,6 +106,7 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
+        self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -122,7 +123,7 @@ class Client:
 
     @property
     def root_url(self):
-        return self._http_config.root_url
+        return self._root_url
 
     def __del__(self):
         if not self._detached:
@@ -206,10 +207,10 @@ class Client:
             ray_actor_options["runtime_env"].setdefault(
                 "uris", curr_job_env.get("uris"))
         else:
-            ray_actor_options[
-                "runtime_env"] = ray.get_runtime_context().runtime_env
-            if "working_dir" in ray_actor_options["runtime_env"]:
-                del ray_actor_options["runtime_env"]["working_dir"]
+            ray_actor_options["runtime_env"] = curr_job_env
+
+        if "working_dir" in ray_actor_options["runtime_env"]:
+            del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
@@ -294,14 +295,22 @@ class Client:
         if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        if asyncio.get_event_loop().is_running() and sync:
+        try:
+            asyncio_loop_running = asyncio.get_event_loop().is_running()
+        except RuntimeError as ex:
+            if "There is no current event loop in thread" in str(ex):
+                asyncio_loop_running = False
+            else:
+                raise ex
+
+        if asyncio_loop_running and sync:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
                 "serve/http-servehandle.html#sync-and-async-handles")
 
-        if not asyncio.get_event_loop().is_running() and not sync:
+        if not asyncio_loop_running and not sync:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "
@@ -376,6 +385,10 @@ def start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
+            - root_url (str): The URL where the Deployment will be located at.
+              If no `root_url` is provided, Serve will check the environment
+              variable `RAY_SERVE_ROOT_URL` on the Ray cluster which is
+              serving the Deployment.
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """

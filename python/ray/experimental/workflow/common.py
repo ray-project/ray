@@ -1,5 +1,8 @@
-from enum import Enum, unique
+import base64
+from ray import cloudpickle
 from collections import deque
+from enum import Enum, unique
+import hashlib
 import re
 from typing import Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
@@ -8,6 +11,7 @@ from dataclasses import dataclass
 
 import ray
 from ray import ObjectRef
+from ray.util.annotations import PublicAPI
 
 # Alias types
 StepID = str
@@ -43,6 +47,7 @@ class WorkflowRef:
         return hash(self.step_id)
 
 
+@PublicAPI(stability="beta")
 @unique
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
@@ -80,6 +85,33 @@ class WorkflowInputs:
     workflow_refs: List[WorkflowRef]
 
 
+@ray.remote
+def _hash(obj: Any) -> bytes:
+    """
+    Calculates a sha256 hash of an object.
+    """
+    # TODO (Alex): Ideally we shouldn't let ray serialize obj to begin with.
+    # (1) It would save us an unnecessary serialization/deserialization. (2)
+    # Cloudpickle doesn't isn't always stable, so for some objects (i.e.
+    # functions) this could produce inconsistent results.
+    m = hashlib.sha256()
+    # TODO (Alex): We should handle the nested ObjectRef case. This naive
+    # cloudpickle.dumps will return different a different hash when run on the
+    # recovered version of an object.
+    m.update(cloudpickle.dumps(obj))
+    return m.digest()
+
+
+def calculate_identifiers(object_refs: List[ObjectRef]) -> List[str]:
+    """
+    Calculate identifiers for an object ref based on the contents. (i.e. a hash
+    of the contents).
+    """
+    hashes = ray.get([_hash.remote(obj) for obj in object_refs])
+    encoded = map(base64.urlsafe_b64encode, hashes)
+    return [encoded_hash.decode("ascii") for encoded_hash in encoded]
+
+
 @dataclass
 class WorkflowData:
     # The workflow step function body.
@@ -97,18 +129,28 @@ class WorkflowData:
     # name of the step
     name: str
 
+    # Cache the intended locations of object refs. These are expensive
+    # calculations since they require computing the hash over a large value.
+    _cached_refs: List[ObjectRef] = None
+    _cached_locs: List[str] = None
+
     def to_metadata(self) -> Dict[str, Any]:
+        if self._cached_refs != self.inputs.object_refs:
+            self._cached_refs = self.inputs.object_refs
+            self._cached_locs = calculate_identifiers(self._cached_refs)
+
         f = self.func_body
-        return {
+        metadata = {
             "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
-            "object_refs": [r.hex() for r in self.inputs.object_refs],
+            "object_refs": self._cached_locs,
             "workflows": [w.step_id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
+        return metadata
 
 
 @dataclass
@@ -148,10 +190,15 @@ def slugify(value: str, allow_unicode=False) -> str:
 
 
 class Workflow:
-    def __init__(self, workflow_data: WorkflowData):
+    def __init__(self,
+                 workflow_data: WorkflowData,
+                 prepare_inputs: Optional[Callable] = None):
         if workflow_data.ray_options.get("num_returns", 1) > 1:
-            raise ValueError("Workflow should have one return value.")
-        self._data = workflow_data
+            raise ValueError("Workflow steps can only have one return.")
+        self._data: WorkflowData = workflow_data
+        self._prepare_inputs: Callable = prepare_inputs
+        if self._data.inputs is None:
+            assert prepare_inputs is not None
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
         # step id will be generated during runtime
@@ -194,7 +241,7 @@ class Workflow:
             mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
-    def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
+    def _iter_workflows_in_dag(self) -> Iterator["Workflow"]:
         """Collect all workflows in the DAG linked to the workflow
         using BFS."""
         # deque is used instead of queue.Queue because queue.Queue is aimed
@@ -203,7 +250,7 @@ class Workflow:
         q = deque([self])
         while q:  # deque's pythonic way to check emptyness
             w: Workflow = q.popleft()
-            for p in w._data.inputs.workflows:
+            for p in w.data.inputs.workflows:
                 if p not in visited_workflows:
                     visited_workflows.add(p)
                     q.append(p)
@@ -212,17 +259,22 @@ class Workflow:
     @property
     def data(self) -> WorkflowData:
         """Get the workflow data."""
+        if self._data.inputs is None:
+            self._data.inputs = self._prepare_inputs()
+            del self._prepare_inputs
         return self._data
 
     def __reduce__(self):
         raise ValueError(
-            "Workflow is not supposed to be serialized by pickle. "
-            "Maybe you are passing it to a Ray remote function, "
-            "returning it from a Ray remote function, or using "
-            "'ray.put()' with it?")
+            "Workflow[T] objects are not serializable. "
+            "This means they cannot be passed or returned from Ray "
+            "remote, or stored in Ray objects.")
 
+    @PublicAPI(stability="beta")
     def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
+
+        If the workflow with the given id already exists, it will be resumed.
 
         Examples:
             >>> @workflow.step
@@ -249,8 +301,11 @@ class Workflow:
         """
         return ray.get(self.run_async(workflow_id))
 
+    @PublicAPI(stability="beta")
     def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
+
+        If the workflow with the given id already exists, it will be resumed.
 
         Examples:
             >>> @workflow.step

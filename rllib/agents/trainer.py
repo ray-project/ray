@@ -3,7 +3,6 @@ from datetime import datetime
 import functools
 import gym
 import logging
-import math
 import numpy as np
 import os
 import pickle
@@ -28,9 +27,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
@@ -41,6 +42,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -185,15 +187,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
     # If True, RLlib will learn entirely inside a normalized action space
-    # (0.0 centered with small stddev; only affecting Box components) and
-    # only unsquash actions (and clip just in case) to the bounds of
-    # env's action space before sending actions back to the env.
+    # (0.0 centered with small stddev; only affecting Box components).
+    # We will unsquash actions (and clip, just in case) to the bounds of
+    # the env's action space before sending actions back to the env.
     "normalize_actions": True,
     # If True, RLlib will clip actions according to the env's bounds
     # before sending them back to the env.
     # TODO: (sven) This option should be obsoleted and always be False.
     "clip_actions": False,
     # Whether to use "rllib" or "deepmind" preprocessors by default
+    # Set to None for using no preprocessor. In this case, the model will have
+    # to handle possibly complex observations from the environment.
     "preprocessor_pref": "deepmind",
 
     # === Debug Settings ===
@@ -250,8 +254,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
-    # Number of episodes to run per evaluation period. If using multiple
-    # evaluation workers, we will run at least this many episodes total.
+    # Number of episodes to run in total per evaluation period.
+    # If using multiple evaluation workers (evaluation_num_workers > 1),
+    # episodes will be split amongst these.
+    # If "auto":
+    # - evaluation_parallel_to_training=True: Will run as many episodes as the
+    #   training step takes.
+    # - evaluation_parallel_to_training=False: Error.
     "evaluation_num_episodes": 10,
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
@@ -322,7 +331,7 @@ COMMON_CONFIG: TrainerConfigDict = {
         "intra_op_parallelism_threads": 8,
         "inter_op_parallelism_threads": 8,
     },
-    # Whether to LZ4 compress individual observations
+    # Whether to LZ4 compress individual observations.
     "compress_observations": False,
     # Wait for metric batches for at most this many seconds. Those that
     # have not returned in time will be collected in the next train iteration.
@@ -555,6 +564,9 @@ class Trainer(Trainable):
         self._env_id = self._register_if_needed(
             env or config.get("env"), config)
 
+        # Placeholder for a local replay buffer instance.
+        self.local_replay_buffer = None
+
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             # Default logdir prefix containing the agent's name and the
@@ -608,7 +620,7 @@ class Trainer(Trainable):
             bundles=[{
                 # Driver.
                 "CPU": cf["num_cpus_for_driver"],
-                "GPU": cf["num_gpus"],
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.
@@ -715,6 +727,11 @@ class Trainer(Trainable):
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
 
+        # Set Trainer's seed after we have - if necessary - enabled
+        # tf eager-execution.
+        update_global_seed_if_necessary(
+            config.get("framework"), config.get("seed"))
+
         self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
             raise ValueError(
@@ -730,48 +747,41 @@ class Trainer(Trainable):
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
-        def get_scope():
-            if tf1 and not tf1.executing_eagerly():
-                return tf1.Graph().as_default()
-            else:
-                return open(os.devnull)  # fake a no-op scope
+        self._init(self.config, self.env_creator)
 
-        with get_scope():
-            self._init(self.config, self.env_creator)
-
-            # Evaluation setup.
-            self.evaluation_workers = None
-            self.evaluation_metrics = {}
-            # Do automatic evaluation from time to time.
-            if self.config.get("evaluation_interval"):
-                # Update env_config with evaluation settings:
-                extra_config = copy.deepcopy(self.config["evaluation_config"])
-                # Assert that user has not unset "in_evaluation".
-                assert "in_evaluation" not in extra_config or \
-                    extra_config["in_evaluation"] is True
-                evaluation_config = merge_dicts(self.config, extra_config)
-                # Validate evaluation config.
-                self._validate_config(
-                    evaluation_config, trainer_obj_or_none=self)
-                # Switch on complete_episode rollouts (evaluations are
-                # always done on n complete episodes) and set the
-                # `in_evaluation` flag.
-                evaluation_config.update({
-                    "batch_mode": "complete_episodes",
-                    "in_evaluation": True,
-                })
-                logger.debug(
-                    "using evaluation_config: {}".format(extra_config))
-                # Create a separate evaluation worker set for evaluation.
-                # If evaluation_num_workers=0, use the evaluation set's local
-                # worker for evaluation, otherwise, use its remote workers
-                # (parallelized evaluation).
-                self.evaluation_workers = self._make_workers(
-                    env_creator=self.env_creator,
-                    validate_env=None,
-                    policy_class=self._policy_class,
-                    config=evaluation_config,
-                    num_workers=self.config["evaluation_num_workers"])
+        # Evaluation setup.
+        self.evaluation_workers = None
+        self.evaluation_metrics = {}
+        # Do automatic evaluation from time to time.
+        if self.config.get("evaluation_interval"):
+            # Update env_config with evaluation settings:
+            extra_config = copy.deepcopy(self.config["evaluation_config"])
+            # Assert that user has not unset "in_evaluation".
+            assert "in_evaluation" not in extra_config or \
+                extra_config["in_evaluation"] is True
+            evaluation_config = merge_dicts(self.config, extra_config)
+            # Validate evaluation config.
+            self._validate_config(evaluation_config, trainer_obj_or_none=self)
+            # Switch on complete_episode rollouts (evaluations are
+            # always done on n complete episodes) and set the
+            # `in_evaluation` flag. Also, make sure our rollout fragments
+            # are short so we don't have more than one episode in one rollout.
+            evaluation_config.update({
+                "batch_mode": "complete_episodes",
+                "rollout_fragment_length": 1,
+                "in_evaluation": True,
+            })
+            logger.debug("using evaluation_config: {}".format(extra_config))
+            # Create a separate evaluation worker set for evaluation.
+            # If evaluation_num_workers=0, use the evaluation set's local
+            # worker for evaluation, otherwise, use its remote workers
+            # (parallelized evaluation).
+            self.evaluation_workers = self._make_workers(
+                env_creator=self.env_creator,
+                validate_env=None,
+                policy_class=self._policy_class,
+                config=evaluation_config,
+                num_workers=self.config["evaluation_num_workers"])
 
     @override(Trainable)
     def cleanup(self):
@@ -838,11 +848,18 @@ class Trainer(Trainable):
         return self.evaluate()
 
     @PublicAPI
-    def evaluate(self) -> dict:
+    def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
+                 ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
+
+        Args:
+            episodes_left_fn (Optional[Callable[[int], int]]): An optional
+                callable taking the already run num episodes as only arg
+                and returning the number of episodes left to run. It's used
+                to find out whether evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -868,15 +885,30 @@ class Trainer(Trainable):
                 raise ValueError("Custom eval function must return "
                                  "dict of metrics, got {}.".format(metrics))
         else:
-            logger.info("Evaluating current policy for {} episodes.".format(
-                self.config["evaluation_num_episodes"]))
+            # How many episodes do we need to run?
+            # In "auto" mode (only for parallel eval + training): Run one
+            # episode per eval worker.
+            num_episodes = self.config["evaluation_num_episodes"] if \
+                self.config["evaluation_num_episodes"] != "auto" else \
+                (self.config["evaluation_num_workers"] or 1)
+
+            # Default done-function returns True, whenever num episodes
+            # have been completed.
+            if episodes_left_fn is None:
+
+                def episodes_left_fn(num_episodes_done):
+                    return num_episodes - num_episodes_done
+
+            logger.info(
+                f"Evaluating current policy for {num_episodes} episodes.")
+
             metrics = None
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
             if self.evaluation_workers is None:
                 try:
-                    for _ in range(self.config["evaluation_num_episodes"]):
+                    for _ in range(num_episodes):
                         self.workers.local_worker().sample()
                     metrics = collect_metrics(self.workers.local_worker())
                 except ValueError as e:
@@ -896,23 +928,33 @@ class Trainer(Trainable):
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
-                for _ in range(self.config["evaluation_num_episodes"]):
+                for _ in range(num_episodes):
                     self.evaluation_workers.local_worker().sample()
+
             # Evaluation worker set has n remote workers.
             else:
-                num_rounds = int(
-                    math.ceil(self.config["evaluation_num_episodes"] /
-                              self.config["evaluation_num_workers"]))
-                num_workers = len(self.evaluation_workers.remote_workers())
-                num_episodes = num_rounds * num_workers
-                for i in range(num_rounds):
-                    logger.info("Running round {} of parallel evaluation "
-                                "({}/{} episodes)".format(
-                                    i, (i + 1) * num_workers, num_episodes))
-                    ray.get([
-                        w.sample.remote()
-                        for w in self.evaluation_workers.remote_workers()
+                # How many episodes have we run (across all eval workers)?
+                num_episodes_done = 0
+                round_ = 0
+                while True:
+                    episodes_left_to_do = episodes_left_fn(num_episodes_done)
+                    if episodes_left_to_do <= 0:
+                        break
+
+                    round_ += 1
+                    batches = ray.get([
+                        w.sample.remote() for i, w in enumerate(
+                            self.evaluation_workers.remote_workers())
+                        if i < episodes_left_to_do
                     ])
+                    # Per our config for the evaluation workers
+                    # (`rollout_fragment_length=1` and
+                    # `batch_mode=complete_episode`), we know that we'll have
+                    # exactly one episode per returned batch.
+                    num_episodes_done += len(batches)
+                    logger.info(
+                        f"Ran round {round_} of parallel evaluation "
+                        f"({num_episodes_done}/{num_episodes} episodes done)")
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
@@ -1001,7 +1043,7 @@ class Trainer(Trainable):
 
         # Check the preprocessor and preprocess, if necessary.
         pp = local_worker.preprocessors[policy_id]
-        if type(pp).__name__ != "NoPreprocessor":
+        if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
         filtered_observation = local_worker.filters[policy_id](
             observation, update=False)
@@ -1173,6 +1215,7 @@ class Trainer(Trainable):
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
@@ -1195,6 +1238,8 @@ class Trainer(Trainable):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to add the new policy also
+                to the evaluation WorkerSet.
 
         Returns:
             Policy: The newly added policy (the copy that got added to the
@@ -1216,7 +1261,7 @@ class Trainer(Trainable):
 
         # Run foreach_worker fn on all workers (incl. evaluation workers).
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
         # Return newly added policy (from the local rollout worker).
@@ -1229,6 +1274,7 @@ class Trainer(Trainable):
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
 
@@ -1243,6 +1289,8 @@ class Trainer(Trainable):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to also remove the policy from
+                the evaluation WorkerSet.
         """
 
         def fn(worker):
@@ -1253,7 +1301,7 @@ class Trainer(Trainable):
             )
 
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
@@ -1387,16 +1435,7 @@ class Trainer(Trainable):
             deprecation_warning(old="simple_optimizer", error=False)
 
         # Loop through all policy definitions in multi-agent policies.
-        multiagent_config = config["multiagent"]
-        policies = multiagent_config.get("policies")
-        if not policies:
-            policies = {DEFAULT_POLICY_ID}
-        if isinstance(policies, set):
-            policies = multiagent_config["policies"] = {
-                pid: PolicySpec()
-                for pid in policies
-            }
-        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
+        policies, is_multi_agent = check_multi_agent(config)
 
         for pid, policy_spec in policies.copy().items():
             # Policy IDs must be strings.
@@ -1444,7 +1483,7 @@ class Trainer(Trainable):
                 config["simple_optimizer"] = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif is_multiagent:
+            elif is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
@@ -1474,6 +1513,12 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if config["preprocessor_pref"] is None:
+            model_config["_no_preprocessor"] = True
+
+        # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",
                                     DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
@@ -1499,8 +1544,9 @@ class Trainer(Trainable):
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
 
-        # If evaluation_num_workers > 0, warn if evaluation_interval is None
-        # (also set it to 1).
+        # Evaluation settings.
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None (also set `evaluation_interval` to 1).
         if config["evaluation_num_workers"] > 0 and \
                 not config["evaluation_interval"]:
             logger.warning(
@@ -1509,6 +1555,10 @@ class Trainer(Trainable):
                 "If this is too frequent, set `evaluation_interval` to some "
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
         elif config["evaluation_num_workers"] == 0 and \
                 config.get("evaluation_parallel_to_training", False):
             logger.warning(
@@ -1516,6 +1566,19 @@ class Trainer(Trainable):
                 "`evaluation_num_workers` > 0! Setting "
                 "`evaluation_parallel_to_training` to False.")
             config["evaluation_parallel_to_training"] = False
+
+        # If `evaluation_num_episodes=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if config["evaluation_num_episodes"] == "auto":
+            if not config["evaluation_parallel_to_training"]:
+                raise ValueError(
+                    "`evaluation_num_episodes=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!")
+        # Make sure, it's an int otherwise.
+        elif not isinstance(config["evaluation_num_episodes"], int):
+            raise ValueError(
+                "`evaluation_num_episodes` ({}) must be an int and "
+                ">0!".format(config["evaluation_num_episodes"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
@@ -1608,6 +1671,12 @@ class Trainer(Trainable):
             state["worker"] = self.workers.local_worker().save()
         if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
             state["optimizer"] = self.optimizer.save()
+        # TODO: Experimental functionality: Store contents of replay buffer
+        #  to checkpoint, only if user has configured this.
+        if self.local_replay_buffer is not None and \
+                self.config.get("store_buffer_in_checkpoints"):
+            state["local_replay_buffer"] = \
+                self.local_replay_buffer.get_state()
         return state
 
     def __setstate__(self, state: dict):
@@ -1616,8 +1685,26 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+        # Restore optimizer data, if necessary.
         if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
+        # If necessary, restore replay data as well.
+        if self.local_replay_buffer is not None:
+            # TODO: Experimental functionality: Restore contents of replay
+            #  buffer from checkpoint, only if user has configured this.
+            if self.config.get("store_buffer_in_checkpoints"):
+                if "local_replay_buffer" in state:
+                    self.local_replay_buffer.set_state(
+                        state["local_replay_buffer"])
+                else:
+                    logger.warning(
+                        "`store_buffer_in_checkpoints` is True, but no replay "
+                        "data found in state!")
+            elif "local_replay_buffer" in state and \
+                    log_once("no_store_buffer_in_checkpoints_but_data_found"):
+                logger.warning(
+                    "`store_buffer_in_checkpoints` is False, but some replay "
+                    "data found in state!")
 
     @staticmethod
     def with_updates(**overrides) -> Type["Trainer"]:
@@ -1645,7 +1732,7 @@ class Trainer(Trainable):
                     name,
                     lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
             else:
-                register_env(name, lambda config: env_object(config))
+                register_env(name, lambda cfg: env_object(cfg))
             return name
         elif env_object is None:
             return None

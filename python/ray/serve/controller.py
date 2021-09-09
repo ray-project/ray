@@ -2,12 +2,13 @@ import asyncio
 import json
 import time
 from collections import defaultdict
+import os
 from typing import Dict, List, Optional, Tuple, Any
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import ReplicaState, BackendState
+from ray.serve.backend_state import ReplicaState, BackendStateManager
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -19,7 +20,7 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -64,7 +65,9 @@ class ServeController:
                        http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=controller_name)
+        controller_namespace = ray.get_runtime_context().namespace
+        self.kv_store = RayInternalKVStore(
+            namespace=f"{controller_name}-{controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -78,9 +81,9 @@ class ServeController:
         self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
-        self.backend_state = BackendState(controller_name, detached,
-                                          self.kv_store, self.long_poll_host,
-                                          self.goal_manager)
+        self.backend_state_manager = BackendStateManager(
+            controller_name, detached, self.kv_store, self.long_poll_host,
+            self.goal_manager)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -114,12 +117,12 @@ class ServeController:
             async with self.write_lock:
                 try:
                     self.http_state.update()
-                except Exception as e:
-                    logger.error(f"Exception updating HTTP state: {e}")
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
                 try:
-                    self.backend_state.update()
-                except Exception as e:
-                    logger.error(f"Exception updating backend state: {e}")
+                    self.backend_state_manager.update()
+                except Exception:
+                    logger.exception("Exception updating backend state.")
             self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -147,10 +150,9 @@ class ServeController:
                                if backend_info.end_time_ms else "RUNNING")
             entry["actors"] = dict()
             if entry["status"] == "RUNNING":
-                replica_state_container = self.backend_state._replicas[
-                    deployment_name]
-                running_replicas = replica_state_container.get(
-                    [ReplicaState.RUNNING])
+                replicas = self.backend_state_manager._backend_states[
+                    deployment_name]._replicas
+                running_replicas = replicas.get([ReplicaState.RUNNING])
                 for replica in running_replicas:
                     try:
                         actor_handle = replica.actor_handle
@@ -172,16 +174,26 @@ class ServeController:
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
-        return self.backend_state.get_running_replica_handles()
+        return self.backend_state_manager.get_running_replica_handles()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
         return self.http_state.get_config()
 
+    def get_root_url(self):
+        """Return the root url for the serve instance."""
+        http_config = self.get_http_config()
+        if http_config.root_url == "":
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            else:
+                return f"http://{http_config.host}:{http_config.port}"
+        return http_config.root_url
+
     async def shutdown(self) -> List[GoalId]:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            goal_ids = self.backend_state.shutdown()
+            goal_ids = self.backend_state_manager.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
@@ -202,7 +214,8 @@ class ServeController:
 
         async with self.write_lock:
             if prev_version is not None:
-                existing_backend_info = self.backend_state.get_backend(name)
+                existing_backend_info = self.backend_state_manager.get_backend(
+                    name)
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
                     raise ValueError(
@@ -223,7 +236,7 @@ class ServeController:
                 deployer_job_id=deployer_job_id,
                 start_time_ms=int(time.time() * 1000))
 
-            goal_id, updating = self.backend_state.deploy_backend(
+            goal_id, updating = self.backend_state_manager.deploy_backend(
                 name, backend_info)
             endpoint_info = EndpointInfo(
                 route=route_prefix, python_methods=python_methods)
@@ -232,7 +245,8 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state.delete_backend(name, force_kill=False)
+        return self.backend_state_manager.delete_backend(
+            name, force_kill=False)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.
@@ -246,7 +260,8 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        backend_info: BackendInfo = self.backend_state.get_backend(name)
+        backend_info: BackendInfo = self.backend_state_manager.get_backend(
+            name)
         if backend_info is None:
             raise KeyError(f"Deployment {name} does not exist.")
 
@@ -269,9 +284,9 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (self.backend_state.get_backend(
+            name: (self.backend_state_manager.get_backend(
                 name, include_deleted=include_deleted),
                    self.endpoint_state.get_endpoint_route(name))
-            for name in self.backend_state.get_backend_configs(
+            for name in self.backend_state_manager.get_backend_configs(
                 include_deleted=include_deleted)
         }

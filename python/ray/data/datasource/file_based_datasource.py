@@ -1,12 +1,11 @@
 import logging
 import os
-from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
@@ -14,6 +13,7 @@ from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
+from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             paths: Union[str, List[str]],
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
@@ -66,7 +67,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                         builder.add_block(data)
                     else:
                         builder.add(data)
-            return builder.build()
+            block = builder.build()
+            if _block_udf is not None:
+                block = _block_udf(block)
+            return block
 
         read_tasks = []
         for read_paths, file_sizes in zip(
@@ -111,22 +115,27 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  path: str,
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
+        filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block
 
-        @ray.remote
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
             fs = filesystem
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
+            if _block_udf is not None:
+                block = _block_udf(block)
             with fs.open_output_stream(write_path) as f:
                 _write_block_to_file(f, BlockAccessor.for_block(block))
+
+        write_block = cached_remote_fn(write_block)
 
         file_format = self._file_format()
         write_tasks = []

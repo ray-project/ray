@@ -153,10 +153,9 @@ def read_datasource(datasource: Datasource[T],
     def remote_read(task: ReadTask) -> Block:
         return task()
 
-    if ray_remote_args:
-        remote_read = ray.remote(**ray_remote_args)(remote_read)
-    else:
-        remote_read = ray.remote(remote_read)
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
@@ -190,6 +189,8 @@ def read_parquet(paths: Union[str, List[str]],
                  columns: Optional[List[str]] = None,
                  parallelism: int = 200,
                  ray_remote_args: Dict[str, Any] = None,
+                 _tensor_column_schema: Optional[Dict[str, Tuple[
+                     np.dtype, Tuple[int, ...]]]] = None,
                  **arrow_parquet_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
 
@@ -206,11 +207,43 @@ def read_parquet(paths: Union[str, List[str]],
         columns: A list of column names to read.
         parallelism: The amount of parallelism to use for the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        _tensor_column_schema: A dict of column name --> tensor dtype and shape
+            mappings for converting a Parquet column containing serialized
+            tensors (ndarrays) as their elements to our tensor column extension
+            type. This assumes that the tensors were serialized in the raw
+            NumPy array format in C-contiguous order (e.g. via
+            `arr.tobytes()`).
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
+    if _tensor_column_schema is not None:
+        existing_block_udf = arrow_parquet_args.pop("_block_udf", None)
+
+        def _block_udf(block: "pyarrow.Table") -> "pyarrow.Table":
+            from ray.data.extensions import ArrowTensorArray
+
+            for tensor_col_name, (dtype,
+                                  shape) in _tensor_column_schema.items():
+                # NOTE(Clark): We use NumPy to consolidate these potentially
+                # non-contiguous buffers, and to do buffer bookkeeping in
+                # general.
+                np_col = np.array([
+                    np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                    for buf in block.column(tensor_col_name)
+                ])
+
+                block = block.set_column(
+                    block._ensure_integer_index(tensor_col_name),
+                    tensor_col_name, ArrowTensorArray.from_numpy(np_col))
+            if existing_block_udf is not None:
+                # Apply UDF after casting the tensor columns.
+                block = existing_block_udf(block)
+            return block
+
+        arrow_parquet_args["_block_udf"] = _block_udf
+
     return read_datasource(
         ParquetDatasource(),
         parallelism=parallelism,
@@ -441,18 +474,19 @@ def from_mars(df: "mars.DataFrame", *,
 
 
 @PublicAPI(stability="beta")
-def from_modin(df: "modin.DataFrame", *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
     Args:
         df: A Modin dataframe, which must be using the Ray backend.
-        parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P1
+    from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
+
+    parts = unwrap_partitions(df, axis=0)
+    return from_pandas(parts)
 
 
 @PublicAPI(stability="beta")

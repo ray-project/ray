@@ -18,8 +18,11 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
+from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.extensions.tensor_extension import (
+    TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
 from ray.data.tests.conftest import *  # noqa
 
@@ -184,6 +187,416 @@ def test_tensors(ray_start_regular_shared):
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=4, "
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
+
+
+def test_tensor_array_ops(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    df = pd.DataFrame({"one": [1, 2, 3], "two": TensorArray(arr)})
+
+    def apply_arithmetic_ops(arr):
+        return 2 * (arr + 1) / 3
+
+    def apply_comparison_ops(arr):
+        return arr % 2 == 0
+
+    def apply_logical_ops(arr):
+        return arr & (3 * arr) | (5 * arr)
+
+    # Op tests, using NumPy as the groundtruth.
+    np.testing.assert_equal(
+        apply_arithmetic_ops(arr), apply_arithmetic_ops(df["two"]))
+
+    np.testing.assert_equal(
+        apply_comparison_ops(arr), apply_comparison_ops(df["two"]))
+
+    np.testing.assert_equal(
+        apply_logical_ops(arr), apply_logical_ops(df["two"]))
+
+
+def test_tensor_array_reductions(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+
+    # Reduction tests, using NumPy as the groundtruth.
+    for name, reducer in TensorArray.SUPPORTED_REDUCERS.items():
+        np_kwargs = {}
+        if name in ("std", "var"):
+            # Pandas uses a ddof default of 1 while NumPy uses 0.
+            # Give NumPy a ddof kwarg of 1 in order to ensure equivalent
+            # standard deviation calculations.
+            np_kwargs["ddof"] = 1
+        np.testing.assert_equal(df["two"].agg(name),
+                                reducer(arr, axis=0, **np_kwargs))
+
+
+def test_arrow_tensor_array_getitem(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+
+    t_arr = ArrowTensorArray.from_numpy(arr)
+
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
+
+    # Test __iter__.
+    for t_subarr, subarr in zip(t_arr, arr):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test to_pylist.
+    np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+
+    # Test slicing and indexing.
+    t_arr2 = t_arr[1:]
+
+    np.testing.assert_array_equal(t_arr2.to_numpy(), arr[1:])
+
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
+def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": list(arr)})
+    # Cast column to tensor extension dtype.
+    df["two"] = df["two"].astype(TensorDtype())
+    ds = ray.data.from_pandas([ray.put(df)])
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_pandas_roundtrip(ray_start_regular_shared):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds_df = ray.get(ds.to_pandas())[0]
+    assert ds_df.equals(df)
+
+
+def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared,
+                                             tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared,
+                                               tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    schema = pa.schema([
+        ("one", pa.int32()),
+        ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
+    ])
+    ds = ray.data.read_parquet(str(tmp_path), schema=schema)
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_pickle_manual_serde(
+        ray_start_regular_shared, tmp_path):
+    import pickle
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [pickle.dumps(a) for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # Manually deserialize the tensor pickle bytes and cast to our tensor
+    # extension type.
+    def deser_mapper(batch: pd.DataFrame):
+        batch["two"] = [pickle.loads(a) for a in batch["two"]]
+        batch["two"] = batch["two"].astype(TensorDtype())
+        return batch
+
+    casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
+
+    values = [[s["one"], s["two"]] for s in casted_ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+    # Manually deserialize the pickle tensor bytes and directly cast it to a
+    # TensorArray.
+    def deser_mapper_direct(batch: pd.DataFrame):
+        batch["two"] = TensorArray([pickle.loads(a) for a in batch["two"]])
+        return batch
+
+    casted_ds = ds.map_batches(deser_mapper_direct, batch_format="pandas")
+
+    values = [[s["one"], s["two"]] for s in casted_ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde(ray_start_regular_shared,
+                                                      tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    tensor_col_name = "two"
+
+    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    def np_deser_mapper(batch: pa.Table):
+        # NOTE(Clark): We use NumPy to consolidate these potentially
+        # non-contiguous buffers, and to do buffer bookkeeping in general.
+        np_col = np.array([
+            np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
+            for buf in batch.column(tensor_col_name)
+        ])
+
+        return batch.set_column(
+            batch._ensure_integer_index(tensor_col_name), tensor_col_name,
+            ArrowTensorArray.from_numpy(np_col))
+
+    ds = ds.map_batches(np_deser_mapper, batch_format="pyarrow")
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
+        ray_start_regular_shared, tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    tensor_col_name = "two"
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        tensor_col_name: [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+
+    # Manually deserialize the tensor bytes and cast to a TensorArray.
+    def np_deser_udf(block: pa.Table):
+        # NOTE(Clark): We use NumPy to consolidate these potentially
+        # non-contiguous buffers, and to do buffer bookkeeping in general.
+        np_col = np.array([
+            np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
+            for buf in block.column(tensor_col_name)
+        ])
+
+        return block.set_column(
+            block._ensure_integer_index(tensor_col_name), tensor_col_name,
+            ArrowTensorArray.from_numpy(np_col))
+
+    ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
+
+    assert isinstance(ds.schema().field_by_name(tensor_col_name).type,
+                      ArrowTensorType)
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
+        ray_start_regular_shared, tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    tensor_col_name = "two"
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        tensor_col_name: [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df[tensor_col_name] += 1
+        return pa.Table.from_pandas(df)
+
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        _block_udf=_block_udf,
+        _tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)})
+
+    assert isinstance(ds.schema().field_by_name(tensor_col_name).type,
+                      ArrowTensorType)
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr + 1))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+@pytest.mark.skip(
+    reason=("Waiting for Arrow to support registering custom ExtensionType "
+            "casting kernels. See "
+            "https://issues.apache.org/jira/browse/ARROW-5890#"))
+def test_tensors_in_tables_parquet_bytes_with_schema(ray_start_regular_shared,
+                                                     tmp_path):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df = pd.DataFrame({
+        "one": list(range(outer_dim)),
+        "two": [a.tobytes() for a in arr]
+    })
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds.write_parquet(str(tmp_path))
+    schema = pa.schema([
+        ("one", pa.int32()),
+        ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
+    ])
+    ds = ray.data.read_parquet(str(tmp_path), schema=schema)
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+@pytest.mark.skip(
+    reason=("Waiting for pytorch to support tensor creation from objects that "
+            "implement the __array__ interface. See "
+            "https://github.com/pytorch/pytorch/issues/51156"))
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
+    import torch
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df1 = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": TensorArray(arr),
+        "label": [1.0, 2.0, 3.0]
+    })
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
+    df2 = pd.DataFrame({
+        "one": [4, 5, 6],
+        "two": TensorArray(arr2),
+        "label": [4.0, 5.0, 6.0]
+    })
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = maybe_pipeline(ds, pipelined)
+    torchd = ds.to_torch(label_column="label", batch_size=2)
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in iter(torchd):
+            iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+        combined_iterations = np.concatenate(iterations)
+        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.skip(
+    reason=(
+        "Waiting for Pandas DataFrame.values for extension arrays fix to be "
+        "released. See https://github.com/pandas-dev/pandas/pull/43160"))
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
+    import tensorflow as tf
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim, ) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape).astype(np.float)
+    # TODO(Clark): Ensure that heterogeneous columns is properly supported
+    # (tf.RaggedTensorSpec)
+    df1 = pd.DataFrame({
+        "one": TensorArray(arr),
+        "two": TensorArray(arr),
+        "label": TensorArray(arr),
+    })
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
+    df2 = pd.DataFrame({
+        "one": TensorArray(arr2),
+        "two": TensorArray(arr2),
+        "label": TensorArray(arr2),
+    })
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = maybe_pipeline(ds, pipelined)
+    tfd = ds.to_tf(
+        label_column="label",
+        output_signature=(tf.TensorSpec(
+            shape=(None, 2, 2, 2, 2), dtype=tf.float32),
+                          tf.TensorSpec(
+                              shape=(None, 1, 2, 2, 2), dtype=tf.float32)))
+    iterations = []
+    for batch in tfd.as_numpy_iterator():
+        iterations.append(np.concatenate((batch[0], batch[1]), axis=1))
+    combined_iterations = np.concatenate(iterations)
+    arr = np.array(
+        [[np.asarray(v) for v in values] for values in df.to_numpy()])
+    np.testing.assert_array_equal(arr, combined_iterations)
 
 
 @pytest.mark.parametrize(
@@ -485,10 +898,10 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     path1 = os.path.join(str(tmp_path), "test1.parquet")
-    path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path1)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
     pq.write_table(table, path2)
 
     fs = LocalFileSystem()
@@ -498,6 +911,18 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
     assert ds.count() == 6
+
+    out_path = os.path.join(tmp_path, "out")
+    os.mkdir(out_path)
+
+    ds._set_uuid("data")
+    ds.write_parquet(out_path)
+
+    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000.parquet"))
+    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001.parquet"))
+    ds_df = pd.concat([ds_df1, ds_df2])
+    df = pd.concat([df1, df2])
+    assert ds_df.equals(df)
 
 
 @pytest.mark.parametrize(
@@ -543,6 +968,7 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
+    assert ds.schema().names == ["one"]
 
 
 @pytest.mark.parametrize(
@@ -625,6 +1051,55 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
+def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
+    one_data = list(range(6))
+    df = pd.DataFrame({
+        "one": one_data,
+        "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df["one"] += 1
+        return pa.Table.from_pandas(df)
+
+    # 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, _block_udf=_block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 1
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
+
+    # 2 blocks/read tasks
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, _block_udf=_block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 2
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
+
+    # 2 blocks/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        parallelism=2,
+        filter=(pa.dataset.field("two") == "a"),
+        _block_udf=_block_udf)
+
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert len(ds._blocks._blocks) == 2
+    np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
+
+
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
     (None, lazy_fixture("local_path"), None),
     (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
@@ -657,6 +1132,92 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write_create_dir(ray_start_regular_shared, fs, data_path,
+                                  endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path = os.path.join(data_path, "test_parquet_dir")
+    ds._set_uuid("data")
+    ds.write_parquet(path, filesystem=fs)
+
+    # Ensure that directory was created.
+    if fs is None:
+        assert os.path.isdir(path)
+    else:
+        assert fs.get_file_info(
+            _unwrap_protocol(path)).type == pa.fs.FileType.Directory
+
+    # Check that data was properly written to the directory.
+    path1 = os.path.join(path, "data_000000.parquet")
+    path2 = os.path.join(path, "data_000001.parquet")
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
+    assert df.equals(dfds)
+
+    # Ensure that directories that already exist are left alone and that the
+    # attempted creation still succeeds.
+    path3 = os.path.join(path, "data_0000002.parquet")
+    path4 = os.path.join(path, "data_0000003.parquet")
+    if fs is None:
+        os.rename(path1, path3)
+        os.rename(path2, path4)
+    else:
+        fs.move(_unwrap_protocol(path1), _unwrap_protocol(path3))
+        fs.move(_unwrap_protocol(path2), _unwrap_protocol(path4))
+    ds.write_parquet(path, filesystem=fs)
+
+    # Check that the original Parquet files were left untouched and that the
+    # new ones were added.
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options),
+        pd.read_parquet(path3, storage_options=storage_options),
+        pd.read_parquet(path4, storage_options=storage_options)
+    ])
+    assert pd.concat([df, df]).equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
+    data_path = str(tmp_path)
+    one_data = list(range(6))
+    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
+        df["one"] += 1
+        return pa.Table.from_pandas(df)
+
+    # 2 write tasks
+    ds._set_uuid("data")
+    ds.write_parquet(data_path, _block_udf=_block_udf)
+    path1 = os.path.join(data_path, "data_000000.parquet")
+    path2 = os.path.join(data_path, "data_000001.parquet")
+    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    expected_df = df
+    expected_df["one"] += 1
+    assert expected_df.equals(dfds)
 
 
 @pytest.mark.parametrize(
@@ -825,6 +1386,16 @@ def test_iter_batches_basic(ray_start_regular_shared):
             ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
+
+    batch_size = 2
+    batches = list(
+        ds.iter_batches(
+            prefetch_blocks=2, batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
@@ -1174,6 +1745,28 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_from_modin(ray_start_regular_shared):
+    import modin.pandas as mopd
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
+    modf = mopd.DataFrame(df)
+    ds = ray.data.from_modin(modf)
+    dfds = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dfds)
+
+
+def test_to_modin(ray_start_regular_shared):
+    # create two modin dataframes
+    # one directly from a pandas dataframe, and
+    # another from ray.dataset created from the original pandas dataframe
+    #
+    import modin.pandas as mopd
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
+    modf1 = mopd.DataFrame(df)
+    ds = ray.data.from_pandas([df])
+    modf2 = ds.to_modin()
+    assert modf1.equals(modf2)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1791,6 +2384,67 @@ def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     assert_sorted(
         ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
+
+
+def test_dataset_retry_exceptions(ray_start_regular_shared, local_path):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    class FlakyCSVDatasource(CSVDatasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+            count = self.counter.increment.remote()
+            if ray.get(count) == 1:
+                raise ValueError()
+            else:
+                return CSVDatasource._read_file(self, f, path, **reader_args)
+
+        def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
+                         **writer_args):
+            count = self.counter.increment.remote()
+            if ray.get(count) == 1:
+                raise ValueError()
+            else:
+                CSVDatasource._write_block(self, f, block, **writer_args)
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(local_path, "test1.csv")
+    df1.to_csv(path1, index=False, storage_options={})
+    ds1 = ray.data.read_datasource(
+        FlakyCSVDatasource(), parallelism=1, paths=path1)
+    ds1.write_datasource(
+        FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    assert df1.equals(
+        pd.read_csv(
+            os.path.join(local_path, "data_000000.csv"), storage_options={}))
+
+    counter = Counter.remote()
+
+    def flaky_mapper(x):
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError()
+        else:
+            return ray.get(count)
+
+    assert sorted(ds1.map(flaky_mapper).take()) == [2, 3, 4]
+
+    with pytest.raises(ValueError):
+        ray.data.read_datasource(
+            FlakyCSVDatasource(),
+            parallelism=1,
+            paths=path1,
+            ray_remote_args={
+                "retry_exceptions": False
+            }).take()
 
 
 if __name__ == "__main__":
