@@ -1269,7 +1269,8 @@ class Dataset(Generic[T]):
         pd_objs = self.to_pandas()
         return from_partitions(pd_objs, axis=0)
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
+    def to_spark(self,
+                 spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -1277,7 +1278,14 @@ class Dataset(Generic[T]):
         Returns:
             A Spark dataframe created from this dataset.
         """
-        raise NotImplementedError  # P2
+        import raydp
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_blocks()
+        ]
+        return raydp.spark.ray_dataset_to_spark_dataframe(
+            spark, self.schema(), self.get_blocks(), locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
