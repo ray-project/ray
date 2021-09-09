@@ -272,3 +272,7 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
+
+# The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
+# NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
+GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024

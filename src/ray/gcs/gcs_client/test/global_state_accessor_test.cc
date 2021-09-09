@@ -31,6 +31,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
+    RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
@@ -41,12 +42,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-
-    thread_io_service_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*io_service_));
-      io_service_->run();
-    }));
+    work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
+    thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -68,14 +65,17 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
   void TearDown() override {
     io_service_->stop();
-    gcs_server_->Stop();
-    thread_io_service_->join();
-    gcs_server_.reset();
-
-    gcs_client_->Disconnect();
     global_state_->Disconnect();
     global_state_.reset();
+
+    gcs_client_->Disconnect();
+    gcs_client_.reset();
+
+    gcs_server_->Stop();
     TestSetupUtil::FlushAllRedisServers();
+
+    thread_io_service_->join();
+    gcs_server_.reset();
   }
 
   // GCS server.
@@ -91,6 +91,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
+  std::unique_ptr<boost::asio::io_service::work> work_;
 };
 
 TEST_F(GlobalStateAccessorTest, TestJobTable) {
@@ -102,7 +103,7 @@ TEST_F(GlobalStateAccessorTest, TestJobTable) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
+    promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
@@ -279,6 +280,7 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  ray::RayLog::InstallFailureSignalHandler();
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

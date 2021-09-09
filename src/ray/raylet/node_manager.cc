@@ -486,8 +486,11 @@ ray::Status NodeManager::RegisterGcs() {
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
-          RAY_LOG(INFO) << DebugString() << "\n\n";
+          std::stringstream debug_msg;
+          debug_msg << "Event stats:\n\n"
+                    << io_service_.StatsString() << "\n\n"
+                    << DebugString() << "\n\n";
+          RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");

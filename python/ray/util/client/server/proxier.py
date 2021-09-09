@@ -5,7 +5,6 @@ import grpc
 import logging
 from itertools import chain
 import json
-import os
 import socket
 import sys
 from threading import Lock, Thread, RLock
@@ -23,6 +22,7 @@ from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
+from ray._private.runtime_env import RuntimeEnvContext
 import ray._private.runtime_env.working_dir as working_dir_pkg
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
@@ -215,26 +215,16 @@ class ProxyManager():
         output, error = self.node.get_log_file_handles(
             f"ray_client_server_{specific_server.port}", unique=True)
 
+        serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env = json.loads(serialized_runtime_env)
+
         # Set up the working_dir for the server.
         # TODO(edoakes): this should go be unified with the worker setup code
         # by going through the runtime_env agent.
-        uris = job_config.get_runtime_env_uris() if job_config else []
-        if uris:
-            # Download and set up the working_dir locally.
-            working_dir = working_dir_pkg.ensure_runtime_env_setup(uris)
-
-            # Set PYTHONPATH in the environment variables so the working_dir
-            # is included in the module search path.
-            runtime_env = job_config.runtime_env
-            env_vars = runtime_env.get("env_vars", None) or {}
-            python_path = working_dir
-            if "PYTHONPATH" in env_vars:
-                python_path += (os.pathsep + runtime_env["PYTHONPATH"])
-            env_vars["PYTHONPATH"] = python_path
-            runtime_env["env_vars"] = env_vars
-            job_config.set_runtime_env(runtime_env)
-
-        serialized_runtime_env = job_config.get_serialized_runtime_env()
+        context = RuntimeEnvContext(
+            env_vars=runtime_env.get("env_vars"),
+            resources_dir=self.node.get_runtime_env_dir_path())
+        working_dir_pkg.setup_working_dir(runtime_env, context)
 
         proc = start_ray_client_server(
             self.redis_address,
@@ -244,7 +234,7 @@ class ProxyManager():
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env=serialized_runtime_env,
-            session_dir=self.node.get_session_dir_path(),
+            serialized_runtime_env_context=context.serialize(),
             redis_password=self._redis_password)
 
         # Wait for the process being run transitions from the shim process

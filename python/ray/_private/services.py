@@ -1457,7 +1457,6 @@ def start_raylet(redis_address,
         sys.executable,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1878,15 +1877,16 @@ def start_monitor(redis_address,
     return process_info
 
 
-def start_ray_client_server(redis_address,
-                            ray_client_server_port,
-                            stdout_file=None,
-                            stderr_file=None,
-                            redis_password=None,
-                            fate_share=None,
-                            server_type: str = "proxy",
-                            serialized_runtime_env: Optional[str] = None,
-                            session_dir: Optional[str] = None):
+def start_ray_client_server(
+        redis_address,
+        ray_client_server_port,
+        stdout_file=None,
+        stderr_file=None,
+        redis_password=None,
+        fate_share=None,
+        server_type: str = "proxy",
+        serialized_runtime_env: Optional[str] = None,
+        serialized_runtime_env_context: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1899,6 +1899,8 @@ def start_ray_client_server(redis_address,
         server_type (str): Whether to start the proxy version of Ray Client.
         serialized_runtime_env (str|None): If specified, the serialized
             runtime_env to start the client server in.
+        serialized_runtime_env_context (str|None): If specified, the serialized
+            runtime_env_context to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1915,17 +1917,18 @@ def start_ray_client_server(redis_address,
         conda_shim_flag,  # These two args are to use the shim process.
         "-m",
         "ray.util.client.server",
+        "--from-ray-client=True",
         "--redis-address=" + str(redis_address),
         "--port=" + str(ray_client_server_port),
         "--mode=" + server_type
     ]
     if redis_password:
         command.append("--redis-password=" + redis_password)
-
     if serialized_runtime_env:
         command.append("--serialized-runtime-env=" + serialized_runtime_env)
-    if session_dir:
-        command.append(f"--session-dir={session_dir}")
+    if serialized_runtime_env_context:
+        command.append("--serialized-runtime-env-context=" +
+                       serialized_runtime_env_context)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
