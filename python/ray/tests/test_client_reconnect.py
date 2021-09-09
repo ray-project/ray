@@ -7,6 +7,7 @@ from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
 import grpc
 
 import time
+import random
 from typing import Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -263,5 +264,32 @@ def test_valid_actor_state_2():
         actor = IncrActor.remote()
         for _ in range(100):
             ref = actor.incr.remote()
-        print(i)
         assert ray.get(ref) == 100
+
+
+def test_noisy_puts():
+    """
+    Randomly kills the data channel with 10% when receiving response
+    (requests made it to server, responses dropped) and checks that final
+    result is still consistent
+    """
+    random.seed(12345)
+    with start_middleman_server() as (middleman, _):
+
+        def fail_randomly(response: ray_client_pb2.DataResponse):
+            if random.random() < 0.1:
+                raise RuntimeError
+
+        middleman.data_servicer.on_response = fail_randomly
+
+        refs = [ray.put(i * 123) for i in range(500)]
+        results = ray.get(refs)
+        for i, result in enumerate(results):
+            assert result == i * 123
+
+
+def test_noisy_kv_puts():
+    """
+    Same as above, but interfere's with KV puts, and checks that the
+    result
+    """

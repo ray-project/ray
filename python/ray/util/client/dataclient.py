@@ -6,6 +6,7 @@ import queue
 import threading
 import grpc
 
+from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -34,8 +35,7 @@ class DataClient:
         self.lock = threading.RLock()
 
         # Track outstanding requests to resend in case of disconnection
-        self.outstanding_requests_lock = threading.RLock()
-        self.outstanding_requests: Dict[int, Any] = {}
+        self.outstanding_requests: Dict[int, Any] = OrderedDict()
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -91,9 +91,6 @@ class DataClient:
             # This is not being waited for.
             logger.debug(f"Got unawaited response {response}")
             return
-        # Acknowledge to server that response has been received -- server
-        # can clear cache entry
-        self._acknowledge(response.req_id)
         if response.req_id in self.asyncio_waiting_data:
             # Async response. Check for callback and update outstanding
             # requests.
@@ -103,8 +100,10 @@ class DataClient:
                     callback(response)
             except Exception:
                 logger.exception("Callback error:")
-            if response.req_id in self.outstanding_requests:
-                del self.outstanding_requests[response.req_id]
+            with self.lock:
+                if response.req_id in self.outstanding_requests:
+                    del self.outstanding_requests[response.req_id]
+                    self._acknowledge(response.req_id)
         else:
             # Blocking response. Populate ready data and wake up waiting
             # threads.
@@ -146,8 +145,8 @@ class DataClient:
             logger.info("Reconnection succeeded!")
 
         # Recreate the request queue, and resend outstanding requests
-        self.request_queue = queue.Queue()
-        with self.outstanding_requests_lock:
+        with self.lock:
+            self.request_queue = queue.Queue()
             for request in self.outstanding_requests.values():
                 # Resend outstanding requests
                 self.request_queue.put(request)
@@ -179,10 +178,10 @@ class DataClient:
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        self.request_queue.put(req)
-        with self.outstanding_requests_lock:
+        with self.lock:
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.request_queue.put(req)
             self.outstanding_requests[req_id] = req
         data = None
         with self.cv:
@@ -197,8 +196,9 @@ class DataClient:
                     f"in handling the most recent request: {req}. Ray Client "
                     "has been disconnected.")
             data = self.ready_data[req_id]
-            with self.outstanding_requests_lock:
+            with self.lock:
                 del self.outstanding_requests[req_id]
+                self._acknowledge(req_id)
             del self.ready_data[req_id]
         return data
 
@@ -213,12 +213,12 @@ class DataClient:
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        self.asyncio_waiting_data[req_id] = callback
-        with self.outstanding_requests_lock:
+        with self.lock:
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.asyncio_waiting_data[req_id] = callback
             self.outstanding_requests[req_id] = req
-        self.request_queue.put(req)
+            self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
