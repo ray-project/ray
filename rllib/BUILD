@@ -2273,9 +2273,9 @@ py_test(
     name = "examples/custom_observation_filters",
     main = "examples/custom_observation_filters.py",
     tags = ["team:ml", "examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_observation_filters.py"],
-    args = ["--stop-iters=2"]
+    args = ["--stop-iters=3"]
 )
 
 py_test(
