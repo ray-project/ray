@@ -259,6 +259,7 @@ def test_default_getset(workflow_start_regular):
     a1.set.run(10)
 
     with pytest.raises(ValueError):
+
         @workflow.virtual_actor
         class ActorWithSetStateOnly:
             def __init__(self):
@@ -271,6 +272,7 @@ def test_default_getset(workflow_start_regular):
                 self.x = x
 
     with pytest.raises(ValueError):
+
         @workflow.virtual_actor
         class ActorWithGetStateOnly:
             def __init__(self):
@@ -290,11 +292,13 @@ def test_default_getset(workflow_start_regular):
 
         def set(self, x):
             self.x = x
+
     # TODO (yic) We need better error message here
     # https://github.com/ray-project/ray/issues/18147
     with pytest.raises(ray.exceptions.RaySystemError):
         a2 = ActorHavingComplicatedStructure.get_or_create("a2")
         a2.set.run(10)
+
 
 if __name__ == "__main__":
     import sys

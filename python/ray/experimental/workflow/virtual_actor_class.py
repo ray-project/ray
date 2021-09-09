@@ -129,6 +129,7 @@ class ActorMethod(ActorMethodBase):
     def __setstate__(self, state):
         self.__init__(state["actor"], state["method_name"])
 
+
 def __getstate(instance):
     if hasattr(instance, "__getstate__"):
         state = instance.__getstate__()
@@ -141,11 +142,13 @@ def __getstate(instance):
                              "and `__setstate__` explicitly.") from e
     return state
 
+
 def __setstate(instance, v):
     if hasattr(instance, "__setstate__"):
         return instance.__setstate__(v)
     else:
         instance.__dict__ = json.loads(v)
+
 
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
