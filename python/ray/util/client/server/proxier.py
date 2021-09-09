@@ -11,6 +11,7 @@ from threading import Lock, Thread, RLock
 import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
+import os
 
 import ray
 from ray.cloudpickle.compat import pickle
@@ -634,7 +635,7 @@ def serve_proxier(connection_str: str,
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    if os.environ["RAY_SERVER_TLS"] == "1":
+    if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
             root_certs = f.read()
         with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:

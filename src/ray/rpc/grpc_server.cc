@@ -73,7 +73,7 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   // TODO(hchen): Add options for authentication.
-  use_tls_ = std::strcmp(std::getenv("RAY_SERVER_TLS"), "0") != 0;
+  use_tls_ = std::strcmp(std::getenv("RAY_USE_TLS"), "0") != 0;
   if (use_tls_) {
     std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
     std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));

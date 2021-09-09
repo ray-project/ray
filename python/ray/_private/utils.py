@@ -1108,7 +1108,7 @@ def validate_namespace(namespace: str):
 
 
 def init_grpc_channel(address, options=None):
-    if os.environ["RAY_CLIENT_TLS"] == "1":
+    if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
             root_certs = f.read()
         credentials = grpc.ssl_channel_credentials(root_certs)

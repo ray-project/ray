@@ -694,7 +694,7 @@ def async_loop_forever(interval_seconds, cancellable=False):
 
 
 def init_aiogrpc_channel(address, options):
-    if os.environ["RAY_CLIENT_TLS"] == "1":
+    if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
             root_certs = f.read()
         credentials = grpc.ssl_channel_credentials(root_certs)
@@ -706,7 +706,7 @@ def init_aiogrpc_channel(address, options):
 
 
 def add_port(server, address):
-    if os.environ["RAY_SERVER_TLS"] == "1":
+    if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
             root_certs = f.read()
         with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:
