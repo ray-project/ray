@@ -157,12 +157,11 @@ void AgentManager::CreateRuntimeEnv(const JobID &job_id,
 }
 
 void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
-                                    DeleteURIsCallback callback) {
+                              DeleteURIsCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
-    delay_executor_([this, uris,
-                     callback] { DeleteURIs(uris, callback); },
+    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
                     RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
@@ -170,30 +169,26 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
   for (const auto &uri : uris) {
     request.add_uris(uri);
   }
-  runtime_env_agent_client_->DeleteURIs(
-      request, [this, uris, callback](
-                   Status status, const rpc::DeleteURIsReply &reply) {
-        if (status.ok()) {
-          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true);
-          } else {
-            RAY_LOG(ERROR) << "Failed to delete URIs"
-                           << ", error message: " << reply.error_message();
-            callback(false);
-          }
+  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
+                                                     Status status,
+                                                     const rpc::DeleteURIsReply &reply) {
+    if (status.ok()) {
+      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+        callback(true);
+      } else {
+        RAY_LOG(ERROR) << "Failed to delete URIs"
+                       << ", error message: " << reply.error_message();
+        callback(false);
+      }
 
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to delete URIs"
-              << ", status = " << status
-              << ", maybe there are some network problems, will retry it later.";
-          delay_executor_(
-              [this, uris, callback] {
-                DeleteURIs(uris, callback);
-              },
-              RayConfig::instance().agent_manager_retry_interval_ms());
-        }
-      });
+    } else {
+      RAY_LOG(ERROR) << "Failed to delete URIs"
+                     << ", status = " << status
+                     << ", maybe there are some network problems, will retry it later.";
+      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+                      RayConfig::instance().agent_manager_retry_interval_ms());
+    }
+  });
 }
 
 }  // namespace raylet

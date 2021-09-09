@@ -90,7 +90,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
   };
 
   void DeleteURIs(const rpc::DeleteURIsRequest &request,
-                        const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
     rpc::DeleteURIsReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);

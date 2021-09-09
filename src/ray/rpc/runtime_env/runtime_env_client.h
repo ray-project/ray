@@ -26,9 +26,8 @@ class RuntimeEnvAgentClientInterface {
   virtual void CreateRuntimeEnv(
       const rpc::CreateRuntimeEnvRequest &request,
       const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) = 0;
-  virtual void DeleteURIs(
-      const rpc::DeleteURIsRequest &request,
-      const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
+  virtual void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                          const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
   virtual ~RuntimeEnvAgentClientInterface(){};
 };
 

@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
+import shutil
 import sys
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -340,7 +341,6 @@ class WorkingDirManager:
         Return:
             True for package existing and False for not.
         """
-        assert _internal_kv_initialized()
         protocol, pkg_name = _parse_uri(pkg_uri)
         if protocol in (Protocol.GCS, Protocol.PIN_GCS):
             return _internal_kv_exists(pkg_uri)
@@ -393,7 +393,6 @@ class WorkingDirManager:
             otherwise, None is returned.
         """
         pkg_dir = None
-        assert _internal_kv_initialized()
         for pkg_uri in pkg_uris:
             # For each node, the package will only be downloaded one time
             # Locking to avoid multiple process download concurrently
@@ -405,6 +404,31 @@ class WorkingDirManager:
         # Right now, multiple pkg_uris are not supported correctly.
         # We return the last one as working directory
         return str(pkg_dir) if pkg_dir else None
+
+    def delete_uri(self, uri: str) -> bool:
+        """Deletes a specific URI from the local filesystem.
+
+        Args:
+            uri (str): URI to delete.
+
+        Returns:
+            True if the URI was successfully deleted, else False.
+        """
+        deleted = False
+        path = Path(self._get_local_path(uri))
+        with FileLock(str(path) + ".lock"):
+            path = path.with_suffix("")
+            if path.exists():
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(str(path))
+                else:
+                    path.unlink()
+                deleted = True
+
+        if not deleted:
+            _logger.warning(f"Tried to delete nonexistent path: {path}")
+
+        return deleted
 
     def setup(self,
               runtime_env: dict,

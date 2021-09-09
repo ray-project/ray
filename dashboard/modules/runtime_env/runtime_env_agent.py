@@ -158,16 +158,15 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
     async def DeleteURIs(self, request, context):
         logger.info(f"Got request to delete URIS: {request.uris}.")
 
-        return runtime_env_agent_pb2.DeleteURIsReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-            error_message="Not implemented.")
-
-        # Del code from util worker.
-        path = request.uris[0]
-        if path.is_dir() and not path.is_symlink():
-            shutil.rmtree(str(path))
+        # Only a single URI is currently supported.
+        assert len(request.uris) == 1
+        if self._working_dir_manager.delete_uri(request.uris[0]):
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
         else:
-            path.unlink()
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="Path not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

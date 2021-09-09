@@ -71,7 +71,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// Request agent to delete a list of URIs.
   /// \param[in] URIs The list of URIs to delete.
   virtual void DeleteURIs(const std::vector<std::string> &uris,
-                                DeleteURIsCallback callback);
+                          DeleteURIsCallback callback);
 
  private:
   void StartAgent();
