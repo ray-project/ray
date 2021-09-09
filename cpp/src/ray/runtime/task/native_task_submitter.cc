@@ -30,7 +30,8 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
   return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
-auto GetBundleID = [](const auto &options) {
+template <typename T>
+static BundleID GetBundleID(const T &options) {
   BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
   if (!options.group.Empty()) {
     PlacementGroupID id = PlacementGroupID::FromBinary(options.group.GetID());
