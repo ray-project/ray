@@ -16,14 +16,15 @@ import ray
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 from ray._raylet import connect_to_gcs
+import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
+import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
-from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -118,13 +119,19 @@ class ProxyManager():
                  redis_address: Optional[str],
                  *,
                  session_dir: Optional[str] = None,
-                 redis_password: Optional[str] = None):
+                 redis_password: Optional[str] = None,
+                 runtime_env_agent_port: int = 0):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._redis_address = redis_address
         self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
+
+        self._runtime_env_channel = grpc.insecure_channel(
+            f"localhost:{runtime_env_agent_port}")
+        self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
+            self._runtime_env_channel)
 
         self._check_thread = Thread(target=self._check_processes, daemon=True)
         self._check_thread.start()
@@ -216,16 +223,14 @@ class ProxyManager():
             f"ray_client_server_{specific_server.port}", unique=True)
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
-        runtime_env = json.loads(serialized_runtime_env)
-
-        # Set up the working_dir for the server.
-        # TODO(edoakes): this should go be unified with the worker setup code
-        # by going through the runtime_env agent.
-        context = RuntimeEnvContext(
-            env_vars=runtime_env.get("env_vars"),
-            resources_dir=self.node.get_runtime_env_dir_path())
-        WorkingDirManager(self.node.get_runtime_env_dir_path()).setup(
-            runtime_env, context)
+        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+            serialized_runtime_env=serialized_runtime_env,
+            job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
+        response = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+        if (response.status ==
+                agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED):
+            raise RuntimeError("Failed to create runtime_env for Ray client "
+                               f"server: {response.error_message}")
 
         proc = start_ray_client_server(
             self.redis_address,
@@ -234,8 +239,8 @@ class ProxyManager():
             stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
-            serialized_runtime_env=serialized_runtime_env,
-            serialized_runtime_env_context=context.serialize(),
+            serialized_runtime_env_context=response.
+            serialized_runtime_env_context,
             redis_password=self._redis_password)
 
         # Wait for the process being run transitions from the shim process
@@ -611,7 +616,8 @@ def serve_proxier(connection_str: str,
                   redis_address: Optional[str],
                   *,
                   redis_password: Optional[str] = None,
-                  session_dir: Optional[str] = None):
+                  session_dir: Optional[str] = None,
+                  runtime_env_agent_port: int = 0):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
@@ -625,7 +631,10 @@ def serve_proxier(connection_str: str,
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
     proxy_manager = ProxyManager(
-        redis_address, session_dir=session_dir, redis_password=redis_password)
+        redis_address,
+        session_dir=session_dir,
+        redis_password=redis_password,
+        runtime_env_agent_port=runtime_env_agent_port)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)
