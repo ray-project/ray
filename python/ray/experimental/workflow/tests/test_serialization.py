@@ -2,6 +2,7 @@ import pytest
 import ray
 from ray.experimental import workflow
 
+
 @workflow.step
 def identity(x):
     return x
@@ -12,10 +13,11 @@ def gather(*args):
     return args
 
 
-@pytest.mark.skip(reason="TODO (Alex): After removing the special casing for"
+@pytest.mark.skip(
+    reason="TODO (Alex): After removing the special casing for"
     "objectrefs in `WorkflowInputs` we can enable this stronger test.")
 def test_dedupe_serialization(workflow_start_regular_shared):
-    @ray.remote(num_cpus = 0)
+    @ray.remote(num_cpus=0)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -40,12 +42,11 @@ def test_dedupe_serialization(workflow_start_regular_shared):
     # One for the ray.put
     assert ray.get(counter.get_count.remote()) == 1
 
-    single = identity.step((ref,))
+    single = identity.step((ref, ))
     double = identity.step(list_of_refs)
 
     gather.step(single, double).run()
 
-    import time; time.sleep(1)
     # One more for hashing the ref, and for uploading.
     assert ray.get(counter.get_count.remote()) == 3
 
@@ -58,7 +59,7 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
 
     assert ray.get(manager.get_num_uploads.remote()) == 0
 
-    single = identity.step((ref,))
+    single = identity.step((ref, ))
     double = identity.step(list_of_refs)
 
     result_ref, result_list = gather.step(single, double).run()
