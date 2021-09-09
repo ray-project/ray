@@ -9,6 +9,15 @@ from dataclasses import dataclass, field
 def start_metrics_pusher(interval_s: float,
                          collection_callback: Callable[[], Dict[str, float]],
                          controller_handle):
+    """Start a background thread to push metrics to controller.
+
+    Args:
+        interval_s(float): the push interval.
+        collection_callback: a callable that returns the metric data points to
+          be sent over the the controller.
+        controller_handle: actor handle to Serve controller.
+    """
+
     def send_once():
         data = collection_callback()
         # TODO(simon): maybe wait for ack or handle controller failure?
@@ -36,20 +45,40 @@ class TimeStampedValue:
 
 
 class InMemoryMetricsStore:
+    """A very simple, in memory time series database"""
+
     def __init__(self):
         self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
 
     def add_metrics_point(self, data_points: Dict[str, float],
                           timestamp: float):
+        """Push new data points to the store.
+
+        Args:
+            data_points(dict): dictionary containing the metrics values.
+            timestamp(float): the unix epoch timestamp the metrics are
+              collected at.
+        """
         for name, value in data_points.items():
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(
                 a=self.data[name], x=TimeStampedValue(timestamp, value))
 
-    def rolling_average(self,
-                        key: str,
-                        window_start_timestamp_s: float,
-                        do_compact: bool = True) -> Optional[float]:
+    def window_average(self,
+                       key: str,
+                       window_start_timestamp_s: float,
+                       do_compact: bool = True) -> Optional[float]:
+        """Perform a window average operation for metric `key`
+
+        Args:
+            key(str): the metric name.
+            window_start_timestamp_s(float): the unix epoch timestamp for the
+              start of the window. The computed average will use all datapoints
+              from this timestamp until now.
+            do_compat(bool): whether or not to delete the datapoints that's
+              before `window_start_timestamp_s` to save memory. Default is
+              true.
+        """
         datapoints = self.data[key]
 
         idx = bisect.bisect(
