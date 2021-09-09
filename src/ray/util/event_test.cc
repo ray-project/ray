@@ -141,12 +141,15 @@ void ParallelRunning(int nthreads, int loop_times,
   }
 }
 
-void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file) {
+void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file,
+                         std::string filter = "") {
   std::string line;
   std::ifstream read_file;
   read_file.open(log_file, std::ios::binary);
   while (std::getline(read_file, line)) {
-    vc.push_back(line);
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
   }
   read_file.close();
 }
@@ -538,7 +541,8 @@ TEST(EVENT_TEST, TEST_LOG_EVENT) {
   RAY_EVENT(FATAL, "label") << "test fatal";
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log");
+  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
+                      "[ Event ");
   EXPECT_EQ((int)vc.size(), 2);
   // Check ERROR event
   EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
@@ -549,7 +553,39 @@ TEST(EVENT_TEST, TEST_LOG_EVENT) {
   EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
   EXPECT_THAT(vc[1], testing::HasSubstr("test fatal"));
 
-  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR);
+  boost::filesystem::remove_all(log_dir.c_str());
+
+  // Set log level smaller than event level.
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::INFO, log_dir);
+  ray::RayEvent::SetLevel("error");
+
+  // Add some events. All events would be printed in general log.
+  RAY_EVENT(INFO, "label") << "test info 2";
+  RAY_EVENT(WARNING, "label") << "test warning 2";
+  RAY_EVENT(ERROR, "label") << "test error 2";
+  RAY_EVENT(FATAL, "label") << "test fatal 2";
+
+  vc.clear();
+  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
+                      "[ Event ");
+  EXPECT_EQ((int)vc.size(), 4);
+  // Check INFO event
+  EXPECT_THAT(vc[0], testing::HasSubstr(" I "));
+  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[0], testing::HasSubstr("test info 2"));
+  // Check WARNING event
+  EXPECT_THAT(vc[1], testing::HasSubstr(" W "));
+  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[1], testing::HasSubstr("test warning 2"));
+  // Check ERROR event
+  EXPECT_THAT(vc[2], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[2], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[2], testing::HasSubstr("test error 2"));
+  // Check FATAL event. We convert fatal events to error logs.
+  EXPECT_THAT(vc[3], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[3], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
+
   boost::filesystem::remove_all(log_dir.c_str());
 }
 

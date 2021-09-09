@@ -245,6 +245,8 @@ class RayEvent {
 
   FRIEND_TEST(EVENT_TEST, TEST_LOG_LEVEL);
 
+  FRIEND_TEST(EVENT_TEST, TEST_LOG_EVENT);
+
  private:
   rpc::Event_Severity severity_;
   RayLogLevel log_severity_;

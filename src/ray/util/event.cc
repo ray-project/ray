@@ -274,7 +274,7 @@ void RayEvent::SendMessage(const std::string &message) {
                                        : RayEventContext::GlobalInstance();
 
   static const int kEventIDSize = 18;
-  static const std::string empty_event_id_hex(kEventIDSize * 2, 'f');
+  static const std::string kEmptyEventIdHex = "disabled";
   std::string event_id;
   if (IsLevelEnabled(severity_)) {
     std::string event_id_buffer = std::string(kEventIDSize, ' ');
@@ -300,7 +300,7 @@ void RayEvent::SendMessage(const std::string &message) {
 
     EventManager::Instance().Publish(event, custom_fields_);
   } else {
-    event_id = empty_event_id_hex;
+    event_id = kEmptyEventIdHex;
   }
   if (ray::RayLog::IsLevelEnabled(log_severity_)) {
     ::ray::RayLog(file_name_, line_number_, log_severity_)
