@@ -240,6 +240,62 @@ def test_writer_actor_pressure_test(workflow_start_regular):
     assert ray.get([actor.add.run_async(i) for i in range(1, length)]) == array
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 8,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_default_getset(workflow_start_regular):
+    @workflow.virtual_actor
+    class ActorWithoutSetGetState:
+        def __init__(self):
+            self.x = 10
+
+        def set(self, x):
+            self.x = x
+
+    a1 = ActorWithoutSetGetState.get_or_create("a1")
+    a1.set.run(10)
+
+    with pytest.raises(ValueError):
+        @workflow.virtual_actor
+        class ActorWithSetStateOnly:
+            def __init__(self):
+                self.x = 10
+
+            def set(self, x):
+                self.x = x
+
+            def __setstate__(self, x):
+                self.x = x
+
+    with pytest.raises(ValueError):
+        @workflow.virtual_actor
+        class ActorWithGetStateOnly:
+            def __init__(self):
+                self.x = 10
+
+            def set(self, x):
+                self.x = x
+
+            def __getstate__(self):
+                return self.x
+
+    @workflow.virtual_actor
+    class ActorHavingComplicatedStructure:
+        def __init__(self):
+            import numpy
+            self.x = {"A": numpy.ones(10)}
+
+        def set(self, x):
+            self.x = x
+    # TODO (yic) We need better error message here
+    # https://github.com/ray-project/ray/issues/18147
+    with pytest.raises(ray.exceptions.RaySystemError):
+        a2 = ActorHavingComplicatedStructure.get_or_create("a2")
+        a2.set.run(10)
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

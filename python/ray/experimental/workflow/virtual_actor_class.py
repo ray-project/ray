@@ -133,7 +133,13 @@ def __getstate(instance):
     if hasattr(instance, "__getstate__"):
         state = instance.__getstate__()
     else:
-        state = json.dumps(instance.__dict__)
+        try:
+            state = json.dumps(instance.__dict__)
+        except TypeError as e:
+            raise ValueError("The virtual actor contains field that can't be "
+                             "converted to JSON. Please define `__getstate__` "
+                             "and `__setstate__` explicitly.") from e
+    return state
 
 def __setstate(instance, v):
     if hasattr(instance, "__setstate__"):
@@ -146,17 +152,6 @@ class VirtualActorMetadata:
     the signatures of its methods etc."""
 
     def __init__(self, original_class: type):
-        has_getstate = "__getstate__" in dir(original_class)
-        has_setstate = "__setstate__" in dir(original_class)
-
-        if not has_getstate and not has_setstate:
-            # This is OK since we'll use default one defined
-            pass
-        elif not has_getstate:
-            raise ValueError("The class does not have '__getstate__' method")
-        elif not has_setstate:
-            raise ValueError("The class does not have '__setstate__' method")
-
         actor_methods = inspect.getmembers(original_class,
                                            is_function_or_method)
 
@@ -321,6 +316,16 @@ class VirtualActorClass(VirtualActorClassBase):
             pass
 
         metadata = VirtualActorMetadata(base_class)
+        has_getstate = "__getstate__" in metadata.methods
+        has_setstate = "__setstate__" in metadata.methods
+
+        if not has_getstate and not has_setstate:
+            # This is OK since we'll use default one defined
+            pass
+        elif not has_getstate:
+            raise ValueError("The class does not have '__getstate__' method")
+        elif not has_setstate:
+            raise ValueError("The class does not have '__setstate__' method")
 
         DerivedActorClass.__module__ = metadata.module
         name = f"VirtualActorClass({metadata.name})"
