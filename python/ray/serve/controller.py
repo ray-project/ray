@@ -25,6 +25,7 @@ from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -83,8 +84,17 @@ class ServeController:
         self.backend_state_manager = BackendStateManager(
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager)
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def record_autoscaling_metrics(self, data: Dict[str, float],
+                                   send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def _dump_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_metrics_store.data
 
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
