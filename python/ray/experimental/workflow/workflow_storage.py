@@ -482,6 +482,8 @@ class WorkflowStorage:
         assert task
         upload_tasks.append(task)
 
+        print("REDUCED OBJECT REF")
+
         return _load_object_ref, (paths, self)
 
     async def _put(self, paths: List[str], data: Any,

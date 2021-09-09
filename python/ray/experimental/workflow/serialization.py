@@ -69,6 +69,7 @@ class Manager:
     def __init__(self, storage: storage.Storage):
         self._uploads: Dict[ray.ObjectRef, Upload] = {}
         self._storage = storage
+        self._num_uploads = 0
 
     def ping(self) -> None:
         """
@@ -99,8 +100,15 @@ class Manager:
             identifier_ref = common.calculate_identifier.remote(ref)
             upload_task = _put_helper.remote(identifier_ref, ref, wf_storage)
             self._uploads[key] = Upload(identifier_ref, upload_task)
+            self._num_uploads += 1
 
         info = self._uploads[key]
         identifer = await info.identifier_ref
         paths = wf_storage._key_obj_id(identifer)
         return paths, info.upload_task
+
+    async def get_num_uploads(self):
+        """
+        For testing purposes.
+        """
+        return self._num_uploads
