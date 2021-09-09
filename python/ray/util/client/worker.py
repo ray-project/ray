@@ -5,6 +5,7 @@ to the server.
 import base64
 import json
 import logging
+import os
 import time
 import uuid
 import warnings
@@ -98,8 +99,15 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
-        if secure and _credentials is None:
-            _credentials = grpc.ssl_channel_credentials()
+        # TODO tidy this up
+        secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
+        if secure and _credentials is None :
+            if os.environ.get("RAY_TLS_SERVER_CERT"):
+                with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
+                    root_certs = f.read()
+            else:
+                root_certs = None
+            _credentials = grpc.ssl_channel_credentials(root_certs)
 
         if _credentials is not None:
             self.channel = grpc.secure_channel(
