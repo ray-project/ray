@@ -229,9 +229,8 @@ def test_runtime_install_error_message(call_ray_start):
         ray.client("localhost:25031").env({
             "pip": ["ray-this-doesnt-exist"]
         }).connect()
-    assert (
-        "No matching distribution found for ray-this-doesnt-exist" in str(
-            excinfo.value))
+    assert ("No matching distribution found for ray-this-doesnt-exist" in str(
+        excinfo.value))
 
     ray.util.disconnect()
 
