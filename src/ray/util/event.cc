@@ -15,6 +15,7 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 
+#include "absl/base/call_once.h"
 #include "absl/time/time.h"
 
 namespace ray {
@@ -205,6 +206,25 @@ void RayEventContext::SetCustomFields(
 ///
 /// RayEvent
 ///
+static rpc::Event_Severity severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+
+static void SetEventLevel(const std::string &event_level) {
+  std::string level = event_level;
+  std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+  if (level == "info") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+  } else if (level == "warning") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_WARNING;
+  } else if (level == "error") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_ERROR;
+  } else if (level == "fatal") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_FATAL;
+  } else {
+    RAY_LOG(WARNING) << "Unrecognized setting of event level " << level;
+  }
+  RAY_LOG(INFO) << "Set ray event level to " << level;
+}
+
 void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
                            const std::string &message) {
   rpc::Event_Severity severity_ele =
@@ -212,6 +232,12 @@ void RayEvent::ReportEvent(const std::string &severity, const std::string &label
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
   RayEvent(severity_ele, label) << message;
 }
+
+bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
+  return event_level >= severity_threshold_;
+}
+
+void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
@@ -251,14 +277,19 @@ void RayEvent::SendMessage(const std::string &message) {
   EventManager::Instance().Publish(event, custom_fields_);
 }
 
+static absl::once_flag init_once_;
+
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir) {
-  RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-  auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
-  ray::EventManager::Instance().AddReporter(
-      std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-  RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+                  const std::string &log_dir, const std::string &event_level) {
+  absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
+    RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+    auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+    ray::EventManager::Instance().AddReporter(
+        std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+    SetEventLevel(event_level);
+    RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+  });
 }
 
 }  // namespace ray

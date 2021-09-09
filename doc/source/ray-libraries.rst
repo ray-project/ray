@@ -11,7 +11,7 @@ Ray also comes packaged with several libraries solving problems in the machine l
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`
-- :ref:`datasets` (beta)
+- :ref:`datasets` (alpha)
 - :ref:`workflows` (alpha)
 
 Airflow |airflow|

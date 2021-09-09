@@ -71,12 +71,15 @@ def backoff(timeout: int) -> int:
 
 
 class Worker:
-    def __init__(self,
-                 conn_str: str = "",
-                 secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None,
-                 connection_retries: int = 3,
-                 reconnect_grace_period=None):
+    def __init__(
+            self,
+            conn_str: str = "",
+            secure: bool = False,
+            metadata: List[Tuple[str, str]] = None,
+            connection_retries: int = 3,
+            reconnect_grace_period=None,
+            _credentials: Optional[grpc.ChannelCredentials] = None,
+    ):
         """Initializes the worker side grpc client.
 
         Args:
@@ -90,6 +93,8 @@ class Worker:
             reconnection_grace_period: The time in seconds that the client
               has to reconnect to the server after a gRPC error before the
               server will cleanup the connection.
+            _credentials: gprc channel credentials. Default ones will be used
+              if None.
         """
         self._client_id = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
@@ -101,6 +106,7 @@ class Worker:
         self._secure = secure
         self._conn_str = conn_str
         self._connection_retries = connection_retries
+        self._credentials = _credentials
         if reconnect_grace_period is None:
             self._reconnect_grace_period = \
                 DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
@@ -144,10 +150,13 @@ class Worker:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
-        if self._secure:
-            credentials = grpc.ssl_channel_credentials()
+        if self._secure and self._credentials is None:
+            self._credentials = grpc.ssl_channel_credentials()
+
+        if self._credentials is not None:
             self.channel = grpc.secure_channel(
-                self._conn_str, credentials, options=GRPC_OPTIONS)
+                self._conn_str, self._credentials, options=GRPC_OPTIONS)
+
         else:
             self.channel = grpc.insecure_channel(
                 self._conn_str, options=GRPC_OPTIONS)
@@ -633,14 +642,15 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env as runtime_env
+                import ray._private.runtime_env.working_dir as working_dir_pkg
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
-                                                      tmp_dir)
-                    runtime_env.rewrite_runtime_env_uris(job_config)
-                    runtime_env.upload_runtime_env_package_if_needed(
+                    (old_dir,
+                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
+                                                 tmp_dir)
+                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
+                    working_dir_pkg.upload_runtime_env_package_if_needed(
                         job_config)
-                    runtime_env.PKG_DIR = old_dir
+                    working_dir_pkg.PKG_DIR = old_dir
 
                 serialized_job_config = pickle.dumps(job_config)
 

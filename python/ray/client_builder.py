@@ -90,6 +90,7 @@ class ClientBuilder:
         # How long client has to reconnect after a gRPC error before the
         # server cleans up connection. Defaults to 30 seconds
         self._reconnect_grace_period = None
+        self._credentials = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -141,6 +142,7 @@ class ClientBuilder:
             self.address,
             job_config=self._job_config,
             reconnect_grace_period=self._reconnect_grace_period,
+            _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
@@ -189,6 +191,10 @@ class ClientBuilder:
         if kwargs.get("reconnect_grace_period") is not None:
             self._reconnect_grace_period = kwargs["reconnect_grace_period"]
             del kwargs["reconnect_grace_period"]
+
+        if "_credentials" in kwargs.keys():
+            self._credentials = kwargs["_credentials"]
+            del kwargs["_credentials"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)

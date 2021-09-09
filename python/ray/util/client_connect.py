@@ -5,6 +5,8 @@ from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
 from typing import List, Tuple, Dict, Any, Optional
 
+import grpc
+
 
 def connect(
         conn_str: str,
@@ -16,6 +18,7 @@ def connect(
         reconnect_grace_period: int = None,
         *,
         ignore_version: bool = False,
+        _credentials: Optional[grpc.ChannelCredentials] = None,
         ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ray.is_connected():
         raise RuntimeError("Ray Client is already connected. Maybe you called "
@@ -37,6 +40,7 @@ def connect(
         namespace=namespace,
         reconnect_grace_period=reconnect_grace_period,
         ignore_version=ignore_version,
+        _credentials=_credentials,
         ray_init_kwargs=ray_init_kwargs)
     return conn
 

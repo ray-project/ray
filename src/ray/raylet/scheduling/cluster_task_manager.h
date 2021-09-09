@@ -57,7 +57,7 @@ struct Work {
   Work &operator=(const Work &work) = delete;
 };
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
+typedef std::function<absl::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
