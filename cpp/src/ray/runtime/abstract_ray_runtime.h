@@ -20,6 +20,7 @@
 #include <mutex>
 
 #include "../config_internal.h"
+#include "../util/process_helper.h"
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
@@ -95,11 +96,18 @@ class AbstractRayRuntime : public RayRuntime {
 
   static void DoShutdown();
 
+  const std::unique_ptr<ray::gcs::GlobalStateAccessor> &GetGlobalStateAccessor();
+
+  bool WasCurrentActorRestarted();
+
+  virtual ActorID GetCurrentActorID() { return ActorID::Nil(); }
+
  protected:
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
   std::unique_ptr<ObjectStore> object_store_;
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor_;
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
