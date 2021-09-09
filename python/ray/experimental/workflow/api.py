@@ -61,7 +61,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
                                "different storage")
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
-    serialization.init_manager(storage)
+    serialization.init_manager()
 
 
 def make_step_decorator(step_options: Dict[str, Any]):

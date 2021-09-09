@@ -16,11 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The name contains the namespace "workflow".
-MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
-MANAGEMENT_ACTOR_NAMESPACE = "workflow"
-
-
 @PublicAPI(stability="beta")
 class WorkflowExecutionError(Exception):
     def __init__(self, workflow_id: str):
@@ -378,14 +373,14 @@ def init_management_actor() -> None:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
         WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME,
-            namespace=MANAGEMENT_ACTOR_NAMESPACE,
+            name=common.MANAGEMENT_ACTOR_NAME,
+            namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached").remote(store)
 
 
 def get_management_actor() -> "ActorHandle":
     return ray.get_actor(
-        MANAGEMENT_ACTOR_NAME, namespace=MANAGEMENT_ACTOR_NAMESPACE)
+        common.MANAGEMENT_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
 
 
 def get_or_create_management_actor() -> "ActorHandle":
@@ -399,12 +394,12 @@ def get_or_create_management_actor() -> "ActorHandle":
     except ValueError:
         store = storage.get_global_storage()
         # the actor does not exist
-        logger.warning("Cannot access workflow manager. It could because "
+        logger.warning("Cannot access workflow manager. It could be because "
                        "the workflow manager exited unexpectedly. A new "
                        "workflow manager is being created with storage "
                        f"'{store}'.")
         workflow_manager = WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME,
-            namespace=MANAGEMENT_ACTOR_NAMESPACE,
+            name=common.MANAGEMENT_ACTOR_NAME,
+            namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached").remote(store)
     return workflow_manager

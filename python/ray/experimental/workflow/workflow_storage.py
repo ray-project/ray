@@ -475,7 +475,7 @@ class WorkflowStorage:
     def _reduce_objectref(self, obj_ref: ObjectRef,
                           upload_tasks: List[ObjectRef]):
         from ray.experimental.workflow import serialization
-        manager = serialization.get_manager()
+        manager = serialization.get_or_create_manager()
         paths, task = ray.get(
             manager.save_objectref.remote((obj_ref, ), self._workflow_id))
 
