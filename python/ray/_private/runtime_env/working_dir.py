@@ -243,6 +243,69 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
             [Protocol.GCS.value + "://" + pkg_name])
 
 
+def create_project_package(working_dir: str, py_modules: List[str],
+                           excludes: List[str], output_path: str) -> None:
+    """Create a pckage that will be used by workers.
+
+    This function is used to create a package file based on working
+    directory and python local modules.
+
+    Args:
+        working_dir (str): The working directory.
+        py_modules (list[str]): The list of path of python modules to be
+            included.
+        excludes (List(str)): The directories or file to be excluded.
+        output_path (str): The path of file to be created.
+    """
+    pkg_file = Path(output_path).absolute()
+    with ZipFile(pkg_file, "w") as zip_handler:
+        if working_dir:
+            # put all files in /path/working_dir into zip
+            working_path = Path(working_dir).absolute()
+            _zip_module(working_path, working_path,
+                        _get_excludes(working_path, excludes), zip_handler)
+        for py_module in py_modules or []:
+            module_path = Path(py_module).absolute()
+            _zip_module(module_path, module_path.parent, None, zip_handler)
+
+
+def push_package(pkg_uri: str, pkg_path: str) -> int:
+    """Push a package to uri.
+
+    This function is to push a local file to remote uri. Right now, only
+    storing in the GCS is supported.
+
+    Args:
+        pkg_uri (str): The uri of the package to upload to.
+        pkg_path (str): Path of the local file.
+
+    Returns:
+        The number of bytes uploaded.
+    """
+    protocol, pkg_name = _parse_uri(pkg_uri)
+    data = Path(pkg_path).read_bytes()
+    if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+        return _store_package_in_gcs(pkg_uri, data)
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+
+def package_exists(pkg_uri: str) -> bool:
+    """Check whether the package with given uri exists or not.
+
+    Args:
+        pkg_uri (str): The uri of the package
+
+    Return:
+        True for package existing and False for not.
+    """
+    protocol, pkg_name = _parse_uri(pkg_uri)
+    if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+        return _internal_kv_exists(pkg_uri)
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = resources_dir
@@ -251,31 +314,6 @@ class WorkingDirManager:
     def _get_local_path(self, pkg_uri: str) -> str:
         _, pkg_name = _parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
-
-    def create_project_package(self, working_dir: str, py_modules: List[str],
-                               excludes: List[str], output_path: str) -> None:
-        """Create a pckage that will be used by workers.
-
-        This function is used to create a package file based on working
-        directory and python local modules.
-
-        Args:
-            working_dir (str): The working directory.
-            py_modules (list[str]): The list of path of python modules to be
-                included.
-            excludes (List(str)): The directories or file to be excluded.
-            output_path (str): The path of file to be created.
-        """
-        pkg_file = Path(output_path).absolute()
-        with ZipFile(pkg_file, "w") as zip_handler:
-            if working_dir:
-                # put all files in /path/working_dir into zip
-                working_path = Path(working_dir).absolute()
-                _zip_module(working_path, working_path,
-                            _get_excludes(working_path, excludes), zip_handler)
-            for py_module in py_modules or []:
-                module_path = Path(py_module).absolute()
-                _zip_module(module_path, module_path.parent, None, zip_handler)
 
     def fetch_package(self, pkg_uri: str) -> int:
         """Fetch a package from a given uri if not exists locally.
@@ -312,41 +350,6 @@ class WorkingDirManager:
         pkg_file.unlink()
         return local_dir
 
-    def push_package(self, pkg_uri: str, pkg_path: str) -> int:
-        """Push a package to uri.
-
-        This function is to push a local file to remote uri. Right now, only
-        storing in the GCS is supported.
-
-        Args:
-            pkg_uri (str): The uri of the package to upload to.
-            pkg_path (str): Path of the local file.
-
-        Returns:
-            The number of bytes uploaded.
-        """
-        (protocol, pkg_name) = _parse_uri(pkg_uri)
-        data = Path(pkg_path).read_bytes()
-        if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-            return _store_package_in_gcs(pkg_uri, data)
-        else:
-            raise NotImplementedError(f"Protocol {protocol} is not supported")
-
-    def package_exists(self, pkg_uri: str) -> bool:
-        """Check whether the package with given uri exists or not.
-
-        Args:
-            pkg_uri (str): The uri of the package
-
-        Return:
-            True for package existing and False for not.
-        """
-        protocol, pkg_name = _parse_uri(pkg_uri)
-        if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-            return _internal_kv_exists(pkg_uri)
-        else:
-            raise NotImplementedError(f"Protocol {protocol} is not supported")
-
     def upload_runtime_env_package_if_needed(self, job_config: JobConfig):
         """Upload runtime env if it's not there.
 
@@ -362,7 +365,7 @@ class WorkingDirManager:
         if len(pkg_uris) == 0:
             return  # Return early to avoid internal kv check in this case.
         for pkg_uri in pkg_uris:
-            if not self.package_exists(pkg_uri):
+            if not package_exists(pkg_uri):
                 file_path = self._get_local_path(pkg_uri)
                 pkg_file = Path(file_path)
                 working_dir = job_config.runtime_env.get("working_dir")
@@ -372,10 +375,10 @@ class WorkingDirManager:
                     f"{pkg_uri} doesn't exist. Create new package with"
                     f" {working_dir} and {py_modules}")
                 if not pkg_file.exists():
-                    self.create_project_package(working_dir, py_modules,
-                                                excludes, file_path)
+                    create_project_package(working_dir, py_modules, excludes,
+                                           file_path)
                 # Push the data to remote storage
-                pkg_size = self.push_package(pkg_uri, pkg_file)
+                pkg_size = push_package(pkg_uri, pkg_file)
                 _logger.info(
                     f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
