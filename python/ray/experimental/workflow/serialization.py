@@ -1,13 +1,12 @@
 import asyncio
 from dataclasses import dataclass
-from enum import Enum
 import logging
 import ray
 from ray.types import ObjectRef
 from ray.experimental.workflow import common
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -18,6 +17,7 @@ logger = logging.getLogger(__name__)
 def init_manager() -> None:
     get_or_create_manager(warn_on_creation=False)
 
+
 def get_or_create_manager(warn_on_creation: bool = True) -> "ActorHandle":
     """Get or create the storage manager."""
     # TODO(suquark): We should not get the actor everytime. We also need to
@@ -26,21 +26,23 @@ def get_or_create_manager(warn_on_creation: bool = True) -> "ActorHandle":
     # aliveness detection for an actor.
     try:
         return ray.get_actor(
-            common.STORAGE_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
+            common.STORAGE_ACTOR_NAME,
+            namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
     except ValueError:
         store = storage.get_global_storage()
         if warn_on_creation:
             logger.warning("Cannot access workflow serialization manager. It "
-                        "could be because "
-                        "the workflow manager exited unexpectedly. A new "
-                        "workflow manager is being created with storage "
-                        f"'{store}'.")
+                           "could be because "
+                           "the workflow manager exited unexpectedly. A new "
+                           "workflow manager is being created with storage "
+                           f"'{store}'.")
         handle = Manager.options(
             name=common.STORAGE_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached").remote(store)
         ray.get(handle.ping.remote())
         return handle
+
 
 @dataclass
 class Upload:
@@ -96,8 +98,7 @@ class Manager:
             # TODO(Alex): We should probably eventually free these refs.
             identifier_ref = common.calculate_identifier.remote(ref)
             upload_task = _put_helper.remote(identifier_ref, ref, wf_storage)
-            self._uploads[key] = Upload(identifier_ref,
-                                        upload_task)
+            self._uploads[key] = Upload(identifier_ref, upload_task)
 
         info = self._uploads[key]
         identifer = await info.identifier_ref

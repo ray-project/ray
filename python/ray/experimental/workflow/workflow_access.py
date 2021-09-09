@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @PublicAPI(stability="beta")
 class WorkflowExecutionError(Exception):
     def __init__(self, workflow_id: str):
@@ -380,7 +381,8 @@ def init_management_actor() -> None:
 
 def get_management_actor() -> "ActorHandle":
     return ray.get_actor(
-        common.MANAGEMENT_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
+        common.MANAGEMENT_ACTOR_NAME,
+        namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
 
 
 def get_or_create_management_actor() -> "ActorHandle":
