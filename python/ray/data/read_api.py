@@ -515,8 +515,8 @@ def from_spark(df: "pyspark.sql.DataFrame",
         spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
             parallelism: The amount of parallelism to use for the dataset.
-            If not provided, it will be equal to the number of partitions of the
-            original Spark dataframe.
+            If not provided, it will be equal to the number of partitions of
+            the original Spark dataframe.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
