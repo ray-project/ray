@@ -15,7 +15,6 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
