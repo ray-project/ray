@@ -11,7 +11,6 @@ from shlex import quote
 
 import ray
 import yaml
-from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import Checkpoint
@@ -233,7 +232,7 @@ class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self, local_dir, remote_dir, sync_client):
-        self.local_ip = services.get_node_ip_address()
+        self.local_ip = ray.util.get_node_ip_address()
         self.worker_ip = None
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
