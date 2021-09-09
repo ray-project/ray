@@ -177,7 +177,8 @@ An output like the following indicates failure:
    * branch                master     -> FETCH_HEAD
   python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 
-In addition, there are other formatting checkers for components like the following:
+In addition, there are other formatting and semantic checkers for components like the following (not included in
+``./ci/travis/format.sh``):
 
 * Python README format:
 
@@ -191,6 +192,12 @@ In addition, there are other formatting checkers for components like the followi
 .. code-block:: shell
 
     ./ci/travis/bazel-format.sh
+
+* clang-tidy for C++ anti-patterns, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
+
+.. code-block:: shell
+
+    ./ci/travis/check-git-clang-tidy-output.sh
 
 Understanding CI test jobs
 --------------------------

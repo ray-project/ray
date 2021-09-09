@@ -1,12 +1,17 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 config_setting(
     name = "msvc-cl",
@@ -1809,18 +1814,25 @@ cc_library(
 )
 
 filegroup(
-    name = "iwyu_sh",
-    srcs = ["ci/travis/iwyu.sh"],
+    name = "extra_actions_base_proto",
+    srcs = [
+        "thirdparty/protobuf/extra_actions_base.proto",
+    ],
+)
+
+proto_library(
+    name = "extra_actions_base_proto_lib",
+    srcs = ["thirdparty/protobuf/extra_actions_base.proto"],
+)
+
+cc_proto_library(
+    name = "extra_actions_cc_proto_lib",
+    deps = [":extra_actions_base_proto_lib"],
 )
 
 filegroup(
-    name = "extra_actions_base_proto",
-    srcs = [
-        # TODO: Replace our file with the built-in copy once this issue is resolved:
-        #   https://github.com/bazelbuild/bazel/issues/8738
-        "thirdparty/protobuf/extra_actions_base.proto",
-        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
-    ],
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
 )
 
 action_listener(
