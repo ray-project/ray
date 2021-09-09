@@ -157,14 +157,15 @@ void RemovePlacementGroup(const std::string &placement_group_id);
 /// \return True if the placement group is created. False otherwise.
 bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds);
 
-/// Returns true if the current actor was restarted, otherwise false.
-bool WasCurrentActorRestarted();
-
 std::vector<PlacementGroup> GetAllPlacementGroups();
 
 PlacementGroup GetPlacementGroupById(const std::string &id);
 PlacementGroup GetPlacementGroup(const std::string &name);
 PlacementGroup GetGlobalPlacementGroup(const std::string &name);
+
+/// Returns true if the current actor was restarted, otherwise false.
+bool WasCurrentActorRestarted();
+
 // --------- inline implementation ------------
 
 template <typename T>
@@ -291,10 +292,6 @@ inline bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds) 
   return ray::internal::GetRayRuntime()->WaitPlacementGroupReady(id, timeout_seconds);
 }
 
-inline bool WasCurrentActorRestarted() {
-  return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
-}
-
 inline std::vector<PlacementGroup> GetAllPlacementGroups() {
   return ray::internal::GetRayRuntime()->GetAllPlacementGroups();
 }
@@ -309,6 +306,10 @@ inline PlacementGroup GetPlacementGroup(const std::string &name) {
 
 inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
   return ray::internal::GetRayRuntime()->GetPlacementGroup(name, true);
+}
+
+inline bool WasCurrentActorRestarted() {
+  return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
 }
 
 }  // namespace ray
