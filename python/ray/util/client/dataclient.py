@@ -136,7 +136,6 @@ class DataClient:
             logger.warning(
                 "Encountered connection issues in the data channel. "
                 "Attempting to reconnect.")
-            logger.debug(e)
             try:
                 self.client_worker._connect_channel(reconnecting=True)
             except ConnectionError:
@@ -183,24 +182,24 @@ class DataClient:
             req.req_id = req_id
             self.request_queue.put(req)
             self.outstanding_requests[req_id] = req
-        data = None
         with self.cv:
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
-            if self._in_shutdown:
-                from ray.util import disconnect
-                disconnect()
-                raise ConnectionError(
-                    "Sending request failed because the data channel "
-                    "terminated. This is usually due to an error "
-                    f"in handling the most recent request: {req}. Ray Client "
-                    "has been disconnected.")
-            data = self.ready_data[req_id]
-            with self.lock:
-                del self.outstanding_requests[req_id]
-                self._acknowledge(req_id)
-            del self.ready_data[req_id]
-        return data
+            if not self._in_shutdown:
+                data = self.ready_data[req_id]
+                with self.lock:
+                    del self.outstanding_requests[req_id]
+                    self._acknowledge(req_id)
+                del self.ready_data[req_id]
+                return data
+        # Handle shutdown after dropping the condvar
+        from ray.util import disconnect
+        disconnect()
+        raise ConnectionError(
+            "Sending request failed because the data channel "
+            "terminated. This is usually due to an error "
+            f"in handling the most recent request: {req}. Ray Client "
+            "has been disconnected.")
 
     def _async_send(self,
                     req: ray_client_pb2.DataRequest,

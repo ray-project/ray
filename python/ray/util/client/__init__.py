@@ -32,7 +32,6 @@ class _ClientContext:
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
                 namespace: str = None,
-                reconnect_grace_period=None,
                 *,
                 ignore_version: bool = False,
                 _credentials: Optional[grpc.ChannelCredentials] = None,
@@ -78,8 +77,7 @@ class _ClientContext:
                 secure=secure,
                 _credentials=_credentials,
                 metadata=metadata,
-                connection_retries=connection_retries,
-                reconnect_grace_period=reconnect_grace_period)
+                connection_retries=connection_retries)
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()

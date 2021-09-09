@@ -62,8 +62,8 @@ CLIENT_SERVER_MAX_THREADS = float(
 ClientObjectRef = raylet.ClientObjectRef
 ClientActorRef = raylet.ClientActorRef
 
-DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = int(
-    os.environ.get("RAY_CLIENT_RECONNECT_GRACE_PERIOD", "30"))
+# Wait 30 seconds for client to reconnect after unexpected disconnection
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
 
 
 class ClientStub:
@@ -397,7 +397,7 @@ class ClientServerHandle:
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
     grpc_server: grpc.Server
 
-    def stop(self, grace):
+    def stop(self, grace: int):
         self.grpc_server.stop(grace)
         self.data_servicer.stopped.set()
 

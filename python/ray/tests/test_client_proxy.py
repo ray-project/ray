@@ -313,7 +313,7 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
     def make_internal_kv_calls():
         # Note: we need to assign different req_id's to the put requests,
         # otherwise the SpecificServer will attempt to use the cached
-        # response frokm previous calls
+        # response from previous calls
         response = task_servicer.KVPut(
             ray_client_pb2.KVPutRequest(req_id=0, key=b"key", value=b"val"))
         assert isinstance(response, ray_client_pb2.KVPutResponse)

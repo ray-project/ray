@@ -15,7 +15,6 @@ def connect(
         connection_retries: int = 3,
         job_config: JobConfig = None,
         namespace: str = None,
-        reconnect_grace_period: int = None,
         *,
         ignore_version: bool = False,
         _credentials: Optional[grpc.ChannelCredentials] = None,
@@ -38,7 +37,6 @@ def connect(
         metadata=metadata,
         connection_retries=connection_retries,
         namespace=namespace,
-        reconnect_grace_period=reconnect_grace_period,
         ignore_version=ignore_version,
         _credentials=_credentials,
         ray_init_kwargs=ray_init_kwargs)

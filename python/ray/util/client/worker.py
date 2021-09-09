@@ -5,6 +5,7 @@ to the server.
 import base64
 import json
 import logging
+import os
 import time
 import threading
 import uuid
@@ -77,7 +78,6 @@ class Worker:
             secure: bool = False,
             metadata: List[Tuple[str, str]] = None,
             connection_retries: int = 3,
-            reconnect_grace_period=None,
             _credentials: Optional[grpc.ChannelCredentials] = None,
     ):
         """Initializes the worker side grpc client.
@@ -90,9 +90,6 @@ class Worker:
               ray server if it doesn't respond immediately. Setting to 0 tries
               at least once.  For infinite retries, catch the ConnectionError
               exception.
-            reconnection_grace_period: The time in seconds that the client
-              has to reconnect to the server after a gRPC error before the
-              server will cleanup the connection.
             _credentials: gprc channel credentials. Default ones will be used
               if None.
         """
@@ -107,11 +104,12 @@ class Worker:
         self._conn_str = conn_str
         self._connection_retries = connection_retries
         self._credentials = _credentials
-        if reconnect_grace_period is None:
+
+        self._reconnect_grace_period = DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+        if "RAY_CLIENT_RECONNECT_GRACE_PERIOD" in os.environ:
+            # Use value in environment variable if available
             self._reconnect_grace_period = \
-                DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
-        else:
-            self._reconnect_grace_period = reconnect_grace_period
+                int(os.environ["RAY_CLIENT_RECONNECT_GRACE_PERIOD"])
 
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
@@ -242,6 +240,13 @@ class Worker:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False
+        if e.code() == grpc.StatusCode.INTERNAL:
+            details = e.details()
+            if details == "Exception serializing request!":
+                # The client failed tried to send a bad request (for example,
+                # passing "None" instead of a valid grpc message). Don't
+                # try to reconnect/retry.
+                return False
         # All other errors can be treated as recoverable
         return True
 
