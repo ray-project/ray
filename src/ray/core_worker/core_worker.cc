@@ -1791,7 +1791,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                         << "Failed to register actor: " << task_spec.ActorCreationId()
                         << ". Error message: " << status.ToString();
                   } else {
-                    direct_task_submitter_->SubmitTask(task_spec);
+                    RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
                   }
                 }));
           },
