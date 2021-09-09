@@ -256,39 +256,13 @@ different error types:
   task can be retried up to 3 times and an actor task cannot be retried.
   This can be overridden with the ``max_retries`` parameter for remote
   functions and the ``max_task_retries`` parameter for actors.
-- ``ReferenceCountingAssertionFailure``: The object has already been deleted,
+- ``ObjectDeletedError``: The object has already been deleted,
   so it cannot be retrieved. Ray implements automatic memory management through
   distributed reference counting, so this error should not happen in general.
-  However, there is a known edge case that can occur when a worker passes an
-  ``ObjectRef``, then exits before the ref count at the ``ObjectRef``'s owner
-  can be updated. Here is an example:
-
-    .. code-block:: python
-    @ray.remote
-    class RefPasser:
-        def pass_ref(self, ref_list, receiver):
-            ray.get(receiver.receive_ref.remote(ref_list))
-            # Simulate an exit.
-            sys.exit(-1)
-
-    @ray.remote
-    class Receiver:
-        def receive_ref(self, ref_list):
-            self.ref = ref_list[0]
-
-        def resolve_ref(self):
-            # Throws a ReferenceCountingAssertionFailure.
-            ray.get(self.ref)
-
-    passer = RefPasser.remote()
-    receiver = Receiver.remote()
-    ref = foo.remote()
-    passer.pass_ref.remote([ref], receiver)
-    # Receiver cannot retrieve the object because the RefPasser did not update
-    # the driver's ref count in time before exiting.
-    ray.get(receiver.resolve_ref.remote())
+  However, there is a `known edge case`_ that can produce this error.
 
 .. _`lineage reconstruction`: https://docs.ray.io/en/master/fault-tolerance.html
+.. _`known edge case`: https://github.com/ray-project/ray/issues/18456
 
 Crashes
 -------
