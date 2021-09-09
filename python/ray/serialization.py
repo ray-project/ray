@@ -9,8 +9,8 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ObjectDeletedError, OwnerDiedError, ObjectReconstructionFailedError,
-    RaySystemError, RuntimeEnvSetupError)
+    ReferenceCountingAssertionError, OwnerDiedError,
+    ObjectReconstructionFailedError, RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -228,9 +228,9 @@ class SerializationContext:
                                        object_ref.owner_address(),
                                        object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
-                return ObjectDeletedError(object_ref.hex(),
-                                          object_ref.owner_address(),
-                                          object_ref.call_site())
+                return ReferenceCountingAssertionError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
             elif error_type == ErrorType.Value("OWNER_DIED"):
                 return OwnerDiedError(object_ref.hex(),
                                       object_ref.owner_address(),

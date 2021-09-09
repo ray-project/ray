@@ -314,7 +314,7 @@ class ObjectLostError(RayError):
             "more information about the failure.")
 
 
-class ObjectDeletedError(ObjectLostError, AssertionError):
+class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
 
@@ -407,7 +407,7 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
-    ObjectDeletedError,
+    ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
     OwnerDiedError,
     GetTimeoutError,

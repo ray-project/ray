@@ -256,7 +256,7 @@ different error types:
   task can be retried up to 3 times and an actor task cannot be retried.
   This can be overridden with the ``max_retries`` parameter for remote
   functions and the ``max_task_retries`` parameter for actors.
-- ``ObjectDeletedError``: The object has already been deleted,
+- ``ReferenceCountingAssertionError``: The object has already been deleted,
   so it cannot be retrieved. Ray implements automatic memory management through
   distributed reference counting, so this error should not happen in general.
   However, there is a `known edge case`_ that can produce this error.

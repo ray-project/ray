@@ -283,7 +283,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.ObjectDeletedError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(object_ref)
     thread.join()
 
@@ -307,7 +307,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ObjectDeletedError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)
 
     @ray.remote
