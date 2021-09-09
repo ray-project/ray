@@ -60,6 +60,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init(num_cpus=2, ignore_reinit_error=True)
