@@ -224,7 +224,10 @@ class ActorReuseMultiTest(unittest.TestCase):
     def testMultiTrialReuse(self):
         register_trainable("foo2", create_resettable_class())
 
-        # Log to default files
+        # We sleep here for one second so that the third actor
+        # does not finish training before the fourth can be scheduled.
+        # This helps ensure that both remote runners are re-used and
+        # not just one.
         [trial1, trial2, trial3, trial4] = tune.run(
             "foo2",
             config={
