@@ -65,13 +65,32 @@ class SampleBatch(dict):
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
-        """Constructs a sample batch (same params as dict constructor)."""
+        """Constructs a sample batch (same params as dict constructor).
+
+        Note: All *args and those **kwargs not listed below will be passed
+        as-is to the parent dict constructor.
+
+        Keyword Args:
+            _time_major (Optinal[bool]): Whether data in this sample batch
+                is time-major. This is False by default and only relevant
+                if the data contains sequences.
+            _max_seq_len (Optional[bool]): The max sequence chunk length
+                if the data contains sequences.
+            _zero_padded (Optional[bool]): Whether the data in this batch
+                contains sequences AND these sequences are right-zero-padded
+                according to the `_max_seq_len` setting.
+            _is_training (Optional[bool]): Whether this batch is used for
+                training. If False, batch may be used for e.g. action
+                computations (inference).
+        """
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
-
+        # Maximum seq len value.
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        # Is alredy right-zero-padded?
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        # Whether this batch is used for training (vs inference).
         self.is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible
@@ -181,7 +200,7 @@ class SampleBatch(dict):
                 if s.get(SampleBatch.SEQ_LENS) is not None:
                     concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
 
-        # If we don't have any samples (no or only empty SampleBatches),
+        # If we don't have any samples (0 or only empty SampleBatches),
         # return an empty SampleBatch here.
         if len(concat_samples) == 0:
             return SampleBatch()
@@ -483,10 +502,10 @@ class SampleBatch(dict):
             )
         else:
             return SampleBatch(
-                {k: v[start:end]
-                 for k, v in self.items()},
+                tree.map_structure(lambda value: value[start:end], self),
                 _is_training=self.is_training,
-                _time_major=self.time_major)
+                _time_major=self.time_major,
+            )
 
     @PublicAPI
     def timeslices(self,
@@ -966,8 +985,10 @@ class SampleBatch(dict):
                         input_dict[view_col] = data[None]
                 # Single index.
                 else:
-                    data = self[data_col][-1]
-                    input_dict[view_col] = np.array([data])
+                    input_dict[view_col] = tree.map_structure(
+                        lambda v: v[-1:],  # keep as array (w/ 1 element)
+                        self[data_col],
+                    )
             else:
                 # Index range.
                 if isinstance(index, tuple):

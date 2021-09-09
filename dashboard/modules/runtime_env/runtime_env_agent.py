@@ -15,8 +15,8 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
-from ray._private.runtime_env.conda import setup_conda_or_pip
-from ray._private.runtime_env.working_dir import setup_working_dir
+from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
+        self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
@@ -77,9 +80,12 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
-                context = RuntimeEnvContext(self._runtime_env_dir)
-                setup_conda_or_pip(runtime_env, context, logger=per_job_logger)
-                setup_working_dir(runtime_env, context, logger=per_job_logger)
+                context = RuntimeEnvContext(
+                    env_vars=runtime_env.get("env_vars"))
+                self._conda_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
                 return context
 
             loop = asyncio.get_event_loop()
