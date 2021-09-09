@@ -1,7 +1,6 @@
 from collections import defaultdict
 import json
 import logging
-import os
 
 import ray
 

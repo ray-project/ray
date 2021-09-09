@@ -584,7 +584,7 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        if client_mode_should_convert():
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(
                 self,
                 args,
