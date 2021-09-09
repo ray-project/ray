@@ -150,7 +150,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {override_env_vars, SerializedRuntimeEnv(), required_resource};
+  WorkerCacheKey env = {JobId(), override_env_vars, SerializedRuntimeEnv(),
+                        required_resource};
   return env.IntHash();
 }
 
@@ -402,10 +403,12 @@ std::string TaskSpecification::CallSiteString() const {
 }
 
 WorkerCacheKey::WorkerCacheKey(
+    const JobID &job_id,
     const std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string serialized_runtime_env,
     const std::unordered_map<std::string, double> required_resources)
-    : override_environment_variables(override_environment_variables),
+    : job_id_(job_id),
+      override_environment_variables(override_environment_variables),
       serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 
@@ -423,11 +426,8 @@ bool WorkerCacheKey::EnvIsEmpty() const {
 std::size_t WorkerCacheKey::Hash() const {
   // Cache the hash value.
   if (!hash_) {
-    if (EnvIsEmpty()) {
-      // It's useful to have the same predetermined value for both unspecified and empty
-      // runtime envs.
-      hash_ = 0;
-    } else {
+    hash_ = job_id_.Hash();
+    if (!EnvIsEmpty()) {
       std::vector<std::pair<std::string, std::string>> env_vars(
           override_environment_variables.begin(), override_environment_variables.end());
       // The environment doesn't depend the order of the variables, so the hash should not

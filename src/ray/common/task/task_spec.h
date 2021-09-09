@@ -279,6 +279,7 @@ class WorkerCacheKey {
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
   WorkerCacheKey(
+      const JobID &job_id,
       const std::unordered_map<std::string, std::string> override_environment_variables,
       const std::string serialized_runtime_env,
       const std::unordered_map<std::string, double> required_resources);
@@ -304,6 +305,7 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
+  const JobID job_id_;
   /// The environment variable overrides for this worker.
   const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The JSON-serialized runtime env for this worker.

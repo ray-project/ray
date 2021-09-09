@@ -1355,6 +1355,35 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   worker_pool_->PushWorker(runtime_env1_worker);
   ASSERT_TRUE(flag2);
   ASSERT_TRUE(check_str_in_command(worker2, "mock_runtime_env_1"));
+
+  // Submit task with same runtime env but different job ID.
+  auto job_id2 = JobID::FromInt(123);
+  RegisterDriver(Language::PYTHON, job_id2);
+  const auto task_spec4 = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, job_id2, ActorID::Nil(),
+      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+  bool flag4 = false;
+  std::shared_ptr<WorkerInterface> worker4 = nullptr;
+  worker_pool_->PopWorker(task_spec4, callback(&flag4, &worker4));
+
+  // Workers can't be reused across jobs, so this requires starting another
+  // worker.
+  worker_pool_->PushWorker(runtime_env1_worker);
+  ASSERT_FALSE(flag4);
+  ASSERT_EQ(worker4, nullptr);
+
+  // Worker can be reused for its assigned job.
+  flag2 = false;
+  worker2 = nullptr;
+  worker_pool_->PopWorker(task_spec2, callback(&flag2, &worker2));
+  ASSERT_TRUE(flag2);
+  ASSERT_TRUE(check_str_in_command(worker2, "mock_runtime_env_1"));
+
+  auto runtime_env1_worker_job2 =
+      worker_pool_->StartWorker(worker_pool_->start_worker_log_[3]);
+  worker_pool_->PushWorker(runtime_env1_worker_job2);
+  ASSERT_TRUE(flag4);
+  ASSERT_EQ(worker4, runtime_env1_worker_job2);
 }
 
 TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
