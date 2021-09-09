@@ -286,6 +286,7 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
 
 TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
   EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
                ray::internal::RayException);
   ray::RemovePlacementGroup(first_placement_group.GetID());
