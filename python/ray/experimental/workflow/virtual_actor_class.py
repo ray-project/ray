@@ -137,9 +137,10 @@ def __getstate(instance):
         try:
             state = json.dumps(instance.__dict__)
         except TypeError as e:
-            raise ValueError("The virtual actor contains field that can't be "
+            raise ValueError("The virtual actor contains fields that can't be "
                              "converted to JSON. Please define `__getstate__` "
-                             "and `__setstate__` explicitly.") from e
+                             "and `__setstate__` explicitly:"
+                             f" {instance.__dict__}") from e
     return state
 
 
