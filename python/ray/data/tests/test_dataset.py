@@ -1072,7 +1072,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     pq.write_to_dataset(
         table,
         root_path=str(tmp_path),
-        partition_cols=["one"],
+        partition_cols=["two"],
         use_legacy_dataset=False)
 
     def _block_udf(block: pa.Table):
@@ -2053,6 +2053,11 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+    if fs is None:
+        os.remove(file_path)
+    else:
+        fs.delete_file(_unwrap_protocol(file_path))
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
