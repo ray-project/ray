@@ -1801,7 +1801,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       if (!status.ok()) {
         return status;
       }
-      return direct_task_submitter_->SubmitTask(task_spec);
+      io_service_.post(
+          [this, task_spec = std::move(task_spec)]() {
+            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+          },
+          "CoreWorker.SubmitTask");
     }
   }
   return Status::OK();
