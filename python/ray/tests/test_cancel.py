@@ -7,14 +7,14 @@ import pytest
 import ray
 from ray.exceptions import TaskCancelledError, RayTaskError, \
                            GetTimeoutError, WorkerCrashedError, \
-                           ObjectUnreachableError
+                           ObjectLostError
 from ray._private.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
         return (RayTaskError, TaskCancelledError, WorkerCrashedError,
-                ObjectUnreachableError)
+                ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
 

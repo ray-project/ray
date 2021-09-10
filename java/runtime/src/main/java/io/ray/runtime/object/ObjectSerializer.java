@@ -83,6 +83,12 @@ public class ObjectSerializer {
         return Serializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
+      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
+          || Bytes.indexOf(meta, OWNER_DIED_META) == 0
+          || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {
+        // TODO: Differentiate object errors.
+        return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
         ActorId actorId = IdUtil.getActorIdFromObjectId(objectId);
         if (data != null && data.length > 0) {
@@ -92,12 +98,6 @@ public class ObjectSerializer {
           }
         }
         return new RayActorException(actorId);
-      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
-          || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
-          || Bytes.indexOf(meta, OWNER_DIED_META) == 0
-          || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {
-        // TODO: Differentiate object errors.
-        return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {
         return deserializeRayException(data, objectId);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0) {

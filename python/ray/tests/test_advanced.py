@@ -16,6 +16,7 @@ import ray.cluster_utils
 import ray._private.profiling as profiling
 from ray._private.test_utils import (client_test_enabled,
                                      RayTestTimeoutException)
+from ray.exceptions import ReferenceCountingAssertionError
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -44,7 +45,7 @@ def test_internal_free(shutdown_only):
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
     ray.internal.free(obj_ref)
-    with pytest.raises(Exception):
+    with pytest.raises(ReferenceCountingAssertionError):
         ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
@@ -52,7 +53,7 @@ def test_internal_free(shutdown_only):
     ray.get(big_id)
     ray.internal.free(big_id)
     time.sleep(1)  # wait for delete RPC to propagate
-    with pytest.raises(Exception):
+    with pytest.raises(ReferenceCountingAssertionError):
         ray.get(big_id)
 
 
