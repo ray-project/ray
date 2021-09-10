@@ -506,7 +506,6 @@ class WorkflowStorage:
             is_json: If true, json encode the data, otherwise pickle it.
             update: If false, do not upload data when the path already exists.
         """
-        # logger.info(f"PUTTING {data}")
         key = self._storage.make_key(*paths)
         if not update:
             prefix = self._storage.make_key(*paths[:-1])
