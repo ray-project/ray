@@ -9,7 +9,7 @@ public class Query {
 
   /**
    * If this query is cross-language, the args is serialized {@link
-   * io.ray.serve.generated.RequestWrapper}. Otherwise, it is {@link java.lang.Object[]}
+   * io.ray.serve.generated.RequestWrapper}. Otherwise, it is Object[].
    */
   private Object args;
 

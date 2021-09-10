@@ -179,7 +179,7 @@ public class RayServeReplica {
 
     // From Java Proxy or Handle.
     if (requestItem.getArgs() instanceof Object[]) {
-      return (Object[])requestItem.getArgs();
+      return (Object[]) requestItem.getArgs();
     }
 
     // From other language Proxy or Handle.

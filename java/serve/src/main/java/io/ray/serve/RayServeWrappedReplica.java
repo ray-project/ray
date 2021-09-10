@@ -75,19 +75,13 @@ public class RayServeWrappedReplica {
   /**
    * The entry method to process the request.
    *
-   * @param requestMetadataBytes the serialized request metadata.
-   * @param requestArgs the serialized requestArgs. The input parameters of the specified method of
-   *     the object defined by backendDef.
+   * @param requestMetadata the real type is byte[] if this invocation is cross-language. Otherwise,
+   *     the real type is {@link io.ray.serve.generated.RequestMetadata}.
+   * @param requestArgs The input parameters of the specified method of the object defined by
+   *     backendDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
+   *     this invocation is cross-language. Otherwise, the real type is Object[].
    * @return the result of request being processed
    * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
-   */
-  /**
-   * @param requestMetadata the real type is {@link byte[]} if this invocation is cross-language.
-   *     Otherwise, the real type is {@link io.ray.serve.generated.RequestMetadata}.
-   * @param requestArgs the real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
-   *     this invocation is cross-language. Otherwise, the real type is {@link java.lang.Object[]}.
-   * @return
-   * @throws InvalidProtocolBufferException
    */
   public Object handleRequest(Object requestMetadata, Object requestArgs)
       throws InvalidProtocolBufferException {
