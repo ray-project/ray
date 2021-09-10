@@ -15,4 +15,4 @@ post_build_cmds:
   - rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - /home/ray/anaconda3/bin/pip install numpy==1.19.5
   - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./
-  - '{{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}'
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

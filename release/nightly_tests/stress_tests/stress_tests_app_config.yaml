@@ -13,4 +13,4 @@ post_build_cmds:
   - pip install terminado
   - pip install boto3 cython==0.29.0
   - echo {{env["DATESTAMP"]}}
-  - '{{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}'
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

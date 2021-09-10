@@ -13,4 +13,4 @@ post_build_cmds:
   - pip3 install numpy==1.19 || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[all] gym[atari]
-  - '{{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}'
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
