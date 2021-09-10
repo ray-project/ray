@@ -133,6 +133,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
                 execute_workflow)
             result = execute_workflow(r, last_step_of_workflow=True)
             return result.persisted_output, result.volatile_output
+    assert isinstance(r, StepID)
     return wf_store.load_step_output(r), None
 
 

@@ -11,7 +11,7 @@ Get started with a single three-step workflow:
     @workflow.step
     def read_data(num: int):
         return [i for i in range(num)]
-        
+
     @workflow.step
     def preprocessing(data: List[float]) -> List[float]:
         return [d**2 for d in data]
@@ -54,7 +54,7 @@ As seen in the example above, workflow steps can be composed by passing ``Workfl
     @workflow.step
     def add(left: int, right: int) -> int:
         return left + right
-        
+
     @workflow.step
     def get_val() -> int:
         return 10
@@ -66,8 +66,6 @@ Here we can see though ``get_val1.step()`` returns a ``Workflow[int]``, when pas
 
 Error handling
 --------------
-
-Normally, any step that raises an exception will cause the workflow to abort and enter FAILED state.
 
 Workflows provides two ways to handle application-level exceptions: (1) automatic retry, and (2) the ability to catch and handle exceptions.
 
@@ -82,7 +80,7 @@ The following error handling flags can be either set in the step decorator or vi
         return "OK"
 
     # Tries up to three times before giving up.
-    r1 = faulty_function.options(max_retries=3).step()
+    r1 = faulty_function.options(max_retries=5).step()
     r1.run()
 
     @workflow.step
@@ -98,14 +96,14 @@ The following error handling flags can be either set in the step decorator or vi
     r2 = faulty_function.options(catch_exceptions=True).step()
     handle_errors.step(r2).run()
 
-- If `max_retries` is given, the step will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray.
+- If `max_retries` is given, the step will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, `max_retries` is set to be 3.
 - If `catch_exceptions` is True, the return value of the function will be converted to `Tuple[Optional[T], Optional[Exception]]`. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
 
 The parameters can also be passed to the decorator
 
 .. code-block:: python
 
-    @workflow.step(max_retries=3, catch_exceptions=True)
+    @workflow.step(max_retries=5, catch_exceptions=True)
     def faulty_function():
         pass
 
@@ -142,7 +140,7 @@ Note that steps that have side-effects still need to be idempotent. This is beca
        return uuid.uuid4().hex
 
     @workflow.step
-    def book_flight_idempotent(request_id: int) -> FlightTicket:
+    def book_flight_idempotent(request_id: str) -> FlightTicket:
        if service.has_ticket(request_id):
            # Retrieve the previously created ticket.
            return service.get_ticket(request_id)
@@ -189,7 +187,7 @@ The key behavior to note is that when a step returns a ``Workflow`` output inste
         hotels: List[Hotel]) -> Receipt: ...
 
     @workflow.step
-    def book_trip(origin: str, dest: str, dates) -> 
+    def book_trip(origin: str, dest: str, dates) ->
             "Workflow[Receipt]":
         # Note that the workflow engine will not begin executing
         # child workflows until the parent step returns.
@@ -233,7 +231,7 @@ Unlike Ray tasks, when you pass a list of ``Workflow`` outputs to a step, the va
     @workflow.step
     def add(values: List[int]) -> int:
         return sum(values)
-        
+
     @workflow.step
     def get_val() -> int:
         return 10

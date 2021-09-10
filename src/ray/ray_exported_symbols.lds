@@ -23,6 +23,9 @@
 *ray*ObjectID*
 *ray*ObjectReference*
 # Others
+*ray*metrics*
+*opencensus*
+*ray*stats*
 *ray*CoreWorker*
 *PyInit*
 *init_raylet*
