@@ -38,16 +38,28 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
+  ActorID GetActor(bool global, const std::string &actor_name) const;
+
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::internal::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+
  private:
+  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
+  JobID GetCurrentJobID() const;
+
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 
   absl::Mutex actor_contexts_mutex_;
+
+  std::unordered_map<std::string, ActorID> named_actors_ GUARDED_BY(named_actors_mutex_);
+  mutable absl::Mutex named_actors_mutex_;
 
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 
-  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
+  std::unordered_map<std::string, ray::PlacementGroup> placement_groups_;
 };
 }  // namespace internal
 }  // namespace ray

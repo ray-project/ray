@@ -289,6 +289,7 @@ def test_http_root_url(ray_shutdown):
     f.deploy()
     assert f.url == root_url + "/f"
     serve.shutdown()
+    ray.shutdown()
     del os.environ[SERVE_ROOT_URL_ENV_KEY]
 
     port = new_port()
@@ -297,6 +298,15 @@ def test_http_root_url(ray_shutdown):
     assert f.url != root_url + "/f"
     assert f.url == f"http://127.0.0.1:{port}/f"
     serve.shutdown()
+    ray.shutdown()
+
+    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -435,6 +445,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
         client._controller_name, namespace=controller_namespace)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 

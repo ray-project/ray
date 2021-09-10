@@ -247,10 +247,6 @@ REDIS_DEFAULT_PASSWORD = "5241590000000000"
 # The default module path to a Python function that sets up the worker env.
 DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
 
-# The default module path to a Python function that sets up runtime envs.
-DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
-    "ray.workers.setup_runtime_env.setup_runtime_env"
-
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -272,3 +268,11 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "
+
+# The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
+# NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
+GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024

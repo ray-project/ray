@@ -275,7 +275,7 @@ class Dataset(Generic[T]):
         better performance (you can implement filter by dropping records).
 
         Examples:
-            >>> ds.flat_map(lambda x: x % 2 == 0)
+            >>> ds.filter(lambda x: x % 2 == 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1023,14 +1023,24 @@ class Dataset(Generic[T]):
                     f"is invalid. Supported batch type: {BatchType}")
 
         batcher = Batcher(batch_size=batch_size)
-        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
-            block_window = list(block_window)
-            ray.wait(block_window, num_returns=1, fetch_local=True)
-            block = ray.get(block_window[0])
+
+        def batch_block(block: ObjectRef[Block]):
+            block = ray.get(block)
             batcher.add(block)
             while batcher.has_batch():
                 yield format_batch(batcher.next_batch(), batch_format)
 
+        block_window = []  # Handle empty sliding window gracefully.
+        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
+            block_window = list(block_window)
+            ray.wait(block_window, num_returns=1, fetch_local=True)
+            yield from batch_block(block_window[0])
+
+        # Consume remainder of final block window.
+        for block in block_window[1:]:
+            yield from batch_block(block)
+
+        # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 
@@ -1183,6 +1193,8 @@ class Dataset(Generic[T]):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
+                # TODO(Clark): Support batches containing our extension array
+                # TensorArray.
                 yield batch.values, target_col.values
 
         return tf.data.Dataset.from_generator(
@@ -1236,14 +1248,29 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
+        This works by first converting this dataset into a distributed set of
+        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
+        Then the individual dataframes are used to create the modin DataFrame
+        using
+        ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
+        from modin.distributed.dataframe.pandas.partitions import (
+            from_partitions)
+        pd_objs = self.to_pandas()
+        return from_partitions(pd_objs, axis=0)
+
+    def to_spark(self,
+                 spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -1251,7 +1278,14 @@ class Dataset(Generic[T]):
         Returns:
             A Spark dataframe created from this dataset.
         """
-        raise NotImplementedError  # P2
+        import raydp
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_blocks()
+        ]
+        return raydp.spark.ray_dataset_to_spark_dataframe(
+            spark, self.schema(), self.get_blocks(), locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

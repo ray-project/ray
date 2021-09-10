@@ -525,6 +525,11 @@ def format_resource_demand_summary(
         (pg_filtered_bundle,
          using_placement_group) = filter_placement_group_from_bundle(bundle)
 
+        # bundle is a special keyword for placement group ready tasks
+        # do not report the demand for this.
+        if "bundle" in pg_filtered_bundle.keys():
+            continue
+
         bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
         if using_placement_group:
             pg_bundle_demand[tuple(sorted(

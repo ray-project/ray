@@ -15,6 +15,7 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.runtime.ConcurrencyGroupImpl;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -63,9 +64,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final TaskExecutor taskExecutor;
   private final LocalModeObjectStore objectStore;
 
-  /// The thread pool to execute actor tasks.
-  private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
-
   private final Map<ActorId, Integer> actorMaxConcurrency = new ConcurrentHashMap<>();
 
   /// The thread pool to execute normal tasks.
@@ -79,6 +77,98 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private final Map<PlacementGroupId, PlacementGroup> placementGroups = new ConcurrentHashMap<>();
 
+  private static final String DEFAULT_CONCURRENCY_GROUP_NAME = "DEFAULT_CONCURRENCY_GROUP_NAME";
+
+  private final ActorConcurrencyGroupManager actorConcurrencyGroupManager;
+
+  private static final class ActorExecutorService {
+
+    private Map<String, ExecutorService> services = new ConcurrentHashMap<>();
+
+    /// A map that index the actor functions to its concurrency group.
+    private Map<JavaFunctionDescriptor, String> indexFunctionToConcurrencyGroupName =
+        new ConcurrentHashMap<>();
+
+    public ActorExecutorService(TaskSpec taskSpec) {
+      ActorCreationTaskSpec actorCreationTaskSpec = taskSpec.getActorCreationTaskSpec();
+      Preconditions.checkNotNull(actorCreationTaskSpec);
+      final List<Common.ConcurrencyGroup> concurrencyGroups =
+          actorCreationTaskSpec.getConcurrencyGroupsList();
+      concurrencyGroups.forEach(
+          (concurrencyGroup) -> {
+            ExecutorService executorService =
+                Executors.newFixedThreadPool(concurrencyGroup.getMaxConcurrency());
+            Preconditions.checkState(!services.containsKey(concurrencyGroup.getName()));
+            services.put(concurrencyGroup.getName(), executorService);
+            concurrencyGroup
+                .getFunctionDescriptorsList()
+                .forEach(
+                    (fd) -> {
+                      indexFunctionToConcurrencyGroupName.put(
+                          protoFunctionDescriptorToJava(fd), concurrencyGroup.getName());
+                    });
+          });
+
+      /// Put the default concurrency group.
+      services.put(
+          /*defaultConcurrencyGroupName=*/ DEFAULT_CONCURRENCY_GROUP_NAME,
+          Executors.newFixedThreadPool(actorCreationTaskSpec.getMaxConcurrency()));
+    }
+
+    public synchronized ExecutorService getExecutorService(TaskSpec taskSpec) {
+      String concurrencyGroupName = taskSpec.getConcurrencyGroupName();
+      Preconditions.checkNotNull(concurrencyGroupName);
+      /// First look up it by the given concurrency group name.
+      if (!concurrencyGroupName.isEmpty()) {
+        Preconditions.checkState(services.containsKey(concurrencyGroupName));
+        return services.get(concurrencyGroupName);
+      }
+      /// The concurrency group is not specified, then we look up it by the function name.
+      JavaFunctionDescriptor javaFunctionDescriptor =
+          protoFunctionDescriptorToJava(taskSpec.getFunctionDescriptor());
+      if (indexFunctionToConcurrencyGroupName.containsKey(javaFunctionDescriptor)) {
+        concurrencyGroupName = indexFunctionToConcurrencyGroupName.get(javaFunctionDescriptor);
+        Preconditions.checkState(services.containsKey(concurrencyGroupName));
+        return services.get(concurrencyGroupName);
+      } else {
+        /// This function is not specified any concurrency group both in creating actor and
+        // submitting task.
+        return services.get(DEFAULT_CONCURRENCY_GROUP_NAME);
+      }
+    }
+
+    public synchronized void shutdown() {
+      services.forEach((key, service) -> service.shutdown());
+      services.clear();
+    }
+  }
+
+  private static final class ActorConcurrencyGroupManager {
+
+    private Map<ActorId, ActorExecutorService> actorExecutorServices = new ConcurrentHashMap<>();
+
+    public synchronized void registerActor(ActorId actorId, TaskSpec taskSpec) {
+      Preconditions.checkState(!actorExecutorServices.containsKey(actorId));
+      ActorExecutorService actorExecutorService = new ActorExecutorService(taskSpec);
+      actorExecutorServices.put(actorId, actorExecutorService);
+    }
+
+    public synchronized ExecutorService getExecutorServiceForConcurrencyGroup(TaskSpec taskSpec) {
+      final ActorId actorId = getActorId(taskSpec);
+      Preconditions.checkState(actorExecutorServices.containsKey(actorId));
+      ActorExecutorService actorExecutorService = actorExecutorServices.get(actorId);
+      return actorExecutorService.getExecutorService(taskSpec);
+    }
+
+    public synchronized void shutdown() {
+      actorExecutorServices.forEach(
+          (actorId, actorExecutorService) -> {
+            actorExecutorService.shutdown();
+          });
+      actorExecutorServices.clear();
+    }
+  }
+
   public LocalModeTaskSubmitter(
       RayRuntimeInternal runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
     this.runtime = runtime;
@@ -86,8 +176,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     this.objectStore = objectStore;
     // The thread pool that executes normal tasks in parallel.
     normalTaskExecutorService = Executors.newCachedThreadPool();
-    // The thread pool that executes actor tasks in parallel.
-    actorTaskExecutorServices = new HashMap<>();
+    actorConcurrencyGroupManager = new ActorConcurrencyGroupManager();
   }
 
   public void onObjectPut(ObjectId id) {
@@ -204,14 +293,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     }
 
     ActorId actorId = ActorId.fromRandom();
+    ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
+        ActorCreationTaskSpec.newBuilder()
+            .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
+            .setMaxConcurrency(options.maxConcurrency);
+    appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
             .setNumReturns(1)
-            .setActorCreationTaskSpec(
-                ActorCreationTaskSpec.newBuilder()
-                    .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-                    .setMaxConcurrency(options.maxConcurrency)
-                    .build())
+            .setActorCreationTaskSpec(actorCreationTaskSpecBuilder.build())
             .build();
     submitTaskSpec(taskSpec);
     final LocalModeActorHandle actorHandle =
@@ -253,6 +343,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                                     returnIds.get(returnIds.size() - 1))
                                 .getBytes()))
                     .build())
+            .setConcurrencyGroupName(options.concurrencyGroupName)
             .build();
     submitTaskSpec(taskSpec);
     if (numReturns == 0) {
@@ -301,12 +392,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public void shutdown() {
-    // Shutdown actor task executor service.
-    synchronized (actorTaskExecutorServices) {
-      for (Map.Entry<ActorId, ExecutorService> item : actorTaskExecutorServices.entrySet()) {
-        item.getValue().shutdown();
-      }
-    }
+    // Shutdown actor concurrency group manager.
+    actorConcurrencyGroupManager.shutdown();
     // Shutdown normal task executor service.
     normalTaskExecutorService.shutdown();
   }
@@ -357,15 +444,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         // If all dependencies are ready, execute this task.
         ExecutorService executorService;
         if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
-          final int maxConcurrency = taskSpec.getActorCreationTaskSpec().getMaxConcurrency();
-          Preconditions.checkState(maxConcurrency >= 1);
-          executorService = Executors.newFixedThreadPool(maxConcurrency);
-          synchronized (actorTaskExecutorServices) {
-            actorTaskExecutorServices.put(getActorId(taskSpec), executorService);
+          synchronized (actorConcurrencyGroupManager) {
+            actorConcurrencyGroupManager.registerActor(getActorId(taskSpec), taskSpec);
           }
+          executorService = normalTaskExecutorService;
         } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
-          synchronized (actorTaskExecutorServices) {
-            executorService = actorTaskExecutorServices.get(getActorId(taskSpec));
+          synchronized (actorConcurrencyGroupManager) {
+            executorService =
+                actorConcurrencyGroupManager.getExecutorServiceForConcurrencyGroup(taskSpec);
           }
         } else {
           // Normal task.
@@ -499,5 +585,55 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     final ActorId actorId = getActorId(taskSpec);
     Preconditions.checkNotNull(actorId);
     return actorMaxConcurrency.containsKey(actorId) && actorMaxConcurrency.get(actorId) > 1;
+  }
+
+  private static void appendConcurrencyGroupsBuilder(
+      ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder, ActorCreationOptions options) {
+    Preconditions.checkNotNull(actorCreationTaskSpecBuilder);
+    if (options == null
+        || options.concurrencyGroups == null
+        || options.concurrencyGroups.isEmpty()) {
+      return;
+    }
+
+    options.concurrencyGroups.forEach(
+        (concurrencyGroup) -> {
+          Common.ConcurrencyGroup.Builder concurrencyGroupBuilder =
+              Common.ConcurrencyGroup.newBuilder();
+          ConcurrencyGroupImpl impl = (ConcurrencyGroupImpl) concurrencyGroup;
+          concurrencyGroupBuilder
+              .setMaxConcurrency(impl.getMaxConcurrency())
+              .setName(impl.getName());
+          appendFunctionDescriptors(concurrencyGroupBuilder, impl.getFunctionDescriptors());
+          actorCreationTaskSpecBuilder.addConcurrencyGroups(concurrencyGroupBuilder);
+        });
+  }
+
+  private static void appendFunctionDescriptors(
+      Common.ConcurrencyGroup.Builder builder, List<FunctionDescriptor> functionDescriptors) {
+    Preconditions.checkNotNull(functionDescriptors);
+    Preconditions.checkState(!functionDescriptors.isEmpty());
+    functionDescriptors.stream()
+        .map(functionDescriptor -> (JavaFunctionDescriptor) functionDescriptor)
+        .map(
+            javaFunctionDescriptor ->
+                Common.FunctionDescriptor.newBuilder()
+                    .setJavaFunctionDescriptor(
+                        Common.JavaFunctionDescriptor.newBuilder()
+                            .setClassName(javaFunctionDescriptor.className)
+                            .setFunctionName(javaFunctionDescriptor.name)
+                            .setSignature(javaFunctionDescriptor.signature)))
+        .forEach(builder::addFunctionDescriptors);
+  }
+
+  private static JavaFunctionDescriptor protoFunctionDescriptorToJava(
+      Common.FunctionDescriptor protoFunctionDescriptor) {
+    Preconditions.checkNotNull(protoFunctionDescriptor);
+    Common.JavaFunctionDescriptor protoJavaFunctionDescriptor =
+        protoFunctionDescriptor.getJavaFunctionDescriptor();
+    return new JavaFunctionDescriptor(
+        protoJavaFunctionDescriptor.getClassName(),
+        protoJavaFunctionDescriptor.getFunctionName(),
+        protoJavaFunctionDescriptor.getSignature());
   }
 }
