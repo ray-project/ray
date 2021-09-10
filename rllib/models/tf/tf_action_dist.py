@@ -60,7 +60,6 @@ class Categorical(TFActionDistribution):
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
-        self.float_mask = tf.cast(self.inputs > tf.float32.min, tf.float32)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -75,9 +74,6 @@ class Categorical(TFActionDistribution):
     def entropy(self) -> TensorType:
         a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keepdims=True)
         ea0 = tf.exp(a0)
-        # Mask away invalid slots by setting them to 0.0 (which will make them
-        # "disappear" in the subsequent sum).
-        ea0 = ea0 * self.float_mask
         z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.math.log(z0) - a0), axis=1)

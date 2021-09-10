@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.torch_ops import atanh, FLOAT_MIN
+from ray.rllib.utils.torch_ops import atanh
 from ray.rllib.utils.typing import TensorType, List, Union, \
     Tuple, ModelConfigDict
 
@@ -71,13 +71,6 @@ class TorchCategorical(TorchDistributionWrapper):
         super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(
             logits=self.inputs)
-        self.float_mask = (self.inputs > FLOAT_MIN).float()
-
-    @override(ActionDistribution)
-    def entropy(self) -> TensorType:
-        p_log_p = self.dist.logits * self.dist.probs
-        p_log_p = p_log_p * self.float_mask
-        return -p_log_p.sum(-1)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
