@@ -19,6 +19,7 @@ from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
 from ray.serve.version import BackendVersion, VersionedReplica
+from ray.util.placement_group import PlacementGroup
 
 
 class ReplicaState(Enum):
@@ -96,45 +97,56 @@ class ActorReplicaWrapper:
 
     @property
     def replica_tag(self) -> str:
-        return str(self._replica_tag)
+        return self._replica_tag
 
     @property
     def backend_tag(self) -> str:
         return self._backend_tag
 
     @property
-    def actor_handle(self) -> ActorHandle:
-        return ray.get_actor(
-            self._actor_name, namespace=self._controller_namespace)
-
-    def _handle_placement_group(self, backend_info):
-        self._actor_resources = backend_info.replica_config.resource_dict
-
-        # Feature flagging because of placement groups doesn't handle
-        # newly added nodes.
-        # https://github.com/ray-project/ray/issues/15801
-        if USE_PLACEMENT_GROUP:
+    def actor_handle(self) -> Optional[ActorHandle]:
+        if not self._actor_handle:
             try:
-                self._placement_group = ray.util.get_placement_group(
-                    self._placement_group_name)
+                self._actor_handle = ray.get_actor(
+                    self._actor_name, namespace=self._controller_namespace)
             except ValueError:
-                self._placement_group = None
+                self._actor_handle = None
 
-            if self._placement_group is None:
-                logger.debug(
-                    "Creating placement group '{}' for deployment '{}'".format(
-                        self._placement_group_name, self.backend_tag) +
-                    f" component=serve deployment={self.backend_tag}")
-                self._placement_group = ray.util.placement_group(
-                    [self._actor_resources],
-                    lifetime="detached" if self._detached else None,
-                    name=self._placement_group_name)
+        return self._actor_handle
+
+    def create_placement_group(self, placement_group_name: str,
+                               actor_resources: dict) -> PlacementGroup:
+        logger.debug("Creating placement group '{}' for deployment '{}'".
+                     format(placement_group_name, self.backend_tag) +
+                     f" component=serve deployment={self.backend_tag}")
+        placement_group = ray.util.placement_group(
+            [actor_resources],
+            lifetime="detached" if self._detached else None,
+            name=placement_group_name)
+
+        return placement_group
+
+    def get_placement_group(self,
+                            placement_group_name) -> Optional[PlacementGroup]:
+        if not self._placement_group:
+            try:
+                placement_group = ray.util.get_placement_group(
+                    placement_group_name)
+            except ValueError:
+                placement_group = None
+
+            return placement_group
+        else:
+            return self._placement_group
 
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
-        self._handle_placement_group(backend_info)
+        self._actor_resources = backend_info.replica_config.resource_dict
+        if USE_PLACEMENT_GROUP:
+            self._placement_group = self.create_placement_group(
+                self._placement_group_name, self._actor_resources)
 
         logger.debug(f"Starting replica {self.replica_tag} for deployment "
                      f"{self.backend_tag} component=serve deployment="
@@ -155,7 +167,7 @@ class ActorReplicaWrapper:
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
-    def update(self, user_config: Any):
+    def update_user_config(self, user_config: Any):
         """
         Update user config of existing actor behind current
         BackendReplica instance.
@@ -165,11 +177,7 @@ class ActorReplicaWrapper:
                      f"{self.backend_tag} replica={self.replica_tag} "
                      f"with user_config {user_config}")
 
-        self._actor_handle = ray.get_actor(
-            self._actor_name, namespace=self._controller_namespace)
-
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            user_config)
+        self._ready_obj_ref = self.actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
         """
@@ -179,10 +187,13 @@ class ActorReplicaWrapper:
         logger.debug(f"Recovering replica {self.replica_tag} for deployment "
                      f"{self.backend_tag} component=serve deployment="
                      f"{self.backend_tag} replica={self.replica_tag}")
-        self._actor_handle = ray.get_actor(
-            self._actor_name, namespace=self._controller_namespace)
 
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote()
+        self._actor_handle = self.actor_handle
+        if USE_PLACEMENT_GROUP:
+            self._placement_group = self.get_placement_group(
+                self._placement_group_name)
+
+        self._ready_obj_ref = self.actor_handle.reconfigure.remote()
 
     def check_ready(
             self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
@@ -272,8 +283,7 @@ class ActorReplicaWrapper:
             return
 
         try:
-            ray.util.remove_placement_group(
-                ray.util.get_placement_group(self._placement_group_name))
+            ray.util.remove_placement_group(self._placement_group)
         except ValueError:
             pass
 
@@ -328,13 +338,12 @@ class BackendReplica(VersionedReplica):
         self._prev_slow_startup_warning_time = time.time()
         self._version = version
 
-    def update(self, user_config: Any):
+    def update_user_config(self, user_config: Any):
         """
         Update user config of existing actor behind current
         BackendReplica instance.
         """
-        self._actor.update(user_config)
-        self._start_time = time.time()
+        self._actor.update_user_config(user_config)
         self._version = BackendVersion(
             self._version.code_version, user_config=user_config)
 
@@ -345,6 +354,8 @@ class BackendReplica(VersionedReplica):
         """
         self._actor.recover()
         self._start_time = time.time()
+        # Replica version is fetched from recovered replica dynamically in
+        # check_started() below
 
     def check_started(self) -> ReplicaStartupStatus:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -630,8 +641,7 @@ class BackendState:
                 replica_actor_name)
             new_backend_replica = BackendReplica(
                 self._controller_name, self._detached,
-                replica_name.replica_tag, replica_name.deployment_tag,
-                self._target_version)
+                replica_name.replica_tag, replica_name.deployment_tag, None)
             new_backend_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
             logger.debug(
@@ -825,7 +835,7 @@ class BackendState:
             elif (replica.version.user_config_hash !=
                   self._target_version.user_config_hash):
                 user_config_changes += 1
-                replica.update(self._target_version.user_config)
+                replica.update_user_config(self._target_version.user_config)
                 self._replicas.add(ReplicaState.UPDATING, replica)
                 logger.debug(
                     "Adding UPDATING to replica_tag: "

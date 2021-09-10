@@ -175,7 +175,7 @@ class MockReplicaActorWrapper:
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         self.started = True
 
-    def update(self, config: Any):
+    def update_user_config(self, config: Any):
         self.started = True
 
     def recover(self):
