@@ -1108,8 +1108,7 @@ def validate_namespace(namespace: str):
                          "Pass None to not specify a namespace.")
 
 
-def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]] = None, asynchronous: bool = False):
-    grpc_module = aiogrpc if asynchronous else grpc
+def load_certs_from_env():
     if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
             server_cert_chain = f.read()
@@ -1121,6 +1120,13 @@ def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]]
         else:
             ca_cert = None
 
+    return server_cert_chain, private_key, ca_cert
+
+
+def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]] = None, asynchronous: bool = False):
+    grpc_module = aiogrpc if asynchronous else grpc
+    if os.environ["RAY_USE_TLS"] == "1":
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,
             private_key=private_key,
@@ -1135,16 +1141,7 @@ def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]]
 
 def add_port_to_grpc_server(server, address):
     if os.environ["RAY_USE_TLS"] == "1":
-        with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
-            server_cert_chain = f.read()
-        with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
-            private_key = f.read()
-        if "RAY_TLS_CA_CERT" in os.environ:
-            with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
-                ca_cert = f.read()
-        else:
-            ca_cert = None
-
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],
             root_certificates=ca_cert,
@@ -1153,4 +1150,3 @@ def add_port_to_grpc_server(server, address):
         return server.add_secure_port(address, credentials)
     else:
         return server.add_insecure_port(address)
-

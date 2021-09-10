@@ -31,6 +31,7 @@ from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
 import ray._private.runtime_env.working_dir as working_dir_pkg
+import ray._private.utils
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -102,17 +103,8 @@ class Worker:
 
         # TODO tidy this up
         secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
-        if secure and _credentials is None :
-            with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
-                server_cert_chain = f.read()
-            with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
-                private_key = f.read()
-            if "RAY_TLS_CA_CERT" in os.environ:
-                with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
-                    ca_cert = f.read()
-            else:
-                ca_cert = None
-
+        if secure and _credentials is None:
+            server_cert_chain, private_key, ca_cert = ray._private.utils.load_certs_from_env()
             _credentials = grpc.ssl_channel_credentials(
                 certificate_chain=server_cert_chain,
                 private_key=private_key,
