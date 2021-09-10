@@ -160,13 +160,14 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         # Only a single URI is currently supported.
         assert len(request.uris) == 1
-        if self._working_dir_manager.delete_uri(request.uris[0]):
+        uri = request.uris[0]
+        if self._working_dir_manager.delete_uri(uri):
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
         else:
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="Path not found.")
+                error_message=f"Local file for URI {uri} not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
