@@ -115,15 +115,15 @@ distributed deep learning. At the moment, RaySGD allows you to perform
 training with:
 
 * **PyTorch:** RaySGD initializes your distributed process group, allowing
-  you to run your `DistributedDataParallel` training script. See `PyTorch
+  you to run your ``DistributedDataParallel`` training script. See `PyTorch
   Distributed Overview <https://torchmetrics.readthedocs.io/en/latest/>`_ for
   more information.
-* **TensorFlow:**  RaySGD configures `TF_CONFIG` for you, allowing you to run
-  your `MultiWorkerMirroredStrategy` training script. See `Distributed training
-  with TensorFlow <https://www.tensorflow.org/guide/distributed_training>`_ for
-  more information.
+* **TensorFlow:**  RaySGD configures ``TF_CONFIG`` for you, allowing you to run
+  your ``MultiWorkerMirroredStrategy`` training script. See `Distributed
+  training with TensorFlow <https://www.tensorflow.org/guide/distributed_training>`_
+  for more information.
 * **Horovod:** RaySGD configures the Horovod environment and Rendezvous
-  server for you, allowing you to run your `DistributedOptimizer` training
+  server for you, allowing you to run your ``DistributedOptimizer`` training
   script. See `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
   for more information.
 
@@ -149,8 +149,8 @@ Porting code to RaySGD
 
 .. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <sgd-backwards-compatibility>`.
 
-Configurations
---------------
+Configuring Training
+--------------------
 
 With RaySGD, you can execute a training function (``train_func``) in a
 distributed manner by calling ``trainer.run(train_func)``. To pass arguments
@@ -196,6 +196,9 @@ perform hyperparameter tuning with RaySGD, please refer to the
 
 .. TODO add support for with_parameters
 
+
+.. _sgd-log-dir:
+
 Log Directory Structure
 -----------------------
 
@@ -235,71 +238,56 @@ Reporting intermediate results
 RaySGD provides an ``sgd.report(**kwargs)`` API for reporting intermediate
 results from the training function up to the ``Trainer``.
 
-Using ``Trainer.run``, these results can be processed  through :ref:`Callbacks
+Using ``Trainer.run``, these results can be processed through :ref:`Callbacks
 <sgd-callbacks>` with a ``handle_result`` method defined.
 
 For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
 ``SGDIterator`` which will iterate over the reported results.
 
-The primary use-case for reporting is for metrics (accuracy, loss, etc.)
-
-Example: PyTorch Distributed metrics
-+++++++++++++++++++++++++++++++++
-
-In real applications, you may want to calculate optimization metrics besides
-accuracy and loss: recall, precision, Fbeta, etc.
-
-RaySGD natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
-
-Here is an example:
+The primary use-case for reporting is for metrics (accuracy, loss, etc.).
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import SGDCallback, Trainer
-    from typing import List, Dict
-
-    import torch
-    import torchmetrics
-
-    class PrintingCallback(SGDCallback):
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
-
-    def train_func(config):
-        preds = torch.randn(10, 5).softmax(dim=-1)
-        target = torch.randint(5, (10,))
-        accuracy = torchmetrics.functional.accuracy(preds, target).item()
-        sgd.report(accuracy=accuracy)
-
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    result = trainer.run(
-        train_func,
-        callbacks=[PrintingCallback()]
-    )
-    # [{'accuracy': 0.20000000298023224, '_timestamp': 1630716913, '_time_this_iter_s': 0.0039408206939697266, '_training_iteration': 1},
-    #  {'accuracy': 0.10000000149011612, '_timestamp': 1630716913, '_time_this_iter_s': 0.0030548572540283203, '_training_iteration': 1}]
-    trainer.shutdown()
+    def train_func():
+        ...
+        for i in range(num_epochs):
+            results = model.train(...)
+            sgd.report(results)
+        return model
 
 Autofilled metrics
 ++++++++++++++++++
 
 In addition to user defined metrics, a few fields are automatically populated:
 
-* ``_timestamp``
-* ``_time_this_iter_s``
-* ``_training_iteration``
+.. code-block:: python
+
+    # Unix epoch time in seconds when the data is reported.
+    _timestamp
+    # Time in seconds between iterations.
+    _time_this_iter_s
+    # The iteration ID, where each iteration is defined by one call to sgd.report().
+    # This is a 1-indexed incrementing integer ID.
+    _training_iteration
 
 For debugging purposes, a more extensive set of metrics can be included in
 any run by setting the ``SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS`` environment
 variable to ``1``.
 
-* ``_date``
-* ``_hostname``
-* ``_node_ip``
-* ``_pid``
-* ``_time_total_s``
+
+.. code-block:: python
+
+    # The local date string when the data is reported.
+    _date
+    # The worker hostname (platform.node()).
+    _hostname
+    # The worker IP address.
+    _node_ip
+    # The worker process ID (os.getpid()).
+    _pid
+    # The cumulative training time of all iterations so far.
+    _time_total_s
+
 
 .. _sgd-callbacks:
 
@@ -344,27 +332,25 @@ You can plug all of these into RaySGD with the following interface:
 .. * MlflowCallback
 .. * CSVCallback
 
-
-.. note:: When using RayTune, these callbacks will not be used.
-
 .. _sgd-logging-callbacks:
 
 Logging Callbacks
 +++++++++++++++++
 
 The following ``SGDCallback``\s are available and will write to a file within the
-:ref:`log directory <sgd-logging>` of each training run.
+:ref:`log directory <sgd-log-dir>` of each training run.
 
-1. ``JsonLoggerCallback``
-2. ``TBXLoggerCallback``
+1. :ref:`sgd-api-json-logger-callback`
+2. :ref:`sgd-api-tbx-logger-callback`
 
 Custom Callbacks
 ++++++++++++++++
 
 If the provided callbacks do not cover your desired integrations or use-cases,
 you may always implement a custom callback by subclassing ``SGDCallback``. If
-the callback is general enough, please feel welcome to add it to the ``ray``
-repository.
+the callback is general enough, please feel welcome to `add it <https://docs
+.ray.io/en/master/getting-involved.html>`_ to the ``ray``
+`repository <https://github.com/ray-project/ray>`_.
 
 A simple example for creating a callback that will print out results:
 
@@ -384,22 +370,68 @@ A simple example for creating a callback that will print out results:
     TODO add link to Run Iterator API and describe how to use it specifically
     for custom integrations.
 
+Example: PyTorch Distributed metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+In real applications, you may want to calculate optimization metrics besides
+accuracy and loss: recall, precision, Fbeta, etc.
+
+RaySGD natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
+
+Here is an example:
+
+.. code-block:: python
+
+    from ray.util.sgd import v2 as sgd
+    from ray.util.sgd.v2 import SGDCallback, Trainer
+    from typing import List, Dict
+
+    import torch
+    import torchmetrics
+
+    class PrintingCallback(SGDCallback):
+        def handle_result(self, results: List[Dict], **info):
+            print(results)
+
+    def train_func(config):
+        preds = torch.randn(10, 5).softmax(dim=-1)
+        target = torch.randint(5, (10,))
+        accuracy = torchmetrics.functional.accuracy(preds, target).item()
+        sgd.report(accuracy=accuracy)
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    result = trainer.run(
+        train_func,
+        callbacks=[PrintingCallback()]
+    )
+    # [{'accuracy': 0.20000000298023224, '_timestamp': 1630716913, '_time_this_iter_s': 0.0039408206939697266, '_training_iteration': 1},
+    #  {'accuracy': 0.10000000149011612, '_timestamp': 1630716913, '_time_this_iter_s': 0.0030548572540283203, '_training_iteration': 1}]
+    trainer.shutdown()
+
 .. _sgd-checkpointing:
 
 Checkpointing
 -------------
 
-RaySGD provides a way to save state during the training process. This will be useful for:
+RaySGD provides a way to save state during the training process. This is
+useful for:
 
-1. :ref:`Integration with Ray Tune <tune-sgd>` to use certain Ray Tune schedulers
+1. :ref:`Integration with Ray Tune <tune-sgd>` to use certain Ray Tune
+   schedulers.
 2. Running a long-running training job on a cluster of pre-emptible machines/pods.
-
+3. Persisting trained model state to later use for serving/inference.
+4. In general, storing any model artifacts.
 
 Saving checkpoints
 ~~~~~~~~~~~~~~~~~~
 
 Checkpoints can be saved by calling ``sgd.save_checkpoint(**kwargs)`` in the
-training function. This will propagate the data from only the rank 0 worker.
+training function.
+
+.. note:: This must be called by all workers, but only data from the rank 0
+          worker will be saved by the ``Trainer``.
 
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
@@ -424,7 +456,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
     # {'epoch': 4, 'model': 10}
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
-directory <sgd-logging>` of each run.
+directory <sgd-log-dir>` of each run.
 
 .. code-block:: python
 
@@ -443,6 +475,25 @@ For more configurability of checkpointing behavior (specifically saving
 checkpoints to disk), a ``CheckpointStrategy`` can be passed into
 ``Trainer.run``.
 
+As an example, to disable writing checkpoints to disk:
+
+.. code-block:: python
+    :emphasize-lines: 8,12
+
+    from ray.util.sgd import v2 as sgd
+    from ray.util.sgd.v2 import CheckpointStrategy, Trainer
+
+    def train_func():
+        for epoch in range(3):
+            sgd.save_checkpoint(epoch=epoch)
+
+    checkpoint_strategy = CheckpointStrategy(num_to_keep=0)
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
+    trainer.shutdown()
+
 .. note:: Currently ``CheckpointStrategy`` only enables or disables disk
    persistence altogether. Additional functionality coming soon!
 
@@ -453,9 +504,10 @@ Loading checkpoints
 Checkpoints can be loaded into the training function in 2 steps:
 
 1. From the training function, ``sgd.load_checkpoint()`` can be used to access
-``trainer.latest_checkpoint``.
-2. ``trainer.latest_checkpoint`` can be bootstrapped by passing in the
-``checkpoint`` argument of ``trainer.run()``.
+   the most recently saved checkpoint. This is useful to continue training even
+   if there's a worker failure.
+2. The checkpoint to start training with can be bootstrapped by passing in a
+   ``checkpoint`` to ``trainer.run()``.
 
 .. code-block:: python
 
@@ -480,10 +532,6 @@ Checkpoints can be loaded into the training function in 2 steps:
     print(trainer.latest_checkpoint)
     # {'epoch': 4, 'model': 10}
 
-
-Checkpoints can be loaded to support resuming from a previously saved
-checkpoint and providing fault tolerance.
-
 .. Running on the cloud
 .. --------------------
 
@@ -504,12 +552,13 @@ down and new workers will be added in. The training function will be
 restarted, but progress from the previous execution can be resumed through
 checkpointing.
 
-.. note:: In order to retain progress when recovery, your training function
+.. warning:: In order to retain progress when recovery, your training function
    **must** implement logic for both saving *and* loading :ref:`checkpoints
    <sgd-checkpointing>`.
 
-The number of retries is configurable through the ``max_retries`` argument of
-the ``Trainer`` constructor.
+Each instance of recovery from a worker failure is considered a retry. The
+number of retries is configurable through the ``max_retries`` argument of the
+``Trainer`` constructor.
 
 .. note:: Elastic Training is not yet supported.
 
@@ -562,12 +611,44 @@ Hyperparameter tuning (Ray Tune)
 
 Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifically, you can take an existing training function and follow these steps:
 
-1. Call ``trainer.to_tune_trainable``, which will produce an object ("Trainable") that will be passed to Ray Tune.
-2. Call ``tune.run(trainable)`` instead of ``trainer.run``. This will invoke the hyperparameter tuning, starting multiple "trials" each with the resource amount specified by the Trainer.
+**Step 1: Convert to Tune Trainable**
+
+Instantiate your Trainer and call ``trainer.to_tune_trainable``, which will
+produce an object ("Trainable") that will be passed to Ray Tune.
+
+.. code-block:: python
+
+    from ray.util.sgd import v2 as sgd
+    from ray.util.sgd.v2 import Trainer
+
+    def train_func(config):
+        # In this example, nothing is expected to change over epochs,
+        # and the output metric is equivalent to the input value.
+        for _ in range(config["num_epochs"]):
+            sgd.report(output=config["input"])
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainable = trainer.to_tune_trainable(train_func)
+
+**Step 2: Call tune.run**
+
+Call ``tune.run`` on the created ``Trainable`` to start multiple ``Tune``
+"trials", each running a Ray SGD job and each with a unique hyperparameter
+configuration.
+
+.. code-block:: python
+
+    from ray import tune
+    analysis = tune.run(trainable, config={
+        "num_epochs": 2,
+        "input": tune.grid_search([1, 2, 3])
+    })
+    print(analysis.get_best_config(metric="output", mode="max"))
+    # {'num_epochs': 2, 'input': 3}
 
 A couple caveats:
 
-* Tune will ignore the return value of ``training_func``. To save your best
+* Tune will ignore the return value of ``train_func``. To save your best
   trained model, you will need to use the ``sgd.save_checkpoint`` API.
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
   training function. Functional parity is achieved through ``sgd.report``,
@@ -582,14 +663,14 @@ A couple caveats:
     from ray.util.sgd import v2 as sgd
     from ray.util.sgd.v2 import Trainer
 
-    def training_func(config):
+    def train_func(config):
         # In this example, nothing is expected to change over epochs,
         # and the output metric is equivalent to the input value.
         for _ in range(config["num_epochs"]):
             sgd.report(output=config["input"])
 
     trainer = Trainer(backend="torch", num_workers=2)
-    trainable = trainer.to_tune_trainable(training_func)
+    trainable = trainer.to_tune_trainable(train_func)
     analysis = tune.run(trainable, config={
         "num_epochs": 2,
         "input": tune.grid_search([1, 2, 3])
