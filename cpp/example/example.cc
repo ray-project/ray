@@ -24,17 +24,17 @@ inline std::string DestRoleName(Role role) {
 class KVStore {
  public:
   KVStore(Role role) : role_(role) {
-    if (role_ == Role::MASTER) {
-      // Create slave actor if the role is master.
-      dest_actor_ = ray::Actor(KVStore::Create)
-                        .SetMaxRestarts(1)
-                        .SetName(RoleName(Role::SLAVE))
-                        .Remote(Role::SLAVE);
-    }
-
     was_restared_ = ray::WasCurrentActorRestarted();
     if (was_restared_) {
       HanldeFaileover();
+    } else {
+      if (role_ == Role::MASTER) {
+        // Create slave actor if the role is master.
+        dest_actor_ = ray::Actor(KVStore::Create)
+                          .SetMaxRestarts(1)
+                          .SetName(RoleName(Role::SLAVE))
+                          .Remote(Role::SLAVE);
+      }
     }
     RAYLOG(INFO) << RoleName(role_) << " KVStore created";
   }
