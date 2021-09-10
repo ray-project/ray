@@ -317,7 +317,7 @@ def _expand_directory(path: str,
 
 
 def _is_url(path) -> bool:
-    return isinstance(path, str) and "://" in path
+    return urlparse(path).scheme != ""
 
 
 def _encode_url(path):
