@@ -198,6 +198,27 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         return rest_response(
             success=True, message=f"Killed actor with id {actor_id}")
 
+    @routes.get("/logical/kill_actor_gcs")
+    async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        force_kill = bool(req.query.get("force_kill", False))
+        no_restart = bool(req.query.get("no_restart", False))
+        if not actor_id:
+            return rest_response(
+                success=False, message="actor_id is required.")
+
+        request = gcs_service_pb2.KillActorViaGcsRequest()
+        request.actor_id = bytes.fromhex(actor_id)
+        request.force_kill = force_kill
+        request.no_restart = no_restart
+        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=5)
+
+        message = (f"Force killed actor with id {actor_id}" if force_kill else
+                   f"Requested actor with id {actor_id} to terminate. " +
+                   "It will exit once running tasks complete")
+
+        return rest_response(success=True, message=message)
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = \
