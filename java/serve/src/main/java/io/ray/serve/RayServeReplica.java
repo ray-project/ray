@@ -11,6 +11,7 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
@@ -172,14 +173,22 @@ public class RayServeReplica {
   }
 
   private Object[] parseRequestItem(Query requestItem) {
-    if (requestItem.getArgs() == null
-        || requestItem.getArgs().getBody() == null
-        || requestItem.getArgs().getBody().size() == 0) {
+    if (requestItem.getArgs() == null) {
       return new Object[0];
     }
 
-    return MessagePackSerializer.decode(
-        requestItem.getArgs().getBody().toByteArray(), Object[].class);
+    // From Java Proxy or Handle.
+    if (requestItem.getArgs() instanceof Object[]) {
+      return (Object[])requestItem.getArgs();
+    }
+
+    // From other language Proxy or Handle.
+    RequestWrapper requestWrapper = (RequestWrapper) requestItem.getArgs();
+    if (requestWrapper.getBody() == null || requestWrapper.getBody().isEmpty()) {
+      return new Object[0];
+    }
+
+    return MessagePackSerializer.decode(requestWrapper.getBody().toByteArray(), Object[].class);
   }
 
   private Method getRunnerMethod(String methodName, Object[] args) {

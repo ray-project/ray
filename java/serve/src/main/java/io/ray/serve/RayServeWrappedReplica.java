@@ -7,6 +7,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
@@ -80,13 +81,25 @@ public class RayServeWrappedReplica {
    * @return the result of request being processed
    * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
    */
-  public Object handleRequest(byte[] requestMetadataBytes, byte[] requestArgs)
+  /**
+   * @param requestMetadata the real type is {@link byte[]} if this invocation is cross-language.
+   *     Otherwise, the real type is {@link io.ray.serve.generated.RequestMetadata}.
+   * @param requestArgs the real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
+   *     this invocation is cross-language. Otherwise, the real type is {@link java.lang.Object[]}.
+   * @return
+   * @throws InvalidProtocolBufferException
+   */
+  public Object handleRequest(Object requestMetadata, Object requestArgs)
       throws InvalidProtocolBufferException {
-
+    boolean isCrossLanguage = requestMetadata instanceof byte[];
     return backend.handleRequest(
         new Query(
-            ServeProtoUtil.parseRequestMetadata(requestMetadataBytes),
-            ServeProtoUtil.parseHttpRequestWrapper(requestArgs)));
+            isCrossLanguage
+                ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
+                : (RequestMetadata) requestMetadata,
+            isCrossLanguage
+                ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs)
+                : requestArgs));
   }
 
   /** Check whether this replica is ready or not. */

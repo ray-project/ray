@@ -63,18 +63,8 @@ message RequestMetadata {
   string endpoint = 2;
 
   string call_method = 3;
-
-  string shard_key = 4;
-
-  string http_method = 5;
-
-  map<string, string> http_headers = 6;
-
-  bool http_arg_is_pickled = 7;
 }
 
-message HTTPRequestWrapper {
-  map<string, string> scope = 1;
-
-  bytes body = 2;
+message RequestWrapper {
+  bytes body = 1;
 }

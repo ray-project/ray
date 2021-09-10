@@ -6,8 +6,8 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.HTTPRequestWrapper;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -57,14 +57,14 @@ public class RayServeReplicaTest {
       requestMetadata.setRequestId("RayServeReplicaTest");
       requestMetadata.setCallMethod("getBackendTag");
 
-      HTTPRequestWrapper.Builder httpRequestWrapper = HTTPRequestWrapper.newBuilder();
+      RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
           backendHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  httpRequestWrapper.build().toByteArray())
+                  requestWrapper.build().toByteArray())
               .remote();
 
       Assert.assertEquals((String) resultRef.get(), backendTag);

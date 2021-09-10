@@ -7,8 +7,8 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.HTTPRequestWrapper;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.generated.RequestWrapper;
 import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
@@ -90,19 +90,19 @@ public class ServeProtoUtil {
     return builder.build();
   }
 
-  public static HTTPRequestWrapper parseHttpRequestWrapper(byte[] httpRequestWrapperBytes)
+  public static RequestWrapper parseRequestWrapper(byte[] httpRequestWrapperBytes)
       throws InvalidProtocolBufferException {
 
     // Get a builder from HTTPRequestWrapper(bytes) or create a new one.
-    HTTPRequestWrapper.Builder builder = null;
+    RequestWrapper.Builder builder = null;
     if (httpRequestWrapperBytes == null) {
-      builder = HTTPRequestWrapper.newBuilder();
+      builder = RequestWrapper.newBuilder();
     } else {
-      HTTPRequestWrapper httpRequestWrapper = HTTPRequestWrapper.parseFrom(httpRequestWrapperBytes);
-      if (httpRequestWrapper == null) {
-        builder = HTTPRequestWrapper.newBuilder();
+      RequestWrapper requestWrapper = RequestWrapper.parseFrom(httpRequestWrapperBytes);
+      if (requestWrapper == null) {
+        builder = RequestWrapper.newBuilder();
       } else {
-        builder = HTTPRequestWrapper.newBuilder(httpRequestWrapper);
+        builder = RequestWrapper.newBuilder(requestWrapper);
       }
     }
 

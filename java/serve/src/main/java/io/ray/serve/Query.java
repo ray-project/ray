@@ -1,6 +1,5 @@
 package io.ray.serve;
 
-import io.ray.serve.generated.HTTPRequestWrapper;
 import io.ray.serve.generated.RequestMetadata;
 
 /** Wrap request arguments and meta data. */
@@ -8,9 +7,13 @@ public class Query {
 
   private RequestMetadata metadata;
 
-  private HTTPRequestWrapper args;
+  /**
+   * If this query is cross-language, the args is serialized {@link
+   * io.ray.serve.generated.RequestWrapper}. Otherwise, it is {@link java.lang.Object[]}
+   */
+  private Object args;
 
-  public Query(RequestMetadata requestMetadata, HTTPRequestWrapper args) {
+  public Query(RequestMetadata requestMetadata, Object args) {
     this.metadata = requestMetadata;
     this.args = args;
   }
@@ -19,15 +22,7 @@ public class Query {
     return metadata;
   }
 
-  public void setMetadata(RequestMetadata metadata) {
-    this.metadata = metadata;
-  }
-
-  public HTTPRequestWrapper getArgs() {
+  public Object getArgs() {
     return args;
-  }
-
-  public void setArgs(HTTPRequestWrapper args) {
-    this.args = args;
   }
 }
