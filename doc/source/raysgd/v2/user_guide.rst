@@ -609,7 +609,9 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
 Hyperparameter tuning (Ray Tune)
 --------------------------------
 
-Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifically, you can take an existing training function and follow these steps:
+Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported
+with RaySGD. Specifically, you can take an existing training function and
+follow these steps:
 
 **Step 1: Convert to Tune Trainable**
 
