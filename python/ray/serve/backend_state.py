@@ -136,10 +136,9 @@ class ActorReplicaWrapper:
         """
         self._handle_placement_group(backend_info)
 
-        logger.debug("Starting replica '{}' for deployment '{}'.".format(
-            self.replica_tag, self.backend_tag) +
-                     f" component=serve deployment={self.backend_tag} "
-                     f"replica={self.replica_tag}")
+        logger.debug(f"Starting replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag}")
 
         self._actor_handle = backend_info.actor_def.options(
             name=self._actor_name,
@@ -161,6 +160,11 @@ class ActorReplicaWrapper:
         Update user config of existing actor behind current
         BackendReplica instance.
         """
+        logger.debug(f"Updating replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag} "
+                     f"with user_config {user_config}")
+
         self._actor_handle = ray.get_actor(
             self._actor_name, namespace=self._controller_namespace)
 
@@ -172,6 +176,9 @@ class ActorReplicaWrapper:
         Recover states in BackendReplica instance by fetching running actor
         status
         """
+        logger.debug(f"Recovering replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag}")
         self._actor_handle = ray.get_actor(
             self._actor_name, namespace=self._controller_namespace)
 
@@ -327,6 +334,7 @@ class BackendReplica(VersionedReplica):
         BackendReplica instance.
         """
         self._actor.update(user_config)
+        self._start_time = time.time()
         self._version = BackendVersion(
             self._version.code_version, user_config=user_config)
 
@@ -336,6 +344,7 @@ class BackendReplica(VersionedReplica):
         status
         """
         self._actor.recover()
+        self._start_time = time.time()
 
     def check_started(self) -> ReplicaStartupStatus:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -352,6 +361,8 @@ class BackendReplica(VersionedReplica):
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
                 status = ReplicaStartupStatus.PENDING_SLOW_START
         elif status == ReplicaStartupStatus.SUCCEEDED:
+            # Re-assign BackendVersion if start / update / recover succeeded
+            # by reading re-computed version in RayServeReplica
             if version is not None:
                 self._version = version
 
@@ -559,7 +570,7 @@ class BackendState:
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
         self._target_version: BackendVersion = None
-        self._prev_startup_warning: float = -1
+        self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
 
@@ -623,6 +634,10 @@ class BackendState:
                 self._target_version)
             new_backend_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
+            logger.debug(
+                "Adding RECOVERING to replica_tag: "
+                f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
+            )
 
         self._notify_backend_configs_changed()
         # Blocking grace period to avoid controller thrashing when cover
@@ -955,6 +970,52 @@ class BackendState:
 
         return GoalStatus.PENDING
 
+    def _check_startup_replicas(self,
+                                original_state: ReplicaState,
+                                stop_on_slow=False
+                                ) -> Tuple[List[BackendReplica], bool]:
+        """
+        Common helper function for startup actions tracking and status
+        transition: STARTING, UPDATING and RECOVERING.
+
+        Args:
+            stop_on_slow: If we consider a replica failed upon observing it's
+                slow to reach running state.
+        """
+        slow_replicas = []
+        transitioned = False
+        for replica in self._replicas.pop(states=[original_state]):
+            start_status = replica.check_started()
+            if start_status == ReplicaStartupStatus.SUCCEEDED:
+                # This replica should be now be added to handle's replica
+                # set.
+                self._replicas.add(ReplicaState.RUNNING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.FAILED:
+                # Replica reconfigure (deploy / upgrade) failed
+                if self._replica_constructor_retry_counter >= 0:
+                    # Increase startup failure counter if we're tracking it
+                    self._replica_constructor_retry_counter += 1
+
+                replica.stop(graceful_shutdown_timeout_s=0)
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.PENDING:
+                # Not done yet, remain at same state
+                self._replicas.add(original_state, replica)
+            else:
+                # Slow start, remain at same state but also add to
+                # slow start replicas.
+                if not stop_on_slow:
+                    self._replicas.add(original_state, replica)
+                else:
+                    replica.stop(graceful_shutdown_timeout_s=0)
+                    self._replicas.add(ReplicaState.STOPPING, replica)
+                    transitioned = True
+                slow_replicas.append(replica)
+
+        return slow_replicas, transitioned
+
     def _check_and_update_replicas(self) -> bool:
         """
         Check current state of all BackendReplica being tracked, and compare
@@ -975,70 +1036,16 @@ class BackendState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
-        for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
-            start_status = replica.check_started()
-            if start_status == ReplicaStartupStatus.SUCCEEDED:
-                # This replica should be now be added to handle's replica
-                # set.
-                self._replicas.add(ReplicaState.RUNNING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.FAILED:
-                # Replica reconfigure (deploy / upgrade) failed
-                if self._replica_constructor_retry_counter >= 0:  # noqa: E501 line too long
-                    # Increase startup failure counter if we're tracking it
-                    self._replica_constructor_retry_counter += 1
+        slow_start, start_transitioned = self._check_startup_replicas(
+            ReplicaState.STARTING)
+        slow_update, update_transitioned = self._check_startup_replicas(
+            ReplicaState.UPDATING)
+        slow_recover, recover_transitioned = self._check_startup_replicas(
+            ReplicaState.RECOVERING, stop_on_slow=True)
 
-                replica.stop(graceful_shutdown_timeout_s=0)
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(ReplicaState.STARTING, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                self._replicas.add(ReplicaState.STARTING, replica)
-                slow_start_replicas.append(replica)
-
-        for replica in self._replicas.pop(states=[ReplicaState.UPDATING]):
-            start_status = replica.check_started()
-            if start_status == ReplicaStartupStatus.SUCCEEDED:
-                # This replica should be now be added to handle's replica
-                # set.
-                self._replicas.add(ReplicaState.RUNNING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.FAILED:
-                # Replica reconfigure (deploy / upgrade) failed
-                if self._replica_constructor_retry_counter >= 0:  # noqa: E501 line too long
-                    # Increase startup failure counter if we're tracking it
-                    self._replica_constructor_retry_counter += 1
-
-                replica.stop(graceful_shutdown_timeout_s=0)
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(ReplicaState.UPDATING, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                self._replicas.add(ReplicaState.UPDATING, replica)
-                slow_start_replicas.append(replica)
-
-        for replica in self._replicas.pop(states=[ReplicaState.RECOVERING]):
-            start_status = replica.check_started()
-            if start_status == ReplicaStartupStatus.SUCCEEDED:
-                # This replica should be now be added to handle's replica
-                # set.
-                self._replicas.add(ReplicaState.RUNNING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.FAILED:
-                replica.stop(graceful_shutdown_timeout_s=0)
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                transitioned = True
-            else:
-                # TODO: Need have a mechanism to kill after certain cycles
-                self._replicas.add(ReplicaState.RECOVERING, replica)
+        slow_start_replicas = slow_start + slow_update + slow_recover
+        transitioned = (start_transitioned or update_transitioned
+                        or recover_transitioned)
 
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >

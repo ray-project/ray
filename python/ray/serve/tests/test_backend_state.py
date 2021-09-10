@@ -1927,12 +1927,10 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
         [mocked_replica.replica_tag])
 
     # Step 4: Ensure new backend_state is correct
-    backend_state_manager.update()
     # backend state behind "test" is re-created in recovery flow
     backend_state = backend_state_manager._backend_states[tag]
     check_counts(
         backend_state, total=1, by_state=[(ReplicaState.RECOVERING, 1)])
-
     backend_state._replicas.get()[0]._actor.set_ready()
 
     # Now the replica should be marked running.
