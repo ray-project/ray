@@ -243,7 +243,7 @@ py_test(
 )
 
 py_test(
-    name = "test_serve_recovery",
+    name = "test_controller_recovery",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

@@ -1,8 +1,6 @@
 import math
 import time
-from abc import ABC
 from collections import defaultdict, OrderedDict
-from collections.abc import Iterable
 from enum import Enum
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -20,12 +18,15 @@ from ray.serve.constants import (
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
+from ray.serve.version import BackendVersion, VersionedReplica
 
 
 class ReplicaState(Enum):
-    STARTING_OR_UPDATING = 1
-    RUNNING = 2
-    STOPPING = 3
+    STARTING = 1
+    UPDATING = 2
+    RECOVERING = 3
+    RUNNING = 4
+    STOPPING = 5
 
 
 class ReplicaStartupStatus(Enum):
@@ -106,7 +107,7 @@ class ActorReplicaWrapper:
         return ray.get_actor(
             self._actor_name, namespace=self._controller_namespace)
 
-    def start_or_update(self, backend_info: BackendInfo):
+    def _handle_placement_group(self, backend_info):
         self._actor_resources = backend_info.replica_config.resource_dict
 
         # Feature flagging because of placement groups doesn't handle
@@ -129,34 +130,55 @@ class ActorReplicaWrapper:
                     lifetime="detached" if self._detached else None,
                     name=self._placement_group_name)
 
-        try:
-            self._actor_handle = ray.get_actor(
-                self._actor_name, namespace=self._controller_namespace)
-        except ValueError:
-            self._actor_handle = None
+    def start(self, backend_info: BackendInfo, version: BackendVersion):
+        """
+        Start a new actor for current BackendReplica instance.
+        """
+        self._handle_placement_group(backend_info)
 
-        if self._actor_handle is None:
-            logger.debug("Starting replica '{}' for deployment '{}'.".format(
-                self.replica_tag, self.backend_tag) +
-                         f" component=serve deployment={self.backend_tag} "
-                         f"replica={self.replica_tag}")
+        logger.debug("Starting replica '{}' for deployment '{}'.".format(
+            self.replica_tag, self.backend_tag) +
+                     f" component=serve deployment={self.backend_tag} "
+                     f"replica={self.replica_tag}")
 
-            self._actor_handle = backend_info.actor_def.options(
-                name=self._actor_name,
-                namespace=self._controller_namespace,
-                lifetime="detached" if self._detached else None,
-                placement_group=self._placement_group,
-                placement_group_capture_child_tasks=False,
-                **backend_info.replica_config.ray_actor_options).remote(
-                    self.backend_tag, self.replica_tag,
-                    backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name,
-                    self._detached)
+        self._actor_handle = backend_info.actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **backend_info.replica_config.ray_actor_options).remote(
+                self.backend_tag, self.replica_tag,
+                backend_info.replica_config.init_args,
+                backend_info.backend_config, version, self._controller_name,
+                self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def update(self, user_config: Any):
+        """
+        Update user config of existing actor behind current
+        BackendReplica instance.
+        """
+        self._actor_handle = ray.get_actor(
+            self._actor_name, namespace=self._controller_namespace)
+
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+            user_config)
+
+    def recover(self):
+        """
+        Recover states in BackendReplica instance by fetching running actor
+        status
+        """
+        self._actor_handle = ray.get_actor(
+            self._actor_name, namespace=self._controller_namespace)
+
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote()
+
+    def check_ready(
+            self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -169,19 +191,25 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
+            version (BackendVersion):
+                None:
+                    - replica reconfigure() haven't returned OR
+                    - replica __init__() failed.
+                version:
+                    - replica __init__() and reconfigure() succeeded.
         """
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if len(ready) == 0:
-            return ReplicaStartupStatus.PENDING
+            return ReplicaStartupStatus.PENDING, None
         elif len(ready) > 0:
             try:
-                ray.get(ready)
+                version = ray.get(ready)[0]
             except Exception:
-                return ReplicaStartupStatus.FAILED
+                return ReplicaStartupStatus.FAILED, None
 
-        return ReplicaStartupStatus.SUCCEEDED
+        return ReplicaStartupStatus.SUCCEEDED, version
 
     @property
     def actor_resources(self) -> Dict[str, float]:
@@ -243,62 +271,6 @@ class ActorReplicaWrapper:
             pass
 
 
-class BackendVersion:
-    def __init__(self,
-                 code_version: Optional[str],
-                 user_config: Optional[Any] = None):
-        if code_version is not None and not isinstance(code_version, str):
-            raise TypeError(
-                f"code_version must be str, got {type(code_version)}.")
-        if code_version is None:
-            self.unversioned = True
-            self.code_version = get_random_letters()
-        else:
-            self.unversioned = False
-            self.code_version = code_version
-        self.user_config_hash = self._hash_user_config(user_config)
-        self._hash = hash((self.code_version, self.user_config_hash))
-
-    def _hash_user_config(self, user_config: Any) -> int:
-        """Hash the user config.
-
-        We want users to be able to pass lists and dictionaries for
-        convenience, but these are not hashable types because they're mutable.
-
-        This supports lists and dictionaries by recursively converting them
-        into immutable tuples and then hashing them.
-        """
-        try:
-            return hash(user_config)
-        except TypeError:
-            pass
-
-        if isinstance(user_config, dict):
-            keys = tuple(sorted(user_config))
-            val_hashes = tuple(
-                self._hash_user_config(user_config[k]) for k in keys)
-            return hash((hash(keys), hash(val_hashes)))
-        elif isinstance(user_config, Iterable):
-            return hash(
-                tuple(self._hash_user_config(item) for item in user_config))
-        else:
-            raise TypeError(
-                "user_config must contain only lists, dicts, or hashable "
-                f"types. Got {type(user_config)}.")
-
-    def __hash__(self) -> int:
-        return self._hash
-
-    def __eq__(self, other: Any) -> bool:
-        return self._hash == other._hash
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> BackendVersion:
-        pass
-
-
 class BackendReplica(VersionedReplica):
     """Manages state transitions for backend replicas.
 
@@ -340,17 +312,30 @@ class BackendReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
-    def start_or_update(self, backend_info: BackendInfo,
-                        version: BackendVersion) -> None:
-        """Start or update a replica.
-
-        Should handle the case where it's already STARTING_OR_UPDATING.
+    def start(self, backend_info: BackendInfo, version: BackendVersion):
         """
-
-        self._actor.start_or_update(backend_info)
+        Start a new actor for current BackendReplica instance.
+        """
+        self._actor.start(backend_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
         self._version = version
+
+    def update(self, user_config: Any):
+        """
+        Update user config of existing actor behind current
+        BackendReplica instance.
+        """
+        self._actor.update(user_config)
+        self._version = BackendVersion(
+            self._version.code_version, user_config=user_config)
+
+    def recover(self):
+        """
+        Recover states in BackendReplica instance by fetching running actor
+        status
+        """
+        self._actor.recover()
 
     def check_started(self) -> ReplicaStartupStatus:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -361,11 +346,14 @@ class BackendReplica(VersionedReplica):
             status (ReplicaStartupStatus): Most recent state of replica by
                 querying actor obj ref
         """
-        status = self._actor.check_ready()
+        status, version = self._actor.check_ready()
 
         if status == ReplicaStartupStatus.PENDING:
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
                 status = ReplicaStartupStatus.PENDING_SLOW_START
+        elif status == ReplicaStartupStatus.SUCCEEDED:
+            if version is not None:
+                self._version = version
 
         return status
 
@@ -633,10 +621,8 @@ class BackendState:
                 self._controller_name, self._detached,
                 replica_name.replica_tag, replica_name.deployment_tag,
                 self._target_version)
-            new_backend_replica.start_or_update(self._target_info,
-                                                self._target_version)
-            self._replicas.add(ReplicaState.STARTING_OR_UPDATING,
-                               new_backend_replica)
+            new_backend_replica.recover()
+            self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
 
         self._notify_backend_configs_changed()
         # Blocking grace period to avoid controller thrashing when cover
@@ -765,12 +751,15 @@ class BackendState:
         if self._target_replicas == 0:
             return 0
 
-        # We include SHOULD_START and STARTING_OR_UPDATING replicas here
+        # We include STARTING and UPDATING replicas here
         # because if there are replicas still pending startup, we may as well
         # terminate them and start new version replicas instead.
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_version,
-            states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING])
+            states=[
+                ReplicaState.STARTING, ReplicaState.UPDATING,
+                ReplicaState.RUNNING
+            ])
         old_stopping_replicas = self._replicas.count(
             exclude_version=self._target_version,
             states=[ReplicaState.STOPPING])
@@ -798,7 +787,7 @@ class BackendState:
 
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_version,
-            states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING],
+            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             max_replicas=max_to_stop)
 
         graceful_shutdown_timeout_s = (
@@ -821,9 +810,11 @@ class BackendState:
             elif (replica.version.user_config_hash !=
                   self._target_version.user_config_hash):
                 user_config_changes += 1
-                replica.start_or_update(self._target_info,
-                                        self._target_version)
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
+                replica.update(self._target_version.user_config)
+                self._replicas.add(ReplicaState.UPDATING, replica)
+                logger.debug(
+                    "Adding UPDATING to replica_tag: "
+                    f"{replica.replica_tag}, backend_tag: {self._name}")
             else:
                 assert False, "Update must be code version or user config."
 
@@ -852,10 +843,14 @@ class BackendState:
 
         self._stop_wrong_version_replicas()
 
-        current_replicas = self._replicas.count(
-            states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING])
+        current_replicas = self._replicas.count(states=[
+            ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING
+        ])
+        recovering_replicas = self._replicas.count(
+            states=[ReplicaState.RECOVERING])
 
-        delta_replicas = self._target_replicas - current_replicas
+        delta_replicas = (
+            self._target_replicas - current_replicas - recovering_replicas)
         if delta_replicas == 0:
             return False
 
@@ -875,12 +870,11 @@ class BackendState:
                     self._controller_name, self._detached,
                     replica_name.replica_tag, replica_name.deployment_tag,
                     self._target_version)
-                new_backend_replica.start_or_update(self._target_info,
-                                                    self._target_version)
+                new_backend_replica.start(self._target_info,
+                                          self._target_version)
 
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING,
-                                   new_backend_replica)
-                logger.debug("Adding STARTING_OR_UPDATING to replica_tag: "
+                self._replicas.add(ReplicaState.STARTING, new_backend_replica)
+                logger.debug("Adding STARTING to replica_tag: "
                              f"{replica_name}, backend_tag: {self._name}")
 
         elif delta_replicas < 0:
@@ -890,7 +884,8 @@ class BackendState:
                         f"deployment={self._name}")
             replicas_to_stop = self._replicas.pop(
                 states=[
-                    ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING
+                    ReplicaState.STARTING, ReplicaState.UPDATING,
+                    ReplicaState.RECOVERING, ReplicaState.RUNNING
                 ],
                 max_replicas=to_remove)
 
@@ -945,7 +940,9 @@ class BackendState:
 
         # If we have pending ops, the current goal is *not* ready.
         if (self._replicas.count(states=[
-                ReplicaState.STARTING_OR_UPDATING,
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RECOVERING,
                 ReplicaState.STOPPING,
         ]) == 0):
             # Check for deleting.
@@ -961,7 +958,7 @@ class BackendState:
     def _check_and_update_replicas(self) -> bool:
         """
         Check current state of all BackendReplica being tracked, and compare
-        with state container from previous update() cycyle to see if any state
+        with state container from previous update() cycle to see if any state
         transition happened.
         """
         transitioned = False
@@ -978,8 +975,7 @@ class BackendState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
-        for replica in self._replicas.pop(
-                states=[ReplicaState.STARTING_OR_UPDATING]):
+        for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
             start_status = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
                 # This replica should be now be added to handle's replica
@@ -997,12 +993,52 @@ class BackendState:
                 transitioned = True
             elif start_status == ReplicaStartupStatus.PENDING:
                 # Not done yet, remain at same state
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
+                self._replicas.add(ReplicaState.STARTING, replica)
             else:
                 # Slow start, remain at same state but also add to
                 # slow start replicas.
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
+                self._replicas.add(ReplicaState.STARTING, replica)
                 slow_start_replicas.append(replica)
+
+        for replica in self._replicas.pop(states=[ReplicaState.UPDATING]):
+            start_status = replica.check_started()
+            if start_status == ReplicaStartupStatus.SUCCEEDED:
+                # This replica should be now be added to handle's replica
+                # set.
+                self._replicas.add(ReplicaState.RUNNING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.FAILED:
+                # Replica reconfigure (deploy / upgrade) failed
+                if self._replica_constructor_retry_counter >= 0:  # noqa: E501 line too long
+                    # Increase startup failure counter if we're tracking it
+                    self._replica_constructor_retry_counter += 1
+
+                replica.stop(graceful_shutdown_timeout_s=0)
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.PENDING:
+                # Not done yet, remain at same state
+                self._replicas.add(ReplicaState.UPDATING, replica)
+            else:
+                # Slow start, remain at same state but also add to
+                # slow start replicas.
+                self._replicas.add(ReplicaState.UPDATING, replica)
+                slow_start_replicas.append(replica)
+
+        for replica in self._replicas.pop(states=[ReplicaState.RECOVERING]):
+            start_status = replica.check_started()
+            if start_status == ReplicaStartupStatus.SUCCEEDED:
+                # This replica should be now be added to handle's replica
+                # set.
+                self._replicas.add(ReplicaState.RUNNING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.FAILED:
+                replica.stop(graceful_shutdown_timeout_s=0)
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                transitioned = True
+            else:
+                # TODO: Need have a mechanism to kill after certain cycles
+                self._replicas.add(ReplicaState.RECOVERING, replica)
 
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
