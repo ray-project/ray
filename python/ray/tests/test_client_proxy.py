@@ -11,10 +11,11 @@ import grpc
 
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 import ray.util.client.server.proxier as proxier
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
 
 def start_ray_and_proxy_manager(n_ports=2):
@@ -28,6 +29,19 @@ def start_ray_and_proxy_manager(n_ports=2):
         runtime_env_agent_port=agent_port)
     free_ports = random.choices(range(45000, 45100), k=n_ports)
     pm._free_ports = free_ports.copy()
+
+    def wait_for_runtime_env_agent_startup():
+        try:
+            request = runtime_env_agent_pb2.DeleteURIsRequest()
+            pm._runtime_env_stub.DeleteURIs(request)
+            return True
+        except grpc.RpcError as e:
+            # We will get an UNIMPLEMENTED code when the runtime_env gRPC
+            # server actually starts up.
+            return e.code() == grpc.StatusCode.UNIMPLEMENTED
+
+    wait_for_condition(wait_for_runtime_env_agent_startup)
+
     return pm, free_ports
 
 

@@ -129,8 +129,6 @@ class ProxyManager():
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
-        logger.error(
-            f"CONNECTING TO AGENT AT: localhost:{runtime_env_agent_port}")
         self._runtime_env_channel = grpc.insecure_channel(
             f"localhost:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
