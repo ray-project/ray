@@ -15,7 +15,7 @@ post_build_cmds:
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy || true
   - pip3 install numpy || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - :; {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - '{{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}'
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true
   - rm -rf /data/classification.parquet || true

@@ -11,5 +11,5 @@ post_build_cmds:
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
   - pip install -U git+https://github.com/ray-project/ray_shuffling_data_loader.git@main#egg=ray_shuffling_data_loader
-  - :; {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - '{{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}'
 
