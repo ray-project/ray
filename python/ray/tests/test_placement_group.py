@@ -1906,5 +1906,44 @@ def test_placement_group_status_no_bundle_demand(ray_start_cluster):
     assert demand_output["demand"] == "(no resource demands)"
 
 
+def test_placement_group_status(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class A:
+        def ready(self):
+            pass
+
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(pg.ready())
+
+    # Wait until the usage is updated, which is
+    # when the demand is also updated.
+    def is_usage_updated():
+        demand_output = get_ray_status_output(cluster.address)
+        return demand_output["usage"] != ""
+
+    wait_for_condition(is_usage_updated)
+    demand_output = get_ray_status_output(cluster.address)
+    cpu_usage = demand_output["usage"].split("\n")[0]
+    expected = "0.0/4.0 CPU (0.0 used, 1.0 reserved in placement groups)"
+    assert cpu_usage == expected
+
+    # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
+    actors = [A.remote() for _ in range(2)]
+    actors_in_pg = [A.options(placement_group=pg).remote() for _ in range(1)]
+
+    ray.get([actor.ready.remote() for actor in actors])
+    ray.get([actor.ready.remote() for actor in actors_in_pg])
+    # Wait long enough until the usage is propagated to GCS.
+    time.sleep(5)
+    demand_output = get_ray_status_output(cluster.address)
+    cpu_usage = demand_output["usage"].split("\n")[0]
+    expected = "3.0/4.0 CPU (1.0 used, 1.0 reserved in placement groups)"
+    assert cpu_usage == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

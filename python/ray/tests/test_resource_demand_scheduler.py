@@ -2391,7 +2391,7 @@ def test_info_string():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
         usage={
-            "CPU": (530, 544),
+            "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
@@ -2439,7 +2439,7 @@ Resources
 
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU
+ 530.0/544.0 CPU
  2/2 GPU
  2.00/8.000 GiB memory
  3.14/16.000 GiB object_store_memory
@@ -2532,7 +2532,7 @@ Resources
 
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU (2.0/2.0 used by placement groups)
+ 530/544 CPU (2.0 used, 2.0 reserved in placement groups)
  2/2 GPU
  2.00/8.000 GiB memory
  3.14/16.000 GiB object_store_memory
@@ -2556,7 +2556,7 @@ def test_info_string_no_node_type():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
         usage={
-            "CPU": (530, 544),
+            "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (6 * 2**30, 2**33),
@@ -2609,9 +2609,9 @@ Resources
 -----------------------------------------------------
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU (1.0/2.0 used by placement groups)
+ 529.0/544.0 CPU (1.0 used, 2.0 reserved in placement groups)
  2/2 GPU
- 6.00/8.000 GiB memory (4.00/4.00 GiB used by placement groups)
+ 6.00/8.000 GiB memory (4.00 used, 4.00 GiB reserved in placement groups)
  3.14/16.000 GiB object_store_memory
 
 Demands:

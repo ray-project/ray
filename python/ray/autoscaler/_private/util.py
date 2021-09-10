@@ -466,33 +466,32 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
         if pg_name:
             continue  # Skip resource used by placement groups
 
+        pg_used = 0
+        pg_total = 0
         used_in_pg = resource in placement_group_resource_usage
+        if used_in_pg:
+            pg_used = placement_group_resource_usage[resource]
+            pg_total = placement_group_resource_total[resource]
+            # Used includes pg_total because when pgs are created
+            # it allocates resources.
+            # To get the real resource usage, we should subtract the pg
+            # reserved resources from the usage and add pg used instead.
+            used = used - pg_total + pg_used
+
         if resource in ["memory", "object_store_memory"]:
-            pg_used = 0
-            pg_total = 0
             to_GiB = 1 / 2**30
-            used *= to_GiB
-            total *= to_GiB
-            used_in_pg *= to_GiB
+            line = (f" {(used * to_GiB):.2f}/"
+                    f"{(total * to_GiB):.3f} GiB {resource}")
             if used_in_pg:
-                pg_used = placement_group_resource_usage[resource]
-                pg_used *= to_GiB
-                pg_total = placement_group_resource_total[resource]
-                pg_total *= to_GiB
-            line = f" {used:.2f}/{total:.3f} GiB {resource}"
-            if used_in_pg:
-                line = line + f" ({pg_used:.2f}/{pg_total:.2f} GiB " \
-                        + "used by placement groups)"
+                line = line + (f" ({(pg_used * to_GiB):.2f} used, "
+                               f"{(pg_total * to_GiB):.2f} GiB " +
+                               "reserved in placement groups)")
             usage_lines.append(line)
         else:
-            pg_used = 0
-            pg_total = 0
-            if used_in_pg:
-                pg_used = placement_group_resource_usage[resource]
-                pg_total = placement_group_resource_total[resource]
             line = f" {used}/{total} {resource}"
             if used_in_pg:
-                line += f" ({pg_used}/{pg_total} used by placement groups)"
+                line += (f" ({pg_used} used, "
+                         f"{pg_total} reserved in placement groups)")
             usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report

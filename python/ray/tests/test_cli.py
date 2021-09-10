@@ -206,7 +206,7 @@ def _check_output_via_pattern(name, result):
     if result.exception is not None:
         print(result.output)
         raise result.exception from None
-
+    print(result.output)
     expected = r" *\n".join(expected_lines) + "\n?"
     if re.fullmatch(expected, result.output) is None:
         _debug_check_line_by_line(result, expected_lines)
