@@ -1,6 +1,5 @@
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
-load("//golang:golang.bzl", "go_proto_link", "native_go_library")
-
+load("//golang:golang.bzl", "go_proto_link", "go_library_link")
 
 go_proto_library(
     name = "common_go_proto",
@@ -42,4 +41,13 @@ genrule(
     local = 1,
 )
 
-native_go_library("go_library","//:libcore_worker_library_go.so")
+go_library_link(
+    name = "go_library",
+    src = "//:libcore_worker_library_go.so",
+    dst = select({
+        "@bazel_tools//src/conditions:darwin": "golang/pkg/ray/packaged/lib/darwin-amd64",
+        "//conditions:default": "golang/pkg/ray/packaged/lib/linux-amd64",
+    }),
+)
+
+
