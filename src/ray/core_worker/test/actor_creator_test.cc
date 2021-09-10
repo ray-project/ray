@@ -50,7 +50,7 @@ TEST_F(ActorCreatorTest, IsRegister) {
               AsyncRegisterActor(task_spec, ::testing::_))
       .WillOnce(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
-  actor_creator->AsyncRegisterActor(task_spec, nullptr);
+  ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   cb(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
