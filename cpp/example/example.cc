@@ -25,18 +25,15 @@ class KVStore {
  public:
   KVStore(Role role) : role_(role) {
     was_restared_ = ray::WasCurrentActorRestarted();
+    if (role_ == Role::MASTER) {
+      dest_actor_ = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+    }
+
     if (was_restared_) {
       HanldeFaileover();
-    } else {
-      if (role_ == Role::MASTER) {
-        // Create slave actor if the role is master.
-        dest_actor_ = ray::Actor(KVStore::Create)
-                          .SetMaxRestarts(1)
-                          .SetName(RoleName(Role::SLAVE))
-                          .Remote(Role::SLAVE);
-      }
     }
-    RAYLOG(INFO) << RoleName(role_) << " KVStore created";
+
+    RAYLOG(INFO) << RoleName(role_) << "KVStore created";
   }
 
   static KVStore *Create(Role role) { return new KVStore(role); }
@@ -159,18 +156,23 @@ void PrintActor(ray::ActorHandle<KVStore> &actor) {
 
 void BasiceUsage() {
   ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
-                                               .SetMaxRestarts(5)
+                                               .SetMaxRestarts(1)
                                                .SetName(RoleName(Role::MASTER))
                                                .Remote(Role::MASTER);
-  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
-  PrintActor(master_actor);
+  ray::ActorHandle<KVStore> slave_actor = ray::Actor(KVStore::Create)
+                                              .SetMaxRestarts(1)
+                                              .SetName(RoleName(Role::SLAVE))
+                                              .Remote(Role::SLAVE);
 
-  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
+
+  PrintActor(master_actor);
   PrintActor(slave_actor);
 
   master_actor.Task(&KVStore::Del).Remote("hello").Get();
   PrintActor(master_actor);
   PrintActor(slave_actor);
+
   master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
   PrintActor(master_actor);
   PrintActor(slave_actor);
@@ -184,6 +186,9 @@ void Faileover() {
 
   auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
   PrintActor(slave_actor);
+
+  master_actor.Kill();
+  slave_actor.Kill();
 }
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
@@ -196,22 +201,27 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
 
 void PlacementGroup() {
   auto placement_group = CreateSimplePlacementGroup("first_placement_group");
-  assert(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+  assert(placement_group.Wait(10));
 
   ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
-                                               .SetMaxRestarts(5)
+                                               .SetMaxRestarts(1)
                                                .SetPlacementGroup(placement_group, 0)
                                                .SetName(RoleName(Role::MASTER))
                                                .Remote(Role::MASTER);
+  ray::ActorHandle<KVStore> slave_actor = ray::Actor(KVStore::Create)
+                                              .SetMaxRestarts(1)
+                                              .SetPlacementGroup(placement_group, 1)
+                                              .SetName(RoleName(Role::SLAVE))
+                                              .Remote(Role::SLAVE);
+
   master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
   PrintActor(master_actor);
-
-  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
   PrintActor(slave_actor);
 
   master_actor.Kill(false);
   std::this_thread::sleep_for(std::chrono::seconds(5));
   PrintActor(master_actor);
+  PrintActor(slave_actor);
 
   ray::RemovePlacementGroup(placement_group.GetID());
 }
@@ -219,12 +229,12 @@ void PlacementGroup() {
 int main(int argc, char **argv) {
   /// initialization
   ray::Init();
-  std::shared_ptr<int> guard(nullptr, [](int *p) { ray::Shutdown(); });
-  // PlacementGroup();
+
   BasiceUsage();
   Faileover();
+  PlacementGroup();
 
   /// shutdown
-  // ray::Shutdown();
+  ray::Shutdown();
   return 0;
 }
