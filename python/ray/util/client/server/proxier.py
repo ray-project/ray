@@ -25,6 +25,7 @@ from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
+from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -128,6 +129,8 @@ class ProxyManager():
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
+        logger.error(
+            f"CONNECTING TO AGENT AT: localhost:{runtime_env_agent_port}")
         self._runtime_env_channel = grpc.insecure_channel(
             f"localhost:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
@@ -223,14 +226,20 @@ class ProxyManager():
             f"ray_client_server_{specific_server.port}", unique=True)
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
-        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
-            serialized_runtime_env=serialized_runtime_env,
-            job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
-        response = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
-        if (response.status ==
-                agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED):
-            raise RuntimeError("Failed to create runtime_env for Ray client "
-                               f"server: {response.error_message}")
+        if serialized_runtime_env == "{}":
+            serialized_runtime_env_context = RuntimeEnvContext().serialize()
+        else:
+            create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+                serialized_runtime_env=serialized_runtime_env,
+                job_id=f"ray_client_server_{specific_server.port}".encode(
+                    "utf-8"))
+            r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+            if (r.status ==
+                    agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED):
+                raise RuntimeError(
+                    "Failed to create runtime_env for Ray client "
+                    f"server: {r.error_message}")
+            serialized_runtime_env_context = r.serialized_runtime_env_context
 
         proc = start_ray_client_server(
             self.redis_address,
@@ -239,8 +248,7 @@ class ProxyManager():
             stderr_file=error,
             fate_share=self.fate_share,
             server_type="specific-server",
-            serialized_runtime_env_context=response.
-            serialized_runtime_env_context,
+            serialized_runtime_env_context=serialized_runtime_env_context,
             redis_password=self._redis_password)
 
         # Wait for the process being run transitions from the shim process
