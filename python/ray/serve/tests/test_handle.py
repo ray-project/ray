@@ -2,7 +2,6 @@ import pytest
 import requests
 
 import ray
-import concurrent.futures
 from ray import serve
 
 
@@ -42,23 +41,6 @@ def test_sync_handle_serializable(serve_instance):
     handle = f.get_handle(sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"
-
-
-def test_sync_handle_in_thread(serve_instance):
-    @serve.deployment
-    def f():
-        return "hello"
-
-    f.deploy()
-
-    def thread_get_handle(deploy):
-        handle = deploy.get_handle(sync=True)
-        return handle
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        fut = executor.submit(thread_get_handle, f)
-        handle = fut.result()
-        assert ray.get(handle.remote()) == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
