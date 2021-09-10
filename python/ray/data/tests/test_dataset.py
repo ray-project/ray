@@ -20,8 +20,9 @@ from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (_unwrap_protocol,
-                                                       _is_url, _encode_url)
+from ray.data.datasource.file_based_datasource import (
+    _unwrap_protocol, _is_url, _encode_url,
+    _get_pyarrow_fses_needing_url_encoding)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -939,7 +940,8 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
 def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    if _is_url(data_path):
+    if _is_url(data_path) and isinstance(
+            fs, _get_pyarrow_fses_needing_url_encoding()):
         setup_data_path = _encode_url(_unwrap_protocol(data_path))
     else:
         setup_data_path = _unwrap_protocol(data_path)
