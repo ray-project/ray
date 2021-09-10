@@ -16,4 +16,6 @@ public class Constants {
 
   /** Name of controller listen_for_change method. */
   public static final String CONTROLLER_LISTEN_FOR_CHANGE_METHOD = "listen_for_change";
+
+  public static final String SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR";
 }
