@@ -23,7 +23,7 @@ from ray.util.client.common import (ClientServerHandle,
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env import RuntimeEnvContext
-import ray._private.runtime_env.working_dir as working_dir_pkg
+from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -224,7 +224,8 @@ class ProxyManager():
         context = RuntimeEnvContext(
             env_vars=runtime_env.get("env_vars"),
             resources_dir=self.node.get_runtime_env_dir_path())
-        working_dir_pkg.setup_working_dir(runtime_env, context)
+        WorkingDirManager(self.node.get_runtime_env_dir_path()).setup(
+            runtime_env, context)
 
         proc = start_ray_client_server(
             self.redis_address,
@@ -534,17 +535,31 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     logger.error(
                         f"Server startup failed for client: {client_id}, "
                         f"using JobConfig: {job_config}!")
+                    # TODO(architkulkarni): Once the client server runtime env
+                    # setup is moved into the runtime env agent, revisit this
+                    # and double check where the error logs end up being saved.
+                    try:
+                        with open("/tmp/ray/session_latest/logs/"
+                                  f"ray_client_server_{server.port}.err") as f:
+                            runtime_env_error_str = f.read()
+                    except FileNotFoundError:
+                        runtime_env_error_str = "(File not found)"
                     raise RuntimeError(
                         "Starting Ray client server failed. This is most "
                         "likely because the runtime_env failed to be "
-                        "installed. See ray_client_server_[port].err on the "
-                        "head node of the cluster for the relevant logs.")
+                        f"installed. Printing the contents of "
+                        f"ray_client_server_{server.port}.err below: \n"
+                        f"{runtime_env_error_str}")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")
                     raise RuntimeError(
                         "Proxy failed to Connect to backend! Check "
-                        "`ray_client_server.err` on the cluster.")
+                        "`ray_client_server.err` and "
+                        f"`ray_client_server_{server.port}.err` on the head "
+                        "node of the cluster for the relevant logs. "
+                        "By default these are located at "
+                        "/tmp/ray/session_latest/logs.")
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
             except Exception:
                 init_resp = ray_client_pb2.DataResponse(
