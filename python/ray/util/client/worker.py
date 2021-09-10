@@ -305,7 +305,7 @@ class Worker:
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
-        resp = self.data_client.WaitObject(req)
+        resp = self.server.WaitObject(req, metadata=self.metadata)
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
