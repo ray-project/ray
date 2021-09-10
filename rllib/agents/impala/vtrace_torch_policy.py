@@ -106,7 +106,8 @@ class VTraceLoss:
         if action_mask is not None:
             actions_entropy = actions_entropy * action_mask
         self.entropy = torch.sum(actions_entropy)
-        self.mean_entropy = self.entropy / torch.sum(torch.logical_or(sequence_mask, action_mask))
+        self.mean_entropy = self.entropy / torch.sum(
+            torch.logical_or(sequence_mask, action_mask))
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -

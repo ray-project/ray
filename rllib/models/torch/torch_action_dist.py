@@ -75,8 +75,6 @@ class TorchCategorical(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def entropy(self) -> TensorType:
-        #min_real = torch.finfo(self.inputs.dtype).min
-        #logits = torch.clamp(self.logits, min=FLOAT_MIN)
         p_log_p = self.dist.logits * self.dist.probs
         p_log_p = p_log_p * self.float_mask
         return -p_log_p.sum(-1)

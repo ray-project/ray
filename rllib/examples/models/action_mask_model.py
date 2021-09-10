@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict
+from gym.spaces import Dict
 
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -20,19 +20,16 @@ class ActionMaskModel(TFModelV2):
     exercise to the reader.
     """
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 **kwargs):
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name, **kwargs):
 
         orig_space = getattr(obs_space, "original_space", obs_space)
-        assert isinstance(orig_space, Dict) and "action_mask" in orig_space.spaces \
-            and "observations" in orig_space.spaces
+        assert isinstance(orig_space, Dict) and \
+            "action_mask" in orig_space.spaces and \
+            "observations" in orig_space.spaces
 
-        super().__init__(obs_space, action_space, num_outputs, model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
 
         self.internal_model = FullyConnectedNetwork(
             orig_space["observations"], action_space, num_outputs,
@@ -61,25 +58,27 @@ class ActionMaskModel(TFModelV2):
 class TorchActionMaskModel(TorchModelV2, nn.Module):
     """PyTorch version of above ActionMaskingModel."""
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 **kwargs,
-                 ):
+    def __init__(
+            self,
+            obs_space,
+            action_space,
+            num_outputs,
+            model_config,
+            name,
+            **kwargs,
+    ):
         orig_space = getattr(obs_space, "original_space", obs_space)
-        assert isinstance(orig_space, Dict) and "action_mask" in orig_space.spaces \
-            and "observations" in orig_space.spaces
+        assert isinstance(orig_space, Dict) and \
+            "action_mask" in orig_space.spaces and \
+            "observations" in orig_space.spaces
 
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                               model_config, name, **kwargs)
+                              model_config, name, **kwargs)
         nn.Module.__init__(self)
 
-        self.internal_model = TorchFC(
-            orig_space["observations"], action_space, num_outputs,
-            model_config, name + "_internal")
+        self.internal_model = TorchFC(orig_space["observations"], action_space,
+                                      num_outputs, model_config,
+                                      name + "_internal")
 
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.

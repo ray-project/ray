@@ -54,8 +54,8 @@ if __name__ == "__main__":
             "observation_space": Box(-1.0, 1.0, (5, )),
         },
         "model": {
-            "custom_model": ActionMaskModel if args.framework != "torch"
-            else TorchActionMaskModel,
+            "custom_model": ActionMaskModel
+            if args.framework != "torch" else TorchActionMaskModel,
         },
 
         # Let the algorithm know that it has to apply the mask

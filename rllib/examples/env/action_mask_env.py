@@ -28,14 +28,14 @@ class ActionMaskEnv(RandomEnv):
     def step(self, action):
         # Check whether action is valid.
         if not self.valid_actions[action]:
-            raise ValueError(
-                f"Invalid action sent to env! "
-                f"valid_actions={self.valid_actions}")
+            raise ValueError(f"Invalid action sent to env! "
+                             f"valid_actions={self.valid_actions}")
         obs, rew, done, info = super().step(action)
         self._fix_action_mask(obs)
         return obs, rew, done, info
 
     def _fix_action_mask(self, obs):
         # Fix action-mask: Everything larger 0.5 is 1.0, everything else 0.0.
-        self.valid_actions = np.array(obs["action_mask"] > 0.5, dtype=np.float32)
+        self.valid_actions = np.array(
+            obs["action_mask"] > 0.5, dtype=np.float32)
         obs["action_mask"] = self.valid_actions
