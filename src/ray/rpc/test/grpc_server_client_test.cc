@@ -25,11 +25,16 @@ class TestServiceHandler {
   void HandlePing(const PingRequest &request, PingReply *reply,
                   SendReplyCallback send_reply_callback) {
     RAY_LOG(INFO) << "Got ping request, no_reply=" << request.no_reply();
+    request_count++;
     while (frozen) {
       RAY_LOG(INFO) << "Server is frozen...";
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
     RAY_LOG(INFO) << "Handling and replying request.";
+    if (request.no_reply()) {
+      RAY_LOG(INFO) << "No reply!";
+      return;
+    }
     send_reply_callback(ray::Status::OK(),
                         /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
                         /*reply_failure=*/
@@ -38,7 +43,7 @@ class TestServiceHandler {
                           reply_failure_count++;
                         });
   }
-
+  std::atomic<int> request_count{0};
   std::atomic<int> reply_failure_count{0};
   std::atomic<bool> frozen{false};
 };
@@ -98,20 +103,27 @@ class TestGrpcServerClientFixture : public ::testing::Test {
                                                    *client_call_manager_));
   }
 
-  void TearDown() {
-    // Cleanup stuffs.
+  void ShutdownClient() {
     grpc_client_.reset();
     client_call_manager_.reset();
     client_io_service_.stop();
     if (client_thread_->joinable()) {
       client_thread_->join();
     }
+  }
 
+  void ShutdownServer() {
     grpc_server_->Shutdown();
     handler_io_service_.stop();
     if (handler_thread_->joinable()) {
       handler_thread_->join();
     }
+  }
+
+  void TearDown() {
+    // Cleanup stuffs.
+    ShutdownClient();
+    ShutdownServer();
   }
 
  protected:
@@ -146,14 +158,16 @@ TEST_F(TestGrpcServerClientFixture, TestBasic) {
 }
 
 TEST_F(TestGrpcServerClientFixture, TestBackpressure) {
-  // Freeze server
-  test_service_handler_.frozen = true;
   // Send a request which won't be replied to.
   PingRequest request;
   request.set_no_reply(true);
   Ping(request, [](const Status &status, const PingReply &reply) {
     FAIL() << "Should have no response.";
   });
+  while (test_service_handler_.request_count <= 0) {
+    RAY_LOG(INFO) << "Waiting for reqeust to arrive";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
   // Send a normal request, this request will be blocked by backpressure since
   // max_active_rpcs is 1.
   request.set_no_reply(false);
@@ -161,6 +175,7 @@ TEST_F(TestGrpcServerClientFixture, TestBackpressure) {
     FAIL() << "Should have no response.";
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+  ASSERT_EQ(test_service_handler_.request_count, 1);
 }
 
 TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {

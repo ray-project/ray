@@ -18,9 +18,9 @@ package ray.rpc;
 
 // Serivce that is only used to test GrpcServer
 message PingRequest {
+  bool no_reply = 1;
 }
 message PingReply {
-  bool no_reply = 1;
 }
 service TestService {
   rpc Ping(PingRequest) returns (PingReply);
