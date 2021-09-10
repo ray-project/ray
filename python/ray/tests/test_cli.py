@@ -204,7 +204,6 @@ def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
 
     if result.exception is not None:
-        print(result.output)
         raise result.exception from None
     print(result.output)
     expected = r" *\n".join(expected_lines) + "\n?"

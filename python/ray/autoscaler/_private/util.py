@@ -636,7 +636,6 @@ def format_no_node_type_string(node_type: dict):
             placement_group_resource_usage[pg_resource_name] += total
         else:
             regular_resource_usage[resource] += total
-    # print(placement_group_resource_usage)
 
     output_lines = [""]
     for resource, total in regular_resource_usage.items():
