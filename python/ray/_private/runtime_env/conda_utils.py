@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import subprocess
 import hashlib
 import json
@@ -97,29 +98,32 @@ def get_or_create_conda_env(conda_env_path: str,
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
 
+    create_cmd = None
     env_name = _get_conda_env_name(conda_env_path)
     if base_dir:
         env_name = f"{base_dir}/{env_name}"
         if env_name not in envs:
-            logger.info("Creating conda environment %s", env_name)
-            exec_cmd(
-                [
-                    conda_path, "env", "create", "--file", conda_env_path,
-                    "--prefix", env_name
-                ],
-                stream_output=True)
-        return env_name
+            create_cmd = [
+                conda_path, "env", "create", "--file", conda_env_path,
+                "--prefix", env_name
+            ]
     else:
         env_names = [os.path.basename(env) for env in envs]
         if env_name not in env_names:
-            logger.info("Creating conda environment %s", env_name)
-            exec_cmd(
-                [
-                    conda_path, "env", "create", "-n", env_name, "--file",
-                    conda_env_path
-                ],
-                stream_output=True)
-        return env_name
+            create_cmd = [
+                conda_path, "env", "create", "-n", env_name, "--file",
+                conda_env_path
+            ]
+
+    if create_cmd is not None:
+        logger.info(f"Creating conda environment {env_name}")
+        exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
+        if exit_code != 0:
+            shutil.rmtree(env_name)
+            raise RuntimeError(
+                f"Failed to install conda environment:\n{output}")
+
+    return env_name
 
 
 class ShellCommandException(Exception):
@@ -128,42 +132,58 @@ class ShellCommandException(Exception):
 
 def exec_cmd(cmd: List[str],
              throw_on_error: bool = True,
-             stream_output: bool = False) -> Union[int, Tuple[int, str, str]]:
+             logger: Optional[logging.Logger] = None
+             ) -> Union[int, Tuple[int, str, str]]:
     """
     Runs a command as a child process.
 
     A convenience wrapper for running a command from a Python script.
 
-    Note on the return value: If stream_output is true, then only the exit code
-    is returned. If stream_output is false, then a tuple of the exit code,
+    Note on the return value: A tuple of the exit code,
     standard output and standard error is returned.
 
     Args:
         cmd: the command to run, as a list of strings
         throw_on_error: if true, raises an Exception if the exit code of the
             program is nonzero
-        stream_output: if true, does not capture standard output and error; if
-            false, captures these, streams and returns them
     """
-    if stream_output:
-        child = subprocess.Popen(
-            cmd, universal_newlines=True, stdin=subprocess.PIPE)
-        child.communicate()
-        exit_code = child.wait()
-        if throw_on_error and exit_code != 0:
-            raise ShellCommandException("Non-zero exitcode: %s" % (exit_code))
-        return exit_code
-    else:
-        child = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stdin=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True)
-        (stdout, stderr) = child.communicate()
-        exit_code = child.wait()
-        if throw_on_error and exit_code != 0:
-            raise ShellCommandException(
-                "Non-zero exit code: %s\n\nSTDOUT:\n%s\n\nSTDERR:%s" %
-                (exit_code, stdout, stderr))
-        return exit_code, stdout, stderr
+    child = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True)
+    (stdout, stderr) = child.communicate()
+    exit_code = child.wait()
+    if throw_on_error and exit_code != 0:
+        raise ShellCommandException(
+            "Non-zero exit code: %s\n\nSTDOUT:\n%s\n\nSTDERR:%s" %
+            (exit_code, stdout, stderr))
+    return exit_code, stdout, stderr
+
+
+def exec_cmd_stream_to_logger(cmd: List[str],
+                              logger: logging.Logger,
+                              n_lines: int = 10) -> Tuple[int, str]:
+    """Runs a command as a child process, streaming output to the logger.
+
+    The last n_lines lines of output are also returned (stdout and stderr).
+    """
+    child = subprocess.Popen(
+        cmd,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    exit_code = None
+    last_n_lines = []
+    with child.stdout:
+        for line in iter(child.stdout.readline, b""):
+            exit_code = child.poll()
+            if exit_code is not None:
+                break
+            last_n_lines.append(line.strip())
+            last_n_lines = last_n_lines[-n_lines:]
+            logger.info(line.strip())
+
+    exit_code = child.wait()
+    return exit_code, "\n".join(last_n_lines)

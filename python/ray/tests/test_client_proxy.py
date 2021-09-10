@@ -242,12 +242,14 @@ def test_runtime_install_error_message(call_ray_start):
     Check that an error while preparing the runtime environment for the client
     server yields an actionable, clear error on the *client side*.
     """
+    # Wait for runtime_env agent to come online.
+    time.sleep(5)
     with pytest.raises(ConnectionAbortedError) as excinfo:
         ray.client("localhost:25031").env({
             "pip": ["ray-this-doesnt-exist"]
         }).connect()
     assert ("No matching distribution found for ray-this-doesnt-exist" in str(
-        excinfo.value))
+        excinfo.value)), str(excinfo.value)
 
     ray.util.disconnect()
 
