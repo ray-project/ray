@@ -9,6 +9,7 @@ import threading
 
 from grpc.experimental import aio as aiogrpc
 
+import ray._private.utils
 import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
@@ -45,8 +46,8 @@ async def make_gcs_grpc_channel(redis_client):
                 ("grpc.max_receive_message_length",
                  ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
             )
-            channel = dashboard_utils.init_aiogrpc_channel(
-                gcs_address, options)
+            channel = ray._private.utils.init_grpc_channel(
+                gcs_address, options, asynchronous=True)
             return channel
         except Exception as ex:
             logger.error("Connect to GCS failed: %s, retry...", ex)

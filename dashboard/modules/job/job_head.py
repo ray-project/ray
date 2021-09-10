@@ -1,13 +1,11 @@
-import os
 import json
-import grpc
 import logging
 import asyncio
 
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
+import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.modules.job import job_consts
@@ -54,7 +52,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         ip = DataSource.node_id_to_ip[node_id]
         address = f"{ip}:{ports[1]}"
         options = (("grpc.enable_http_proxy", 0), )
-        channel = dashboard_utils.init_aiogrpc_channel(address, options)
+        channel = ray._private.utils.init_grpc_channel(address, options, asynchronous=True)
 
         stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
         request = job_agent_pb2.InitializeJobEnvRequest(

@@ -13,10 +13,11 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Sequence, Tuple, Any
 import uuid
 import grpc
 import warnings
+from grpc.experimental import aio as aiogrpc
 
 import inspect
 from inspect import signature
@@ -1107,13 +1108,14 @@ def validate_namespace(namespace: str):
                          "Pass None to not specify a namespace.")
 
 
-def init_grpc_channel(address, options=None):
+def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]] = None, asynchronous: bool = False):
+    grpc_module = aiogrpc if asynchronous else grpc
     if os.environ["RAY_USE_TLS"] == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
             root_certs = f.read()
         credentials = grpc.ssl_channel_credentials(root_certs)
-        channel = grpc.secure_channel(address, credentials, options=options)
+        channel = grpc_module.secure_channel(address, credentials, options=options)
     else:
-        channel = grpc.insecure_channel(address, options=options)
+        channel = grpc_module.insecure_channel(address, options=options)
 
     return channel

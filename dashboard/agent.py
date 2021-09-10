@@ -90,8 +90,8 @@ class DashboardAgent(object):
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = dashboard_utils.init_aiogrpc_channel(
-            f"{self.ip}:{self.node_manager_port}", options)
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
