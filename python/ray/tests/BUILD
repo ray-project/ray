@@ -307,14 +307,7 @@ py_test(
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
-    "test_actor.py",
-    "test_advanced.py",
-    "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
-    "test_asyncio.py",
-    "test_multiprocessing.py",
-    "test_list_actors.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

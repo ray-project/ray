@@ -224,14 +224,6 @@
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
   artifact_paths:
     - "/tmp/ray/**/*"
 - label: ":python: (Medium A-J)"
