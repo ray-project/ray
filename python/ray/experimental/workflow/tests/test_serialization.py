@@ -5,6 +5,7 @@ from ray.experimental import workflow
 from ray.experimental.workflow import serialization
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tests.conftest import *  # noqa
+import subprocess
 import time
 
 
@@ -64,7 +65,6 @@ def test_dedupe_serialization(workflow_start_regular_shared):
 
 
 def test_dedupe_serialization_2(workflow_start_regular_shared):
-    from ray.experimental.workflow import serialization
     ref = ray.put("hello world 12345")
     list_of_refs = [ref for _ in range(20)]
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     lock = FileLock(lock_file)
     lock.acquire()
 
-    proc = run_string_as_driver_nonblocking(driver_script)
+    run_string_as_driver_nonblocking(driver_script)
 
     time.sleep(10)
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     resumed = workflow.resume_all()
     assert len(resumed) == 1
     objref = resumed.pop()[1]
-    result = ray.get(objref)
+    ray.get(objref)
 
     # The object ref will be different before and after recovery, so it will
     # get uploaded twice.

@@ -359,14 +359,6 @@ class WorkflowStorage:
         """Save workflow inputs."""
         metadata = inputs.to_metadata()
 
-        # upload_tasks = []
-        # object_ref_paths = []
-        # for ref in inputs.inputs.object_refs:
-        #     _, (paths, _) = self._reduce_objectref(ref, upload_tasks)
-        #     object_ref_paths.append(paths)
-
-        # metadata["object_refs"] = paths
-
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
@@ -376,7 +368,6 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
-        # save_tasks.extend([self._save_object_ref(identifier, obj_ref) for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs)])
 
         for identifier, obj_ref in zip(metadata["object_refs"],
                                        inputs.inputs.object_refs):
