@@ -4,43 +4,42 @@
 /// including the `<ray/api.h>` header
 #include <ray/api.h>
 
+#include <chrono>
+#include <thread>
+
 enum Role {
   SLAVE = 0,
   MASTER = 1,
 };
 MSGPACK_ADD_ENUM(Role);
 
-inline std::string RoleStr(Role role) { return role == Role::SLAVE ? "Slave" : "Master"; }
+inline std::string RoleName(Role role) {
+  return role == Role::SLAVE ? "slave_actor" : "master_actor";
+}
+
+inline std::string DestRoleName(Role role) {
+  return role == Role::SLAVE ? "master_actor" : "slave_actor";
+}
 
 class KVStore {
  public:
-  KVStore(const std::string &dest_actor_name, Role role)
-      : dest_actor_name_(dest_actor_name), role_(role) {
+  KVStore(Role role) : role_(role) {
     if (role_ == Role::MASTER) {
       // Create slave actor if the role is master.
       dest_actor_ = ray::Actor(KVStore::Create)
                         .SetMaxRestarts(1)
-                        .SetName(dest_actor_name)
-                        .Remote(dest_actor_name, Role::SLAVE);
+                        .SetName(RoleName(Role::SLAVE))
+                        .Remote(Role::SLAVE);
     }
 
     was_restared_ = ray::WasCurrentActorRestarted();
     if (was_restared_) {
-      if (role_ == Role::SLAVE) {
-        dest_actor_ = ray::GetActor<KVStore>(dest_actor_name_);
-        assert(dest_actor_);
-      }
-
-      // Pull all data from dest actor when restarted.
-      data_ = *dest_actor_.get().Task(&KVStore::GetAllData).Remote().Get();
-      RAYLOG(INFO) << RoleStr(role_) << " Pulled all data from dest actor";
+      HanldeFaileover();
     }
-    RAYLOG(INFO) << RoleStr(role_) << " KVStore created";
+    RAYLOG(INFO) << RoleName(role_) << " KVStore created";
   }
 
-  static KVStore *Create(const std::string &dest_actor_name, Role role) {
-    return new KVStore(dest_actor_name, role);
-  }
+  static KVStore *Create(Role role) { return new KVStore(role); }
 
   std::unordered_map<std::string, std::string> GetAllData() {
     std::unique_lock<std::mutex> lock(mtx_);
@@ -97,7 +96,37 @@ class KVStore {
   }
 
  private:
-  std::string dest_actor_name_;
+  bool CheckAlive(Role role) {
+    auto actor = ray::GetActor<KVStore>(RoleName(role));
+    auto r = (*actor).Task(&KVStore::GetRole).Remote();
+    std::vector<ray::ObjectRef<Role>> objects{r};
+    auto result = ray::Wait(objects, objects.size(), 2000);
+    if (result.ready.empty()) {
+      return false;
+    }
+
+    dest_actor_ = actor;
+    return true;
+  }
+
+  void HanldeFaileover() {
+    bool r = CheckAlive(Role::SLAVE);
+    if (r) {
+      role_ = Role::MASTER;
+    } else {
+      r = CheckAlive(Role::MASTER);
+      if (r) {
+        role_ = Role::SLAVE;
+      }
+    }
+
+    assert(r);
+    auto actor = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+    data_ = *actor.get().Task(&KVStore::GetAllData).Remote().Get();
+    RAYLOG(INFO) << RoleName(role_) << " pull all data from " << DestRoleName(role_)
+                 << " was_restared:" << was_restared_ << ", data size: " << data_.size();
+  }
+
   Role role_ = Role::SLAVE;
   bool was_restared_ = false;
   std::unordered_map<std::string, std::string> data_;
@@ -113,42 +142,89 @@ RAY_REMOTE(KVStore::Create, &KVStore::GetAllData, &KVStore::Get, &KVStore::Put,
 void PrintActor(ray::ActorHandle<KVStore> &actor) {
   Role role = *actor.Task(&KVStore::GetRole).Remote().Get();
   bool empty = *actor.Task(&KVStore::Empty).Remote().Get();
+  bool was_restarted = *actor.Task(&KVStore::WasRestarted).Remote().Get();
 
   if (empty) {
-    std::cout << RoleStr(role) << " is empty.\n";
+    std::cout << RoleName(role) << " is empty, "
+              << "was_restarted: " << was_restarted << "\n";
     return;
   }
 
   auto pair = *actor.Task(&KVStore::Get).Remote("hello").Get();
   size_t size = *actor.Task(&KVStore::Size).Remote().Get();
-  bool was_restarted = *actor.Task(&KVStore::WasRestarted).Remote().Get();
-  std::cout << RoleStr(role) << " was_restarted: " << was_restarted << ", size: " << size
+
+  std::cout << RoleName(role) << " was_restarted: " << was_restarted << ", size: " << size
             << ", val: " << pair.second << "\n";
-  auto all_data = *actor.Task(&KVStore::GetAllData).Remote().Get();
-  for (auto &pair : all_data) {
-    std::cout << pair.first << " : " << pair.second << "\n";
-  }
+}
+
+void BasiceUsage() {
+  ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
+                                               .SetMaxRestarts(5)
+                                               .SetName(RoleName(Role::MASTER))
+                                               .Remote(Role::MASTER);
+  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
+  PrintActor(master_actor);
+
+  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+  PrintActor(slave_actor);
+
+  master_actor.Task(&KVStore::Del).Remote("hello").Get();
+  PrintActor(master_actor);
+  PrintActor(slave_actor);
+  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
+  PrintActor(master_actor);
+  PrintActor(slave_actor);
+}
+
+void Faileover() {
+  auto master_actor = *ray::GetActor<KVStore>(RoleName(Role::MASTER));
+  master_actor.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+  PrintActor(master_actor);
+
+  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+  PrintActor(slave_actor);
+}
+
+ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}, {"CPU", 1}}};
+
+  ray::internal::PlacementGroupCreationOptions options{
+      false, name, bundles, ray::internal::PlacementStrategy::SPREAD};
+  return ray::CreatePlacementGroup(options);
+}
+
+void PlacementGroup() {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  assert(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+
+  ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
+                                               .SetMaxRestarts(5)
+                                               .SetPlacementGroup(placement_group, 0)
+                                               .SetName(RoleName(Role::MASTER))
+                                               .Remote(Role::MASTER);
+  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
+  PrintActor(master_actor);
+
+  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+  PrintActor(slave_actor);
+
+  master_actor.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+  PrintActor(master_actor);
+
+  ray::RemovePlacementGroup(placement_group.GetID());
 }
 
 int main(int argc, char **argv) {
   /// initialization
   ray::Init();
-
-  ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
-                                               .SetMaxRestarts(1)
-                                               .SetName("master_actor")
-                                               .Remote("slave_actor", Role::MASTER);
-  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
-  PrintActor(master_actor);
-
-  auto dest_actor = ray::GetActor<KVStore>("slave_actor");
-  PrintActor(*dest_actor);
-
-  master_actor.Task(&KVStore::Del).Remote("hello").Get();
-  PrintActor(master_actor);
-  PrintActor(*dest_actor);
+  std::shared_ptr<int> guard(nullptr, [](int *p) { ray::Shutdown(); });
+  // PlacementGroup();
+  BasiceUsage();
+  Faileover();
 
   /// shutdown
-  ray::Shutdown();
+  // ray::Shutdown();
   return 0;
 }
