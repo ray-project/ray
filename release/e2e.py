@@ -385,11 +385,21 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        raise RuntimeError(f"Could not populate wheels sanity check command: "
+                           f"Commit hash missing. Got: {commit}")
+
+    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -1900,6 +1910,9 @@ if __name__ == "__main__":
             raise RuntimeError(f"Could not find wheels for "
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
+
+        # RAY_COMMIT is set by find_ray_wheels
+        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
