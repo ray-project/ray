@@ -287,7 +287,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   }
 
   bool is_new_placement_group_scheduled = false;
-  while (!pending_placement_groups_.empty() || !is_new_placement_group_scheduled) {
+  while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     const auto placement_group = pending_placement_groups_.front();
     pending_placement_groups_.pop_front();
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
