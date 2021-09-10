@@ -10,27 +10,23 @@ from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for request_id -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 
 
 class DataClient:
-    def __init__(self, channel: "grpc._channel.Channel", client_id: str,
-                 metadata: list):
+    def __init__(self, client_worker, client_id: str, metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
-            channel: connected gRPC channel
+            client_worker: The Ray Client worker that manages this client
             client_id: the generated ID representing this client
             metadata: metadata to pass to gRPC requests
         """
-        self.channel = channel
+        self.client_worker = client_worker
         self.request_queue = queue.Queue()
         self.data_thread = self._start_datathread()
         self.ready_data: Dict[int, Any] = {}
@@ -60,45 +56,63 @@ class DataClient:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
 
     def _data_main(self) -> None:
-        stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
+        stub = ray_client_pb2_grpc.RayletDataStreamerStub(
+            self.client_worker.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
             metadata=self._metadata,
             wait_for_ready=True)
         try:
             for response in resp_stream:
-                if response.req_id == 0:
-                    # This is not being waited for.
-                    logger.debug(f"Got unawaited response {response}")
-                    continue
-                if response.req_id in self.asyncio_waiting_data:
-                    callback = self.asyncio_waiting_data.pop(response.req_id)
-                    try:
-                        callback(response)
-                    except Exception:
-                        logger.exception("Callback error:")
-                else:
-                    with self.cv:
-                        self.ready_data[response.req_id] = response
-                        self.cv.notify_all()
+                self._process_response(response)
         except grpc.RpcError as e:
+            self._process_rpc_error(e)
+
+    def _process_response(self, response: Any) -> None:
+        """
+        Process responses from the data servicer.
+        """
+        if response.req_id == 0:
+            # This is not being waited for.
+            logger.debug(f"Got unawaited response {response}")
+            return
+        if response.req_id in self.asyncio_waiting_data:
+            callback = self.asyncio_waiting_data.pop(response.req_id)
+            try:
+                callback(response)
+            except Exception:
+                logger.exception("Callback error:")
+        else:
             with self.cv:
-                self._in_shutdown = True
+                self.ready_data[response.req_id] = response
                 self.cv.notify_all()
-            if e.code() == grpc.StatusCode.CANCELLED:
-                # Gracefully shutting down
-                logger.info("Cancelling data channel")
-            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                              grpc.StatusCode.RESOURCE_EXHAUSTED):
-                # TODO(barakmich): The server may have
-                # dropped. In theory, we can retry, as per
-                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-                # in practice we may need to think about the correct semantics
-                # here.
-                logger.info("Server disconnected from data channel")
-            else:
-                logger.exception(
-                    "Got Error from data channel -- shutting down:")
+
+    def _process_rpc_error(self, e: grpc.RpcError):
+        """
+        Processes RPC errors that occur while reading from data stream.
+        """
+        self._shutdown()
+        if e.code() == grpc.StatusCode.CANCELLED:
+            # Gracefully shutting down
+            logger.info("Cancelling data channel")
+        elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                          grpc.StatusCode.RESOURCE_EXHAUSTED):
+            # TODO(barakmich): The server may have
+            # dropped. In theory, we can retry, as per
+            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+            # in practice we may need to think about the correct semantics
+            # here.
+            logger.info("Server disconnected from data channel")
+        else:
+            logger.exception("Got Error from data channel -- shutting down:")
+
+    def _shutdown(self):
+        """
+        Shutdown the data channel
+        """
+        with self.cv:
+            self._in_shutdown = True
+            self.cv.notify_all()
 
     def close(self) -> None:
         if self.request_queue is not None:
