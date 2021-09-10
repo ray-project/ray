@@ -160,8 +160,9 @@ def from_config(cls, config=None, **kwargs):
                     # Module found, but doesn't have the specified
                     # c'tor/function.
                     raise ValueError(
-                        "String specifier ({}) in `from_config` must be a "
-                        "valid full module+class specifier!".format(type_))
+                        f"Full classpath specifier ({type_}) must be a valid "
+                        "full [module].[class] string! E.g.: "
+                        "`my.cool.module.MyCoolClass`.")
 
                 try:
                     module = importlib.import_module(cls.__module__)
@@ -178,10 +179,9 @@ def from_config(cls, config=None, **kwargs):
 
             if constructor is None:
                 raise ValueError(
-                    "String specifier ({}) in `from_config` must be a "
-                    "filename, a module+class, a class within '{}', or a key "
-                    "into {}.__type_registry__!".format(
-                        type_, cls.__module__, cls.__name__))
+                    f"String specifier ({type_}) must be a valid filename, "
+                    f"a [module].[class], a class within '{cls.__module__}', "
+                    f"or a key into {cls.__name__}.__type_registry__!")
 
     if not constructor:
         raise TypeError(
