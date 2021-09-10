@@ -77,15 +77,16 @@ void GrpcServer::Run() {
   if (use_tls_) {
     std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
     std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
+    std::string root_cert_file = std::string(std::getenv("RAY_TLS_CA_CERT"));
 
     // Create credentials from hardcoded location
-    std::string rootcert = "";  // for verifying clients
+    std::string rootcert = ReadFile(root_cert_file);
     std::string servercert = ReadFile(server_cert_file);
     std::string serverkey = ReadFile(server_key_file);
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey.c_str(),
                                                               servercert.c_str()};
 //    grpc::SslServerCredentialsOptions ssl_opts;
-    grpc::SslServerCredentialsOptions ssl_opts(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);
+    grpc::SslServerCredentialsOptions ssl_opts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
     ssl_opts.pem_root_certs = rootcert;
     ssl_opts.pem_key_cert_pairs.push_back(pkcp);
 

@@ -102,12 +102,21 @@ class Worker:
         # TODO tidy this up
         secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
         if secure and _credentials is None :
-            if os.environ.get("RAY_TLS_SERVER_CERT"):
-                with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
-                    root_certs = f.read()
+            with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
+                server_cert_chain = f.read()
+            with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
+                private_key = f.read()
+            if "RAY_TLS_CA_CERT" in os.environ:
+                with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
+                    ca_cert = f.read()
             else:
-                root_certs = None
-            _credentials = grpc.ssl_channel_credentials(root_certs)
+                ca_cert = None
+
+            _credentials = grpc.ssl_channel_credentials(
+                certificate_chain=server_cert_chain,
+                private_key=private_key,
+                root_certificates=ca_cert
+            )
 
         if _credentials is not None:
             self.channel = grpc.secure_channel(

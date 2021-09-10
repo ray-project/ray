@@ -108,7 +108,7 @@ class GrpcClient {
   /// Whether to use TLS.
   bool use_tls_;
 
-  std::string ReadFile(std::string filename) {
+  std::string ReadFile(std::string filename) {  
     std::ifstream t(filename);
     std::stringstream buffer;
     buffer << t.rdbuf();
@@ -121,10 +121,17 @@ class GrpcClient {
       int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (use_tls_) {
-      std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
-      std::string cacert = ReadFile(server_key_file);
+      std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
+      std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
+      std::string root_cert_file = std::string(std::getenv("RAY_TLS_CA_CERT"));
+      std::string server_cert_chain = ReadFile(server_cert_file);
+      std::string private_key = ReadFile(server_key_file);
+      std::string cacert = ReadFile(root_cert_file);
+
       grpc::SslCredentialsOptions ssl_opts;
       ssl_opts.pem_root_certs=cacert;
+      ssl_opts.pem_private_key=private_key;
+      ssl_opts.pem_cert_chain=server_cert_chain;
       auto ssl_creds = grpc::SslCredentials(ssl_opts);
       channel =
           grpc::CreateCustomChannel(address + ":" + std::to_string(port),
