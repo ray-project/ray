@@ -4,6 +4,7 @@ import os
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import add_mixins
+from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
@@ -50,25 +51,7 @@ def gym_env_creator(env_context: EnvContext, env_descriptor: str):
     try:
         return gym.make(env_descriptor, **env_context)
     except gym.error.Error:
-        error_msg = f"The env string you provided ('{env_descriptor}') is:" + \
-            """
-a) Not a supported/installed environment.
-b) Not a tune-registered environment creator.
-c) Not a valid env class string.
-
-Try one of the following:
-a) For Atari support: `pip install gym[atari] atari_py`.
-   For VizDoom support: Install VizDoom
-   (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
-   `pip install vizdoomgym`.
-   For PyBullet support: `pip install pybullet`.
-b) To register your custom env, do `from ray import tune;
-   tune.register('[name]', lambda cfg: [return env obj from here using cfg])`.
-   Then in your config, do `config['env'] = [name]`.
-c) Make sure you provide a fully qualified classpath, e.g.:
-   `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
-"""
-        raise gym.error.Error(error_msg)
+        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
 
 
 class VideoMonitor(wrappers.Monitor):

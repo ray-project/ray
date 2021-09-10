@@ -213,6 +213,30 @@ def test_startup_error_yields_clean_result(shutdown_only):
     server.stop(0)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 25031 "
+        "--port 0 --redis-password=password"
+    ],
+    indirect=True)
+def test_runtime_install_error_message(call_ray_start):
+    """
+    Check that an error while preparing the runtime environment for the client
+    server yields an actionable, clear error on the *client side*.
+    """
+    with pytest.raises(ConnectionAbortedError) as excinfo:
+        ray.client("localhost:25031").env({
+            "pip": ["ray-this-doesnt-exist"]
+        }).connect()
+    assert ("No matching distribution found for ray-this-doesnt-exist" in str(
+        excinfo.value))
+
+    ray.util.disconnect()
+
+
 def test_prepare_runtime_init_req_fails():
     """
     Check that a connection that is initiated with a non-Init request
