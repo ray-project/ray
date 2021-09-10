@@ -612,7 +612,7 @@ def test_client_gpu_ids(call_ray_stop_only):
         with pytest.raises(Exception) as e:
             ray.get_gpu_ids()
         assert str(e.value) == "Ray Client is not connected."\
-            " Please connect by calling `ray.connect`."
+            " Please connect by calling `ray.init`."
 
         with ray_start_client_server():
             # Now have a client connection.
