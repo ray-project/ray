@@ -60,8 +60,9 @@ for _ in range(repeat):
         total_removing_time += (end - start)
 
 # Validate the correctness.
-assert ray.cluster_resources()["GPU"] == num_nodes * resource_quantity
-assert ray.cluster_resources()["pg_custom"] == num_nodes * resource_quantity
+time.sleep(30)
+assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
+assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
 
 
 # Scenario 2:
@@ -144,8 +145,9 @@ for i in range(3):
         pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
 
 ray.get(pg_launchers)
-assert ray.cluster_resources()["GPU"] == num_nodes * resource_quantity
-assert ray.cluster_resources()["pg_custom"] == num_nodes * resource_quantity
+time.sleep(30)
+assert ray.available_resources()["GPU"] == num_nodes * resource_quantity
+assert ray.available_resources()["pg_custom"] == num_nodes * resource_quantity
 ray.shutdown()
 print("Avg placement group creating time: "
       f"{total_creating_time / total_trial * 1000} ms")

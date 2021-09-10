@@ -29,6 +29,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.runtime_env.working_dir as working_dir_pkg
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -522,15 +523,10 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env.working_dir as working_dir_pkg
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir,
-                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
-                                                 tmp_dir)
                     working_dir_pkg.rewrite_runtime_env_uris(job_config)
-                    working_dir_pkg.upload_runtime_env_package_if_needed(
-                        job_config)
-                    working_dir_pkg.PKG_DIR = old_dir
+                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
+                    manager.upload_runtime_env_package_if_needed(job_config)
 
                 serialized_job_config = pickle.dumps(job_config)
 
