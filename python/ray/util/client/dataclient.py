@@ -6,11 +6,14 @@ import queue
 import threading
 import grpc
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, TYPE_CHECKING, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import INT32_MAX
+
+if TYPE_CHECKING:
+    from ray.util.client.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +21,8 @@ ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 
 
 class DataClient:
-    def __init__(self, client_worker, client_id: str, metadata: list):
+    def __init__(self, client_worker: "Worker", client_id: str,
+                 metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
