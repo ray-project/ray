@@ -17,11 +17,11 @@ syntax = "proto3";
 package ray.rpc;
 
 // Serivce that is only used to test GrpcServer
-message SleepRequest {
-  int64 sleep_time_ms = 1;
+message PingRequest {
 }
-message SleepReply {
+message PingReply {
+  bool no_reply = 1;
 }
 service TestService {
-  rpc Sleep(SleepRequest) returns (SleepReply);
+  rpc Ping(PingRequest) returns (PingReply);
 }
