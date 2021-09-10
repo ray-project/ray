@@ -1931,8 +1931,10 @@ def test_placement_group_strict_spread(ray_start_cluster):
     strategy = "STRICT_SPREAD"
     pg = ray.util.placement_group(bundles, strategy=strategy)
     print(f"Getting placement group with {len(bundles)} bundles and strategy {strategy}...")
-    print(ray.get(pg.ready()), timeout=10)
+    # print(ray.get(pg.ready(), timeout=10))
+    time.sleep(5)
     print(ray.util.placement_group_table(pg))
+    print(ray.available_resources())
 
     # now, we run a worker on each CPU in the placement group
     pg_indexes = []
