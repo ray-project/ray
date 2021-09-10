@@ -98,7 +98,7 @@ class Worker:
                                                             metadata else [])
         self.channel = None
         self.server = None
-        self._conn_state = grpc.ChannelConnectivity.SHUTDOWN
+        self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
         self._secure = secure
         self._conn_str = conn_str
@@ -565,7 +565,7 @@ class Worker:
 
     def get_cluster_info(self,
                          type: ray_client_pb2.ClusterInfoType.TypeEnum,
-                         timeout=None):
+                         timeout: Optional[float] = None):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
         resp = self.server.ClusterInfo(

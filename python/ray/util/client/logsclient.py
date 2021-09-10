@@ -26,7 +26,6 @@ class LogstreamClient:
 
         Args:
             client_worker: The Ray Client worker that manages this client
-            channel: connected gRPC channel
             metadata: metadata to pass to gRPC requests
         """
         self.client_worker = client_worker
