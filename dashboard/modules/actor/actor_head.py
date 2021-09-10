@@ -201,8 +201,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/kill_actor_gcs")
     async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")
-        force_kill = bool(req.query.get("force_kill", False))
-        no_restart = bool(req.query.get("no_restart", False))
+        force_kill = req.query.get("force_kill", False) in ("true", "True")
+        no_restart = req.query.get("no_restart", False) in ("true", "True")
         if not actor_id:
             return rest_response(
                 success=False, message="actor_id is required.")
