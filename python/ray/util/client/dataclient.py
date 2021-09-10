@@ -75,13 +75,16 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
+                self.lock.acquire()
                 if response.req_id in self.asyncio_waiting_data:
                     callback = self.asyncio_waiting_data.pop(response.req_id)
+                    self.lock.release()
                     try:
                         callback(response)
                     except Exception:
                         logger.exception("Callback error:")
                 else:
+                    self.lock.release()
                     with self.cv:
                         self.ready_data[response.req_id] = response
                         self.cv.notify_all()

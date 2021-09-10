@@ -233,7 +233,7 @@ class Worker:
         req = ray_client_pb2.GetRequest(
             ids=[r.id for r in ref], timeout=timeout)
         try:
-            data = self.data_client.GetObject(req)
+            data = self.server.GetObject(req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
         if not data.valid:

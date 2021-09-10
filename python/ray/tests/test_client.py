@@ -121,14 +121,21 @@ def test_get_list(ray_start_regular_shared):
         assert ray.get([]) == []
         assert ray.get([f.remote()]) == ["OK"]
 
+        get_count = 0
+        get_stub = ray.worker.server.GetObject
+
+        def get(req, metadata=None):
+            nonlocal get_count
+            get_count += 1
+            return get_stub(req, metadata=metadata)
+
+        ray.worker.server.GetObject = get
+
         refs = [f.remote() for _ in range(100)]
-        with ray.worker.data_client.lock:
-            req_id_before = ray.worker.data_client._req_id
         assert ray.get(refs) == ["OK" for _ in range(100)]
+
         # Only 1 RPC should be sent.
-        with ray.worker.data_client.lock:
-            assert ray.worker.data_client._req_id == req_id_before + 1, \
-                ray.worker.data_client._req_id
+        assert get_count == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

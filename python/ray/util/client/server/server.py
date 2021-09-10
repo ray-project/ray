@@ -324,7 +324,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 valid=False, error=cloudpickle.dumps(e))
 
     def GetObject(self, request: ray_client_pb2.GetRequest, context=None):
-        return self._get_object(request, "", context)
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata.get("client_id") or ""
+        if client_id == "":
+            logger.error("Client connecting with no client_id")
+            return
+        return self._get_object(request, client_id, context)
 
     def _get_object(self,
                     request: ray_client_pb2.GetRequest,
@@ -344,8 +349,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        items_ser = dumps_from_server(items, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=items_ser)
+        serialized = dumps_from_server(items, client_id, self)
+        return ray_client_pb2.GetResponse(valid=True, data=serialized)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
@@ -383,12 +388,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
-        for id in request.object_ids:
-            if id not in self.object_refs[request.client_id]:
+        for rid in request.object_ids:
+            if rid not in self.object_refs[request.client_id]:
                 raise Exception(
                     "Asking for a ref not associated with this client: %s" %
-                    str(id))
-            object_refs.append(self.object_refs[request.client_id][id])
+                    str(rid))
+            object_refs.append(self.object_refs[request.client_id][rid])
         num_returns = request.num_returns
         timeout = request.timeout
         try:
