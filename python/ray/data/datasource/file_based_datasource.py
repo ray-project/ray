@@ -222,6 +222,9 @@ def _resolve_paths_and_filesystem(
         resolved_path = filesystem.normalize_path(resolved_path)
         if is_url:
             # URL-encode the path if it's a URL.
+            # We need to URL-encode paths since pyarrow filesystems appear to
+            # not do any URL-encoding themselves. See
+            # https://github.com/ray-project/ray/issues/18414
             resolved_path = _encode_url(resolved_path)
         resolved_paths.append(resolved_path)
 
