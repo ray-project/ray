@@ -1,8 +1,8 @@
 import gym
-from gym.spaces import Discrete, Tuple
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 
-from ray.rllib.examples.env.multi_agent import make_multiagent
+from ray.rllib.examples.env.multi_agent import make_multi_agent
 
 
 class RandomEnv(gym.Env):
@@ -61,5 +61,42 @@ class RandomEnv(gym.Env):
             float(self.reward_space.sample()), done, {}
 
 
+class RandomEnvWithActionMasking(RandomEnv):
+    """A randomly acting environment that publishes an action-mask each step.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Masking only works for Discrete actions.
+        assert isinstance(self.action_space, Discrete)
+        # Add action_mask to observations.
+        self.observation_space = Dict({
+            "action_mask": Box(0.0, 1.0, shape=(self.action_space.n, )),
+            "observations": self.observation_space,
+        })
+        self.valid_actions = None
+
+    def reset(self):
+        obs = super().reset()
+        self._fix_action_mask(obs)
+        return obs
+
+    def step(self, action):
+        # Check whether action is valid.
+        if not self.valid_actions[action]:
+            raise ValueError(
+                f"Invalid action sent to env! "
+                f"valid_actions={self.valid_actions}")
+        obs, rew, done, info = super().step(action)
+        self._fix_action_mask(obs)
+        return obs, rew, done, info
+
+    def _fix_action_mask(self, obs):
+        # Fix action-mask: Everything larger 0.5 is 1.0, everything else 0.0.
+        self.valid_actions = np.array(obs["action_mask"] > 0.5, dtype=np.float32)
+        obs["action_mask"] = self.valid_actions
+
+
 # Multi-agent version of the RandomEnv.
-RandomMultiAgentEnv = make_multiagent(lambda c: RandomEnv(c))
+RandomMultiAgentEnv = make_multi_agent(lambda c: RandomEnv(c))

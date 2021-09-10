@@ -100,6 +100,9 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+    # Set to the dict key (str) in the observation dict that holds the
+    # action-masking tensor, if applicable.
+    "action_masking_key": None,
 
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.

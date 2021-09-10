@@ -33,8 +33,8 @@ class VTraceLoss:
                  bootstrap_value,
                  dist_class,
                  model,
-                 valid_mask,
-                 config,
+                 sequence_mask,
+                 action_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
@@ -66,12 +66,12 @@ class VTraceLoss:
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-            config: Trainer config dict.
+            sequence_mask: A bool tensor of valid RNN input elements (#2992).
+            action_mask: A bool tensor of valid actions (coming from the env).
         """
 
-        if valid_mask is None:
-            valid_mask = torch.ones_like(actions_logp)
+        if sequence_mask is None:
+            sequence_mask = torch.ones_like(actions_logp)
 
         # Compute vtrace on the CPU for better perf
         # (devices handled inside `vtrace.multi_from_logits`).
@@ -95,15 +95,18 @@ class VTraceLoss:
         # The policy gradients loss.
         self.pi_loss = -torch.sum(
             actions_logp * self.vtrace_returns.pg_advantages.to(device) *
-            valid_mask)
+            sequence_mask)
 
         # The baseline loss.
-        delta = (values - self.value_targets) * valid_mask
+        delta = (values - self.value_targets) * sequence_mask
         self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
         # The entropy loss.
-        self.entropy = torch.sum(actions_entropy * valid_mask)
-        self.mean_entropy = self.entropy / torch.sum(valid_mask)
+        actions_entropy = actions_entropy * sequence_mask
+        if action_mask is not None:
+            actions_entropy = actions_entropy * action_mask
+        self.entropy = torch.sum(actions_entropy)
+        self.mean_entropy = self.entropy / torch.sum(torch.logical_or(sequence_mask, action_mask))
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -222,6 +225,8 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
     else:
         # Important: chop the tensor into batches at known episode cut
         # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))

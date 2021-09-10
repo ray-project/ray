@@ -8,6 +8,7 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace_tf as vtrace
+from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -36,8 +37,8 @@ class VTraceLoss:
                  bootstrap_value,
                  dist_class,
                  model,
-                 valid_mask,
-                 config,
+                 sequence_mask,
+                 action_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
@@ -69,8 +70,8 @@ class VTraceLoss:
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-            config: Trainer config dict.
+            sequence_mask: A bool tensor of valid RNN input elements (#2992).
+            action_mask: A bool tensor of valid actions (coming from the env).
         """
 
         # Compute vtrace on the CPU for better perf.
@@ -94,18 +95,20 @@ class VTraceLoss:
 
         # The policy gradients loss.
         masked_pi_loss = tf.boolean_mask(
-            actions_logp * self.vtrace_returns.pg_advantages, valid_mask)
+            actions_logp * self.vtrace_returns.pg_advantages, sequence_mask)
         self.pi_loss = -tf.reduce_sum(masked_pi_loss)
         self.mean_pi_loss = -tf.reduce_mean(masked_pi_loss)
 
         # The baseline loss.
-        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
+        delta = tf.boolean_mask(values - self.vtrace_returns.vs, sequence_mask)
         delta_squarred = tf.math.square(delta)
         self.vf_loss = 0.5 * tf.reduce_sum(delta_squarred)
         self.mean_vf_loss = 0.5 * tf.reduce_mean(delta_squarred)
 
         # The entropy loss.
-        masked_entropy = tf.boolean_mask(actions_entropy, valid_mask)
+        masked_entropy = tf.boolean_mask(actions_entropy, sequence_mask)
+        if action_mask is not None:
+            masked_entropy = tf.boolean_mask(masked_entropy, action_mask)
         self.entropy = tf.reduce_sum(masked_entropy)
         self.mean_entropy = tf.reduce_mean(masked_entropy)
 
@@ -138,7 +141,9 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tf.shape(tensor)[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = policy.config["rollout_fragment_length"]
         B = tf.shape(tensor)[0] // T
     rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
@@ -171,6 +176,10 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
                                 *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
+    action_mask = None
+    if policy.config["action_masking_key"] is not None:
+        obs_restored = restore_original_dimensions(train_batch[SampleBatch.OBS], policy.observation_space, tf)
+        action_mask = obs_restored[policy.config["action_masking_key"]]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
@@ -210,8 +219,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         bootstrap_value=make_time_major(values)[-1],
         dist_class=Categorical if is_multidiscrete else dist_class,
         model=model,
-        valid_mask=make_time_major(mask, drop_last=True),
-        config=policy.config,
+        sequence_mask=make_time_major(mask, drop_last=True),
+        action_mask=None if action_mask is None else make_time_major(
+            action_mask, drop_last=True),
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
