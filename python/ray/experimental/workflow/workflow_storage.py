@@ -8,6 +8,7 @@ from collections import ChainMap
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 import io
+import logging
 
 import ray
 from ray import cloudpickle
@@ -21,6 +22,8 @@ from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
                                                KeyNotFoundError)
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -372,7 +375,12 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
-        save_tasks.extend([self._save_object_ref(identifier, obj_ref) for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs)])
+        # save_tasks.extend([self._save_object_ref(identifier, obj_ref) for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs)])
+
+        for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs):
+            paths = self._key_step_args(identifier)
+            save_tasks.append(self._put(paths, obj_ref))
+            # save_tasks.append(self._save_object_ref(identifier, obj_ref))
 
         # save_tasks.extend(upload_tasks)
         await asyncio.gather(*save_tasks)
@@ -505,9 +513,13 @@ class WorkflowStorage:
             is_json: If true, json encode the data, otherwise pickle it.
             update: If false, do not upload data when the path already exists.
         """
+        # logger.info(f"PUTTING {data}")
         key = self._storage.make_key(*paths)
-        if (not update) and self._storage.scan_prefix(key):
-            return key
+        if not update:
+            prefix = self._storage.make_key(*paths[:-1])
+            scan_result = await self._storage.scan_prefix(prefix)
+            if key in scan_result:
+                return key
         try:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
@@ -543,7 +555,7 @@ class WorkflowStorage:
             # uploads to be parallelized. We should wait for those uploads
             # to be finished before we consider the object fully
             # serialized.
-            ray.get(upload_tasks)
+            await asyncio.gather(*upload_tasks)
         except Exception as e:
             raise DataSaveError from e
 
@@ -640,7 +652,7 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
 
 def _load_object_ref(paths: List[str],
                      wf_storage: WorkflowStorage) -> ObjectRef:
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
         return asyncio.get_event_loop().run_until_complete(
             wf_storage._get(paths))
@@ -648,10 +660,10 @@ def _load_object_ref(paths: List[str],
     return load_ref.remote(paths, wf_storage)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def _put_obj_ref(ref: Tuple[ObjectRef]):
     """
-    Return an ref to an object ref. (This can't be done with
+    Return n ref to an object ref. (This can't be done with
     `ray.put(obj_ref)`).
 
     """

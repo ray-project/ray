@@ -10,6 +10,7 @@ import time
 
 @workflow.step
 def identity(x):
+    print("in identity!!!!!!!!")
     return x
 
 
@@ -77,12 +78,15 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
 
-    # The object ref will be different before and after recovery, so it will
-    # get uploaded twice.
-    assert get_num_uploads() == 2
+    # The object ref will go through the upload path once when checkpointing
+    # the initial workflow. When the inputs of the identity steps are
+    # recovered, they will be given different object refs, so the outputs of
+    # the recovery will reach the manager twice.
+    assert get_num_uploads() == 3
 
 
-def test_dedupe_cluster_failure(shutdown_only, tmp_path):
+def test_dedupe_cluster_failure(reset_workflow, tmp_path):
+    ray.shutdown()
     """
     ======== driver 1 ===========
     1. Checkpoing the input args
@@ -130,15 +134,6 @@ if __name__ == "__main__":
     time.sleep(10)
 
     subprocess.check_call(["ray", "stop", "--force"])
-    import os
-    import signal
-    os.kill(proc.pid, signal.SIGTERM)
-
-    print("=========stdout===========")
-    print(proc.stdout.read())
-    print("=========stderr===========")
-    print(proc.stderr.read())
-    print("==========================")
 
     lock.release()
     workflow.init(str(workflow_dir))
@@ -150,6 +145,8 @@ if __name__ == "__main__":
     # The object ref will be different before and after recovery, so it will
     # get uploaded twice.
     assert get_num_uploads() == 1
+    workflow.storage.set_global_storage(None)
+    ray.shutdown()
 
 
 if __name__ == "__main__":

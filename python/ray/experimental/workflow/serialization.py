@@ -50,7 +50,7 @@ class Upload:
     upload_task: ObjectRef[None]
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def _put_helper(identifier: str, obj: Any,
                 wf_storage: "workflow_storage.WorkflowStorage") -> None:
     if isinstance(obj, ray.ObjectRef):
@@ -92,6 +92,7 @@ class Manager:
         wf_storage = workflow_storage.WorkflowStorage(workflow_id,
                                                       self._storage)
         ref, = ref_tuple
+        print("SAVING OBJECT REF", ref)
         # Use the hex as the key to avoid holding a reference to the object.
         key = ref.hex()
 
