@@ -58,11 +58,6 @@ if __name__ == "__main__":
             if args.framework != "torch" else TorchActionMaskModel,
         },
 
-        # Let the algorithm know that it has to apply the mask
-        # found in the obs dict under this key to some loss terms
-        # (e.g. entropy_loss).
-        "action_mask_key": "action_mask",
-
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
