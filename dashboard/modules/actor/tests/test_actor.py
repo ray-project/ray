@@ -212,7 +212,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     resp_json = _kill_actor_using_dashboard_gcs(
         webui_url, actor_id, force_kill=False)
     print(resp_json)
-    assert not _actor_killed_loop(worker_pid, timeout=1)
+    assert not _actor_killed_loop(worker_pid, timeout_secs=1)
 
     # Force kill the actor
     _kill_actor_using_dashboard_gcs(webui_url, actor_id, force_kill=True)
