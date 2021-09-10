@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sgd-api:
 
 RaySGD API
@@ -22,7 +20,24 @@ BackendConfigs
 
 .. _sgd-api-torch-config:
 
+TorchConfig
+~~~~~~~~~~~
+
 .. autoclass:: ray.util.sgd.v2.TorchConfig
+
+.. _sgd-api-tensorflow-config:
+
+TensorflowConfig
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.sgd.v2.TensorflowConfig
+
+.. _sgd-api-horovod-config:
+
+HorovodConfig
+~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.sgd.v2.HorovodConfig
 
 .. _sgd-api-callback:
 
@@ -30,6 +45,7 @@ Callbacks
 ----------
 
 .. autoclass:: ray.util.sgd.v2.SGDCallback
+    :members:
 
 .. _sgd-api-json-logger-callback:
 

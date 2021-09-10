@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sgd-user-guide:
 
 RaySGD User Guide
@@ -7,105 +5,12 @@ RaySGD User Guide
 
 In this guide, we cover examples for the following use cases:
 
-* How do I port my code to using RaySGD?
-* How do I use RaySGD to train with a large dataset?
-* How do I tune my RaySGD model?
-* How do I run my training on pre-emptible instances (fault tolerance)?
-* How do I monitor my training?
-
-
-
-Quick Start
------------
-
-.. TODO: make this runnable :)
-
-RaySGD abstracts away the complexity of setting up a distributed training system. Let's take this simple example function:
-
-.. code-block:: python
-
-    class Net(nn.Module):
-        def __init__(self):
-            super(Net, self).__init__()
-            self.fc1 = nn.Linear(1, 128)
-            self.fc2 = nn.Linear(128, 1)
-
-        def forward(self, x):
-            x = self.fc1(x)
-            x = F.relu(x)
-            x = self.fc2(x)
-            return x
-
-    def train_func():
-        model = Net()
-        for x in data:
-            results = model(x)
-        return results
-
-We can simply construct the trainer function and specify the backend we want (torch, tensorflow, or horovod) and the number of workers to use for training:
-
-.. code-block:: python
-
-    from ray.util.sgd.v2 import Trainer
-
-    trainer = Trainer(backend = "torch", num_workers=2)
-
-Then, we can pass the function to the trainer. This will cause the trainer to start the necessary processes and execute the training function:
-
-.. code-block:: python
-
-
-    trainer.start()
-    results = trainer.run(train_func)
-    print(results)
-
-Now, let's leverage Pytorch's Distributed Data Parallel. With RaySGD, you
-just pass in your distributed data parallel code as as you would normally run
-it with ``torch.distributed.launch``:
-
-.. code-block:: python
-
-    import torch.nn as nn
-    from torch.nn.parallel import DistributedDataParallel
-    import torch.optim as optim
-
-    def train_simple(config: Dict):
-
-        # N is batch size; D_in is input dimension;
-        # H is hidden dimension; D_out is output dimension.
-        N, D_in, H, D_out = 8, 5, 5, 5
-
-        # Create random Tensors to hold inputs and outputs
-        x = torch.randn(N, D_in)
-        y = torch.randn(N, D_out)
-        loss_fn = nn.MSELoss()
-
-        # Use the nn package to define our model and loss function.
-        model = torch.nn.Sequential(
-            torch.nn.Linear(D_in, H),
-            torch.nn.ReLU(),
-            torch.nn.Linear(H, D_out),
-        )
-        optimizer = optim.SGD(model.parameters(), lr=0.1)
-
-        model = DistributedDataParallel(model)
-        results = []
-
-        for epoch in range(config.get("epochs", 10)):
-            optimizer.zero_grad()
-            output = model(x)
-            loss = loss_fn(output, y)
-            loss.backward()
-            results.append(loss.item())
-            optimizer.step()
-        return results
-
-Running this with RaySGD is as simple as the following:
-
-.. code-block:: python
-
-    all_results = trainer.run(train_simple)
-
+* How do I :ref:`port my code <sgd-porting-code>` to using RaySGD?
+* How do I :ref:`monitor <sgd-monitoring>` my training?
+* How do I run my training on pre-emptible instances
+  (:ref:`fault tolerance <sgd-fault-tolerance>`)?
+* How do I use RaySGD to :ref:`train with a large dataset <sgd-datasets>`?
+* How do I :ref:`tune <sgd-tune>` my RaySGD model?
 
 Backends
 --------
@@ -127,6 +32,7 @@ training with:
   script. See `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
   for more information.
 
+.. _sgd-porting-code:
 
 Porting code to RaySGD
 ----------------------
@@ -192,7 +98,7 @@ configurations. As an example:
 
 A primary use-case for ``config`` is to try different hyperparameters. To
 perform hyperparameter tuning with RaySGD, please refer to the
-:ref:`Ray Tune integration <tune-sgd>`.
+:ref:`Ray Tune integration <sgd-tune>`.
 
 .. TODO add support for with_parameters
 
@@ -227,7 +133,7 @@ Logs will be written by:
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 
-.. _sgd-logging:
+.. _sgd-monitoring:
 
 Logging, Monitoring, and Callbacks
 ----------------------------------
@@ -418,7 +324,7 @@ Checkpointing
 RaySGD provides a way to save state during the training process. This is
 useful for:
 
-1. :ref:`Integration with Ray Tune <tune-sgd>` to use certain Ray Tune
+1. :ref:`Integration with Ray Tune <sgd-tune>` to use certain Ray Tune
    schedulers.
 2. Running a long-running training job on a cluster of pre-emptible machines/pods.
 3. Persisting trained model state to later use for serving/inference.
@@ -543,6 +449,8 @@ Checkpoints can be loaded into the training function in 2 steps:
 
 .. TODO.
 
+.. _sgd-fault-tolerance:
+
 Fault Tolerance & Elastic Training
 ----------------------------------
 
@@ -569,9 +477,10 @@ number of retries is configurable through the ``max_retries`` argument of the
 
 .. TODO.
 
+.. _sgd-datasets:
 
-Training on a large dataset
----------------------------
+Training on a large dataset (Ray Datasets)
+------------------------------------------
 
 .. note:: This feature is coming soon!
 
@@ -604,7 +513,7 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
 .. note:: This feature currently does not work with elastic training.
 
 
-.. _tune-sgd:
+.. _sgd-tune:
 
 Hyperparameter tuning (Ray Tune)
 --------------------------------
@@ -635,7 +544,7 @@ produce an object ("Trainable") that will be passed to Ray Tune.
 **Step 2: Call tune.run**
 
 Call ``tune.run`` on the created ``Trainable`` to start multiple ``Tune``
-"trials", each running a Ray SGD job and each with a unique hyperparameter
+"trials", each running a RaySGD job and each with a unique hyperparameter
 configuration.
 
 .. code-block:: python
