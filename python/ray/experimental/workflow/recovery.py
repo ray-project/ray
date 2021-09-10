@@ -53,6 +53,7 @@ def _recover_workflow_step(input_object_refs: List[str],
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
 
+    # TODO (Alex): Refactor to remove this special case handling of object refs
     promises = []
     for identifier in input_object_refs:
         paths = reader._key_step_args(identifier)

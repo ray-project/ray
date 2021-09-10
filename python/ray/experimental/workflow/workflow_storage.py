@@ -151,7 +151,6 @@ class WorkflowStorage:
             if exception is None:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-                print("(save_step_output) PUTTING", ret)
                 tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
