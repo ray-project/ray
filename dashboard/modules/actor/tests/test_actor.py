@@ -209,8 +209,7 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     a.loop.remote()
 
     # Try to kill the actor, it should not die since a task is running
-    _kill_actor_using_dashboard_gcs(
-        webui_url, actor_id, force_kill=False)
+    _kill_actor_using_dashboard_gcs(webui_url, actor_id, force_kill=False)
     assert not _actor_killed_loop(worker_pid, timeout_secs=1)
 
     # Force kill the actor
