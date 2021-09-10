@@ -286,7 +286,7 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
 
 TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
-  EXPECT_TRUE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 10));
+  EXPECT_TRUE(first_placement_group.Wait(10));
   EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
                ray::internal::RayException);
   ray::RemovePlacementGroup(first_placement_group.GetID());
@@ -298,13 +298,13 @@ TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
   ray::internal::PlacementGroupCreationOptions options{
       false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options);
-  EXPECT_FALSE(ray::WaitPlacementGroupReady(first_placement_group.GetID(), 3));
+  EXPECT_FALSE(first_placement_group.Wait(3));
   ray::RemovePlacementGroup(first_placement_group.GetID());
 }
 
 TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
   auto placement_group = CreateSimplePlacementGroup("first_placement_group");
-  EXPECT_TRUE(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+  EXPECT_TRUE(placement_group.Wait(10));
 
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
                     .SetResources({{"CPU", 1.0}})
@@ -333,7 +333,7 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
 
 TEST(RayClusterModeTest, TaskWithPlacementGroup) {
   auto placement_group = CreateSimplePlacementGroup("first_placement_group");
-  EXPECT_TRUE(ray::WaitPlacementGroupReady(placement_group.GetID(), 10));
+  EXPECT_TRUE(placement_group.Wait(10));
 
   auto r = ray::Task(Return1)
                .SetResources({{"CPU", 1.0}})
