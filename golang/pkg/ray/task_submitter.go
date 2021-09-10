@@ -1,5 +1,0 @@
-package ray
-
-func CreateActor() {
-
-}

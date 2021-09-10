@@ -8,36 +8,44 @@ import (
     "reflect"
     "unsafe"
 
-    "github.com/ray-project/ray-go-worker/pkg/ray/generated"
+    "github.com/ray-project/ray-go-worker/pkg/ray/generated/common"
     "github.com/ray-project/ray-go-worker/pkg/util"
     "github.com/vmihailenco/msgpack/v5"
 )
 
 var actor interface{}
 var actorReflectValue reflect.Value
+var actorMethodMap = map[string]reflect.Value{}
 
 //export go_worker_execute
 func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_DataBuffer, returnValue []*C.struct_ReturnValue) {
     if taskType == int(generated.TaskType_ACTOR_CREATION_TASK) {
         d := (*reflect.SliceHeader)(unsafe.Pointer(&rayFunctionInfo))
-        util.Logger.Debugf("slice info:%v", *d)
+        util.Logger.Debugf("create actor info:%v", *d)
         goTypeName := C.GoString(rayFunctionInfo[0])
-        goType, ok := typesMap[goTypeName]
-        if !ok {
+        goType := GetActorType(goTypeName)
+        if goType == nil {
             panic(fmt.Errorf("type not found:%s", goTypeName))
         }
         actor = reflect.New(goType).Interface()
         actorReflectValue = reflect.ValueOf(actor)
+        actorReflectType := reflect.TypeOf(actor)
+        for i := 0; i < actorReflectValue.NumMethod(); i++ {
+            methodValue := actorReflectValue.Method(i)
+            methodName := actorReflectType.Method(i).Name
+            actorMethodMap[methodName] = methodValue
+            util.Logger.Debugf("register actor method: %s", methodName)
+        }
         util.Logger.Debugf("created actor for:%s", goTypeName)
     } else if taskType == int(generated.TaskType_ACTOR_TASK) {
         methodName := C.GoString(rayFunctionInfo[0])
-        util.Logger.Debugf("invoke %s", methodName)
-        methodValue := actorReflectValue.MethodByName(methodName)
-        //if methodValue == nil {
-        //    panic(fmt.Errorf("method not found:%s", methodName))
-        //}
+        util.Logger.Debugf("invoke actor task %s", methodName)
+        methodValue, contains := actorMethodMap[methodName]
+        if !contains {
+            panic(fmt.Errorf("method not found:%s", methodName))
+        }
         callResults := methodValue.Call([]reflect.Value{})
-        util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
+        util.Logger.Debugf("invoke actor task %s result:%v %v", methodName, callResults, returnValue)
         for index, callResult := range callResults {
             rv := returnValue[index]
             rv.data = createDataBuffer(callResult.Interface())

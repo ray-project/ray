@@ -3,7 +3,7 @@ package ray
 import (
     "flag"
 
-    "github.com/ray-project/ray-go-worker/pkg/ray/generated"
+    common "github.com/ray-project/ray-go-worker/pkg/ray/generated/common"
 )
 
 func Run() {
@@ -24,6 +24,6 @@ func Run() {
     SetRayletSocket(*rayletSocket)
     SetSessionDir(*sessionDir)
 
-    innerInit(GetAddress(), GetPassword(), generated.WorkerType_WORKER)
+    innerInit(GetAddress(), GetPassword(), common.WorkerType_WORKER)
     innerRun()
 }

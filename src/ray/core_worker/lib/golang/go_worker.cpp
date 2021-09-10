@@ -17,7 +17,7 @@ inline ID ByteArrayToId(char *bytes) {
   return ID::FromBinary(id_str);
 }
 
-__attribute__((visibility("default"))) void go_worker_Initialize(
+RAY_EXPORT void go_worker_Initialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
     char *node_ip_address, int node_manager_port, char *raylet_ip_address,
     char *driver_name, int jobId, char *redis_address, int redis_port,
@@ -123,30 +123,30 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
   ray::core::CoreWorkerProcess::Initialize(options);
 }
 
-__attribute__((visibility("default"))) void go_worker_Run() {
+RAY_EXPORT void go_worker_Run() {
   ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
   _Exit(0);
 }
 
-__attribute__((visibility("default"))) void *go_worker_CreateGlobalStateAccessor(
+RAY_EXPORT void *go_worker_CreateGlobalStateAccessor(
     char *redis_address, char *redis_password) {
   ray::gcs::GlobalStateAccessor *gcs_accessor =
       new ray::gcs::GlobalStateAccessor(redis_address, redis_password);
   return gcs_accessor;
 }
 
-__attribute__((visibility("default"))) bool go_worker_GlobalStateAccessorConnet(void *p) {
+RAY_EXPORT bool go_worker_GlobalStateAccessorConnet(void *p) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   return gcs_accessor->Connect();
 }
 
-__attribute__((visibility("default"))) int go_worker_GetNextJobID(void *p) {
+RAY_EXPORT int go_worker_GetNextJobID(void *p) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   auto job_id = gcs_accessor->GetNextJobID();
   return job_id.ToInt();
 }
 
-__attribute__((visibility("default"))) char *go_worker_GlobalStateAccessorGetInternalKV(
+RAY_EXPORT char *go_worker_GlobalStateAccessorGetInternalKV(
     void *p, char *key) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   auto value = gcs_accessor->GetInternalKV(key);
@@ -160,9 +160,9 @@ __attribute__((visibility("default"))) char *go_worker_GlobalStateAccessorGetInt
   return nullptr;
 }
 
-__attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
+RAY_EXPORT int go_worker_GetNodeToConnectForDriver(
     void *p, char *node_ip_address, char **result) {
-  RAY_LOG(WARNING) << "Get nodeinfo:" << node_ip_address;
+  RAY_LOG(DEBUG) << "Get nodeinfo:" << node_ip_address;
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   std::string node_to_connect;
   auto status =
@@ -171,15 +171,14 @@ __attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
     RAY_LOG(FATAL) << "Failed to get node to connect for driver:" << status.message();
     return 0;
   }
-  RAY_LOG(WARNING) << "got nodeinfo:" << node_to_connect;
+  RAY_LOG(DEBUG) << "Got nodeinfo:" << node_to_connect;
   int result_length = node_to_connect.length();
-  RAY_LOG(WARNING) << "got nodeinfo len:" << result_length;
   *result = (char *)malloc(result_length + 1);
   memcpy(*result, node_to_connect.c_str(), result_length);
   return result_length;
 }
 
-__attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name,
+RAY_EXPORT int go_worker_CreateActor(char *type_name,
                                                                  char **result) {
   std::vector<std::string> function_descriptor_list = {type_name};
   ray::FunctionDescriptor function_descriptor =
@@ -192,7 +191,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   std::string ray_namespace = "";
   ray::core::ActorCreationOptions actor_creation_options{
       0,
-      0,  // TODO: Allow setting max_task_retries from Java.
+      0,
       static_cast<int>(1),
       {},
       {},
@@ -201,6 +200,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
       full_name,
       ray_namespace,
       /*is_asyncio=*/false};
+  // Golang struct constructor's args is always empty.
   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function, {}, actor_creation_options,
       /*extension_data*/ "", &actor_id);
@@ -215,7 +215,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   return result_length;
 }
 
-__attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor_id,
+RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id,
                                                                      char *method_name,
                                                                      int num_returns,
                                                                      void **object_ids) {
@@ -237,7 +237,7 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
   for (size_t i = 0; i < obj_ids.size(); i++) {
     void *result = malloc(object_id_size);
     memcpy(result, (char *)obj_ids[i].Data(), object_id_size);
-    RAY_LOG(WARNING) << "return object id:" << result;
+    RAY_LOG(DEBUG) << "return object id:" << result;
     object_ids[i] = result;
   }
   return 0;
@@ -252,7 +252,7 @@ DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
-__attribute__((visibility("default"))) int go_worker_Get(void **object_ids,
+RAY_EXPORT int go_worker_Get(void **object_ids,
                                                              int object_ids_size,
                                                              int timeout,
                                                              void **objects) {

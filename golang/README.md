@@ -8,21 +8,21 @@ pip install -e . --verbose
 # build golang shared library
 If go_worker.cpp is changed, we need to rebuild shared library. Then copy the bazel-bin/libcore_worker_library_go.so to pkg/ray/packaged/lib/$GOOS-$GOARCH/. 
 
-cd $ray_source_dir
-
-bazel build //:libcore_worker_library_go.so
+bazel build //:go_library
 
 # start ray
-cd $ray_source_dir
 
 ray start --head --port=6379
 
-# build ray golang worker (in golang directory)
-cd $ray_source_dir/golang
+# copy proto generated file if proto changed
 
-go build -x -o worker pkg/worker/main.go
+bazel build -s --sandbox_debug  //golang:cp_go_proto
+
+# build ray golang worker (in golang directory)
+
+go build -x -o worker example/worker/main.go
 
 # test driver (in golang directory)
 cd $ray_source_dir/golang
 
-go run pkg/driver/test.go
+go run example/driver/test.go

@@ -2,11 +2,21 @@ package ray
 
 import "testing"
 
-func TestGetType(t *testing.T) {
-    typeValue, ok := typesMap["github.com/ray-project/ray-go-worker/pkg/actor.Count"]
-    if !ok {
-        t.Logf("typesMap: %v", typesMap)
+func init() {
+    RegisterActorType((*TestActor)(nil))
+}
+
+type TestActor struct {
+}
+
+func (c *TestActor) Init() {
+
+}
+
+func TestGetActorType(t *testing.T) {
+    goType := GetActorType("github.com/ray-project/ray-go-worker/pkg/ray.TestActor")
+    if goType == nil {
         t.FailNow()
     }
-    t.Logf("type: %s", typeValue.Name())
+    t.Logf("type: %s", goType.Name())
 }

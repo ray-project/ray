@@ -1,14 +1,12 @@
 package actor
 
 import (
-    "reflect"
-
     "github.com/ray-project/ray-go-worker/pkg/ray"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
 func init() {
-    ray.RegisterActorType(reflect.TypeOf((*Counter)(nil)))
+    ray.RegisterActorType((*Counter)(nil))
 }
 
 type Counter struct {

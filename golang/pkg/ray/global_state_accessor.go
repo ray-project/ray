@@ -8,8 +8,6 @@ import "C"
 import (
     "fmt"
     "unsafe"
-
-    "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
 type globalStateAccessor struct {
@@ -36,7 +34,9 @@ func (g *globalStateAccessor) GetNextJobID() int {
 }
 
 func (g *globalStateAccessor) GetInternalKV(key string) string {
-    v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, C.CString(key))
+    cKey := C.CString(key)
+    defer C.free(unsafe.Pointer(cKey))
+    v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, cKey)
     if v != nil {
         result := C.GoString(v)
         C.free(unsafe.Pointer(v))
@@ -46,9 +46,10 @@ func (g *globalStateAccessor) GetInternalKV(key string) string {
 }
 
 func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) []byte {
+    cKey := C.CString(nodeIpAddress)
+    defer C.free(unsafe.Pointer(cKey))
     var res *C.char
-    dataLen := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress), &res)
-    util.Logger.Debugf("GetNodeToConnectForDriver datalen:%d", dataLen)
+    dataLen := C.go_worker_GetNodeToConnectForDriver(g.p, cKey, &res)
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return C.GoBytes(unsafe.Pointer(res), dataLen)

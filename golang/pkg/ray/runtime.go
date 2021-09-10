@@ -9,24 +9,73 @@ import (
     "errors"
     "fmt"
     "reflect"
-    "runtime"
     "strconv"
     "strings"
+    "sync"
     "unsafe"
 
     "github.com/golang/protobuf/proto"
-    ray_generated "github.com/ray-project/ray-go-worker/pkg/ray/generated"
+    ray_generated "github.com/ray-project/ray-go-worker/pkg/ray/generated/common"
+    ray_gcs_generated "github.com/ray-project/ray-go-worker/pkg/ray/generated/gcs"
     "github.com/ray-project/ray-go-worker/pkg/util"
     "github.com/vmihailenco/msgpack/v5"
 )
 
-const sessionDir = "session_dir"
+const (
+    sessionDir = "session_dir"
+)
 
-var typesMap = make(map[string]reflect.Type)
+var elemType = map[reflect.Kind]bool{
+    reflect.Array: true,
+    reflect.Chan:  true,
+    reflect.Map:   true,
+    reflect.Ptr:   true,
+    reflect.Slice: true,
+}
+
+var types = typeRegister{
+    typesMap: make(map[string]reflect.Type),
+}
 
 func init() {
-    typesMap["int"] = reflect.TypeOf(0)
-    typesMap["string"] = reflect.TypeOf("")
+    RegisterActorType(0)
+    RegisterActorType("")
+}
+
+type typeRegister struct {
+    sync.RWMutex
+    typesMap map[string]reflect.Type
+}
+
+func RegisterActorType(a interface{}) error {
+    goType := reflect.TypeOf(a)
+    typeName := ""
+    if _, contains := elemType[goType.Kind()]; contains {
+        typeName = getRegisterTypeKey(goType.Elem())
+        goType = goType.Elem()
+    } else {
+        typeName = getRegisterTypeKey(goType)
+    }
+    types.Lock()
+    defer types.Unlock()
+    types.typesMap[typeName] = goType
+    util.Logger.Debugf("register type: %s", typeName)
+    // TODO check conflict
+    return nil
+}
+
+func GetActorType(t string) reflect.Type {
+    types.RLock()
+    defer types.RUnlock()
+    return types.typesMap[t]
+}
+
+func getRegisterTypeKey(t reflect.Type) string {
+    pkgName := t.PkgPath()
+    if pkgName == "" {
+        return t.Name()
+    }
+    return pkgName + "." + t.Name()
 }
 
 func Init(address, redis_password string) {
@@ -34,7 +83,7 @@ func Init(address, redis_password string) {
 }
 
 func innerInit(address, redis_password string, workerType ray_generated.WorkerType) {
-    util.Logger.Debug("Initializing runtime with config")
+    // TODO: redirect log, otherwise the log will print in raylet.out
     gsa, err := NewGlobalStateAccessor(address, redis_password)
     if err != nil {
         panic(err)
@@ -47,7 +96,7 @@ func innerInit(address, redis_password string, workerType ray_generated.WorkerTy
             panic(fmt.Errorf("failed to get session dir"))
         }
         SetSessionDir(raySessionDir)
-        gcsNodeInfo := &ray_generated.GcsNodeInfo{}
+        gcsNodeInfo := &ray_gcs_generated.GcsNodeInfo{}
         localIp, err := util.GetLocalIp()
         if err != nil {
             panic(err)
@@ -79,6 +128,9 @@ func innerInit(address, redis_password string, workerType ray_generated.WorkerTy
         panic(err)
     }
     serializedJobConfig := "{}"
+    util.Logger.Debug("Initializing runtime with config:", rayConfigVaue)
+    // These C.CString allocated memory don't need to be freed.
+    // They are used by CoreWorkerProcess.
     C.go_worker_Initialize(C.int(workerType), C.CString(GetObjectStoreSocket()),
         C.CString(GetRayletSocket()), C.CString(logDir),
         C.CString(GetNodeManagerAddress()), C.int(GetNodeManagerPort()),
@@ -93,22 +145,13 @@ func innerRun() {
     util.Logger.Infof("ray worker exiting...")
 }
 
-func RegisterActorType(t reflect.Type) error {
-    typeName := getRegisterTypeKey(t.Elem())
-    typesMap[typeName] = t.Elem()
-    util.Logger.Debugf("register type: %s", typeName)
-    // todo check conflict
-    return nil
-}
-
-func getRegisterTypeKey(t reflect.Type) string {
-    return t.PkgPath() + "." + t.Name()
-}
-
 func Actor(p interface{}) *ActorCreator {
-    //todo check contains
+    registerTypeName := getRegisterTypeKey(reflect.TypeOf(p).Elem())
+    if registerTypeName == "" {
+        panic("failed to submit task")
+    }
     return &ActorCreator{
-        registerTypeName: getRegisterTypeKey(reflect.TypeOf(p).Elem()),
+        registerTypeName: registerTypeName,
     }
 }
 
@@ -117,37 +160,28 @@ type ActorCreator struct {
 }
 
 // Create Actor
-func (ac *ActorCreator) Remote() *ActorHandle {
+func (ac *ActorCreator) Remote() (*ActorHandle, error) {
     var res *C.char
-    dataLen := C.go_worker_CreateActor(C.CString(ac.registerTypeName), &res)
+    registerTypeName := C.CString(ac.registerTypeName)
+    defer C.free(unsafe.Pointer(registerTypeName))
+    dataLen := C.go_worker_CreateActor(registerTypeName, &res)
     if dataLen > 0 {
         return &ActorHandle{
-            actorId:   res,
-            language:  ray_generated.Language_GOLANG,
-            actorType: typesMap[ac.registerTypeName],
-        }
+            actorId:  res,
+            language: ray_generated.Language_GOLANG,
+        }, nil
     }
-    return nil
+    return nil, fmt.Errorf("failed to create actor for:%s", ac.registerTypeName)
 }
 
 type ActorHandle struct {
-    actorId   *C.char
-    language  ray_generated.Language
-    actorType reflect.Type
+    actorId  *C.char
+    language ray_generated.Language
 }
-
-type Param interface {
-}
-
-type Convert func(a, i Param)
 
 func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *actorTaskCaller {
     methodType := reflect.TypeOf(f)
-    methodName := GetFunctionName(f)
-    lastIndex := strings.LastIndex(methodName, ".")
-    if lastIndex != -1 {
-        methodName = methodName[lastIndex+1:]
-    }
+    methodName := util.GetFunctionName(reflect.ValueOf(f))
     returnNum := methodType.NumOut()
     methodReturnTypes := make([]reflect.Type, 0, returnNum)
     for i := 0; i < returnNum; i++ {
@@ -171,12 +205,6 @@ type actorTaskCaller struct {
     params                  []reflect.Value
 }
 
-func GetFunctionName(i interface{}) string {
-    return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
-}
-
-type ID unsafe.Pointer
-
 func (atc *actorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
@@ -184,22 +212,18 @@ func (atc *actorTaskCaller) Remote() *ObjectRef {
     if returnNum != 0 {
         returObjectIdArrayPointer = &returObjectIds[0]
     }
-    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), returObjectIdArrayPointer)
+    methodName := C.CString(atc.invokeMethodName)
+    defer C.free(unsafe.Pointer(methodName))
+    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), methodName, C.int(returnNum), returObjectIdArrayPointer)
     if success != 0 {
         panic("failed to submit task")
     }
-    util.Logger.Debugf("objectIds:%v", returObjectIds)
-    //resultIds := make([]ID, 0, objectIds.len)
-    //v := (*[1 << 28]*unsafe.Pointer)(objectIds.data)[:objectIds.len:objectIds.len]
-    //util.Logger.Debugf("v:%v", v)
-    //for _, objectId := range v {
-    //    util.Logger.Debugf("objectId:%v", objectId)
-    //    resultIds = append(resultIds, ID(objectId))
-    //}
+    util.Logger.Debugf("remote task return object ids:%v", returObjectIds)
     return &ObjectRef{
         returnObjectIds: unsafe.Pointer(returObjectIdArrayPointer),
         returnObjectNum: returnNum,
         returnTypes:     atc.invokeMethodReturnTypes,
+        atc:             atc,
     }
 }
 
@@ -207,15 +231,24 @@ type ObjectRef struct {
     returnObjectIds unsafe.Pointer
     returnObjectNum int
     returnTypes     []reflect.Type
+    atc             *actorTaskCaller
 }
 
-type objectId []byte
+var errorMap = map[string]error{
+    strconv.Itoa(int(ray_generated.ErrorType_WORKER_DIED)):              errors.New("worker died"),
+    strconv.Itoa(int(ray_generated.ErrorType_ACTOR_DIED)):               errors.New("actor died"),
+    strconv.Itoa(int(ray_generated.ErrorType_OBJECT_UNRECONSTRUCTABLE)): errors.New("object unreconstructable"),
+    strconv.Itoa(int(ray_generated.ErrorType_TASK_EXECUTION_EXCEPTION)): errors.New("task execution exception"),
+    strconv.Itoa(int(ray_generated.ErrorType_OBJECT_IN_PLASMA)):         errors.New("object in plasma"),
+    strconv.Itoa(int(ray_generated.ErrorType_TASK_CANCELLED)):           errors.New("task cancelled"),
+    strconv.Itoa(int(ray_generated.ErrorType_ACTOR_CREATION_FAILED)):    errors.New("actor creation failed"),
+    strconv.Itoa(int(ray_generated.ErrorType_RUNTIME_ENV_SETUP_FAILED)): errors.New("runtime env setup failed"),
+}
 
-func (or *ObjectRef) Get() []interface{} {
-    //returnObjectIdsSize := len(or.returnObjectIds)
-    util.Logger.Debugf("get result:%v %d", or.returnObjectIds, or.returnObjectNum)
+func (or *ObjectRef) Get() ([]interface{}, error) {
+    util.Logger.Debugf("get result returObjectIdArrayPointer:%v ,return object num:%d", or.returnObjectIds, or.returnObjectNum)
     if or.returnObjectNum == 0 {
-        return nil
+        return nil, nil
     }
     returnValues := make([]unsafe.Pointer, or.returnObjectNum, or.returnObjectNum)
     success := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1), &returnValues[0])
@@ -227,8 +260,11 @@ func (or *ObjectRef) Get() []interface{} {
         rv := (*C.struct_ReturnValue)(returnValue)
         metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), rv.meta.size)
         typeString := string(metaBytes)
-        goType, ok := typesMap[typeString]
-        if !ok {
+        if err, contains := errorMap[typeString]; contains {
+            return nil, err
+        }
+        goType := GetActorType(typeString)
+        if goType == nil {
             panic(fmt.Errorf("failed to get type:%s", typeString))
         }
         returnGoValue := reflect.New(goType).Interface()
@@ -239,5 +275,5 @@ func (or *ObjectRef) Get() []interface{} {
         }
         returnGoValues[index] = returnGoValue
     }
-    return returnGoValues
+    return returnGoValues, nil
 }

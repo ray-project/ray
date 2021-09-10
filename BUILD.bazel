@@ -2079,6 +2079,7 @@ cc_binary(
     }),
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//golang:__subpackages__"],
     deps = [
         "//:core_worker_lib",
         "//:exported_streaming_internal",

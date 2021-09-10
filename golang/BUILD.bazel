@@ -1,16 +1,45 @@
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("//golang:golang.bzl", "go_proto_link", "native_go_library")
+
 
 go_proto_library(
     name = "common_go_proto",
-    importpath = "github.com/ray-project/ray-go-worker/pkg/ray/generated",
+    importpath = "github.com/ray-project/ray-go-worker/pkg/ray/generated/common",
     proto = "@//src/ray/protobuf:common_proto",
     visibility = ["//golang:__subpackages__"],
 )
 
 go_proto_library(
     name = "gcs_go_proto",
-    importpath = "github.com/ray-project/ray-go-worker/pkg/ray/generated",
+    importpath = "github.com/ray-project/ray-go-worker/pkg/ray/generated/gcs",
     proto = "@//src/ray/protobuf:gcs_proto",
     visibility = ["//golang:__subpackages__"],
     deps = ["//golang:common_go_proto"],
 )
+
+go_proto_link(
+    name = "cp_common_go_proto",
+    src = "//golang:common_go_proto",
+    dir = "golang/pkg/ray/generated/common"
+)
+
+go_proto_link(
+    name = "cp_gcs_go_proto",
+    src = "//golang:gcs_go_proto",
+    dir = "golang/pkg/ray/generated/gcs"
+)
+
+genrule(
+    name = "cp_go_proto",
+    srcs = [
+        ":cp_common_go_proto",
+        ":cp_gcs_go_proto",
+    ],
+    outs = ["cp_go_proto.out"],
+    cmd = """
+        echo "$${PWD}" > $@
+    """,
+    local = 1,
+)
+
+native_go_library("go_library","//:libcore_worker_library_go.so")
