@@ -95,7 +95,7 @@ def client_mode_hook(func=None, *, auto_init: bool = True):
     return wrapper
 
 
-def client_mode_should_convert(*, auto_init: bool = False):
+def client_mode_should_convert(*, auto_init: bool = True):
     # This is for testing with RAY_CLIENT_MODE.
     # When RAY_CLIENT_MODE=1, it means that for all the tests
     # will run with client mode.
