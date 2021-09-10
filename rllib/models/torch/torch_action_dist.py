@@ -71,7 +71,7 @@ class TorchCategorical(TorchDistributionWrapper):
         super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(
             logits=self.inputs)
-        self.float_mask = torch.clamp(self.inputs, min=FLOAT_MIN)
+        self.float_mask = (self.inputs > FLOAT_MIN).float()
 
     @override(ActionDistribution)
     def entropy(self) -> TensorType:
