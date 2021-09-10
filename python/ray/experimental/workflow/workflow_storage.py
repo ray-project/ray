@@ -242,6 +242,7 @@ class WorkflowStorage:
         Returns:
             The object ref.
         """
+
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
             ref = _put_obj_ref.remote((data, ))
@@ -377,7 +378,8 @@ class WorkflowStorage:
         ]
         # save_tasks.extend([self._save_object_ref(identifier, obj_ref) for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs)])
 
-        for identifier, obj_ref in zip(metadata["object_refs"], inputs.inputs.object_refs):
+        for identifier, obj_ref in zip(metadata["object_refs"],
+                                       inputs.inputs.object_refs):
             paths = self._key_step_args(identifier)
             save_tasks.append(self._put(paths, obj_ref))
             # save_tasks.append(self._save_object_ref(identifier, obj_ref))
@@ -501,7 +503,9 @@ class WorkflowStorage:
 
         return _load_object_ref, (paths, self)
 
-    async def _put(self, paths: List[str], data: Any,
+    async def _put(self,
+                   paths: List[str],
+                   data: Any,
                    is_json: bool = False,
                    update: bool = True) -> str:
         """
@@ -547,7 +551,6 @@ class WorkflowStorage:
                 value = output_buffer.read()
             else:
                 value = data
-
 
             await self._storage.put(key, value, is_json=is_json)
             # The serializer only kicks off the upload tasks, and returns

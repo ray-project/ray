@@ -18,6 +18,7 @@ def identity(x):
 def gather(*args):
     return args
 
+
 def get_num_uploads():
     manager = serialization.get_or_create_manager()
     stats = ray.get(manager.export_stats.remote())
@@ -73,7 +74,6 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     double = identity.step(list_of_refs)
 
     result_ref, result_list = gather.step(single, double).run()
-    print(result_ref, result_list)
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
@@ -123,11 +123,8 @@ if __name__ == "__main__":
     assert False
     """
 
-
     lock = FileLock(lock_file)
     lock.acquire()
-    # print(driver_script)
-    # input()
 
     proc = run_string_as_driver_nonblocking(driver_script)
 
