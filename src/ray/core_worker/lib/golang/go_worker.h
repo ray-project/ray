@@ -56,7 +56,7 @@ int go_worker_Get(void **object_ids, int object_ids_size, int timeout, void **ob
 extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args,
                               GoSlice return_values);
 
-void SayHello(char *);
+void go_worker_shutdown();
 
 #ifdef __cplusplus
 }

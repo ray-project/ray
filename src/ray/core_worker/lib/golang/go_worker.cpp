@@ -17,11 +17,12 @@ inline ID ByteArrayToId(char *bytes) {
   return ID::FromBinary(id_str);
 }
 
-RAY_EXPORT void go_worker_Initialize(
-    int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
-    char *node_ip_address, int node_manager_port, char *raylet_ip_address,
-    char *driver_name, int jobId, char *redis_address, int redis_port,
-    char *redis_password, char *serialized_job_config) {
+RAY_EXPORT void go_worker_Initialize(int workerMode, char *store_socket,
+                                     char *raylet_socket, char *log_dir,
+                                     char *node_ip_address, int node_manager_port,
+                                     char *raylet_ip_address, char *driver_name,
+                                     int jobId, char *redis_address, int redis_port,
+                                     char *redis_password, char *serialized_job_config) {
   auto task_execution_callback =
       [](ray::TaskType task_type, const std::string task_name,
          const ray::core::RayFunction &ray_function,
@@ -80,7 +81,8 @@ RAY_EXPORT void go_worker_Initialize(
                   return_value->meta->size, false);
           std::vector<ray::ObjectID> contained_object_ids;
           auto contained_object_refs =
-              ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+              ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
+                  contained_object_ids);
           auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                         contained_object_refs);
           results->emplace_back(value);
@@ -88,8 +90,8 @@ RAY_EXPORT void go_worker_Initialize(
           RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
               result_id, value->GetData()->Size(), value->GetMetadata(),
               contained_object_ids, task_output_inlined_bytes, &value));
-          RAY_CHECK_OK(
-              ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, value));
+          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+              result_id, value));
         }
         return ray::Status::OK();
       };
@@ -108,8 +110,7 @@ RAY_EXPORT void go_worker_Initialize(
       ray::gcs::GcsClientOptions(redis_address, redis_port, redis_password);
   options.enable_logging = true;
   options.log_dir = log_dir;
-  // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
-  options.install_failure_signal_handler = false;
+  options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip_address;
   options.node_manager_port = node_manager_port;
   options.raylet_ip_address = raylet_ip_address;
@@ -128,8 +129,8 @@ RAY_EXPORT void go_worker_Run() {
   _Exit(0);
 }
 
-RAY_EXPORT void *go_worker_CreateGlobalStateAccessor(
-    char *redis_address, char *redis_password) {
+RAY_EXPORT void *go_worker_CreateGlobalStateAccessor(char *redis_address,
+                                                     char *redis_password) {
   ray::gcs::GlobalStateAccessor *gcs_accessor =
       new ray::gcs::GlobalStateAccessor(redis_address, redis_password);
   return gcs_accessor;
@@ -146,8 +147,7 @@ RAY_EXPORT int go_worker_GetNextJobID(void *p) {
   return job_id.ToInt();
 }
 
-RAY_EXPORT char *go_worker_GlobalStateAccessorGetInternalKV(
-    void *p, char *key) {
+RAY_EXPORT char *go_worker_GlobalStateAccessorGetInternalKV(void *p, char *key) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   auto value = gcs_accessor->GetInternalKV(key);
   if (value != nullptr) {
@@ -160,8 +160,8 @@ RAY_EXPORT char *go_worker_GlobalStateAccessorGetInternalKV(
   return nullptr;
 }
 
-RAY_EXPORT int go_worker_GetNodeToConnectForDriver(
-    void *p, char *node_ip_address, char **result) {
+RAY_EXPORT int go_worker_GetNodeToConnectForDriver(void *p, char *node_ip_address,
+                                                   char **result) {
   RAY_LOG(DEBUG) << "Get nodeinfo:" << node_ip_address;
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   std::string node_to_connect;
@@ -178,28 +178,27 @@ RAY_EXPORT int go_worker_GetNodeToConnectForDriver(
   return result_length;
 }
 
-RAY_EXPORT int go_worker_CreateActor(char *type_name,
-                                                                 char **result) {
+RAY_EXPORT int go_worker_CreateActor(char *type_name, char **result) {
   std::vector<std::string> function_descriptor_list = {type_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
   ActorID actor_id;
-  ray::core::RayFunction ray_function = ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::core::RayFunction ray_function =
+      ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
   // TODO
   std::string full_name = "";
   std::string ray_namespace = "";
-  ray::core::ActorCreationOptions actor_creation_options{
-      0,
-      0,
-      static_cast<int>(1),
-      {},
-      {},
-      {},
-      /*is_detached=*/false,
-      full_name,
-      ray_namespace,
-      /*is_asyncio=*/false};
+  ray::core::ActorCreationOptions actor_creation_options{0,
+                                                         0,
+                                                         static_cast<int>(1),
+                                                         {},
+                                                         {},
+                                                         {},
+                                                         /*is_detached=*/false,
+                                                         full_name,
+                                                         ray_namespace,
+                                                         /*is_asyncio=*/false};
   // Golang struct constructor's args is always empty.
   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function, {}, actor_creation_options,
@@ -215,23 +214,22 @@ RAY_EXPORT int go_worker_CreateActor(char *type_name,
   return result_length;
 }
 
-RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id,
-                                                                     char *method_name,
-                                                                     int num_returns,
-                                                                     void **object_ids) {
+RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id, char *method_name,
+                                         int num_returns, void **object_ids) {
   auto actor_id_obj = ByteArrayToId<ray::ActorID>((char *)actor_id);
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
-  ray::core::RayFunction ray_function = ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::core::RayFunction ray_function =
+      ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
   std::string name = "";
   std::unordered_map<std::string, double> resources;
   ray::core::TaskOptions task_options{name, num_returns, resources};
 
   std::vector<ObjectID> obj_ids;
-  ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
-                                                          task_options, &obj_ids);
+  ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id_obj, ray_function, {}, task_options, &obj_ids);
 
   int object_id_size = ObjectID::Size();
   for (size_t i = 0; i < obj_ids.size(); i++) {
@@ -252,21 +250,18 @@ DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
-RAY_EXPORT int go_worker_Get(void **object_ids,
-                                                             int object_ids_size,
-                                                             int timeout,
-                                                             void **objects) {
+RAY_EXPORT int go_worker_Get(void **object_ids, int object_ids_size, int timeout,
+                             void **objects) {
   std::vector<ray::ObjectID> object_ids_data;
   char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
-    RAY_LOG(WARNING) << "try to get objectid:" << static_cast<void *>(object_id_arr[i]);
     auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
-    RAY_LOG(WARNING) << "try to get object:" << object_id_obj;
+    RAY_LOG(DEBUG) << "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }
   std::vector<std::shared_ptr<ray::RayObject>> results;
-  auto status =
-      ray::core::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data, timeout, &results);
+  auto status = ray::core::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data,
+                                                                  timeout, &results);
   // todo throw error, not exit now
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to get object";
@@ -279,4 +274,8 @@ RAY_EXPORT int go_worker_Get(void **object_ids,
     objects[i] = rv;
   }
   return 0;
+}
+
+RAY_EXPORT void go_worker_shutdown(){
+  ray::core::CoreWorkerProcess::Shutdown();
 }

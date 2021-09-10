@@ -47,7 +47,7 @@ go_library_link(
     dst = select({
         "@bazel_tools//src/conditions:darwin": "golang/pkg/ray/packaged/lib/darwin-amd64",
         "//conditions:default": "golang/pkg/ray/packaged/lib/linux-amd64",
-    }),
+    })
 )
 
 

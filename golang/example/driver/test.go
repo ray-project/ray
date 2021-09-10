@@ -43,4 +43,5 @@ func main() {
     } else {
         util.Logger.Infof("get string:%s", *hello)
     }
+    ray.Shutdown()
 }

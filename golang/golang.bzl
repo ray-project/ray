@@ -18,6 +18,7 @@ def go_proto_link_impl(ctx, **kwargs):
        content += line
     ctx.actions.run_shell(
         outputs = [output_file],
+        inputs = ctx.attr.src.files,
         command = content,
         execution_requirements = {
             "no-sandbox": "1",
@@ -36,7 +37,6 @@ go_proto_link = rule(
 )
 
 def go_library_link_impl(ctx, **kwargs):
-    print("Copying golang worker library %s" % ctx.label)
     output_file = ctx.actions.declare_directory(ctx.attr.dst)
     generated = ctx.attr.src.files
     content = ""
@@ -46,10 +46,13 @@ def go_library_link_impl(ctx, **kwargs):
        content += line
     ctx.actions.run_shell(
         outputs = [output_file],
+        inputs = ctx.attr.src.files,
         command = content,
+        progress_message = "Copying golang worker library %{label}",
         execution_requirements = {
             "no-sandbox": "1",
             "no-remote": "1",
+            "no-cache": "1",
             "local": "1",
         },
     )

@@ -277,3 +277,7 @@ func (or *ObjectRef) Get() ([]interface{}, error) {
     }
     return returnGoValues, nil
 }
+
+func Shutdown(){
+    C.go_worker_shutdown()
+}
