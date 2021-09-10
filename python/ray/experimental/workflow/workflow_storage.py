@@ -373,9 +373,7 @@ class WorkflowStorage:
                                        inputs.inputs.object_refs):
             paths = self._key_step_args(identifier)
             save_tasks.append(self._put(paths, obj_ref))
-            # save_tasks.append(self._save_object_ref(identifier, obj_ref))
 
-        # save_tasks.extend(upload_tasks)
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -657,7 +655,7 @@ def _load_object_ref(paths: List[str],
 @ray.remote(num_cpus=0)
 def _put_obj_ref(ref: Tuple[ObjectRef]):
     """
-    Return n ref to an object ref. (This can't be done with
+    Return a ref to an object ref. (This can't be done with
     `ray.put(obj_ref)`).
 
     """

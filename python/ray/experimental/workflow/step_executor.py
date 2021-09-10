@@ -335,9 +335,7 @@ def _workflow_step_executor(
         assert not isinstance(persisted_output, Workflow)
     else:
         store = workflow_storage.get_workflow_storage()
-        logger.info(f"COMMITTING STEP OUTPUT {step_id}")
         commit_step(store, step_id, persisted_output, None, outer_most_step_id)
-        logger.info("DONE!!!!!!!!!")
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would

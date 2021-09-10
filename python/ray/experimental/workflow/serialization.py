@@ -93,7 +93,6 @@ class Manager:
         wf_storage = workflow_storage.WorkflowStorage(workflow_id,
                                                       self._storage)
         ref, = ref_tuple
-        print("SAVING OBJECT REF", ref)
         # Use the hex as the key to avoid holding a reference to the object.
         key = ref.hex()
 
