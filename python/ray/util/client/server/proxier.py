@@ -26,7 +26,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env import RuntimeEnvContext
 import ray._private.runtime_env.working_dir as working_dir_pkg
 from ray._private.services import ProcessInfo, start_ray_client_server
-from ray._private.utils import detect_fate_sharing_support
+from ray._private.utils import detect_fate_sharing_support, add_port_to_grpc_server
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -635,15 +635,7 @@ def serve_proxier(connection_str: str,
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    if os.environ["RAY_USE_TLS"] == "1":
-        with open(os.environ["RAY_TLS_SERVER_CERT"], 'rb') as f:
-            root_certs = f.read()
-        with open(os.environ["RAY_TLS_SERVER_KEY"], 'rb') as f:
-            private_key = f.read()
-        credentials = grpc.ssl_server_credentials([(private_key, root_certs)])
-        server.add_secure_port(connection_str, credentials)
-    else:
-        server.add_insecure_port(connection_str)
+    add_port_to_grpc_server(server, connection_str)
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,
