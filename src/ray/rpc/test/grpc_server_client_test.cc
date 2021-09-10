@@ -165,7 +165,7 @@ TEST_F(TestGrpcServerClientFixture, TestBackpressure) {
     FAIL() << "Should have no response.";
   });
   while (test_service_handler_.request_count <= 0) {
-    RAY_LOG(INFO) << "Waiting for reqeust to arrive";
+    RAY_LOG(INFO) << "Waiting for request to arrive";
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   // Send a normal request, this request will be blocked by backpressure since
