@@ -2,7 +2,9 @@ import argparse
 from gym.spaces import Box, Discrete
 import os
 
-from ray.rllib.examples.env.random_env import RandomEnvWithActionMasking
+from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
+from ray.rllib.examples.models.action_mask_model import \
+    ActionMaskModel, TorchActionMaskModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -46,16 +48,20 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
-        "env": RandomEnvWithActionMasking,
+        "env": ActionMaskEnv,
         "env_config": {
             "action_space": Discrete(100),
             "observation_space": Box(-1.0, 1.0, (5, )),
+        },
+        "model": {
+            "custom_model": ActionMaskModel if args.framework != "torch"
+            else TorchActionMaskModel,
         },
 
         # Let the algorithm know that it has to apply the mask
         # found in the obs dict under this key to some loss terms
         # (e.g. entropy_loss).
-        "action_masking_key": "action_mask",
+        "action_mask_key": "action_mask",
 
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

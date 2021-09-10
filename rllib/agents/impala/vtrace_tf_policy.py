@@ -176,10 +176,6 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
                                 *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
-    action_mask = None
-    if policy.config["action_masking_key"] is not None:
-        obs_restored = restore_original_dimensions(train_batch[SampleBatch.OBS], policy.observation_space, tf)
-        action_mask = obs_restored[policy.config["action_masking_key"]]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
