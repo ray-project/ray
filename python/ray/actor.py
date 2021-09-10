@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def method(*args, **kwargs):
     """Annotate an actor method.
 
