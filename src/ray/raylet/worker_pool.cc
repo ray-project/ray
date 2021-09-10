@@ -660,15 +660,6 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
-void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  PushIOWorkerInternal(worker, rpc::WorkerType::UTIL_WORKER);
-}
-
-void WorkerPool::PopUtilWorker(
-    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::UTIL_WORKER, callback);
-}
-
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
                                       const rpc::WorkerType &worker_type) {
   RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
@@ -1156,8 +1147,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER ||
-         worker_type == rpc::WorkerType::UTIL_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1253,7 +1243,6 @@ void WorkerPool::WarnAboutSize() {
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
-  TryStartIOWorkers(language, rpc::WorkerType::UTIL_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,
@@ -1329,8 +1318,6 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     return state.spill_io_worker_state;
   case rpc::WorkerType::RESTORE_WORKER:
     return state.restore_io_worker_state;
-  case rpc::WorkerType::UTIL_WORKER:
-    return state.util_io_worker_state;
   default:
     RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }

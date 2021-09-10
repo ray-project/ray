@@ -155,6 +155,12 @@ def read_datasource(datasource: Datasource[T],
 
     if ray_remote_args is None:
         ray_remote_args = {}
+    # Increase the read parallelism by default to maximize IO throughput. This
+    # is particularly important when reading from e.g., remote storage.
+    if "num_cpus" not in ray_remote_args:
+        # Note that the too many workers warning triggers at 4x subscription,
+        # so we go at 0.5 to avoid the warning message.
+        ray_remote_args["num_cpus"] = 0.5
     remote_read = cached_remote_fn(remote_read, **ray_remote_args)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
@@ -506,7 +512,6 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@PublicAPI(stability="beta")
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
     """Create a dataset from a set of NumPy ndarrays.
 
@@ -524,34 +529,40 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef["pyarrow.Table"]]) -> Dataset[ArrowRow]:
+def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
+               ) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
-        dfs: A list of Ray object references to Arrow tables.
+        tables: A list of Ray object references to Arrow tables,
+                or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
-
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)))
 
 
 @PublicAPI(stability="beta")
-def from_spark(df: "pyspark.sql.DataFrame", *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_spark(df: "pyspark.sql.DataFrame",
+               *,
+               parallelism: Optional[int] = None) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
+        spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
-        parallelism: The amount of parallelism to use for the dataset.
+            parallelism: The amount of parallelism to use for the dataset.
+            If not provided, it will be equal to the number of partitions of
+            the original Spark dataframe.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P2
+    import raydp
+    return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
