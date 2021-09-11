@@ -1901,12 +1901,6 @@ cdef class CoreWorker:
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
 
-    def set_resource(self, basestring resource_name,
-                     double capacity, NodeID client_id):
-        CCoreWorkerProcess.GetCoreWorker().SetResource(
-            resource_name.encode("ascii"), capacity,
-            CNodeID.FromBinary(client_id.binary()))
-
     def get_job_config(self):
         cdef CJobConfig c_job_config
         # We can cache the deserialized job config object here because
