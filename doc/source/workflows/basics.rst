@@ -74,7 +74,7 @@ Workflow result can be retrieved, by ``workflow.get_output(workflow_id)`` and th
 
 We can retrieve the results for steps too with named steps. A step can be named in two ways, 1) via ``.options(name="step_name")`` or, 2) via decorator ``@workflow.step(name="step_name"``. Once a step is given a name, the result of the step will be able to be retrived via ``workflow.get_output(workflow_id, name="step_name")``. The return value will be either an ``ObjectRef[T]`` or throw an exception if the step hasn't been executed. Here are some examples:
 
-... code-block: python
+.. code-block:: python
 
     @workflow.step
     def double(v):
@@ -92,7 +92,8 @@ We can retrieve the results for steps too with named steps. A step can be named 
 
 If there are multiple steps with the same name, the suffix with a counter ``_n`` will be added automatically. For example,
 
-... code-block: python
+.. code-block:: python
+    
     @workflow.step(name="double")
     def double(s):
         return s * 2
