@@ -36,6 +36,5 @@ class ActionMaskEnv(RandomEnv):
 
     def _fix_action_mask(self, obs):
         # Fix action-mask: Everything larger 0.5 is 1.0, everything else 0.0.
-        self.valid_actions = np.array(
-            obs["action_mask"] > 0.5, dtype=np.float32)
+        self.valid_actions = np.round(obs["action_mask"])
         obs["action_mask"] = self.valid_actions

@@ -1872,7 +1872,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=5"]
+    args = ["--stop-iter=2"]
 )
 
 py_test(
@@ -1881,7 +1881,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=5", "--framework=torch"]
+    args = ["--stop-iter=2", "--framework=torch"]
 )
 
 py_test(
