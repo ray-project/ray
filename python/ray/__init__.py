@@ -154,12 +154,6 @@ __all__ += [
     "PlacementGroupID",
 ]
 
-# Add an alias so we can point to the final location in docs.
-# TODO(yic) remove this once workflow is out of alpha.
-from ray.experimental import workflow  # noqa
-__all__.append(workflow)
-
-
 # Remove modules from top-level ray
 def _ray_user_setup_function():
     import os
