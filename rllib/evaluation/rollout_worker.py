@@ -1,3 +1,4 @@
+import copy
 import gym
 import logging
 import platform
@@ -32,7 +33,8 @@ from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.error import EnvError
+from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
+    HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -174,7 +176,7 @@ class RolloutWorker(ParallelIteratorWorker):
             count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
-            preprocessor_pref: str = "deepmind",
+            preprocessor_pref: Optional[str] = "deepmind",
             sample_async: bool = False,
             compress_observations: bool = False,
             num_envs: int = 1,
@@ -256,8 +258,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
-            preprocessor_pref (str): Whether to prefer RLlib preprocessors
-                ("rllib") or deepmind ("deepmind") when applicable.
+            preprocessor_pref (Optional[str]): Whether to use no preprocessor
+                (None), RLlib preprocessors ("rllib") or deepmind ("deepmind"),
+                when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -390,7 +393,11 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(
-            env_config or {}, worker_index, num_workers=num_workers)
+            env_config or {},
+            worker_index=worker_index,
+            vector_index=0,
+            num_workers=num_workers,
+        )
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
@@ -414,7 +421,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = True
+        self.preprocessing_enabled: bool = False \
+            if preprocessor_pref is None else True
         self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None
@@ -442,7 +450,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
-            self.env = env_creator(env_context)
+            self.env = env_creator(copy.deepcopy(self.env_context))
 
         if self.env is not None:
             # Validate environment (general validation function).
@@ -549,16 +557,16 @@ class RolloutWorker(ParallelIteratorWorker):
                 ray.worker._mode() != ray.worker.LOCAL_MODE and \
                 not policy_config.get("_fake_gpus"):
 
+            devices = []
             if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
-                if len(get_tf_gpu_devices()) < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found for num_gpus={num_gpus}! "
-                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+                devices = get_tf_gpu_devices()
             elif policy_config.get("framework") == "torch":
-                if torch.cuda.device_count() < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
-                        f"for num_gpus={num_gpus}!")
+                devices = list(range(torch.cuda.device_count()))
+
+            if len(devices) < num_gpus:
+                raise RuntimeError(
+                    ERR_MSG_NO_GPUS.format(len(devices), devices) +
+                    HOWTO_CHANGE_CONFIG)
         # Warn, if running in local-mode and actual GPUs (not faked) are
         # requested.
         elif ray.is_initialized() and \
@@ -1358,7 +1366,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
                 self.preprocessors[name] = preprocessor
-                obs_space = preprocessor.observation_space
+                if preprocessor is not None:
+                    obs_space = preprocessor.observation_space
             else:
                 self.preprocessors[name] = NoPreprocessor(obs_space)
 

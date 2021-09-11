@@ -4,6 +4,7 @@ import inspect
 import logging
 from typing import List, TYPE_CHECKING, Any, Tuple, Dict
 import uuid
+import json
 import weakref
 import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
@@ -128,6 +129,27 @@ class ActorMethod(ActorMethodBase):
         self.__init__(state["actor"], state["method_name"])
 
 
+def __getstate(instance):
+    if hasattr(instance, "__getstate__"):
+        state = instance.__getstate__()
+    else:
+        try:
+            state = json.dumps(instance.__dict__)
+        except TypeError as e:
+            raise ValueError("The virtual actor contains fields that can't be "
+                             "converted to JSON. Please define `__getstate__` "
+                             "and `__setstate__` explicitly:"
+                             f" {instance.__dict__}") from e
+    return state
+
+
+def __setstate(instance, v):
+    if hasattr(instance, "__setstate__"):
+        return instance.__setstate__(v)
+    else:
+        instance.__dict__ = json.loads(v)
+
+
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
     the signatures of its methods etc."""
@@ -135,6 +157,7 @@ class VirtualActorMetadata:
     def __init__(self, original_class: type):
         actor_methods = inspect.getmembers(original_class,
                                            is_function_or_method)
+
         self.cls = original_class
         self.module = original_class.__module__
         self.name = original_class.__name__
@@ -296,9 +319,15 @@ class VirtualActorClass(VirtualActorClassBase):
             pass
 
         metadata = VirtualActorMetadata(base_class)
-        if "__getstate__" not in metadata.methods:
+        has_getstate = "__getstate__" in metadata.methods
+        has_setstate = "__setstate__" in metadata.methods
+
+        if not has_getstate and not has_setstate:
+            # This is OK since we'll use default one defined
+            pass
+        elif not has_getstate:
             raise ValueError("The class does not have '__getstate__' method")
-        if "__setstate__" not in metadata.methods:
+        elif not has_setstate:
             raise ValueError("The class does not have '__setstate__' method")
 
         DerivedActorClass.__module__ = metadata.module
@@ -364,7 +393,7 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
                 f"Virtual actor '{actor_id}' has not been initialized. "
                 "We cannot get the latest state for the "
                 "readonly virtual actor.") from e
-        instance.__setstate__(state)
+        __setstate(instance, state)
         method = getattr(instance, method_name)
         return method(*args, **kwargs)
 
@@ -380,16 +409,16 @@ def _wrap_actor_method(cls: type, method_name: str):
     def _actor_method(state, *args, **kwargs):
         instance = cls.__new__(cls)
         if method_name != "__init__":
-            instance.__setstate__(state)
+            __setstate(instance, state)
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
         if isinstance(output, Workflow):
             if output.data.step_type == StepType.FUNCTION:
-                next_step = deref.step(instance.__getstate__(), output)
+                next_step = deref.step(__getstate(instance), output)
                 next_step.data.step_type = StepType.ACTOR_METHOD
                 return next_step, None
-            return instance.__getstate__(), output
-        return instance.__getstate__(), output
+            return __getstate(instance), output
+        return __getstate(instance), output
 
     return _actor_method
 

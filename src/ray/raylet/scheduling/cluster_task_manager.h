@@ -200,6 +200,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
+  /// Check if there are enough available resources for the given input.
+  bool IsLocallySchedulable(const RayTask &task) const override;
+
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const override;
 

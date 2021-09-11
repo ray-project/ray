@@ -163,8 +163,6 @@ struct CoreWorkerOptions {
       delete_spilled_objects;
   /// Function to call on error objects never retrieved.
   std::function<void(const RayObject &error)> unhandled_exception_handler;
-  std::function<void(const std::string &, const std::vector<std::string> &)>
-      run_on_util_worker_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -698,14 +696,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param[in] resource_name Name of the resource to be set.
-  /// \param[in] capacity Capacity of the resource.
-  /// \param[in] node_id NodeID where the resource is to be set.
-  /// \return Status
-  Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &node_id);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -992,11 +982,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
-
-  // Run request on an python-based IO worker
-  void HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
-                             rpc::RunOnUtilWorkerReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,

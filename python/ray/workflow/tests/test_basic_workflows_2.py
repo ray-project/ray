@@ -99,7 +99,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        incr.step().run("incr")
+        incr.options(max_retries=1).step().run("incr")
 
     assert cnt_file.read_text() == "1"
 

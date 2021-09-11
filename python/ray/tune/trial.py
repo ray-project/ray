@@ -13,6 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.exceptions import GetTimeoutError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -32,6 +33,7 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT = 15
 logger = logging.getLogger(__name__)
 
 
@@ -80,23 +82,47 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner):
-    """Returns a checkpoint deleter callback for a runner."""
-    if not runner:
-        return lambda checkpoint: None
+class CheckpointDeleter:
+    """Checkpoint deleter callback for a runner."""
 
-    def delete(checkpoint):
+    def __init__(self,
+                 trial_id,
+                 runner,
+                 node_ip,
+                 timeout: int = CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT):
+        self.trial_id = trial_id
+        self.runner = runner
+        self.node_ip = node_ip
+        self._runner_ip = None
+        self.timeout = timeout
+
+    @property
+    def runner_ip(self):
+        if not self._runner_ip:
+            try:
+                self._runner_ip = ray.get(
+                    self.runner.get_current_ip.remote(), timeout=self.timeout)
+            except GetTimeoutError:
+                pass
+        return self._runner_ip
+
+    def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
             checkpoint (Checkpoint): Checkpoint to delete.
         """
+        if not self.runner:
+            return
+
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
                          checkpoint.value)
             checkpoint_path = checkpoint.value
+
             # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
+            if self.runner_ip != self.node_ip and os.path.exists(
+                    checkpoint_path):
                 try:
                     checkpoint_dir = TrainableUtil.find_checkpoint_dir(
                         checkpoint_path)
@@ -105,9 +131,7 @@ def checkpoint_deleter(trial_id, runner):
                     logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
-            runner.delete_checkpoint.remote(checkpoint.value)
-
-    return delete
+            self.runner.delete_checkpoint.remote(checkpoint.value)
 
 
 class TrialInfo:
@@ -312,7 +336,8 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner))
+            CheckpointDeleter(self._trainable_name(), self.runner,
+                              self.node_ip))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -474,14 +499,16 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(
-            self._trainable_name(), runner)
+        self.checkpoint_manager.delete = CheckpointDeleter(
+            self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        if self.checkpoint_manager.delete:
+            self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 

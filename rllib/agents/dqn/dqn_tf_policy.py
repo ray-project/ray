@@ -387,6 +387,8 @@ def postprocess_nstep_and_prio(policy: Policy,
     if policy.config["n_step"] > 1:
         adjust_nstep(policy.config["n_step"], policy.config["gamma"], batch)
 
+    # Create dummy prio-weights (1.0) in case we don't have any in
+    # the batch.
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
