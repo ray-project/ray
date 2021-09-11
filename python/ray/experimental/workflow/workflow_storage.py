@@ -511,7 +511,6 @@ class WorkflowStorage:
         if not update:
             prefix = self._storage.make_key(*paths[:-1])
             scan_result = await self._storage.scan_prefix(prefix)
-            # print(f"Detected update is false. Scan result: {scan_result}. And key is {key}, condition is {path[-1] in scan_result}")
             if paths[-1] in scan_result:
                 return key
         try:

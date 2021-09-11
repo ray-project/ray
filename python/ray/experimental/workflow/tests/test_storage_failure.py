@@ -1,13 +1,11 @@
 import asyncio
-import os
 from hashlib import sha1
 import tempfile
 
 import pytest
 import ray
 from ray.experimental import workflow
-from ray.experimental.workflow.storage import (get_global_storage,
-                                               set_global_storage)
+from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.storage.debug import DebugStorage
 from ray.experimental.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.experimental.workflow.workflow_storage import asyncio_run
