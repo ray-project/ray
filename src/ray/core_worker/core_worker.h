@@ -696,14 +696,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param[in] resource_name Name of the resource to be set.
-  /// \param[in] capacity Capacity of the resource.
-  /// \param[in] node_id NodeID where the resource is to be set.
-  /// \return Status
-  Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &node_id);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
