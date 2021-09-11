@@ -116,7 +116,8 @@ def _construct_resume_workflow_from_step(
     object_refs_to_cache = loop.run_until_complete(
         asyncio.gather(*promises_to_await))
 
-    for identifier, object_ref in zip(identifiers_to_await, object_refs_to_cache):
+    for identifier, object_ref in zip(identifiers_to_await,
+                                      object_refs_to_cache):
         objectref_cache[identifier] = object_ref
 
     for identifier in result.object_refs:
