@@ -89,15 +89,6 @@ public interface RayRuntime {
    */
   void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
 
-  /**
-   * Set the resource for the specific node.
-   *
-   * @param resourceName The name of resource.
-   * @param capacity The capacity of the resource.
-   * @param nodeId The node that we want to set its resource.
-   */
-  void setResource(String resourceName, double capacity, UniqueId nodeId);
-
   <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
   /**

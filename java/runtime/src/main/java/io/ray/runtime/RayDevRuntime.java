@@ -71,11 +71,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
-  }
-
-  @Override
   public void killActor(BaseActorHandle actor, boolean noRestart) {
     throw new UnsupportedOperationException();
   }
