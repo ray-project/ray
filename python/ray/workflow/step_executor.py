@@ -11,15 +11,13 @@ from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
 from ray.workflow import serialization_context
 from ray.workflow import workflow_storage
-from ray.workflow.workflow_access import (
-    get_or_create_management_actor, get_management_actor)
-from ray.workflow.common import (
-    Workflow, WorkflowStatus, WorkflowOutputType, WorkflowExecutionResult,
-    StepType)
+from ray.workflow.workflow_access import (get_or_create_management_actor,
+                                          get_management_actor)
+from ray.workflow.common import (Workflow, WorkflowStatus, WorkflowOutputType,
+                                 WorkflowExecutionResult, StepType)
 
 if TYPE_CHECKING:
-    from ray.workflow.common import (StepID, WorkflowRef,
-                                                  WorkflowInputs)
+    from ray.workflow.common import (StepID, WorkflowRef, WorkflowInputs)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 

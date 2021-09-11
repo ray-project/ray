@@ -4,7 +4,7 @@ from typing import Callable
 from ray._private import signature
 from ray.workflow import serialization_context
 from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                              ensure_ray_initialized)
+                                 ensure_ray_initialized)
 from ray.util.annotations import PublicAPI
 
 

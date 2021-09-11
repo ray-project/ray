@@ -8,13 +8,13 @@ import ray
 
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
-from ray.workflow.common import (Workflow, WorkflowStatus,
-                                              WorkflowMetaData, StepType)
+from ray.workflow.common import (Workflow, WorkflowStatus, WorkflowMetaData,
+                                 StepType)
 from ray.workflow.step_executor import commit_step
 from ray.workflow.storage import get_global_storage
-from ray.workflow.workflow_access import (
-    flatten_workflow_output, get_or_create_management_actor,
-    get_management_actor)
+from ray.workflow.workflow_access import (flatten_workflow_output,
+                                          get_or_create_management_actor,
+                                          get_management_actor)
 
 if TYPE_CHECKING:
     from ray.workflow.step_executor import WorkflowExecutionResult

@@ -9,15 +9,14 @@ from ray.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
-from ray.workflow.common import (WorkflowStatus,
-                                              ensure_ray_initialized)
+from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized)
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.workflow.virtual_actor_class import (
-        VirtualActorClass, VirtualActor)
+    from ray.workflow.virtual_actor_class import (VirtualActorClass,
+                                                  VirtualActor)
 
 logger = logging.getLogger(__name__)
 

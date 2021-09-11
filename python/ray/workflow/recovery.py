@@ -3,7 +3,7 @@ from typing import List, Any, Union, Dict, Callable, Tuple, Optional
 import ray
 from ray.workflow import workflow_context
 from ray.workflow.common import (Workflow, StepID, WorkflowRef,
-                                              WorkflowExecutionResult)
+                                 WorkflowExecutionResult)
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
@@ -129,8 +129,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     if isinstance(r, Workflow):
         with workflow_context.workflow_step_context(workflow_id,
                                                     store.storage_url):
-            from ray.workflow.step_executor import (
-                execute_workflow)
+            from ray.workflow.step_executor import (execute_workflow)
             result = execute_workflow(r, last_step_of_workflow=True)
             return result.persisted_output, result.volatile_output
     assert isinstance(r, StepID)

@@ -10,14 +10,13 @@ from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
 from ray._private import signature
 
-from ray.workflow.common import (slugify, WorkflowData, Workflow,
-                                              WorkflowRef, StepType)
+from ray.workflow.common import (slugify, WorkflowData, Workflow, WorkflowRef,
+                                 StepType)
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
 from ray.workflow.workflow_storage import WorkflowStorage
 from ray.workflow.recovery import get_latest_output
-from ray.workflow.workflow_access import (
-    get_or_create_management_actor)
+from ray.workflow.workflow_access import (get_or_create_management_actor)
 from ray.workflow import workflow_context
 from ray.workflow.step_executor import execute_workflow
 

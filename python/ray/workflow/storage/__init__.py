@@ -1,8 +1,8 @@
 import logging
 import urllib.parse as parse
 from ray.workflow.storage.base import Storage
-from ray.workflow.storage.base import (
-    DataLoadError, DataSaveError, KeyNotFoundError)
+from ray.workflow.storage.base import (DataLoadError, DataSaveError,
+                                       KeyNotFoundError)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,7 @@ def create_storage(storage_url: str) -> Storage:
     """
     parsed_url = parse.urlparse(storage_url)
     if parsed_url.scheme == "file" or parsed_url.scheme == "":
-        from ray.workflow.storage.filesystem import (
-            FilesystemStorageImpl)
+        from ray.workflow.storage.filesystem import (FilesystemStorageImpl)
         return FilesystemStorageImpl(parsed_url.path)
     elif parsed_url.scheme == "s3":
         from ray.workflow.storage.s3 import S3StorageImpl

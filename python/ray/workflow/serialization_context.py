@@ -5,8 +5,7 @@ import ray
 import ray.cloudpickle
 from ray.util.serialization import register_serializer, deregister_serializer
 
-from ray.workflow.common import (Workflow, WorkflowInputs,
-                                              WorkflowRef)
+from ray.workflow.common import (Workflow, WorkflowInputs, WorkflowRef)
 
 
 def _resolve_workflow_outputs(index: int) -> Any:

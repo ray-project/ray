@@ -6,8 +6,7 @@ import tempfile
 import pytest
 import ray
 from ray import workflow
-from ray.workflow.storage import (get_global_storage,
-                                               set_global_storage)
+from ray.workflow.storage import (get_global_storage, set_global_storage)
 from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.workflow.workflow_storage import asyncio_run
