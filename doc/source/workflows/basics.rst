@@ -68,11 +68,17 @@ Retrieve results
 -------------------------
 
 Workflow result can be retrieved, by ``workflow.get_output(workflow_id)`` and the return value will be ``ObjectRef[T]``. The function will return even the underline workflow is still execution. For example:
+
 .. code-block:: python
 
     assert ray.get(workflow.get_output("add_example")) == 30
 
-We can retrieve the results for steps too with named steps. A step can be named in two ways, 1) via ``.options(name="step_name")`` or, 2) via decorator ``@workflow.step(name="step_name"``. Once a step is given a name, the result of the step will be able to be retrived via ``workflow.get_output(workflow_id, name="step_name")``. The return value will be either an ``ObjectRef[T]`` or throw an exception if the step hasn't been executed. Here are some examples:
+We can retrieve the results for steps too with named steps. A step can be named in two ways,
+
+ 1) via ``.options(name="step_name")``
+ 2) via decorator ``@workflow.step(name="step_name"``. 
+
+Once a step is given a name, the result of the step will be able to be retrived via ``workflow.get_output(workflow_id, name="step_name")``. The return value will be either an ``ObjectRef[T]`` or throw an exception if the step hasn't been executed. Here are some examples:
 
 .. code-block:: python
 
@@ -144,8 +150,8 @@ The following error handling flags can be either set in the step decorator or vi
     r2 = faulty_function.options(catch_exceptions=True).step()
     handle_errors.step(r2).run()
 
-- If `max_retries` is given, the step will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, `max_retries` is set to be 3.
-- If `catch_exceptions` is True, the return value of the function will be converted to `Tuple[Optional[T], Optional[Exception]]`. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
+- If ``max_retries`` is given, the step will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
+- If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
 
 The parameters can also be passed to the decorator
 
