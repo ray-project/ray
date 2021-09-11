@@ -93,7 +93,7 @@ We can retrieve the results for steps too with named steps. A step can be named 
 If there are multiple steps with the same name, the suffix with a counter ``_n`` will be added automatically. For example,
 
 .. code-block:: python
-    
+
     @workflow.step(name="double")
     def double(s):
         return s * 2
@@ -291,6 +291,19 @@ Passing object references between steps
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray object references and data structures composed of them (e.g., ``ray.Dataset``) can be passed into and returned from workflow steps. To ensure recoverability, their contents will be logged to durable storage. However, an object will not be checkpointed more than once, even if it is passed to many different steps.
+
+.. code-block:: python
+
+    @ray.remote
+    def do_add(a, b):
+        return a + b
+
+    @workflow.step
+    def add(a, b):
+        return do_add.remote(a, b)
+    
+    add.step(ray.put(10), ray.put(20)).run() == 30
+
 
 Ray actor handles are not allowed to be passed between steps.
 
