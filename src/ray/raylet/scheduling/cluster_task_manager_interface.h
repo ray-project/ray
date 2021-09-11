@@ -122,6 +122,9 @@ class ClusterTaskManagerInterface {
   /// Report high frequency scheduling metrics.
   virtual void RecordMetrics() = 0;
 
+  /// Check if there are enough available resources for the given input.
+  virtual bool IsLocallySchedulable(const RayTask &task) const = 0;
+
   /// Calculate normal task resources.
   virtual ResourceSet CalcNormalTaskResources() const = 0;
 };
