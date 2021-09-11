@@ -102,6 +102,7 @@ def test_dedupe_downloads_list(workflow_start_regular):
                 get_objects_count += 1
         assert get_objects_count == 5
 
+
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [{
@@ -124,6 +125,7 @@ def test_dedupe_download_raw_ref(workflow_start_regular):
             if "objects" in key:
                 get_objects_count += 1
         assert get_objects_count == 1
+
 
 @pytest.mark.parametrize(
     "workflow_start_regular",

@@ -62,7 +62,8 @@ def _recover_workflow_step(input_object_refs: List[ray.ObjectRef],
 
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage,
-        step_id: StepID, objectref_cache: Dict[str, Any] = None) -> Union[Workflow, StepID]:
+        step_id: StepID,
+        objectref_cache: Dict[str, Any] = None) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
     the workflow step id instead.
@@ -82,22 +83,22 @@ def _construct_resume_workflow_from_step(
         # we already have the output
         return step_id
     if isinstance(result.output_step_id, str):
-        return _construct_resume_workflow_from_step(reader,
-                                                    result.output_step_id, objectref_cache=objectref_cache)
+        return _construct_resume_workflow_from_step(
+            reader, result.output_step_id, objectref_cache=objectref_cache)
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
     input_workflows = []
     instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
-        r = _construct_resume_workflow_from_step(reader, _step_id, objectref_cache=objectref_cache)
+        r = _construct_resume_workflow_from_step(
+            reader, _step_id, objectref_cache=objectref_cache)
         if isinstance(r, Workflow):
             input_workflows.append(r)
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
-
 
     # TODO (Alex): Refactor to remove this special case handling of object refs
     resolved_object_refs = []
@@ -112,7 +113,8 @@ def _construct_resume_workflow_from_step(
             identifiers_to_await.append(identifier)
 
     loop = asyncio.get_event_loop()
-    object_refs_to_cache = loop.run_until_complete(asyncio.gather(*promises_to_await))
+    object_refs_to_cache = loop.run_until_complete(
+        asyncio.gather(*promises_to_await))
 
     for identifier, object_ref in zip(identifiers_to_await, promises_to_await):
         objectref_cache[identifier] = object_ref

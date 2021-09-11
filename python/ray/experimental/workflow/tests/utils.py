@@ -3,8 +3,7 @@ import tempfile
 import os
 import ray
 from ray.experimental import workflow
-from ray.experimental.workflow.storage import (
-                                               set_global_storage)
+from ray.experimental.workflow.storage import (set_global_storage)
 
 _GLOBAL_MARK_FILE = pathlib.Path(tempfile.gettempdir()) / "__workflow_test"
 

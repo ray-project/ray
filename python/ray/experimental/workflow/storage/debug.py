@@ -44,7 +44,6 @@ class LoggedStorage(FilesystemStorageImpl):
         with open(self._op_counter, "wb") as f:
             ray.cloudpickle.dump(counter, f)
 
-
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with FileLock(str(self._log_dir / ".lock")):
             self.update_count("put", key)
@@ -63,7 +62,7 @@ class LoggedStorage(FilesystemStorageImpl):
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
 
-    async def get(self, key: str, is_json = False) -> None:
+    async def get(self, key: str, is_json=False) -> None:
         with FileLock(str(self._log_dir / ".lock")):
             self.update_count("get", key)
 
