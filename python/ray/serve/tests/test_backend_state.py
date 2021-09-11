@@ -131,6 +131,8 @@ class MockReplicaActorWrapper:
 
         # Will be set when `start()` is called.
         self.started = False
+        # Will be set when `recover()` is called.
+        self.recovering = False
         # Will be set when `start()` is called.
         self.version = None
         # Expected to be set in the test.
@@ -172,18 +174,31 @@ class MockReplicaActorWrapper:
     def set_unhealthy(self):
         self.healthy = False
 
+    def set_starting_version(self, version: BackendVersion):
+        """Mocked backend_worker return version from reconfigure()"""
+        self.starting_version = version
+
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         self.started = True
+        self.version = version
 
-    def update_user_config(self, config: Any):
+    def update_user_config(self, user_config: Any):
         self.started = True
+        self.version = BackendVersion(
+            self.version.code_version, user_config=user_config)
 
     def recover(self):
-        self.started = True
+        self.recovering = True
+        self.started = False
+        self.version = None
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
         self.ready = ReplicaStartupStatus.PENDING
+        if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
+            self.recovering = False
+            self.started = True
+            self.version = self.starting_version
         return ready, self.version
 
     def resource_requirements(
@@ -1902,19 +1917,27 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
     tag = "test"
 
     # Step 1: Create some backend info with actors in running state
-    b_info_1, b_version_1 = backend_info()
+    b_info_1, b_version_1 = backend_info(version="1")
     create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
 
     backend_state = backend_state_manager._backend_states[tag]
 
     # Single replica should be created.
     backend_state_manager.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(
+        backend_state,
+        total=1,
+        version=b_version_1,
+        by_state=[(ReplicaState.STARTING, 1)])
     backend_state._replicas.get()[0]._actor.set_ready()
 
     # Now the replica should be marked running.
     backend_state_manager.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        total=1,
+        version=b_version_1,
+        by_state=[(ReplicaState.RUNNING, 1)])
 
     mocked_replica = backend_state._replicas.get(
         states=[ReplicaState.RUNNING])[0]
@@ -1929,13 +1952,22 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
     # Step 4: Ensure new backend_state is correct
     # backend state behind "test" is re-created in recovery flow
     backend_state = backend_state_manager._backend_states[tag]
+    # Ensure recovering replica begin with no version assigned
     check_counts(
-        backend_state, total=1, by_state=[(ReplicaState.RECOVERING, 1)])
+        backend_state,
+        total=1,
+        version=None,
+        by_state=[(ReplicaState.RECOVERING, 1)])
     backend_state._replicas.get()[0]._actor.set_ready()
+    backend_state._replicas.get()[0]._actor.set_starting_version(b_version_1)
 
     # Now the replica should be marked running.
     backend_state_manager.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        total=1,
+        version=b_version_1,
+        by_state=[(ReplicaState.RUNNING, 1)])
     # Ensure same replica name is used
     assert backend_state._replicas.get()[
         0].replica_tag == mocked_replica.replica_tag
