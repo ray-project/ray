@@ -506,10 +506,13 @@ class WorkflowStorage:
             update: If false, do not upload data when the path already exists.
         """
         key = self._storage.make_key(*paths)
+        if "objects" in key:
+            print("======== Trying to put key", key, "update", update)
         if not update:
             prefix = self._storage.make_key(*paths[:-1])
             scan_result = await self._storage.scan_prefix(prefix)
-            if key in scan_result:
+            # print(f"Detected update is false. Scan result: {scan_result}. And key is {key}, condition is {path[-1] in scan_result}")
+            if paths[-1] in scan_result:
                 return key
         try:
             upload_tasks: List[ObjectRef] = []
