@@ -12,6 +12,8 @@ In this guide, we cover examples for the following use cases:
 * How do I use RaySGD to :ref:`train with a large dataset <sgd-datasets>`?
 * How do I :ref:`tune <sgd-tune>` my RaySGD model?
 
+.. _sgd-backends:
+
 Backends
 --------
 
@@ -21,8 +23,8 @@ training with:
 
 * **PyTorch:** RaySGD initializes your distributed process group, allowing
   you to run your ``DistributedDataParallel`` training script. See `PyTorch
-  Distributed Overview <https://torchmetrics.readthedocs.io/en/latest/>`_ for
-  more information.
+  Distributed Overview <https://pytorch.org/tutorials/beginner/dist_overview.html>`_
+  for more information.
 * **TensorFlow:**  RaySGD configures ``TF_CONFIG`` for you, allowing you to run
   your ``MultiWorkerMirroredStrategy`` training script. See `Distributed
   training with TensorFlow <https://www.tensorflow.org/guide/distributed_training>`_
@@ -37,23 +39,128 @@ training with:
 Porting code to RaySGD
 ----------------------
 
+The following instructions assume you have a training function
+that can already be run on a single worker for one of the supported
+:ref:`backend <sgd-backends>` frameworks.
+
+Update training function
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, you'll want to update your training function to support distributed
+training.
+
 .. tabs::
 
-    .. group-tab:: pytorch
+  .. group-tab:: PyTorch
 
-        TODO. Write about how to convert standard pytorch code to distributed.
+    RaySGD will set up your distributed process group for you. You simply
+    need to add in the proper PyTorch hooks in your training function to
+    utilize it.
 
-    .. group-tab:: tensorflow
+    **Step 1:** Wrap your model in ``DistributedDataParallel``.
 
-        TODO. Write about how to convert standard tf code to distributed.
+    The `DistributedDataParallel <https://pytorch.org/docs/master/generated/torch.nn.parallel.DistributedDataParallel.html>`_
+    container will parallelize the input ``Module`` across the worker processes.
 
-    .. group-tab:: horovod
+    .. code-block:: python
 
-        TODO. Write about how to convert code to use horovod.
+        from torch.nn.parallel import DistributedDataParallel
 
-.. TODO add BackendConfigs
+        model = DistributedDataParallel(model)
+
+    **Step 2:** Update your ``DataLoader`` to use a ``DistributedSampler``.
+
+    The `DistributedSampler <https://pytorch.org/docs/master/data.html#torch.utils.data.distributed.DistributedSampler>`_
+    will split the data across the workers, so each process will train on
+    only a subset of the data.
+
+    .. code-block:: python
+
+        from torch.utils.data import DataLoader, DistributedSampler
+
+        data_loader = DataLoader(dataset,
+                                 batch_size=batch_size,
+                                 sampler=DistributedSampler(dataset))
+
+
+  .. group-tab:: TensorFlow
+
+    .. note::
+       The current TensorFlow implementation supports
+       ``MultiWorkerMirroredStrategy`` with the Keras API. If there are other
+       strategies you wish to see supported by RaySGD, please let us know by
+       submitting a `feature request on GitHub`_.
+
+    These instructions closely follow TensorFlow's `Multi-worker training
+    with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_
+    tutorial. One key difference is that RaySGD will handle the environment
+    variable set up for you.
+
+    **Step 1:** Wrap your model in ``MultiWorkerMirroredStrategy``.
+
+    The `MultiWorkerMirroredStrategy <https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy>`_
+    enables synchronous distributed training. The ``Model`` *must* be built and
+    compiled within the scope of the strategy.
+
+    .. code-block:: python
+
+        with tf.distribute.MultiWorkerMirroredStrategy().scope():
+            model = ... # build model
+            model.compile()
+
+    **Step 2:** Update your ``Dataset`` batch size to the *global* batch
+    size.
+
+    The `batch <https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch>`_
+    will be split evenly across worker processes, so ``batch_size`` should be
+    set appropriately.
+
+    .. code-block:: diff
+
+        -batch_size = worker_batch_size
+        +batch_size = worker_batch_size * num_workers
+
+  .. group-tab:: Horovod
+
+    If you have a training function that already runs with the `Horovod Ray
+    Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
+    you should not need to make any additional changes!
+
+    To onboard onto Horovod, please visit the `Horovod guide
+    <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
+
+Create RaySGD Trainer
+~~~~~~~~~~~~~~~~~~~~~
+
+The ``Trainer`` is the primary RaySGD class that is used to manage state and
+execute training. You can create a simple ``Trainer`` for the backend of choice
+with one of the following:
+
+.. code-block:: python
+
+    torch_trainer = Trainer(backend="torch", num_workers=2)
+
+    tensorflow_trainer = Trainer(backend="tensorflow", num_workers=2)
+
+    horovod_trainer = Trainer(backend="horovod", num_workers=2)
+
+For more configurability, please reference the :ref:`sgd-api-trainer` API.
+
+Run training function
+~~~~~~~~~~~~~~~~~~~~~
+
+With a distributed training function and a RaySGD ``Trainer``, you are now
+ready to start training!
+
+.. code-block:: python
+
+    trainer.start() # set up resources
+    trainer.run(train_func)
+    trainer.shutdown() # clean up resources
 
 .. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <sgd-backwards-compatibility>`.
+
+.. _`feature request on GitHub`: https://github.com/ray-project/ray/issues
 
 Configuring Training
 --------------------

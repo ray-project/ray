@@ -51,93 +51,203 @@ RaySGD is a library that aims to simplify distributed deep learning.
 Quick Start
 -----------
 
-.. TODO: make this runnable and show both Tensorflow/Torch
+RaySGD abstracts away the complexity of setting up a distributed training
+system. Let's take following simple examples:
 
-RaySGD abstracts away the complexity of setting up a distributed training system. Let's take this simple example function:
+.. tabs::
 
-.. code-block:: python
+  .. group-tab:: PyTorch
 
-    class Net(nn.Module):
-        def __init__(self):
-            super(Net, self).__init__()
-            self.fc1 = nn.Linear(1, 128)
-            self.fc2 = nn.Linear(128, 1)
+    This example shows how you can use RaySGD with PyTorch.
 
-        def forward(self, x):
-            x = self.fc1(x)
-            x = F.relu(x)
-            x = self.fc2(x)
-            return x
+    First, set up your dataset and model.
 
-    def train_func():
-        model = Net()
-        for x in data:
-            results = model(x)
-        return results
+    .. code-block:: python
 
-We can simply construct the trainer function and specify the backend we want (torch, tensorflow, or horovod) and the number of workers to use for training:
+        import torch
+        import torch.nn as nn
 
-.. code-block:: python
+        num_samples = 20
+        input_size = 10
+        layer_size = 15
+        output_size = 5
 
-    from ray.util.sgd.v2 import Trainer
+        class NeuralNetwork(nn.Module):
+            def __init__(self):
+                super(NeuralNetwork, self).__init__()
+                self.layer1 = nn.Linear(input_size, layer_size)
+                self.relu = nn.ReLU()
+                self.layer2 = nn.Linear(layer_size, output_size)
 
-    trainer = Trainer(backend = "torch", num_workers=2)
+            def forward(self, input):
+                return self.layer2(self.relu(self.layer1(input)))
 
-Then, we can pass the function to the trainer. This will cause the trainer to start the necessary processes and execute the training function:
-
-.. code-block:: python
+        # In this example we use a randomly generated dataset.
+        input = torch.randn(num_samples, input_size)
+        labels = torch.randn(num_samples, output_size)
 
 
-    trainer.start()
-    results = trainer.run(train_func)
-    print(results)
+    Now define your single-worker PyTorch training function.
 
-Now, let's leverage Pytorch's Distributed Data Parallel. With RaySGD, you
-just pass in your distributed data parallel code as as you would normally run
-it with ``torch.distributed.launch``:
+    .. code-block:: python
 
-.. code-block:: python
+        import torch.optim as optim
 
-    import torch.nn as nn
-    from torch.nn.parallel import DistributedDataParallel
-    import torch.optim as optim
+        def train_func():
+            num_epochs = 3
+            model = NeuralNetwork()
+            loss_fn = nn.MSELoss()
+            optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    def train_simple(config: Dict):
+            for epoch in range(num_epochs):
+                output = model(input)
+                loss = loss_fn(output, labels)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        # N is batch size; D_in is input dimension;
-        # H is hidden dimension; D_out is output dimension.
-        N, D_in, H, D_out = 8, 5, 5, 5
 
-        # Create random Tensors to hold inputs and outputs
-        x = torch.randn(N, D_in)
-        y = torch.randn(N, D_out)
-        loss_fn = nn.MSELoss()
+    This training function can be executed with:
 
-        # Use the nn package to define our model and loss function.
-        model = torch.nn.Sequential(
-            torch.nn.Linear(D_in, H),
-            torch.nn.ReLU(),
-            torch.nn.Linear(H, D_out),
-        )
-        optimizer = optim.SGD(model.parameters(), lr=0.1)
+    .. code-block:: python
 
-        model = DistributedDataParallel(model)
-        results = []
+        train_func()
 
-        for epoch in range(config.get("epochs", 10)):
-            optimizer.zero_grad()
-            output = model(x)
-            loss = loss_fn(output, y)
-            loss.backward()
-            results.append(loss.item())
-            optimizer.step()
-        return results
 
-Running this with RaySGD is as simple as the following:
+    Now let's convert this to a distributed multi-worker training function!
 
-.. code-block:: python
+    First, update the training function code to use PyTorch's
+    ``DistributedDataParallel``. With RaySGD, you just pass in your distributed
+    data parallel code as as you would normally run it with
+    ``torch.distributed.launch``.
 
-    all_results = trainer.run(train_simple)
+    .. code-block:: python
+
+        from torch.nn.parallel import DistributedDataParallel
+
+        def train_func_distributed():
+            num_epochs = 3
+            model = NeuralNetwork()
+            model = DistributedDataParallel(model)
+            loss_fn = nn.MSELoss()
+            optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+            for epoch in range(num_epochs):
+                output = model(input)
+                loss = loss_fn(output, labels)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                print(f"epoch: {epoch}, loss: {loss.item()}")
+
+    Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
+    with 4 workers, and use it to run the new training function!
+
+    .. code-block:: python
+
+        from ray.util.sgd.v2 import Trainer
+
+        trainer = Trainer(backend="torch", num_workers=4)
+        trainer.start()
+        results = trainer.run(train_func_distributed)
+        trainer.shutdown()
+
+  .. group-tab:: TensorFlow
+
+    This example shows how you can use RaySGD to set up `Multi-worker training
+    with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.
+
+    First, set up your dataset and model.
+
+    .. code-block:: python
+
+        import numpy as np
+        import tensorflow as tf
+
+        def mnist_dataset(batch_size):
+            (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
+            # The `x` arrays are in uint8 and have values in the [0, 255] range.
+            # You need to convert them to float32 with values in the [0, 1] range.
+            x_train = x_train / np.float32(255)
+            y_train = y_train.astype(np.int64)
+            train_dataset = tf.data.Dataset.from_tensor_slices(
+                (x_train, y_train)).shuffle(60000).repeat().batch(batch_size)
+            return train_dataset
+
+
+        def build_and_compile_cnn_model():
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(28, 28)),
+                tf.keras.layers.Reshape(target_shape=(28, 28, 1)),
+                tf.keras.layers.Conv2D(32, 3, activation='relu'),
+                tf.keras.layers.Flatten(),
+                tf.keras.layers.Dense(128, activation='relu'),
+                tf.keras.layers.Dense(10)
+            ])
+            model.compile(
+                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                optimizer=tf.keras.optimizers.SGD(learning_rate=0.001),
+                metrics=['accuracy'])
+            return model
+
+    Now define your single-worker TensorFlow training function.
+
+    .. code-block:: python
+
+        def train_func():
+            batch_size = 64
+            single_worker_dataset = mnist.mnist_dataset(batch_size)
+            single_worker_model = mnist.build_and_compile_cnn_model()
+            single_worker_model.fit(single_worker_dataset, epochs=3, steps_per_epoch=70)
+
+    This training function can be executed with:
+
+    .. code-block:: python
+
+        train_func()
+
+    Now let's convert this to a distributed multi-worker training function!
+    All you need to do is:
+
+    1. Set the *global* batch size - each worker will process the same size
+       batch as in the single-worker code.
+    2. Choose your TensorFlow distributed training strategy. In this example
+       we use the ``MultiWorkerMirroredStrategy``.
+
+    .. code-block:: python
+
+        import json
+        import os
+
+        def train_func_distributed():
+            per_worker_batch_size = 64
+            # This environment variable will be set by Ray SGD.
+            tf_config = json.loads(os.environ['TF_CONFIG'])
+            num_workers = len(tf_config['cluster']['worker'])
+
+            strategy = tf.distribute.MultiWorkerMirroredStrategy()
+
+            global_batch_size = per_worker_batch_size * num_workers
+            multi_worker_dataset = mnist_dataset(global_batch_size)
+
+            with strategy.scope():
+                # Model building/compiling need to be within `strategy.scope()`.
+                multi_worker_model = build_and_compile_cnn_model()
+
+            multi_worker_model.fit(multi_worker_dataset, epochs=3, steps_per_epoch=70)
+
+    Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
+    with 4 workers, and use it to run the new training function!
+
+    .. code-block:: python
+
+        from ray.util.sgd.v2 import Trainer
+
+        trainer = Trainer(backend="tensorflow", num_workers=4)
+        trainer.start()
+        results = trainer.run(train_func_distributed)
+        trainer.shutdown()
 
 
 **Next steps:** Check out the :ref:`User Guide <sgd-user-guide>`!

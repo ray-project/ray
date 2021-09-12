@@ -13,8 +13,8 @@ Trainer
 
 .. _sgd-api-backend-config:
 
-BackendConfigs
---------------
+BackendConfig
+-------------
 
 .. autoclass:: ray.util.sgd.v2.BackendConfig
 
@@ -41,8 +41,8 @@ HorovodConfig
 
 .. _sgd-api-callback:
 
-Callbacks
-----------
+SGDCallback
+-----------
 
 .. autoclass:: ray.util.sgd.v2.SGDCallback
     :members:
