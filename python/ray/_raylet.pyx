@@ -1839,7 +1839,8 @@ cdef class CoreWorker:
 
     def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
-            self.async_event_loop.stop()
+            self.async_event_loop.call_soon_threadsafe(
+                self.async_event_loop.stop)
         if self.async_thread is not None:
             self.async_thread.join()
 
