@@ -1456,7 +1456,6 @@ def start_raylet(redis_address,
     # inserting them into start_worker_command and later erasing them if
     # needed.
     start_worker_command = [
-        "nsys", "profile",
         sys.executable,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
