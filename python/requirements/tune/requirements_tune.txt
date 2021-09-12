@@ -21,15 +21,14 @@ keras==2.4.3
 kubernetes==17.17.0
 lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
-matplotlib==3.4.2; python_version >= '3.7'
+matplotlib==3.4.3; python_version >= '3.7'
 mlflow==1.19.0
-mock==4.0.3
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
 optuna==2.9.1
 pytest-remotedata==0.3.2
 lightning-bolts==0.3.3
-pytorch-lightning==1.4.3
+pytorch-lightning==1.4.5
 scikit-learn==0.24.2
 scikit-optimize==0.8.1
 sigopt==7.5.0
