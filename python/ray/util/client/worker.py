@@ -218,10 +218,10 @@ class Worker:
 
         while True:
             if deadline:
-                op_timeout = min(MAX_BLOCKING_OPERATION_TIME_S,
+                op_timeout = min(MAX_BLOCKING_OPERATION_TIME_S * len(to_get),
                                  max(deadline - time.monotonic(), 0.001))
             else:
-                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S * len(to_get)
             try:
                 res = self._get(to_get, op_timeout)
                 break
@@ -638,6 +638,6 @@ def decode_exception(e: grpc.RpcError) -> Exception:
         # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details
-        return e
+        return ConnectionError(f"Request failed. GRPC error: {e}")
     data = base64.standard_b64decode(e.details())
     return loads_from_server(data)
