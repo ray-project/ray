@@ -96,6 +96,9 @@ def step(*args, **kwargs):
     catch_exceptions = kwargs.pop("catch_exceptions", None)
     if catch_exceptions is not None:
         step_options["catch_exceptions"] = catch_exceptions
+    name = kwargs.pop("name", None)
+    if name is not None:
+        step_options["name"] = name
     if len(kwargs) != 0:
         step_options["ray_options"] = kwargs
     return make_step_decorator(step_options)
