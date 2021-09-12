@@ -107,8 +107,8 @@ We do not recommend running long-lived workflows as sub-workflows of a virtual a
     @workflow.virtual_actor
     class ShoppingCart:
         ...
-        # BAD: blocks until shipping completes, which could take
-        # weeks. Until that workflow finishes, no mutating methods
+        # BAD: blocks until shipping completes, which could be
+        # slow. Until that workflow finishes, no mutating methods
         # can be called on this actor.
         def do_checkout():
             # Run shipping workflow as sub-workflow of this method.
@@ -127,7 +127,7 @@ We do not recommend running long-lived workflows as sub-workflows of a virtual a
             self.shipment_workflow_id = "ship_{}".format(self.order_id)
             # Run shipping workflow as a separate async workflow.
             ship_items.step(self.items).run_async(
-                workflow_id=self.shipment_worklow_id)
+                workflow_id=self.shipment_workflow_id)
 
 Receiving external events
 -------------------------
