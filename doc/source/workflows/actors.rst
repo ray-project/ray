@@ -99,7 +99,7 @@ When an actor method launches a sub-workflow, that entire sub-workflow will be r
 Long-lived sub-workflows
 ------------------------
 
-We do not recommend running long-lived workflows as sub-workflows of a virtual actor. This is because sub-workflows block future actor methods calls from executing while they are running. Instead, you can launch a *separate* workflow and track its execution using workflow API methods.
+We do not recommend running long-lived workflows as sub-workflows of a virtual actor. This is because sub-workflows block future actor methods calls from executing while they are running. Instead, you can launch a *separate* workflow and track its execution using workflow API methods. By generating the workflow id deterministically (ensuring idempotency), we can ensure that no duplicate workflows are launched even if there is a failure.
 
 .. code-block:: python
     :caption: Long-lived sub-workflow (bad).
