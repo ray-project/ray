@@ -31,6 +31,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.runtime_env.working_dir as working_dir_pkg
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -71,11 +72,14 @@ def backoff(timeout: int) -> int:
 
 
 class Worker:
-    def __init__(self,
-                 conn_str: str = "",
-                 secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None,
-                 connection_retries: int = 3):
+    def __init__(
+            self,
+            conn_str: str = "",
+            secure: bool = False,
+            metadata: List[Tuple[str, str]] = None,
+            connection_retries: int = 3,
+            _credentials: Optional[grpc.ChannelCredentials] = None,
+    ):
         """Initializes the worker side grpc client.
 
         Args:
@@ -86,6 +90,8 @@ class Worker:
               ray server if it doesn't respond immediately. Setting to 0 tries
               at least once.  For infinite retries, catch the ConnectionError
               exception.
+            _credentials: gprc channel credentials. Default ones will be used
+              if None.
         """
         self._client_id = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
@@ -95,10 +101,12 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
-        if secure:
-            credentials = grpc.ssl_channel_credentials()
+        if secure and _credentials is None:
+            _credentials = grpc.ssl_channel_credentials()
+
+        if _credentials is not None:
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=GRPC_OPTIONS)
+                conn_str, _credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
                 conn_str, options=GRPC_OPTIONS)
@@ -177,7 +185,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -235,7 +243,7 @@ class Worker:
         try:
             data = self.server.GetObject(req, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -339,6 +347,8 @@ class Worker:
         def populate_ids(
                 resp: Union[ray_client_pb2.DataResponse, Exception]) -> None:
             if isinstance(resp, Exception):
+                if isinstance(resp, grpc.RpcError):
+                    resp = decode_exception(resp)
                 for future in id_futures:
                     future.set_exception(resp)
                 return
@@ -453,7 +463,7 @@ class Worker:
         try:
             self.data_client.Terminate(term)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -470,7 +480,7 @@ class Worker:
         try:
             self.data_client.Terminate(term)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     # Not using streaming RPC, so unordered w.r.t. other requests.
     def get_cluster_info(self,
@@ -549,14 +559,10 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env as runtime_env
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR,
-                                                      tmp_dir)
-                    runtime_env.rewrite_runtime_env_uris(job_config)
-                    runtime_env.upload_runtime_env_package_if_needed(
-                        job_config)
-                    runtime_env.PKG_DIR = old_dir
+                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
+                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
+                    manager.upload_runtime_env_package_if_needed(job_config)
 
                 serialized_job_config = pickle.dumps(job_config)
 
@@ -569,7 +575,7 @@ class Worker:
                     f"Initialization failure from server:\n{response.msg}")
 
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -625,6 +631,13 @@ def make_client_id() -> str:
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then return the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        return e
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)

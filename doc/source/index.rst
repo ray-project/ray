@@ -277,6 +277,7 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
+   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
    data/package-ref.rst
    data/dask-on-ray.rst
