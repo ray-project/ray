@@ -550,10 +550,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] object create by worker or not.
+  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
-  /// \param[in] inline_small_object wether to inline create this object if it's
+  /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
