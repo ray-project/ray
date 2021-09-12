@@ -32,8 +32,14 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME
-    # If you're starting `ray up example-full.yaml` from a worker node (that has SSH access to all the nodes), this
-    # should be commented out. Only needed if a ssh private key is necessary to ssh to the cluster.
+    # You can comment out `ssh_private_key` if the following machines don't need a private key for SSH access to the Ray
+    # cluster:
+    #   (1) The machine on which `ray up` is executed.
+    #   (2) The head node of the Ray cluster.
+    #
+    # The machine that runs ray up executes SSH commands to set up the Ray head node. The Ray head node subsequently
+    # executes SSH commands to set up the Ray worker nodes. When you run ray up, ssh credentials sitting on the ray up
+    # machine are copied to the head node -- internally, the ssh key is added to the list of file mounts to rsync to head node.
     # ssh_private_key: ~/.ssh/id_rsa
 
 # The minimum number of workers nodes to launch in addition to the head
