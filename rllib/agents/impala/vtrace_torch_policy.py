@@ -222,6 +222,8 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
     else:
         # Important: chop the tensor into batches at known episode cut
         # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
