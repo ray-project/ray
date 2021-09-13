@@ -77,11 +77,9 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
 
-    # The object ref will go through the upload path once when checkpointing
-    # the initial workflow. When the inputs of the identity steps are
-    # recovered, they will be given different object refs, so the outputs of
-    # the recovery will reach the manager twice.
-    assert get_num_uploads() == 3
+    # One upload for the initial checkpoint, and one for the object ref after
+    # resuming.
+    assert get_num_uploads() == 2
 
 
 def test_dedupe_cluster_failure(reset_workflow, tmp_path):

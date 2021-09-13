@@ -28,7 +28,7 @@ class WorkflowNotResumableError(Exception):
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(input_object_refs: List[str],
+def _recover_workflow_step(input_object_refs: List[ray.ObjectRef],
                            input_workflows: List[Any],
                            input_workflow_refs: List[WorkflowRef],
                            instant_workflow_inputs: Dict[int, StepID]):
@@ -53,13 +53,6 @@ def _recover_workflow_step(input_object_refs: List[str],
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
 
-    # TODO (Alex): Refactor to remove this special case handling of object refs
-    promises = []
-    for identifier in input_object_refs:
-        paths = reader._key_step_args(identifier)
-        promises.append(reader._get(paths))
-    loop = asyncio.get_event_loop()
-    input_object_refs = loop.run_until_complete(asyncio.gather(*promises))
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
     args, kwargs = reader.load_step_args(
@@ -69,7 +62,8 @@ def _recover_workflow_step(input_object_refs: List[str],
 
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage,
-        step_id: StepID) -> Union[Workflow, StepID]:
+        step_id: StepID,
+        objectref_cache: Dict[str, Any] = None) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
     the workflow step id instead.
@@ -82,30 +76,57 @@ def _construct_resume_workflow_from_step(
         A workflow that recovers the step, or a ID of a step
         that contains the output checkpoint file.
     """
+    if objectref_cache is None:
+        objectref_cache = {}
     result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
     if result.output_object_valid:
         # we already have the output
         return step_id
     if isinstance(result.output_step_id, str):
-        return _construct_resume_workflow_from_step(reader,
-                                                    result.output_step_id)
+        return _construct_resume_workflow_from_step(
+            reader, result.output_step_id, objectref_cache=objectref_cache)
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
     input_workflows = []
     instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
-        r = _construct_resume_workflow_from_step(reader, _step_id)
+        r = _construct_resume_workflow_from_step(
+            reader, _step_id, objectref_cache=objectref_cache)
         if isinstance(r, Workflow):
             input_workflows.append(r)
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
+
+    # TODO (Alex): Refactor to remove this special case handling of object refs
+    resolved_object_refs = []
+    identifiers_to_await = []
+    promises_to_await = []
+
+    for identifier in result.object_refs:
+        if identifier not in objectref_cache:
+            paths = reader._key_step_args(identifier)
+            promise = reader._get(paths)
+            promises_to_await.append(promise)
+            identifiers_to_await.append(identifier)
+
+    loop = asyncio.get_event_loop()
+    object_refs_to_cache = loop.run_until_complete(
+        asyncio.gather(*promises_to_await))
+
+    for identifier, object_ref in zip(identifiers_to_await,
+                                      object_refs_to_cache):
+        objectref_cache[identifier] = object_ref
+
+    for identifier in result.object_refs:
+        resolved_object_refs.append(objectref_cache[identifier])
+
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
-        **result.ray_options).step(result.object_refs, input_workflows,
+        **result.ray_options).step(resolved_object_refs, input_workflows,
                                    workflow_refs, instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     recovery_workflow.data.step_type = result.step_type

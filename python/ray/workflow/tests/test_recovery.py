@@ -1,4 +1,5 @@
 import subprocess
+import tempfile
 import time
 
 from ray.tests.conftest import *  # noqa
@@ -10,6 +11,9 @@ from ray.exceptions import RaySystemError
 from ray import workflow
 from ray.workflow.tests import utils
 from ray.workflow import workflow_storage
+from ray.workflow.storage import get_global_storage
+from ray.workflow.storage.debug import DebugStorage
+from ray.workflow.tests import utils
 
 
 @workflow.step
@@ -57,6 +61,105 @@ def simple(x):
     y = the_failed_step.step(x)
     z = append2.step(y)
     return z
+
+
+@workflow.step
+def identity(x):
+    return x
+
+
+@workflow.step
+def recursive(ref, count):
+    if count == 0:
+        return ref
+    return recursive.step(ref, count - 1)
+
+
+@workflow.step
+def gather(*args):
+    return args
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_dedupe_downloads_list(workflow_start_regular):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        debug_store = DebugStorage(get_global_storage(), temp_dir)
+        utils._alter_storage(debug_store)
+
+        numbers = [ray.put(i) for i in range(5)]
+        workflows = [identity.step(numbers) for _ in range(100)]
+
+        gather.step(*workflows).run()
+
+        ops = debug_store._logged_storage.get_op_counter()
+        get_objects_count = 0
+        for key in ops["get"]:
+            if "objects" in key:
+                get_objects_count += 1
+        assert get_objects_count == 5
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_dedupe_download_raw_ref(workflow_start_regular):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        debug_store = DebugStorage(get_global_storage(), temp_dir)
+        utils._alter_storage(debug_store)
+
+        ref = ray.put("hello")
+        workflows = [identity.step(ref) for _ in range(100)]
+
+        gather.step(*workflows).run()
+
+        ops = debug_store._logged_storage.get_op_counter()
+        get_objects_count = 0
+        for key in ops["get"]:
+            if "objects" in key:
+                get_objects_count += 1
+        assert get_objects_count == 1
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_nested_workflow_no_download(workflow_start_regular):
+    """Test that we _only_ load from storage on recovery. For a nested workflow
+    step, we should checkpoint the input/output, but continue to reuse the
+    in-memory value.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        debug_store = DebugStorage(get_global_storage(), temp_dir)
+        utils._alter_storage(debug_store)
+
+        ref = ray.put("hello")
+        result = recursive.step([ref], 10).run()
+
+        ops = debug_store._logged_storage.get_op_counter()
+        get_objects_count = 0
+        for key in ops["get"]:
+            if "objects" in key:
+                get_objects_count += 1
+        assert get_objects_count == 1, "We should only get once when resuming."
+        put_objects_count = 0
+        for key in ops["put"]:
+            if "objects" in key:
+                print(key)
+                put_objects_count += 1
+        assert put_objects_count == 1, \
+            "We should detect the object exists before uploading"
+        assert ray.get(result) == ["hello"]
 
 
 def test_recovery_simple(workflow_start_regular):

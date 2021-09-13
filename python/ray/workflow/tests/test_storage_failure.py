@@ -1,4 +1,3 @@
-import os
 from hashlib import sha1
 import tempfile
 
@@ -10,6 +9,7 @@ from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.storage.filesystem import FilesystemStorageImpl
+from ray.workflow.tests.utils import _alter_storage
 
 
 @workflow.step
@@ -51,14 +51,6 @@ def construct_workflow(length: int):
         x0, x1, x2 = results[-2], results[-1], str(i)
         results.append(scan.step(x0, x1, x2))
     return results[-1]
-
-
-def _alter_storage(new_storage):
-    set_global_storage(new_storage)
-    # alter the storage
-    ray.shutdown()
-    os.system("ray stop --force")
-    workflow.init(new_storage)
 
 
 def _locate_initial_commit(debug_store: DebugStorage) -> int:
