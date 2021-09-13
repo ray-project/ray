@@ -105,6 +105,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def reconfigure(self, user_config: Optional[Any] = None) -> None:
             await self.backend.reconfigure(user_config)
 
+        def get_version(self) -> BackendVersion:
+            return self.backend.version
+
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
 
@@ -287,8 +290,6 @@ class RayServeReplica:
             reconfigure_method = sync_to_async(
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
-
-        return self.version
 
     def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.backend_config = new_config

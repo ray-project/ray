@@ -116,28 +116,31 @@ class ActorReplicaWrapper:
 
     def create_placement_group(self, placement_group_name: str,
                                actor_resources: dict) -> PlacementGroup:
+        # Only need one placement group per actor
+        if self._placement_group:
+            return self._placement_group
+
         logger.debug("Creating placement group '{}' for deployment '{}'".
                      format(placement_group_name, self.backend_tag) +
                      f" component=serve deployment={self.backend_tag}")
-        placement_group = ray.util.placement_group(
+
+        self._placement_group = ray.util.placement_group(
             [actor_resources],
             lifetime="detached" if self._detached else None,
             name=placement_group_name)
 
-        return placement_group
+        return self._placement_group
 
     def get_placement_group(self,
                             placement_group_name) -> Optional[PlacementGroup]:
         if not self._placement_group:
             try:
-                placement_group = ray.util.get_placement_group(
+                self._placement_group = ray.util.get_placement_group(
                     placement_group_name)
             except ValueError:
-                placement_group = None
+                self._placement_group = None
 
-            return placement_group
-        else:
-            return self._placement_group
+        return self._placement_group
 
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         """
@@ -177,7 +180,7 @@ class ActorReplicaWrapper:
                      f"{self.backend_tag} replica={self.replica_tag} "
                      f"with user_config {user_config}")
 
-        self._ready_obj_ref = self.actor_handle.reconfigure.remote(user_config)
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
         """
@@ -193,7 +196,9 @@ class ActorReplicaWrapper:
             self._placement_group = self.get_placement_group(
                 self._placement_group_name)
 
-        self._ready_obj_ref = self.actor_handle.reconfigure.remote()
+        # Running actor handle already has all info needed, thus successful
+        # starting simply means retrieving replica version hash from actor
+        self._ready_obj_ref = self._actor_handle.get_version.remote()
 
     def check_ready(
             self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
@@ -283,7 +288,8 @@ class ActorReplicaWrapper:
             return
 
         try:
-            ray.util.remove_placement_group(self._placement_group)
+            if self._placement_group is not None:
+                ray.util.remove_placement_group(self._placement_group)
         except ValueError:
             pass
 
@@ -542,11 +548,15 @@ class ReplicaStateContainer:
                         filter(lambda r: r.version == version, self._replicas[
                             state]))) for state in states)
         elif exclude_version is not None and version is None:
-            return sum(
-                len(
-                    list(
-                        filter(lambda r: r.version != exclude_version,
-                               self._replicas[state]))) for state in states)
+            try:
+                return sum(
+                    len(
+                        list(
+                            filter(lambda r: r.version != exclude_version,
+                                self._replicas[state]))) for state in states)
+            except:
+                import ipdb
+                ipdb.set_trace()
         else:
             raise ValueError(
                 "Only one of `version` or `exclude_version` may be provided.")
