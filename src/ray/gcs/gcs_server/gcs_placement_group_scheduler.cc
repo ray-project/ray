@@ -98,10 +98,6 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
-  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
-  // schedule bundles with special resource requirements first, which will be implemented
-  // in the next pr.
-
   // Filter out the nodes already scheduled by this placement group.
   absl::flat_hash_set<NodeID> nodes_in_use;
   if (context->bundle_locations_.has_value()) {

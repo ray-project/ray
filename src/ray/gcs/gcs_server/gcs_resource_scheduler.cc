@@ -142,6 +142,10 @@ std::vector<NodeID> GcsResourceScheduler::StrictSpreadSchedule(
       break;
     }
   }
+  RAY_LOG(ERROR) << "SANG result node: " << result.size();
+  for (const auto it : result) {
+    RAY_LOG(ERROR) << "Node scheduled: " << it;
+  }
 
   if (result.size() != required_resources_list.size()) {
     // Unable to meet the resources required for scheduling, scheduling failed.

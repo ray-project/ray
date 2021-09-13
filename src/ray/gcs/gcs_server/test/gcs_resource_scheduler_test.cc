@@ -44,6 +44,13 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
 
+  void AddCpuNode(double num_cpus) {
+    const auto &node_id = NodeID::FromRandom();
+    RAY_LOG(ERROR) << "SANG " << num_cpus << " CPU node: " << node_id;
+    const std::string cpu_resource = "CPU";
+    AddClusterResources(node_id, cpu_resource, num_cpus);
+  }
+
   void CheckClusterAvailableResources(const NodeID &node_id,
                                       const std::string &resource_name,
                                       double resource_value) {
@@ -123,6 +130,50 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
       [](const NodeID &) { return true; });
   ASSERT_EQ(result2.size(), 1);
+}
+
+// TEST_F(GcsResourceSchedulerTest, TestStrictSpreadPreferGPUResource) {
+//   // Add node resources.
+//   const auto &node_id = NodeID::FromRandom();
+//   const std::string cpu_resource = "CPU";
+//   const double node_cpu_num = 10.0;
+//   AddClusterResources(node_id, cpu_resource, node_cpu_num);
+
+//   // Scheduling failure.
+//   std::vector<ResourceSet> required_resources_list;
+//   std::unordered_map<std::string, double> resource_map;
+//   resource_map[cpu_resource] = 1;
+//   required_resources_list.emplace_back(resource_map);
+//   const auto &result1 = gcs_resource_scheduler_->Schedule(
+//       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
+//       [](const NodeID &) { return false; });
+//   ASSERT_EQ(result1.size(), 0);
+
+//   // Scheduling succeeded.
+//   const auto &result2 = gcs_resource_scheduler_->Schedule(
+//       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
+//       [](const NodeID &) { return true; });
+//   ASSERT_EQ(result2.size(), 1);
+// }
+
+TEST_F(GcsResourceSchedulerTest, TestStrictSpreadPreferLargeBundle) {
+  // Nodes {CPU: 16.0}, {CPU: 8.0}, {CPU: 8.0}
+  AddCpuNode(8.0);
+  AddCpuNode(16.0);
+  AddCpuNode(8.0);
+
+  // Bundle {CPU: 8.0}, {CPU: 8.0}, {CPU: 16.0}
+  std::vector<ResourceSet> required_resources_list;
+  std::unordered_map<std::string, double> resource_map;
+  resource_map["CPU"] = 16;
+  required_resources_list.emplace_back(resource_map);
+  resource_map["CPU"] = 8;
+  required_resources_list.emplace_back(resource_map);
+  required_resources_list.emplace_back(resource_map);
+
+  const auto &result1 = gcs_resource_scheduler_->Schedule(
+      required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
+  ASSERT_EQ(result1.size(), 3);
 }
 
 }  // namespace ray
