@@ -9,7 +9,7 @@ import ray
 from ray import serve
 from ray.serve.constants import (SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME)
 from ray.serve.tests.test_failure import request_with_retries
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor
 from ray.serve.utils import get_random_letters
 
 
@@ -21,8 +21,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
     @serve.deployment(
-        name="recover_start_from_replica_actor_names",
-        num_replicas=2)
+        name="recover_start_from_replica_actor_names", num_replicas=2)
     class TransientConstructorFailureDeployment:
         def __init__(self):
             return True
@@ -180,7 +179,6 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         {
             "1": 1
         }, expect_blocking=True)
-
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
 

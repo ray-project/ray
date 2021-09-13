@@ -180,7 +180,8 @@ class ActorReplicaWrapper:
                      f"{self.backend_tag} replica={self.replica_tag} "
                      f"with user_config {user_config}")
 
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+            user_config)
 
     def recover(self):
         """
@@ -548,15 +549,11 @@ class ReplicaStateContainer:
                         filter(lambda r: r.version == version, self._replicas[
                             state]))) for state in states)
         elif exclude_version is not None and version is None:
-            try:
-                return sum(
-                    len(
-                        list(
-                            filter(lambda r: r.version != exclude_version,
-                                self._replicas[state]))) for state in states)
-            except:
-                import ipdb
-                ipdb.set_trace()
+            return sum(
+                len(
+                    list(
+                        filter(lambda r: r.version != exclude_version,
+                               self._replicas[state]))) for state in states)
         else:
             raise ValueError(
                 "Only one of `version` or `exclude_version` may be provided.")
