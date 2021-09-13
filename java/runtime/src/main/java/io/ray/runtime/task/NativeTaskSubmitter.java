@@ -115,8 +115,8 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
-    return nativeWaitPlacementGroupReady(id.getBytes(), timeoutMs);
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds) {
+    return nativeWaitPlacementGroupReady(id.getBytes(), timeoutSeconds);
   }
 
   private static native List<byte[]> nativeSubmitTask(
@@ -146,5 +146,5 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   private static native void nativeRemovePlacementGroup(byte[] placementGroupId);
 
   private static native boolean nativeWaitPlacementGroupReady(
-      byte[] placementGroupId, int timeoutMs);
+      byte[] placementGroupId, int timeoutSeconds);
 }

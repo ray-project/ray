@@ -192,7 +192,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -250,7 +250,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -346,7 +346,7 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
         if not ticket.valid:
             try:
@@ -436,7 +436,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -453,7 +453,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
@@ -548,7 +548,7 @@ class Worker:
                     f"Initialization failure from server:\n{response.msg}")
 
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -601,6 +601,13 @@ def make_client_id() -> str:
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then raise the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        raise
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)
