@@ -59,7 +59,7 @@ def _use_response_cache(func):
         # Get relevant IDs to check cache
         client_id = metadata["client_id"]
         thread_id = metadata["thread_id"]
-        req_id = metadata["req_id"]
+        req_id = int(metadata["req_id"])
 
         # Check if response already cached
         response_cache = self.response_caches[client_id]
