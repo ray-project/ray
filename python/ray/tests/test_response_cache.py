@@ -139,6 +139,20 @@ def test_ordered_response_cache_cleanup_while_waiting():
     t.join()
 
 
+def test_response_cache_cleanup():
+    # Check that the response cache cleans up previous entries for a given
+    # thread properly.
+    cache = ResponseCache()
+    cache.check_cache(16, 123)
+    cache.update_cache(16, 123, "Some response")
+    assert len(cache.cache) == 1
+
+    cache.check_cache(16, 124)
+    cache.update_cache(16, 124, "Second response")
+    assert len(cache.cache) == 1  # Should reuse entry for thread 16
+    assert cache.check_cache(16, 124) == "Second response"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

@@ -42,12 +42,6 @@ class LogstreamClient:
         reconnecting = False
         while not self.client_worker._in_shutdown:
             if reconnecting:
-                if log_once("lost_reconnect_logs"):
-                    logger.warning(
-                        "Log channel is reconnecting. Logs produced while "
-                        "the connection was down can be found on the head "
-                        "node of the cluster in "
-                        "`ray_client_server_[port].out`")
                 # Refresh queue and retry last request
                 self.request_queue = queue.Queue()
                 if self.last_req:
@@ -72,16 +66,29 @@ class LogstreamClient:
                     self.log(level=record.level, msg=record.msg)
                 return
             except grpc.RpcError as e:
-                if self.client_worker._can_reconnect(e):
-                    logger.info("Log channel dropped, retrying.")
-                    reconnecting = True
-                    time.sleep(.5)
-                    continue
-                else:
-                    logger.info("Shutting down log channel.")
-                    if not self.client_worker._in_shutdown:
-                        logger.exception("Unexpected exception:")
+                reconnecting = self._process_rpc_error(e)
+                if not reconnecting:
                     return
+
+    def _process_rpc_error(self, e: grpc.RpcError) -> bool:
+        """
+        Processes RPC errors that occur while reading from data stream.
+        Returns True if the error can be recovered from, False otherwise.
+        """
+        if self.client_worker._can_reconnect(e):
+            if log_once("lost_reconnect_logs"):
+                logger.warning(
+                    "Log channel is reconnecting. Logs produced while "
+                    "the connection was down can be found on the head "
+                    "node of the cluster in "
+                    "`ray_client_server_[port].out`")
+            logger.info("Log channel dropped, retrying.")
+            time.sleep(.5)
+            return True
+        logger.info("Shutting down log channel.")
+        if not self.client_worker._in_shutdown:
+            logger.exception("Unexpected exception:")
+        return False
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.
