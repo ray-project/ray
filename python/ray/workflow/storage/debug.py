@@ -78,6 +78,7 @@ class DebugStorage(Storage):
     """A storage for debugging purpose."""
 
     def __init__(self, wrapped_storage: "Storage", path: str):
+        self._log_on = True
         self._path = path
         self._wrapped_storage = wrapped_storage
         log_path = pathlib.Path(path)
@@ -95,11 +96,13 @@ class DebugStorage(Storage):
         return await self._wrapped_storage.get(key, is_json)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
-        await self._logged_storage.put(key, data, is_json)
+        if self._log_on:
+            await self._logged_storage.put(key, data, is_json)
         await self._wrapped_storage.put(key, data, is_json)
 
     async def delete_prefix(self, prefix: str) -> None:
-        await self._logged_storage.delete_prefix(prefix)
+        if self._log_on:
+            await self._logged_storage.delete_prefix(prefix)
         await self._wrapped_storage.delete_prefix(prefix)
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
@@ -147,6 +150,12 @@ class DebugStorage(Storage):
 
     def get_value(self, index: int, is_json: bool) -> Any:
         return self._logged_storage.get_value(index, is_json)
+
+    def log_off(self):
+        self._log_on = False
+
+    def log_on(self):
+        self._log_on = True
 
     def __len__(self):
         return len(self._logged_storage)

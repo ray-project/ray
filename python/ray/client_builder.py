@@ -14,6 +14,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 from ray.job_config import JobConfig
 import ray.util.client_connect
 from ray.worker import init as ray_driver_init
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     return module.ClientBuilder(inner_address)
 
 
+@Deprecated
 def client(address: Optional[str] = None) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be
