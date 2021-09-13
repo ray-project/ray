@@ -235,7 +235,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+      RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(
           net_err_task.second, rpc::ErrorType::ACTOR_DIED, creation_task_exception));
     }
 
@@ -259,7 +259,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     while (deque_itr != queue.wait_for_death_info_tasks.end() &&
            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
       auto task_spec = deque_itr->second;
-      task_finisher_->MarkPendingTaskFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
+      task_finisher_.MarkPendingTaskFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
       deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
     }
   }
