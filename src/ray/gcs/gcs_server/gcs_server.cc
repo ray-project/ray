@@ -252,7 +252,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   };
 
   std::function<bool(std::shared_ptr<GcsActor>)> release_resources =
-      [this](std::shared_ptr<GcsActor> actor) { return true; };
+      [](std::shared_ptr<GcsActor> actor) { return true; };
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
