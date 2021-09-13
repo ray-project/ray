@@ -832,6 +832,8 @@ class SampleBatch(dict):
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
+        if stop > len(self):
+            stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
         if self.get(SampleBatch.SEQ_LENS) is not None and \
@@ -843,7 +845,8 @@ class SampleBatch(dict):
                     for _ in range(l):
                         self._slice_map.append((i, sum_))
                     sum_ += l
-                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
+                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]) - 1,
+                                        sum_ - 1))
 
             start_seq_len, start = self._slice_map[start]
             stop_seq_len, stop = self._slice_map[stop]
