@@ -851,6 +851,11 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        session_operation_response = sdk.get_session_operation(
+            sop_id, _request_timeout=30)
+        session_operation = session_operation_response.result
+        completed = session_operation.completed
+
         _check_stop(stop_event, "session")
         now = time.time()
         if now > next_report:
@@ -858,10 +863,6 @@ def create_and_wait_for_session(
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
-        session_operation_response = sdk.get_session_operation(
-            sop_id, _request_timeout=30)
-        session_operation = session_operation_response.result
-        completed = session_operation.completed
         time.sleep(1)
 
     return session_id
@@ -898,6 +899,9 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        result = sdk.get_session_command(session_command_id=scd_id)
+        completed = result.result.finished_at
+
         if state_str == "CMD_RUN":
             _check_stop(stop_event, "command")
         elif state_str == "CMD_PREPARE":
@@ -909,8 +913,6 @@ def wait_for_session_command_to_complete(create_session_command_result,
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
-        result = sdk.get_session_command(session_command_id=scd_id)
-        completed = result.result.finished_at
         time.sleep(1)
 
     status_code = result.result.status_code
