@@ -36,6 +36,7 @@ class Net(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x)
 
+
 class TrainClass:
     def __init__(self, config):
         self.model = Net()
@@ -74,7 +75,9 @@ class TrainClass:
         self.train_sampler = torch.utils.data.distributed.DistributedSampler(
             train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
         self.train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size, sampler=self.train_sampler,
+            train_dataset,
+            batch_size=batch_size,
+            sampler=self.train_sampler,
             **kwargs)
 
         model = Net()
@@ -126,6 +129,7 @@ def main(num_workers, use_gpu, num_epochs, config):
         results.append(loss)
     trainer.shutdown()
     print(results)
+
 
 if __name__ == "__main__":
     # Training settings
@@ -214,5 +218,8 @@ if __name__ == "__main__":
         "log_interval": args.log_interval
     }
 
-    main(num_workers=args.num_workers, use_gpu=use_cuda,
-         num_epochs=args.num_epochs, config=kwargs)
+    main(
+        num_workers=args.num_workers,
+        use_gpu=use_cuda,
+        num_epochs=args.num_epochs,
+        config=kwargs)

@@ -60,16 +60,15 @@ class WorkerGroup:
         assert all(o == 1 for o in output)
     """
 
-    def __init__(self,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0,
-                 additional_resources_per_worker: Optional[Dict[
-                     str, float]] = None,
-                 actor_cls: Type = None,
-                 actor_cls_args: Optional[Tuple] = None,
-                 actor_cls_kwargs: Optional[Dict] = None
-                 ):
+    def __init__(
+            self,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            additional_resources_per_worker: Optional[Dict[str, float]] = None,
+            actor_cls: Type = None,
+            actor_cls_args: Optional[Tuple] = None,
+            actor_cls_kwargs: Optional[Dict] = None):
 
         if num_workers <= 0:
             raise ValueError("The provided `num_workers` must be greater "
@@ -109,7 +108,8 @@ class WorkerGroup:
         if type(self._base_cls) == BaseWorkerMixin:
             return self._remote_cls.remote()
         else:
-            return self._remote_cls.remote(*self._actor_cls_args, **self._actor_cls_kwargs)
+            return self._remote_cls.remote(*self._actor_cls_args,
+                                           **self._actor_cls_kwargs)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -246,15 +246,14 @@ class WorkerGroup:
 
 
 def create_executable_worker_group(executable_cls: Type, *args,
-                                   **kwargs
-                                   ) -> WorkerGroup:
+                                   **kwargs) -> WorkerGroup:
     """Create a WorkerGroup from the provided ``executable_cls``.
 
     This function will automatically handle subclassing BaseWorker.
     """
+
     class _WrappedExecutable(executable_cls, BaseWorkerMixin):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-    return WorkerGroup(*args, actor_cls=_WrappedExecutable,
-                       **kwargs)
+    return WorkerGroup(*args, actor_cls=_WrappedExecutable, **kwargs)

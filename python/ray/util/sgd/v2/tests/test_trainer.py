@@ -631,6 +631,7 @@ def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
         assert len(worker_result) == num_epochs
         assert worker_result[num_epochs - 1] < worker_result[0]
 
+
 def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_workers = 2
     num_epochs = 2
@@ -1020,6 +1021,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     result = trainer.run(get_resources)
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
+
 
 def test_to_workers(ray_start_2_cpus):
     config = TestConfig()

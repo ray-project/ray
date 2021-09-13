@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
-    Type, Iterator
+    Type
 
 from ray.actor import ActorHandle
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
@@ -176,8 +176,7 @@ class Trainer:
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
-    def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
 
         Args:
@@ -445,9 +444,10 @@ class Trainer:
             raise RuntimeError("The Trainer must not be active to use "
                                "`to_workers`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
-        self._executor.start(train_cls=train_cls, train_cls_args=args,
-                             train_cls_kwargs=kwargs)
+        self._executor.start(
+            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
         return Workers(self._executor.worker_group)
+
 
 class Workers:
     def __init__(self, worker_group: WorkerGroup):
@@ -468,6 +468,7 @@ class Workers:
 
         """
         self._worker_group.shutdown(patience_s=patience_s)
+
 
 class SGDIterator:
     """An iterator over SGD results. Returned by ``trainer.run_iterator``."""
