@@ -180,7 +180,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-                 std::unordered_map<std::string, std::string>(), options_.log_dir);
+                 std::unordered_map<std::string, std::string>(), options_.log_dir,
+                 RayConfig::instance().event_level());
   }
 
 #ifndef _WIN32
@@ -523,8 +524,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
-       options_.worker_type != WorkerType::RESTORE_WORKER &&
-       options_.worker_type != WorkerType::UTIL_WORKER),
+       options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
@@ -1561,11 +1561,6 @@ Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
     return Status::OK();
   }
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
-}
-
-Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const NodeID &node_id) {
-  return local_raylet_client_->SetResource(resource_name, capacity, node_id);
 }
 
 void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
@@ -2922,20 +2917,6 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
                         nullptr);
-  }
-}
-
-void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
-                                       rpc::RunOnUtilWorkerReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  if (options_.run_on_util_worker_handler) {
-    std::vector<std::string> args(request.args().begin(), request.args().end());
-
-    options_.run_on_util_worker_handler(request.request(), args);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  } else {
-    send_reply_callback(Status::NotImplemented("RunOnUtilWorker is not supported"),
-                        nullptr, nullptr);
   }
 }
 

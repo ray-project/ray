@@ -291,5 +291,20 @@ def test_worker_startup_count(ray_start_cluster):
         time.sleep(0.1)
 
 
+def test_function_unique_export(ray_start_regular):
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def g():
+        ray.get(f.remote())
+
+    ray.get(g.remote())
+    num_exports = ray.worker.global_worker.redis_client.llen("Exports")
+    ray.get([g.remote() for _ in range(5)])
+    assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

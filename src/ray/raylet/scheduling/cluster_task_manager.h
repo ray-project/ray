@@ -57,7 +57,7 @@ struct Work {
   Work &operator=(const Work &work) = delete;
 };
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
+typedef std::function<absl::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -199,6 +199,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
+
+  /// Check if there are enough available resources for the given input.
+  bool IsLocallySchedulable(const RayTask &task) const override;
 
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const override;

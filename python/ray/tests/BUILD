@@ -10,7 +10,6 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
-#    "test_dynres.py",  # dyn res not implemented
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
@@ -30,6 +29,7 @@ py_test_module_list(
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
     "test_global_gc.py",
+    "test_grpc_client_credentials.py",
     "test_iter.py",
     "test_joblib.py",
     "test_get_locations.py",

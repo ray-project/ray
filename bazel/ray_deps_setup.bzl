@@ -175,8 +175,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/3306848f697568aacf4bcca330f6bdd5ce671899.tar.gz",
-        sha256 = "79ae337dab8e9ee6bd97a9f7134929bb1ddc7f83be9a564295b895865efe7dba",
+        url = "https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz",
+        sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
     )
 
     auto_http_archive(
@@ -276,3 +276,9 @@ def ray_deps_setup():
         build_file = "@com_github_ray_project_ray//bazel:BUILD.nlohmann_json",
     )
 
+    auto_http_archive(
+        name = "rapidjson",
+        url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
+        build_file = True,
+        sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
+    )

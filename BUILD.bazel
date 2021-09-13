@@ -1,12 +1,17 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 config_setting(
     name = "msvc-cl",
@@ -80,6 +85,14 @@ cc_grpc_library(
     srcs = ["//src/ray/protobuf:gcs_service_proto"],
     grpc_only = True,
     deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
+)
+
+# gcs_service gRPC lib.
+cc_grpc_library(
+    name = "test_service_cc_grpc",
+    srcs = ["//src/ray/protobuf:test_service_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:test_service_cc_proto"],
 )
 
 # gcs rpc server and client.
@@ -335,6 +348,7 @@ cc_library(
         "src/ray/object_manager/plasma/create_request_queue.cc",
         "src/ray/object_manager/plasma/dlmalloc.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
+        "src/ray/object_manager/plasma/get_request_queue.cc",
         "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
         "src/ray/object_manager/plasma/object_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
@@ -347,6 +361,7 @@ cc_library(
         "src/ray/object_manager/plasma/allocator.h",
         "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
+        "src/ray/object_manager/plasma/get_request_queue.h",
         "src/ray/object_manager/plasma/object_lifecycle_manager.h",
         "src/ray/object_manager/plasma/object_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
@@ -586,6 +601,7 @@ cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -621,6 +637,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":reporter_rpc",
         ":stats_metric",
@@ -821,6 +838,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -988,6 +1006,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":object_manager",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1086,6 +1105,21 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/object_manager/test/create_request_queue_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "get_request_queue_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/get_request_queue_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1331,6 +1365,20 @@ cc_library(
 )
 
 cc_test(
+    name = "grpc_server_client_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/grpc_server_client_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        ":test_service_cc_grpc",
+    ],
+)
+
+cc_test(
     name = "gcs_server_rpc_test",
     size = "small",
     srcs = [
@@ -1411,10 +1459,26 @@ cc_test(
 )
 
 cc_test(
-    name = "gcs_actor_scheduler_test",
+    name = "raylet_based_actor_scheduler_test",
     size = "small",
     srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
+        "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_based_actor_scheduler_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_based_actor_scheduler_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1766,18 +1830,25 @@ cc_library(
 )
 
 filegroup(
-    name = "iwyu_sh",
-    srcs = ["ci/travis/iwyu.sh"],
+    name = "extra_actions_base_proto",
+    srcs = [
+        "thirdparty/protobuf/extra_actions_base.proto",
+    ],
+)
+
+proto_library(
+    name = "extra_actions_base_proto_lib",
+    srcs = ["thirdparty/protobuf/extra_actions_base.proto"],
+)
+
+cc_proto_library(
+    name = "extra_actions_cc_proto_lib",
+    deps = [":extra_actions_base_proto_lib"],
 )
 
 filegroup(
-    name = "extra_actions_base_proto",
-    srcs = [
-        # TODO: Replace our file with the built-in copy once this issue is resolved:
-        #   https://github.com/bazelbuild/bazel/issues/8738
-        "thirdparty/protobuf/extra_actions_base.proto",
-        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
-    ],
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
 )
 
 action_listener(
