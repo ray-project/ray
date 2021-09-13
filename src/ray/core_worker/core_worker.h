@@ -564,10 +564,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] object create by worker or not.
+  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
-  /// \param[in] inline_small_object wether to inline create this object if it's
+  /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -709,14 +709,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
-
-  /// Sets a resource with the specified capacity and client id
-  /// \param[in] resource_name Name of the resource to be set.
-  /// \param[in] capacity Capacity of the resource.
-  /// \param[in] node_id NodeID where the resource is to be set.
-  /// \return Status
-  Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &node_id);
 
   /// Submit a normal task.
   ///
