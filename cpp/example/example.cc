@@ -25,18 +25,11 @@ class KVStore {
  public:
   KVStore(Role role) : role_(role) {
     was_restared_ = ray::WasCurrentActorRestarted();
-    if (role_ == Role::MASTER) {
-      dest_actor_ = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
-    }
 
     if (was_restared_) {
       HanldeFaileover();
     }
-
-    RAYLOG(INFO) << RoleName(role_) << "KVStore created";
   }
-
-  static KVStore *Create(Role role) { return new KVStore(role); }
 
   std::unordered_map<std::string, std::string> GetAllData() {
     std::unique_lock<std::mutex> lock(mtx_);
@@ -53,30 +46,11 @@ class KVStore {
     return {true, it->second};
   }
 
-  void Put(const std::string &key, const std::string &val) {
-    // Only master actor can put.
-    assert(role_ == Role::MASTER);
-    (*dest_actor_).Task(&KVStore::SyncData).Remote(key, val).Get();
-    std::unique_lock<std::mutex> lock(mtx_);
-    data_[key] = val;
-  }
+  virtual void Put(const std::string &key, const std::string &val) = 0;
 
-  void SyncData(const std::string &key, const std::string &val) {
-    assert(role_ == Role::SLAVE);
-    std::unique_lock<std::mutex> lock(mtx_);
-    data_[key] = val;
-  }
+  virtual bool Del(const std::string &key) = 0;
 
-  bool Del(const std::string &key) {
-    if (role_ == Role::SLAVE) {
-      std::unique_lock<std::mutex> lock(mtx_);
-      return data_.erase(key) > 0;
-    }
-
-    (*dest_actor_).Task(&KVStore::Del).Remote(key).Get();
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_.erase(key) > 0;
-  }
+  virtual void SyncData(const std::string &key, const std::string &val) = 0;
 
   Role GetRole() const { return role_; }
 
@@ -92,34 +66,10 @@ class KVStore {
     return data_.size();
   }
 
- private:
-  bool CheckAlive(Role role) {
-    auto actor = ray::GetActor<KVStore>(RoleName(role));
-    auto r = (*actor).Task(&KVStore::GetRole).Remote();
-    std::vector<ray::ObjectRef<Role>> objects{r};
-    auto result = ray::Wait(objects, objects.size(), 2000);
-    if (result.ready.empty()) {
-      return false;
-    }
-
-    dest_actor_ = actor;
-    return true;
-  }
-
+ protected:
   void HanldeFaileover() {
-    bool r = CheckAlive(Role::SLAVE);
-    if (r) {
-      role_ = Role::MASTER;
-    } else {
-      r = CheckAlive(Role::MASTER);
-      if (r) {
-        role_ = Role::SLAVE;
-      }
-    }
-
-    assert(r);
-    auto actor = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
-    data_ = *actor.get().Task(&KVStore::GetAllData).Remote().Get();
+    dest_actor_ = ray::GetActor<KVStore>(DestRoleName(role_));
+    data_ = *dest_actor_.get().Task(&KVStore::GetAllData).Remote().Get();
     RAYLOG(INFO) << RoleName(role_) << " pull all data from " << DestRoleName(role_)
                  << " was_restared:" << was_restared_ << ", data size: " << data_.size();
   }
@@ -132,9 +82,59 @@ class KVStore {
   boost::optional<ray::ActorHandle<KVStore>> dest_actor_;
 };
 
-RAY_REMOTE(KVStore::Create, &KVStore::GetAllData, &KVStore::Get, &KVStore::Put,
-           &KVStore::SyncData, &KVStore::Del, &KVStore::GetRole, &KVStore::WasRestarted,
-           &KVStore::Empty, &KVStore::Size);
+class Master : public KVStore {
+ public:
+  Master() : KVStore(Role::MASTER) {
+    dest_actor_ = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
+    RAYLOG(INFO) << RoleName(role_) << "Master created";
+  }
+
+  void Put(const std::string &key, const std::string &val) {
+    (*dest_actor_).Task(&KVStore::SyncData).Remote(key, val).Get();
+    std::unique_lock<std::mutex> lock(mtx_);
+    data_[key] = val;
+  }
+
+  bool Del(const std::string &key) {
+    (*dest_actor_).Task(&KVStore::Del).Remote(key).Get();
+    std::unique_lock<std::mutex> lock(mtx_);
+    return data_.erase(key) > 0;
+  }
+
+  void SyncData(const std::string &key, const std::string &val) {
+    throw std::logic_error("SyncData is not supported in Master.");
+  }
+};
+
+class Slave : public KVStore {
+ public:
+  Slave() : KVStore(Role::SLAVE) { RAYLOG(INFO) << RoleName(role_) << "Slave created"; }
+
+  bool Del(const std::string &key) {
+    std::unique_lock<std::mutex> lock(mtx_);
+    return data_.erase(key) > 0;
+  }
+
+  void SyncData(const std::string &key, const std::string &val) {
+    std::unique_lock<std::mutex> lock(mtx_);
+    data_[key] = val;
+  }
+
+  void Put(const std::string &key, const std::string &val) {
+    throw std::logic_error("Put is not supported in Slave.");
+  }
+};
+
+static KVStore *Create(Role role) {
+  if (role == Role::MASTER) {
+    return new Master();
+  }
+  return new Slave();
+}
+
+RAY_REMOTE(Create, &KVStore::GetAllData, &KVStore::Get, &KVStore::Put, &KVStore::SyncData,
+           &KVStore::Del, &KVStore::GetRole, &KVStore::WasRestarted, &KVStore::Empty,
+           &KVStore::Size);
 
 void PrintActor(ray::ActorHandle<KVStore> &actor) {
   Role role = *actor.Task(&KVStore::GetRole).Remote().Get();
@@ -151,15 +151,15 @@ void PrintActor(ray::ActorHandle<KVStore> &actor) {
   size_t size = *actor.Task(&KVStore::Size).Remote().Get();
 
   std::cout << RoleName(role) << " was_restarted: " << was_restarted << ", size: " << size
-            << ", val: " << pair.second << "\n";
+            << ", value: " << pair.second << "\n";
 }
 
 void BasiceUsage() {
-  ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
+  ray::ActorHandle<KVStore> master_actor = ray::Actor(Create)
                                                .SetMaxRestarts(1)
                                                .SetName(RoleName(Role::MASTER))
                                                .Remote(Role::MASTER);
-  ray::ActorHandle<KVStore> slave_actor = ray::Actor(KVStore::Create)
+  ray::ActorHandle<KVStore> slave_actor = ray::Actor(Create)
                                               .SetMaxRestarts(1)
                                               .SetName(RoleName(Role::SLAVE))
                                               .Remote(Role::SLAVE);
@@ -187,6 +187,10 @@ void Faileover() {
   auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
   PrintActor(slave_actor);
 
+  slave_actor.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+  PrintActor(slave_actor);
+
   master_actor.Kill();
   slave_actor.Kill();
 }
@@ -203,12 +207,12 @@ void PlacementGroup() {
   auto placement_group = CreateSimplePlacementGroup("first_placement_group");
   assert(placement_group.Wait(10));
 
-  ray::ActorHandle<KVStore> master_actor = ray::Actor(KVStore::Create)
+  ray::ActorHandle<KVStore> master_actor = ray::Actor(Create)
                                                .SetMaxRestarts(1)
                                                .SetPlacementGroup(placement_group, 0)
                                                .SetName(RoleName(Role::MASTER))
                                                .Remote(Role::MASTER);
-  ray::ActorHandle<KVStore> slave_actor = ray::Actor(KVStore::Create)
+  ray::ActorHandle<KVStore> slave_actor = ray::Actor(Create)
                                               .SetMaxRestarts(1)
                                               .SetPlacementGroup(placement_group, 1)
                                               .SetName(RoleName(Role::SLAVE))
