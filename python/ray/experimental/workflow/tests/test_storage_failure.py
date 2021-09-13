@@ -1,17 +1,15 @@
-import asyncio
-import os
 from hashlib import sha1
 import tempfile
 
 import pytest
 import ray
 from ray.experimental import workflow
-from ray.experimental.workflow.storage import (get_global_storage,
-                                               set_global_storage)
+from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.storage.debug import DebugStorage
 from ray.experimental.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.experimental.workflow.workflow_storage import asyncio_run
 from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
+from ray.experimental.workflow.tests.utils import _alter_storage
 
 
 @workflow.step
@@ -55,14 +53,6 @@ def construct_workflow(length: int):
     return results[-1]
 
 
-def _alter_storage(new_storage):
-    set_global_storage(new_storage)
-    # alter the storage
-    ray.shutdown()
-    os.system("ray stop --force")
-    workflow.init(new_storage)
-
-
 def _locate_initial_commit(debug_store: DebugStorage) -> int:
     for i in range(len(debug_store)):
         log = debug_store.get_log(i)
@@ -85,14 +75,18 @@ def test_failure_with_storage(workflow_start_regular):
         wf = construct_workflow(length=3)
         result = wf.run(workflow_id="complex_workflow")
         index = _locate_initial_commit(debug_store) + 1
+        debug_store.log_off()
 
         def resume(num_records_replayed):
             key = debug_store.wrapped_storage.make_key("complex_workflow")
             asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
-            replays = [
-                debug_store.replay(i) for i in range(num_records_replayed)
-            ]
-            asyncio_run(asyncio.gather(*replays))
+
+            async def replay():
+                # We need to replay one by one to avoid conflict
+                for i in range(num_records_replayed):
+                    await debug_store.replay(i)
+
+            asyncio_run(replay())
             return ray.get(workflow.resume(workflow_id="complex_workflow"))
 
         with pytest.raises(ValueError):
@@ -105,6 +99,7 @@ def test_failure_with_storage(workflow_start_regular):
             step_len = 1
         else:
             step_len = max((len(debug_store) - index) // 5, 1)
+
         for j in range(index, len(debug_store), step_len):
             assert resume(j) == result
 

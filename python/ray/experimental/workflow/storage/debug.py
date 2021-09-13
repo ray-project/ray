@@ -16,6 +16,7 @@ class LoggedStorage(FilesystemStorageImpl):
         super().__init__(workflow_root_dir)
         self._log_dir = self._workflow_root_dir
         self._count = self._log_dir / "count.log"
+        self._op_counter = self._log_dir / "op_counter.pkl"
         if not self._log_dir.exists():
             self._log_dir.mkdir()
         # only one process initializes the count
@@ -23,9 +24,29 @@ class LoggedStorage(FilesystemStorageImpl):
             if not self._count.exists():
                 with open(self._count, "x") as f:
                     f.write("0")
+            if not self._op_counter.exists():
+                with open(self._op_counter, "wb") as f:
+                    ray.cloudpickle.dump({}, f)
+
+    def get_op_counter(self):
+        with FileLock(str(self._log_dir / ".lock")):
+            with open(self._op_counter, "rb") as f:
+                counter = ray.cloudpickle.load(f)
+                return counter
+
+    def update_count(self, op: str, key):
+        counter = None
+        with open(self._op_counter, "rb") as f:
+            counter = ray.cloudpickle.load(f)
+        if op not in counter:
+            counter[op] = []
+        counter[op].append(key)
+        with open(self._op_counter, "wb") as f:
+            ray.cloudpickle.dump(counter, f)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with FileLock(str(self._log_dir / ".lock")):
+            self.update_count("put", key)
             with open(self._count, "r") as f:
                 count = int(f.read())
             k1 = self._log_dir / f"{count}.metadata.json"
@@ -40,6 +61,10 @@ class LoggedStorage(FilesystemStorageImpl):
             await super().put(str(k2), data, is_json=is_json)
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
+
+    async def get(self, key: str, is_json=False) -> None:
+        with FileLock(str(self._log_dir / ".lock")):
+            self.update_count("get", key)
 
     async def delete_prefix(self, key: str) -> None:
         with FileLock(str(self._log_dir / ".lock")):
@@ -78,6 +103,7 @@ class DebugStorage(Storage):
     """A storage for debugging purpose."""
 
     def __init__(self, wrapped_storage: "Storage", path: str):
+        self._log_on = True
         self._path = path
         self._wrapped_storage = wrapped_storage
         log_path = pathlib.Path(path)
@@ -87,19 +113,23 @@ class DebugStorage(Storage):
         if not log_path.exists():
             log_path.mkdir(parents=True)
         self._logged_storage = LoggedStorage(str(log_path))
+        self._op_log_file = log_path / "debug_operations.log"
 
     def make_key(self, *names: str) -> str:
         return self._wrapped_storage.make_key(*names)
 
     async def get(self, key: str, is_json: bool = False) -> Any:
+        await self._logged_storage.get(key, is_json)
         return await self._wrapped_storage.get(key, is_json)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
-        await self._logged_storage.put(key, data, is_json)
+        if self._log_on:
+            await self._logged_storage.put(key, data, is_json)
         await self._wrapped_storage.put(key, data, is_json)
 
     async def delete_prefix(self, prefix: str) -> None:
-        await self._logged_storage.delete_prefix(prefix)
+        if self._log_on:
+            await self._logged_storage.delete_prefix(prefix)
         await self._wrapped_storage.delete_prefix(prefix)
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
@@ -139,6 +169,8 @@ class DebugStorage(Storage):
             await self._wrapped_storage.put(log["key"], data, is_json)
         elif op == "delete_prefix":
             await self._wrapped_storage.delete_prefix(log["key"])
+        elif op == "get":
+            pass
         else:
             raise ValueError(f"Unknown operation '{op}'.")
 
@@ -147,6 +179,12 @@ class DebugStorage(Storage):
 
     def get_value(self, index: int, is_json: bool) -> Any:
         return self._logged_storage.get_value(index, is_json)
+
+    def log_off(self):
+        self._log_on = False
+
+    def log_on(self):
+        self._log_on = True
 
     def __len__(self):
         return len(self._logged_storage)
