@@ -109,16 +109,16 @@ These variants can be installed with:
 
 Availiable variant strings include:
 
-* ``default``: same as ``pip install ray``, includes standard Ray deps, but not things like :ref:`Ray dashboard <ray-dashboard>`, :ref:`Ray Serve <rayserve>`, etc 
+* ``default``: same as ``pip install ray``, includes things like :ref:`Ray dashboard <ray-dashboard>` and cluster launcher
 * ``serve``: includes dependencies for :ref:`Ray Serve <rayserve>`
 * ``tune``: includes dependencies for :ref:`Ray Tune <tune-60-seconds>`
 * ``k8s``:  includes dependencies for running :ref:`Ray on Kubernetes <ray-k8s-deploy>` (k8s)
 * ``observability``: includes dependencies for monitoring with Grafana
 * ``all``: includes all dependencies, safest but heaviest option
 
-We recommend installing with ``pip install ray`` (same as ``pip install ray[default]``), but checking for warnings or ``ImportError`` that may arise and installing variants as needed. This will keep your depdencies as lightweight as possible.
-
 If you want to see the exact packages or understand more deeply how these variants affect the installation process, `here's the code <https://github.com/ray-project/ray/blob/03a2c69a8a977f912694960a40e490a304c9cd62/python/setup.py#L178-L217>`__ (may need to change commit hash in URL to "master" to see latest version).
+
+We recommend installing with ``pip install ray``, but checking for warnings or ``ImportError`` that may arise and installing variants as needed. This will keep your depdencies as lightweight as possible.
 
 Install Ray Java with Maven
 ---------------------------
