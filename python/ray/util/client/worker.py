@@ -585,7 +585,6 @@ class Worker:
         return resp.value
 
     def internal_kv_exists(self, key: bytes) -> bytes:
-        # TODO: This doesn't look right?
         req = ray_client_pb2.KVGetRequest(key=key)
         resp = self._call_stub("KVGet", req, metadata=self.metadata)
         return resp.value
