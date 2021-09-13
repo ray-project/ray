@@ -52,7 +52,10 @@ def build_r2d2_model_and_distribution(
     model, distribution_cls = build_q_model_and_distribution(
         policy, obs_space, action_space, config)
 
-    # Assert correct model type.
+    # Assert correct model type by checking the init state to be present.
+    # For attention nets: These don't necessarily publish their init state via
+    # Model.get_initial_state, but may only use the trajectory view API
+    # (view_requirements).
     assert (model.get_initial_state() != [] or
             model.view_requirements.get("state_in_0") is not None), \
         "R2D2 requires its model to be a recurrent one! Try using " \

@@ -832,6 +832,9 @@ class SampleBatch(dict):
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
         if stop > len(self):
             stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
