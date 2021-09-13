@@ -153,7 +153,7 @@ class MiddlemanServer:
     def start(self):
         self.server.start()
 
-    def stop(self, grace: int):
+    def stop(self, grace: int) -> None:
         self.server.stop(grace)
 
 

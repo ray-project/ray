@@ -23,12 +23,12 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
+from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
 from ray.util.client.common import (
     ClientActorClass, ClientActorHandle, ClientActorRef, ClientObjectRef,
-    ClientRemoteFunc, ClientStub, DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD,
-    GRPC_OPTIONS, INT32_MAX)
+    ClientRemoteFunc, ClientStub, GRPC_OPTIONS, INT32_MAX)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
