@@ -156,39 +156,43 @@ void AgentManager::CreateRuntimeEnv(const JobID &job_id,
       });
 }
 
-void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
-                              DeleteURIsCallback callback) {
+void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
+                                    DeleteRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
-    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv later: "
+        << serialized_runtime_env;
+    delay_executor_([this, serialized_runtime_env,
+                     callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
                     RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteURIsRequest request;
-  for (const auto &uri : uris) {
-    request.add_uris(uri);
-  }
-  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
-                                                     Status status,
-                                                     const rpc::DeleteURIsReply &reply) {
-    if (status.ok()) {
-      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-        callback(true);
-      } else {
-        RAY_LOG(ERROR) << "Failed to delete URIs"
-                       << ", error message: " << reply.error_message();
-        callback(false);
-      }
+  rpc::DeleteRuntimeEnvRequest request;
+  request.set_serialized_runtime_env(serialized_runtime_env);
+  runtime_env_agent_client_->DeleteRuntimeEnv(
+      request, [this, serialized_runtime_env, callback](
+                   Status status, const rpc::DeleteRuntimeEnvReply &reply) {
+        if (status.ok()) {
+          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+            callback();
+          } else {
+            RAY_LOG(ERROR) << "Failed to delete runtime env: " << serialized_runtime_env
+                           << ", error message: " << reply.error_message();
+            callback();
+          }
 
-    } else {
-      RAY_LOG(ERROR) << "Failed to delete URIs"
-                     << ", status = " << status
-                     << ", maybe there are some network problems, will retry it later.";
-      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                      RayConfig::instance().agent_manager_retry_interval_ms());
-    }
-  });
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to delete the runtime env: " << serialized_runtime_env
+              << ", status = " << status
+              << ", maybe there are some network problems, will retry it later.";
+          delay_executor_(
+              [this, serialized_runtime_env, callback] {
+                DeleteRuntimeEnv(serialized_runtime_env, callback);
+              },
+              RayConfig::instance().agent_manager_retry_interval_ms());
+        }
+      });
 }
 
 }  // namespace raylet

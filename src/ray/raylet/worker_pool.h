@@ -122,6 +122,10 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -302,6 +306,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This method just finds more available I/O workers from either spill or restore pool
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
@@ -562,7 +569,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in

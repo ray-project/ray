@@ -284,10 +284,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
-          return cb(true);
-        }
-        return agent_manager_->DeleteURIs({uri}, cb);
+        return DeleteLocalURI(uri, cb);
       }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -1045,7 +1042,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
+        worker_type != rpc::WorkerType::RESTORE_WORKER &&
+        worker_type != rpc::WorkerType::UTIL_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -1077,7 +1075,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
-      worker_type == rpc::WorkerType::RESTORE_WORKER) {
+      worker_type == rpc::WorkerType::RESTORE_WORKER ||
+      worker_type == rpc::WorkerType::UTIL_WORKER) {
     // Register the new worker.
     auto status =
         worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, send_reply_callback);
@@ -1143,6 +1142,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushRestoreWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushUtilWorker(worker);
     return;
   }
 
@@ -1281,6 +1286,67 @@ void NodeManager::DisconnectClient(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  // TODO: Add caching layer for performance
+  if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+    return cb(true);
+  }
+  auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
+  // Format of URI must be: scheme://path
+  std::string sep = "://";
+  auto pos = uri.find(sep);
+  if (pos == std::string::npos || pos + sep.size() == uri.size()) {
+    RAY_LOG(ERROR) << "Invalid uri: " << uri;
+    cb(true);
+  }
+
+  auto from_path =
+      resource_path / boost::filesystem::path(uri.substr(pos + sep.size())).stem();
+  if (!boost::filesystem::exists(from_path)) {
+    RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
+    cb(true);
+  }
+  std::string deleting_suffix(".deleting");
+  auto to_path = from_path;
+  to_path += deleting_suffix;
+  int suffix_num = 0;
+  // This is for a rare case, where one request is under processing,
+  // but get a new one here.
+  while (boost::filesystem::exists(to_path)) {
+    to_path = from_path;
+    to_path += deleting_suffix;
+    to_path += "." + std::to_string(suffix_num);
+    ++suffix_num;
+  }
+  boost::system::error_code ec;
+  boost::filesystem::rename(from_path, to_path, ec);
+  if (ec.value() != 0) {
+    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
+                  << " because of error " << ec.message();
+    cb(false);
+  }
+
+  std::string to_path_str = to_path.string();
+  // We put actual deleting job in a worker is because deleting big file
+  // will block the thread for a while.
+  worker_pool_.PopUtilWorker(
+      [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
+        rpc::RunOnUtilWorkerRequest req;
+        // TODO(yic): Move this to another file to make it formal
+        req.set_request("DEL_FILE");
+        *req.add_args() = to_path_str;
+        io_worker->rpc_client()->RunOnUtilWorker(
+            req, [this, io_worker, cb](const ray::Status &status,
+                                       const rpc::RunOnUtilWorkerReply &) {
+              worker_pool_.PushUtilWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to execute job in io_worker " << status;
+              }
+              cb(status.ok());
+            });
+      });
 }
 
 void NodeManager::ProcessDisconnectClientMessage(

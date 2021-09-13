@@ -27,6 +27,8 @@ std::string WorkerTypeString(WorkerType type) {
     return "spill_worker";
   } else if (type == WorkerType::RESTORE_WORKER) {
     return "restore_worker";
+  } else if (type == WorkerType::UTIL_WORKER) {
+    return "util_worker";
   }
   RAY_CHECK(false);
   return "";

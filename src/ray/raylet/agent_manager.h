@@ -38,7 +38,7 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
 typedef std::function<void(bool successful,
                            const std::string &serialized_runtime_env_context)>
     CreateRuntimeEnvCallback;
-typedef std::function<void(bool successful)> DeleteURIsCallback;
+typedef std::function<void()> DeleteRuntimeEnvCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -62,16 +62,16 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Request agent to create a runtime env.
+  /// Request agent to create runtime env.
   /// \param[in] runtime_env The runtime env.
   virtual void CreateRuntimeEnv(const JobID &job_id,
                                 const std::string &serialized_runtime_env,
                                 CreateRuntimeEnvCallback callback);
 
-  /// Request agent to delete a list of URIs.
-  /// \param[in] URIs The list of URIs to delete.
-  virtual void DeleteURIs(const std::vector<std::string> &uris,
-                          DeleteURIsCallback callback);
+  /// Request agent to delete runtime env.
+  /// \param[in] runtime_env The runtime env.
+  virtual void DeleteRuntimeEnv(const std::string &serialized_runtime_env,
+                                DeleteRuntimeEnvCallback callback);
 
  private:
   void StartAgent();

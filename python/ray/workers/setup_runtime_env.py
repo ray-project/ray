@@ -4,7 +4,7 @@ import json
 import logging
 
 from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.conda import setup_conda_or_pip
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
@@ -38,8 +38,7 @@ def setup_worker(input_args):
     # Ray client server setups runtime env by itself instead of agent.
     if args.from_ray_client:
         if runtime_env.get("conda") or runtime_env.get("pip"):
-            CondaManager(runtime_env_context.resources_dir).setup(
-                runtime_env, runtime_env_context, logger=logger)
+            setup_conda_or_pip(runtime_env, runtime_env_context, logger=logger)
 
     runtime_env_context.exec_worker(remaining_args)
 

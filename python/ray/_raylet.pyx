@@ -72,6 +72,7 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
+    WORKER_TYPE_UTIL_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -101,6 +102,7 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+import ray._private.util_worker_handlers as util_worker_handlers
 from ray import external_storage
 from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
@@ -748,6 +750,14 @@ cdef void gc_collect() nogil:
                     num_freed, end - start))
 
 
+cdef void run_on_util_worker_handler(
+        c_string req,
+        c_vector[c_string] args) nogil:
+    with gil:
+        util_worker_handlers.dispatch(
+            req.decode(), [arg.decode() for arg in args])
+
+
 cdef c_vector[c_string] spill_objects_handler(
         const c_vector[CObjectReference]& object_refs_to_spill) nogil:
     cdef:
@@ -963,6 +973,9 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
+        elif worker_type == ray.UTIL_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_UTIL_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -987,6 +1000,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.run_on_util_worker_handler = run_on_util_worker_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode

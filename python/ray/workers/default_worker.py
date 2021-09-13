@@ -145,6 +145,8 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
+    elif args.worker_type == "UTIL_WORKER":
+        mode = ray.UTIL_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
@@ -210,7 +212,8 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
+    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
+          or mode == ray.UTIL_WORKER_MODE):
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

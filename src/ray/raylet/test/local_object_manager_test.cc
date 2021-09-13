@@ -183,11 +183,18 @@ class MockIOWorker : public MockWorker {
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
  public:
+  MOCK_METHOD1(PushUtilWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
   MOCK_METHOD1(PushSpillWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushRestoreWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushDeleteWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
+  void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    callback(io_worker);
+  }
 
   void PopSpillWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
