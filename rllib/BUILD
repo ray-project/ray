@@ -1866,6 +1866,23 @@ py_test(
 # for `examples/all_stuff.py`.
 # --------------------------------------------------------------------
 
+py_test(
+    name = "examples/action_masking_tf",
+    main = "examples/action_masking.py",
+    tags = ["team:ml", "examples", "examples_A"],
+    size = "small",
+    srcs = ["examples/action_masking.py"],
+    args = ["--stop-iter=2"]
+)
+
+py_test(
+    name = "examples/action_masking_torch",
+    main = "examples/action_masking.py",
+    tags = ["team:ml", "examples", "examples_A"],
+    size = "small",
+    srcs = ["examples/action_masking.py"],
+    args = ["--stop-iter=2", "--framework=torch"]
+)
 
 py_test(
     name = "examples/attention_net_tf",

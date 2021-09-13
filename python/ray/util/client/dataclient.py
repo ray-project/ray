@@ -47,14 +47,13 @@ class DataClient:
         self.data_thread.start()
 
     def _next_id(self) -> int:
-        with self.lock:
-            self._req_id += 1
-            if self._req_id > INT32_MAX:
-                self._req_id = 1
-            # Responses that aren't tracked (like opportunistic releases)
-            # have req_id=0, so make sure we never mint such an id.
-            assert self._req_id != 0
-            return self._req_id
+        self._req_id += 1
+        if self._req_id > INT32_MAX:
+            self._req_id = 1
+        # Responses that aren't tracked (like opportunistic releases)
+        # have req_id=0, so make sure we never mint such an id.
+        assert self._req_id != 0
+        return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
@@ -134,9 +133,10 @@ class DataClient:
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        self.request_queue.put(req)
+        with self.lock:
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.request_queue.put(req)
         data = None
         with self.cv:
             self.cv.wait_for(
@@ -164,11 +164,12 @@ class DataClient:
                 "terminated. This is likely because the data channel "
                 "disconnected at some point before this request was "
                 "prepared. Ray Client has been disconnected.")
-        req_id = self._next_id()
-        req.req_id = req_id
-        if callback:
-            self.asyncio_waiting_data[req_id] = callback
-        self.request_queue.put(req)
+        with self.lock:
+            req_id = self._next_id()
+            req.req_id = req_id
+            if callback:
+                self.asyncio_waiting_data[req_id] = callback
+            self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
