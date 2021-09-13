@@ -54,7 +54,7 @@ def _use_response_cache(func):
         expected_ids = ("client_id", "thread_id", "req_id")
         if any(i not in metadata for i in expected_ids):
             # Missing IDs, skip caching and call underlying stub directly
-            return func(request, context)
+            return func(self, request, context)
 
         # Get relevant IDs to check cache
         client_id = metadata["client_id"]

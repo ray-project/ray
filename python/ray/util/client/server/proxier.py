@@ -382,8 +382,10 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
 
         stub = ray_client_pb2_grpc.RayletDriverStub(chan)
         try:
-            return getattr(stub, method)(
-                request, metadata=[("client_id", client_id)])
+            metadata = [("client_id", client_id)]
+            if context:
+                metadata = context.invocation_metadata()
+            return getattr(stub, method)(request, metadata=metadata)
         except Exception:
             logger.exception(f"Proxying call to {method} failed!")
 
