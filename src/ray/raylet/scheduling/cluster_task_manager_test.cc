@@ -130,12 +130,12 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
   if (!args.empty()) {
     for (auto &arg : args) {
-      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address(), ""));
     }
   } else {
     for (int i = 0; i < num_args; i++) {
       ObjectID put_id = ObjectID::FromIndex(RandomTaskId(), /*index=*/i + 1);
-      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address(), ""));
     }
   }
 
@@ -279,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
+  std::unordered_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;

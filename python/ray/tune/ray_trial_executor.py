@@ -1,5 +1,6 @@
 # coding: utf-8
 import copy
+from collections import deque
 from functools import partial
 import logging
 import os
@@ -32,7 +33,7 @@ from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ def noop_logger_creator(config, logdir):
     return NoopLogger(config, logdir)
 
 
-@PublicAPI
+@DeveloperAPI
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
@@ -167,7 +168,8 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_cleanup = _TrialCleanup()
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
-        self._cached_actor_pg = (None, None)
+        # The maxlen will be updated when `set_max_pending_trials()` is called
+        self._cached_actor_pg = deque(maxlen=1)
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -216,6 +218,12 @@ class RayTrialExecutor(TrialExecutor):
         return self._pg_manager.in_staging_grace_period()
 
     def set_max_pending_trials(self, max_pending: int) -> None:
+        if len(self._cached_actor_pg) > 0:
+            logger.warning(
+                "Cannot update maximum number of queued actors for reuse "
+                "during a run.")
+        else:
+            self._cached_actor_pg = deque(maxlen=max_pending)
         self._pg_manager.set_max_staging(max_pending)
 
     def stage_and_update_status(self, trials: Iterable[Trial]):
@@ -268,11 +276,10 @@ class RayTrialExecutor(TrialExecutor):
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if self._reuse_actors and self._cached_actor_pg[0] is not None:
+        if self._reuse_actors and len(self._cached_actor_pg) > 0:
+            existing_runner, pg = self._cached_actor_pg.popleft()
             logger.debug(f"Trial {trial}: Reusing cached runner "
-                         f"{self._cached_actor_pg[0]}")
-            existing_runner, pg = self._cached_actor_pg
-            self._cached_actor_pg = (None, None)
+                         f"{existing_runner}")
 
             trial.set_runner(existing_runner)
             if pg and trial.uses_placement_groups:
@@ -285,17 +292,17 @@ class RayTrialExecutor(TrialExecutor):
                     "implemented and return True.")
             return existing_runner
 
-        if self._cached_actor_pg[0]:
-            logger.debug("Cannot reuse cached runner {} for new trial".format(
-                self._cached_actor_pg[0]))
-            existing_runner, pg = self._cached_actor_pg
+        if len(self._cached_actor_pg) > 0:
+            existing_runner, pg = self._cached_actor_pg.popleft()
+
+            logger.debug(
+                f"Cannot reuse cached runner {existing_runner} for new trial")
 
             if pg:
                 self._pg_manager.return_or_clean_cached_pg(pg)
 
             with self._change_working_directory(trial):
                 self._trial_cleanup.add(trial, actor=existing_runner)
-            self._cached_actor_pg = (None, None)
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
@@ -519,13 +526,14 @@ class RayTrialExecutor(TrialExecutor):
             trial.write_error_log(error_msg)
             if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
-                        and self._cached_actor_pg[0] is None):
+                        and (len(self._cached_actor_pg) <
+                             (self._cached_actor_pg.maxlen or float("inf")))):
                     logger.debug("Reusing actor for %s", trial.runner)
                     # Move PG into cache (disassociate from trial)
                     pg = self._pg_manager.cache_trial_pg(trial)
                     if pg or not trial.uses_placement_groups:
                         # True if a placement group was replaced
-                        self._cached_actor_pg = (trial.runner, pg)
+                        self._cached_actor_pg.append((trial.runner, pg))
                         should_destroy_actor = False
                     else:
                         # False if no placement group was replaced. This should

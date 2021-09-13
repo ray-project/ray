@@ -69,8 +69,6 @@ enum MessageType:int {
   FreeObjectsInObjectStoreRequest,
   // A node manager requests to connect to another node manager.
   ConnectClient,
-  // Set dynamic custom resource.
-  SetResourceRequest,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
 }

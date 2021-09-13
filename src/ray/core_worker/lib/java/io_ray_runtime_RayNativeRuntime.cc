@@ -97,10 +97,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       [](TaskType task_type, const std::string task_name, const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<RayObject>> &args,
-         const std::vector<ObjectID> &arg_reference_ids,
+         const std::vector<rpc::ObjectReference> &arg_refs,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
-         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb) {
+         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
+         bool *is_application_level_error) {
+        // TODO(jjyao): Support retrying application-level errors for Java
+        *is_application_level_error = false;
+
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
@@ -272,17 +276,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
                                                                            jclass o) {
   CoreWorkerProcess::Shutdown();
-}
-
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
-  const auto node_id = JavaByteArrayToId<NodeID>(env, nodeId);
-  const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
-
-  auto status = CoreWorkerProcess::GetCoreWorker().SetResource(
-      native_resource_name, static_cast<double>(capacity), node_id);
-  env->ReleaseStringUTFChars(resourceName, native_resource_name);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
 JNIEXPORT jbyteArray JNICALL

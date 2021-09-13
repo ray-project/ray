@@ -293,15 +293,6 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity, const NodeID &node_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, node_id));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
-}
-
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
