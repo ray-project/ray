@@ -186,7 +186,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         else:
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="Path not found.")
+                error_message=f"Local file for URI {uri} not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

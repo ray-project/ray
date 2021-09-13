@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Any, Union, Dict, Callable, Tuple, Optional
 
 import ray
@@ -51,7 +52,14 @@ def _recover_workflow_step(input_object_refs: List[str],
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
-    input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
+
+    # TODO (Alex): Refactor to remove this special case handling of object refs
+    promises = []
+    for identifier in input_object_refs:
+        paths = reader._key_step_args(identifier)
+        promises.append(reader._get(paths))
+    loop = asyncio.get_event_loop()
+    input_object_refs = loop.run_until_complete(asyncio.gather(*promises))
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
     args, kwargs = reader.load_step_args(
