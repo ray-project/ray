@@ -40,6 +40,7 @@ import sys
 
 ray.init(local_mode=True)
 
+# In local mode this generates an ERROR level log.
 ray._private.utils.push_error_to_driver(
     ray.worker.global_worker, "type", "Hello there")
     """
