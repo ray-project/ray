@@ -161,13 +161,15 @@ def read_datasource(datasource: Datasource[T],
         # Note that the too many workers warning triggers at 4x subscription,
         # so we go at 0.5 to avoid the warning message.
         ray_remote_args["num_cpus"] = 0.5
-    remote_read = cached_remote_fn(remote_read, **ray_remote_args)
+    remote_read = cached_remote_fn(remote_read)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
 
     for task in read_tasks:
-        calls.append(lambda task=task: remote_read.remote(task))
+        calls.append(
+            lambda task=task: remote_read.options(
+                **ray_remote_args).remote(task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
