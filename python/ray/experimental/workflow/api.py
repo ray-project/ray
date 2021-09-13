@@ -11,8 +11,10 @@ from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
 from ray.experimental.workflow.common import (WorkflowStatus,
                                               ensure_ray_initialized)
+from ray.experimental.workflow import serialization
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.virtual_actor_class import (
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     """Initialize workflow.
 
@@ -58,6 +61,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
                                "different storage")
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
+    serialization.init_manager()
 
 
 def make_step_decorator(step_options: Dict[str, Any]):
@@ -67,6 +71,7 @@ def make_step_decorator(step_options: Dict[str, Any]):
     return decorator
 
 
+@PublicAPI(stability="beta")
 def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
 
@@ -91,11 +96,15 @@ def step(*args, **kwargs):
     catch_exceptions = kwargs.pop("catch_exceptions", None)
     if catch_exceptions is not None:
         step_options["catch_exceptions"] = catch_exceptions
+    name = kwargs.pop("name", None)
+    if name is not None:
+        step_options["name"] = name
     if len(kwargs) != 0:
         step_options["ray_options"] = kwargs
     return make_step_decorator(step_options)
 
 
+@PublicAPI(stability="beta")
 class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
 
@@ -145,6 +154,7 @@ class _VirtualActorDecorator:
 virtual_actor = _VirtualActorDecorator()
 
 
+@PublicAPI(stability="beta")
 def get_actor(actor_id: str) -> "VirtualActor":
     """Get an virtual actor.
 
@@ -159,6 +169,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
                                          storage_base.get_global_storage())
 
 
+@PublicAPI(stability="beta")
 def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow.
 
@@ -182,14 +193,15 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     return execution.resume(workflow_id)
 
 
+@PublicAPI(stability="beta")
 def get_output(workflow_id: str, *,
                name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
-        workflow_id(str): The ID of the running workflow job.
-        name(Optional[str]): If set, fetch the specific step instead of
-            the output of the workflow.
+        workflow_id: The workflow to get the output of.
+        name: If set, fetch the specific step instead of the output of the
+            workflow.
 
     Examples:
         >>> trip = start_trip.options(name="trip").step()
@@ -207,15 +219,17 @@ def get_output(workflow_id: str, *,
     return execution.get_output(workflow_id, name)
 
 
+@PublicAPI(stability="beta")
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
         Union[WorkflowStatus, str]]]] = None
              ) -> List[Tuple[str, WorkflowStatus]]:
-    """List the workflow status. If status is given, it'll filter by that.
+    """List all workflows matching a given status filter.
 
     Args:
-        status: If given, only return workflow with that status. It can
-            be a set workflow status,
-            i.e., "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"
+        status: If given, only returns workflow with that status. This can
+            be a single status or set of statuses. The string form of the
+            status is also acceptable, i.e.,
+            "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE".
 
     Examples:
         >>> workflow_step = long_running_job.step()
@@ -237,9 +251,9 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     elif isinstance(status_filter, WorkflowStatus):
         status_filter = set({status_filter})
     elif isinstance(status_filter, set):
-        if all([isinstance(s, str) for s in status_filter]):
+        if all(isinstance(s, str) for s in status_filter):
             status_filter = {WorkflowStatus(s) for s in status_filter}
-        elif not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+        elif not all(isinstance(s, WorkflowStatus) for s in status_filter):
             raise TypeError("status_filter contains element which is not"
                             " a type of `WorkflowStatus or str`."
                             f" {status_filter}")
@@ -251,14 +265,14 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     return execution.list_all(status_filter)
 
 
+@PublicAPI(stability="beta")
 def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
-    This usually is used after ray cluster shutdown to resume all tasks.
-
+    This can be used after cluster restart to resume all tasks.
 
     Args:
-        with_failed: Whether to include the failed workflow.
+        with_failed: Whether to resume FAILED workflows.
 
     Examples:
         >>> workflow_step = failed_job.step()
@@ -273,17 +287,18 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
         >>>   include_failed=True).get("failed_job") is not None
 
     Returns:
-        Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
+        A list of (workflow_id, returned_obj_ref) resumed.
     """
     ensure_ray_initialized()
     return execution.resume_all(include_failed)
 
 
+@PublicAPI(stability="beta")
 def get_status(workflow_id: str) -> WorkflowStatus:
     """Get the status for a given workflow.
 
     Args:
-        workflow_id: The workflow id
+        workflow_id: The workflow to query.
 
     Examples:
         >>> workflow_step = trip.step()
@@ -299,11 +314,12 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     return execution.get_status(workflow_id)
 
 
+@PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow.
 
     Args:
-        workflow_id: The workflow to cancel
+        workflow_id: The workflow to cancel.
 
     Examples:
         >>> workflow_step = some_job.step()

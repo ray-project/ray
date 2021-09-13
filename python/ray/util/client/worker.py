@@ -9,13 +9,8 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Tuple
-from typing import Optional
-from typing import TYPE_CHECKING
+import tempfile
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import grpc
 
@@ -26,19 +21,15 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.util.client.client_pickler import convert_to_arg
-from ray.util.client.client_pickler import dumps_from_client
-from ray.util.client.client_pickler import loads_from_server
-from ray.util.client.common import ClientStub
-from ray.util.client.common import ClientActorHandle
-from ray.util.client.common import ClientActorClass
-from ray.util.client.common import ClientRemoteFunc
-from ray.util.client.common import ClientActorRef
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_OPTIONS
+from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
+                                            loads_from_server)
+from ray.util.client.common import (ClientActorClass, ClientActorHandle,
+                                    ClientActorRef, ClientObjectRef,
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.runtime_env.working_dir as working_dir_pkg
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -79,11 +70,14 @@ def backoff(timeout: int) -> int:
 
 
 class Worker:
-    def __init__(self,
-                 conn_str: str = "",
-                 secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None,
-                 connection_retries: int = 3):
+    def __init__(
+            self,
+            conn_str: str = "",
+            secure: bool = False,
+            metadata: List[Tuple[str, str]] = None,
+            connection_retries: int = 3,
+            _credentials: Optional[grpc.ChannelCredentials] = None,
+    ):
         """Initializes the worker side grpc client.
 
         Args:
@@ -94,6 +88,8 @@ class Worker:
               ray server if it doesn't respond immediately. Setting to 0 tries
               at least once.  For infinite retries, catch the ConnectionError
               exception.
+            _credentials: gprc channel credentials. Default ones will be used
+              if None.
         """
         self._client_id = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
@@ -103,10 +99,12 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
-        if secure:
-            credentials = grpc.ssl_channel_credentials()
+        if secure and _credentials is None:
+            _credentials = grpc.ssl_channel_credentials()
+
+        if _credentials is not None:
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=GRPC_OPTIONS)
+                conn_str, _credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
                 conn_str, options=GRPC_OPTIONS)
@@ -153,6 +151,13 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            if log_once("ray_client_security_groups"):
+                warnings.warn(
+                    "Ray Client connection timed out. Ensure that "
+                    "the Ray Client port on the head node is reachable "
+                    "from your local machine. See https://docs.ray.io/en"
+                    "/latest/cluster/ray-client.html#step-2-check-ports for "
+                    "more information.")
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -178,7 +183,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -236,7 +241,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -332,7 +337,7 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
         if not ticket.valid:
             try:
@@ -422,7 +427,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -439,7 +444,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
@@ -506,13 +511,6 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _call_init(self, init_request: ray_client_pb2.InitRequest) -> None:
-        init_resp = self.data_client.Init(init_request)
-        if not init_resp.ok:
-            raise ConnectionAbortedError(
-                f"Init Failure From Server:\n{init_resp.msg}")
-        return
-
     def _server_init(self,
                      job_config: JobConfig,
                      ray_init_kwargs: Optional[Dict[str, Any]] = None):
@@ -521,27 +519,27 @@ class Worker:
             ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest(
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                return
+                serialized_job_config = None
+            else:
+                # Generate and upload URIs for the working directory. This
+                # uses internal_kv to upload to the GCS.
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
+                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
+                    manager.upload_runtime_env_package_if_needed(job_config)
 
-            import ray._private.runtime_env as runtime_env
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
-                # Generate the uri for runtime env
-                runtime_env.rewrite_runtime_env_uris(job_config)
-                init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config),
-                    ray_init_kwargs=json.dumps(ray_init_kwargs))
-                self._call_init(init_req)
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
+                serialized_job_config = pickle.dumps(job_config)
+
+            response = self.data_client.Init(
+                ray_client_pb2.InitRequest(
+                    job_config=serialized_job_config,
+                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+            if not response.ok:
+                raise ConnectionAbortedError(
+                    f"Initialization failure from server:\n{response.msg}")
+
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -594,6 +592,13 @@ def make_client_id() -> str:
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then raise the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        raise
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)
