@@ -1,5 +1,6 @@
 from concurrent import futures
 import contextlib
+import os
 import threading
 import sys
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
@@ -7,7 +8,9 @@ import grpc
 
 import time
 import random
+import pytest
 from typing import Any, Callable, Optional
+from unittest.mock import patch
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -362,6 +365,25 @@ def test_noisy_puts():
             assert result == i * 123
 
 
+def test_client_reconnect_grace_period():
+    """
+    Tests that the client gives up attempting to reconnect the channel
+    after the grace period expires.
+    """
+    # Lower grace period to 5 seconds to save time
+    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
+            start_middleman_server() as (middleman, _):
+        assert ray.get(ray.put(42)) == 42
+        # Close channel
+        middleman.channel.close()
+        start_time = time.time()
+        with pytest.raises(ConnectionError):
+            ray.get(ray.put(42))
+        # Connection error should have been raised within a reasonable
+        # amount of time. Set to significantly higher than 5 seconds
+        # to account for reconnect backoff timing
+        assert time.time() - start_time < 20
+
+
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
