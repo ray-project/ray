@@ -13,7 +13,8 @@ def _check_pyarrow_version():
         try:
             version_info = pkg_resources.require("pyarrow")
             version_str = version_info[0].version
-            version = tuple(int(n) for n in version_str.split("."))
+            version = tuple(
+                int(n) for n in version_str.split(".") if "dev" not in n)
             if version < MIN_PYARROW_VERSION:
                 raise ImportError(
                     "Datasets requires pyarrow >= "

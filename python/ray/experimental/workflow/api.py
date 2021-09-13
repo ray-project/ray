@@ -11,6 +11,7 @@ from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
 from ray.experimental.workflow.common import (WorkflowStatus,
                                               ensure_ray_initialized)
+from ray.experimental.workflow import serialization
 from ray.experimental.workflow.storage import Storage
 from ray.experimental.workflow import workflow_access
 from ray.util.annotations import PublicAPI
@@ -60,6 +61,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
                                "different storage")
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
+    serialization.init_manager()
 
 
 def make_step_decorator(step_options: Dict[str, Any]):
@@ -94,6 +96,9 @@ def step(*args, **kwargs):
     catch_exceptions = kwargs.pop("catch_exceptions", None)
     if catch_exceptions is not None:
         step_options["catch_exceptions"] = catch_exceptions
+    name = kwargs.pop("name", None)
+    if name is not None:
+        step_options["name"] = name
     if len(kwargs) != 0:
         step_options["ray_options"] = kwargs
     return make_step_decorator(step_options)
@@ -246,9 +251,9 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     elif isinstance(status_filter, WorkflowStatus):
         status_filter = set({status_filter})
     elif isinstance(status_filter, set):
-        if all([isinstance(s, str) for s in status_filter]):
+        if all(isinstance(s, str) for s in status_filter):
             status_filter = {WorkflowStatus(s) for s in status_filter}
-        elif not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+        elif not all(isinstance(s, WorkflowStatus) for s in status_filter):
             raise TypeError("status_filter contains element which is not"
                             " a type of `WorkflowStatus or str`."
                             f" {status_filter}")

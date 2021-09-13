@@ -213,9 +213,14 @@ class TupleFlatteningPreprocessor(Preprocessor):
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
             logger.debug("Creating sub-preprocessor for {}".format(space))
-            preprocessor = get_preprocessor(space)(space, self._options)
+            preprocessor_class = get_preprocessor(space)
+            if preprocessor_class is not None:
+                preprocessor = preprocessor_class(space, self._options)
+                size += preprocessor.size
+            else:
+                preprocessor = None
+                size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-            size += preprocessor.size
         return (size, )
 
     @override(Preprocessor)
@@ -247,9 +252,14 @@ class DictFlatteningPreprocessor(Preprocessor):
         self.preprocessors = []
         for space in self._obs_space.spaces.values():
             logger.debug("Creating sub-preprocessor for {}".format(space))
-            preprocessor = get_preprocessor(space)(space, self._options)
+            preprocessor_class = get_preprocessor(space)
+            if preprocessor_class is not None:
+                preprocessor = preprocessor_class(space, self._options)
+                size += preprocessor.size
+            else:
+                preprocessor = None
+                size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-            size += preprocessor.size
         return (size, )
 
     @override(Preprocessor)

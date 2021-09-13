@@ -13,7 +13,7 @@ class WorkflowStepFunction:
 
     def __init__(self,
                  func: Callable,
-                 max_retries=1,
+                 max_retries=3,
                  catch_exceptions=False,
                  name=None,
                  ray_options=None):
@@ -61,7 +61,7 @@ class WorkflowStepFunction:
     @PublicAPI(stability="beta")
     def options(self,
                 *,
-                max_retries: int = 1,
+                max_retries: int = 3,
                 catch_exceptions: bool = False,
                 name: str = None,
                 **ray_options) -> "WorkflowStepFunction":
