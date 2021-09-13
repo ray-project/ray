@@ -1,8 +1,5 @@
--c requirements/ml/requirements_dl.txt
-
 ipython
-tensorflow
-
+tensorflow==2.5.0
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.9.0+cu111
 -f https://download.pytorch.org/whl/torch_stable.html
