@@ -39,8 +39,8 @@ class DataClient:
         # Waiting for response or shutdown.
         self.cv = threading.Condition()
         # Serialize access to self.request_queue, self.asyncio_waiting_data,
-        # self._req_id, and self.data_thread
-        self.lock = threading.Lock()
+        # and self._req_id. Needs to be reentrant to avoid deadlock.
+        self.lock = threading.RLock()
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -61,7 +61,11 @@ class DataClient:
         return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
-        return threading.Thread(target=self._data_main, args=(), daemon=True)
+        return threading.Thread(
+            target=self._data_main,
+            name="ray_client_streaming_rpc",
+            args=(),
+            daemon=True)
 
     def _data_main(self) -> None:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
@@ -196,10 +200,12 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.get
 
-    def RegisterGetCallback(self,
-                            request: ray_client_pb2.GetRequest,
-                            callback: ResponseCallable,
-                            context=None) -> None:
+    def RegisterGetCallback(self, request: ray_client_pb2.GetRequest,
+                            callback: ResponseCallable) -> None:
+        if len(request.ids) != 1:
+            raise ValueError(
+                "RegisterGetCallback() must have exactly 1 Object ID. "
+                f"Actual: {request}")
         datareq = ray_client_pb2.DataRequest(get=request, )
         self._async_send(datareq, callback)
 

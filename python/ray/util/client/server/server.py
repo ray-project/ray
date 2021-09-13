@@ -288,20 +288,19 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         main loop when the desired object is ready. If there is some failure
         in scheduling, a GetResponse will be immediately returned.
         """
-        refs = []
-        for rid in request.ids:
-            ref = self.object_refs[client_id].get(rid, None)
-            if ref:
-                refs.append(ref)
-            else:
-                return ray_client_pb2.GetResponse(
-                    valid=False,
-                    error=cloudpickle.dumps(
-                        ValueError(
-                            f"ClientObjectRef with id {rid} not found for "
-                            f"client {client_id}")))
+        if len(request.ids) != 1:
+            raise ValueError("Async get() must have exactly 1 Object ID. "
+                             f"Actual: {request}")
+        rid = request.ids[0]
+        ref = self.object_refs[client_id].get(rid, None)
+        if not ref:
+            return ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(f"ClientObjectRef with id {rid} not found for "
+                               f"client {client_id}")))
         try:
-            logger.debug("async get: %s" % refs)
+            logger.debug("async get: %s" % ref)
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
@@ -319,8 +318,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         get=get_resp, req_id=req_id)
                     result_queue.put(resp)
 
-                for ref in refs:
-                    ref._on_completed(send_get_response)
+                ref._on_completed(send_get_response)
                 return None
 
         except Exception as e:
