@@ -283,6 +283,57 @@ class CoreWorkerDirectActorTaskSubmitter
   friend class CoreWorkerTest;
 };
 
+class FiberStateManager final {
+ public:
+  explicit FiberStateManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                             const int32_t default_group_max_concurrency = 1) {
+    for (auto &group : concurrency_groups) {
+      const auto name = group.name;
+      const auto max_concurrency = group.max_concurrency;
+      auto fiber = std::make_shared<FiberState>(max_concurrency);
+      auto &fds = group.function_descriptors;
+      for (auto fd : fds) {
+        functions_to_fiber_index_[fd->ToString()] = fiber;
+      }
+      name_to_fiber_index_[name] = fiber;
+    }
+    // TODO: doc
+    if (default_group_max_concurrency > 1) {
+      default_fiber_ = std::make_shared<FiberState>(default_group_max_concurrency);
+    }
+  }
+
+  std::shared_ptr<FiberState> GetFiber(const std::string &concurrency_group_name,
+                                       ray::FunctionDescriptor fd) {
+    if (!concurrency_group_name.empty()) {
+      auto it = name_to_fiber_index_.find(concurrency_group_name);
+      /// TODO(qwang): Fail the user task.
+      RAY_CHECK(it != name_to_fiber_index_.end());
+      return it->second;
+    }
+
+    /// Code path of that this task wasn't specified in a concurrency group addtionally.
+    /// Use the predefined concurrency group.
+    if (functions_to_fiber_index_.find(fd->ToString()) !=
+        functions_to_fiber_index_.end()) {
+      return functions_to_fiber_index_[fd->ToString()];
+    }
+    return default_fiber_;
+  }
+
+ private:
+  // Map from the name to their corresponding fibers.
+  std::unordered_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
+
+  // Map from the FunctionDescriptors to their corresponding fibers.
+  std::unordered_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
+
+  // The fiber for default concurrency group. It's nullptr if its max concurrency
+  // is 1.
+  // TODO default is 1000
+  std::shared_ptr<FiberState> default_fiber_ = nullptr;
+};
+
 class BoundedExecutor;
 
 /// A manager that manages a set of thread pool. which will perform
@@ -489,6 +540,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -497,9 +549,11 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
+      // TODO: LOG
       RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
                     << fiber_max_concurrency << ", creating new fiber thread.";
-      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
+      fiber_state_manager_ =
+          std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
     }
   }
 
@@ -595,7 +649,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
       if (is_asyncio_) {
         // Process async actor task.
-        fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
+        auto fiber = fiber_state_manager_->GetFiber(request.ConcurrencyGroupName(),
+                                                    request.FunctionDescriptor());
+        fiber->EnqueueFiber([request]() mutable { request.Accept(); });
       } else {
         // Process actor tasks.
         RAY_CHECK(pool_manager_ != nullptr);
@@ -663,7 +719,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// If is_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  std::unique_ptr<FiberStateManager> fiber_state_manager_;
+
   friend class SchedulingQueueTest;
 };
 
@@ -855,6 +912,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency for fiber actor.
   /// This should be called once for the actor creation task.
   void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
+
+  std::unordered_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 };
 
 }  // namespace core

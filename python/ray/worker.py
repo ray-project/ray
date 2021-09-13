@@ -1931,7 +1931,8 @@ def make_decorator(num_returns=None,
                    runtime_env=None,
                    placement_group="default",
                    worker=None,
-                   retry_exceptions=None):
+                   retry_exceptions=None,
+                   concurrency_groups=[]):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1989,7 +1990,8 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
                                         accelerator_type, max_restarts,
-                                        max_task_retries, runtime_env)
+                                        max_task_retries, runtime_env,
+                                        concurrency_groups)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2111,7 +2113,7 @@ def remote(*args, **kwargs):
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
         "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
-        "placement_group"
+        "placement_group", "concurrency_groups",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2146,6 +2148,7 @@ def remote(*args, **kwargs):
     runtime_env = kwargs.get("runtime_env")
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
+    concurrency_groups = kwargs.get("concurrency_groups")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2162,4 +2165,5 @@ def remote(*args, **kwargs):
         runtime_env=runtime_env,
         placement_group=placement_group,
         worker=worker,
-        retry_exceptions=retry_exceptions)
+        retry_exceptions=retry_exceptions,
+        concurrency_groups=concurrency_groups)

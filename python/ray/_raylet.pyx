@@ -60,6 +60,7 @@ from ray.includes.common cimport (
     CRayFunction,
     CWorkerType,
     CJobConfig,
+    CConcurrencyGroup,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -316,6 +317,29 @@ cdef int prepare_resources(
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 
+cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
+    cdef:
+        c_vector[CFunctionDescriptor] fd_list
+        CRayFunction ray_function
+
+    for pyfd in pyfd_list:
+        fd_list.push_back(CFunctionDescriptorBuilder.BuildPython(pyfd.module_name, pyfd.class_name, pyfd.function_name, b""))
+    return fd_list
+
+
+cdef int prepare_concurrency_groups(dict concurrency_groups_dict, c_vector[CConcurrencyGroup] *concurrency_groups):
+    cdef:
+        CConcurrencyGroup cg
+        c_vector[CFunctionDescriptor] c_fd_list
+ 
+    if concurrency_groups_dict is None:
+        raise ValueError("Must provide it...")
+
+    for key, value in concurrency_groups_dict.items():
+        c_fd_list = prepare_function_descriptors(value["function_descriptors"])
+        cg = CConcurrencyGroup(key.encode("ascii"), value["max_concurrency"], c_fd_list)
+        concurrency_groups.push_back(cg)
+    return 1
 
 cdef prepare_args(
         CoreWorker core_worker,
@@ -411,7 +435,9 @@ cdef execute_task(
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
-        c_bool *is_application_level_error):
+        c_bool *is_application_level_error,
+        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
+        const c_string c_name_of_concurrency_group_to_execute):
 
     is_application_level_error[0] = False
 
@@ -458,7 +484,11 @@ cdef execute_task(
             # defined in the constructor).
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
-
+        
+        # Initial eventloops for asyncio for this actor.
+        if core_worker.current_actor_is_asyncio():
+            core_worker.initial_eventloops_for_concurrency_group(c_defined_concurrency_groups)
+        
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
         execution_info = manager.get_execution_info(
@@ -470,6 +500,7 @@ cdef execute_task(
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
     task_name = name.decode("utf-8")
+    name_of_concurrency_group_to_execute = c_name_of_concurrency_group_to_execute.decode("ascii")
     title = f"ray::{task_name}"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
@@ -491,7 +522,7 @@ cdef execute_task(
                 int(ray_constants.from_memory_units(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
-
+        
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
@@ -514,7 +545,9 @@ cdef execute_task(
                     async_function = sync_to_async(function)
 
                 return core_worker.run_async_func_in_event_loop(
-                    async_function, actor, *arguments, **kwarguments)
+                    async_function, function_descriptor, 
+                    name_of_concurrency_group_to_execute, actor,
+                    *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -539,8 +572,10 @@ cdef execute_task(
                             return (ray.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
+                        # TODO: Handle this 
                         args = core_worker.run_async_func_in_event_loop(
-                            deserialize_args)
+                            deserialize_args, function_descriptor,
+                            name_of_concurrency_group_to_execute)
                     else:
                         args = ray.worker.global_worker.deserialize_objects(
                             metadata_pairs, object_refs)
@@ -683,7 +718,9 @@ cdef CRayStatus task_execution_handler(
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
-        c_bool *is_application_level_error) nogil:
+        c_bool *is_application_level_error,
+        const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
+        const c_string name_of_concurrency_group_to_execute) nogil:
     with gil, disable_client_hook():
         try:
             try:
@@ -692,7 +729,8 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint, returns,
-                             is_application_level_error)
+                             is_application_level_error, defined_concurrency_groups,
+                             name_of_concurrency_group_to_execute)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -1010,6 +1048,10 @@ cdef class CoreWorker:
         options.worker_shim_pid = worker_shim_pid
         options.startup_token = startup_token
         CCoreWorkerProcess.Initialize(options)
+
+        self.cgname_to_eventloop_dict = None
+        self.fd_to_cgname_dict = None
+        self.eventloop_for_default_cg = None
 
     def shutdown(self):
         with nogil:
@@ -1405,6 +1447,7 @@ cdef class CoreWorker:
                      c_string extension_data,
                      c_string serialized_runtime_env,
                      runtime_env_uris,
+                     concurrency_groups_dict,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1416,6 +1459,7 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            c_vector[CConcurrencyGroup] c_concurrency_groups
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1423,6 +1467,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
+            prepare_concurrency_groups(concurrency_groups_dict, &c_concurrency_groups)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -1438,7 +1483,8 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
-                        c_runtime_env_uris),
+                        c_runtime_env_uris,
+                        c_concurrency_groups),
                     extension_data,
                     &c_actor_id))
 
@@ -1805,7 +1851,7 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                         return_id, returns[0][i]))
 
-    def create_or_get_event_loop(self):
+    def create_or_get_event_loop2(self):
         if self.async_event_loop is None:
             self.async_event_loop = get_new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
@@ -1822,15 +1868,85 @@ cdef class CoreWorker:
 
         return self.async_event_loop
 
-    def run_async_func_in_event_loop(self, func, *args, **kwargs):
+    cdef c_function_descriptors_to_python(self, 
+                                          const c_vector[CFunctionDescriptor] &c_function_descriptors):
+        ret = []
+        for i in range(c_function_descriptors.size()):
+            ret.append(CFunctionDescriptorToPython(c_function_descriptors[i]))
+        return ret
+
+    cdef initial_eventloops_for_concurrency_group(self,
+            const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups):
+        cdef:
+            CConcurrencyGroup c_concurrency_group
+            c_vector[CFunctionDescriptor] c_function_descriptors
+        
+        self.cgname_to_eventloop_dict = {}
+        self.fd_to_cgname_dict = {}
+
+        self.eventloop_for_default_cg = get_new_event_loop()
+        self.thread_for_default_cg = threading.Thread(
+            target=lambda: self.eventloop_for_default_cg.run_forever(),
+            name="default AsyncIO Thread"
+            )
+        # Making the thread a daemon causes it to exit
+        # when the main thread exits.
+        self.thread_for_default_cg.daemon = True
+        self.thread_for_default_cg.start()
+
+
+        for i in range(c_defined_concurrency_groups.size()):
+            c_concurrency_group = c_defined_concurrency_groups[i];
+            cg_name = c_concurrency_group.GetName().decode("ascii")
+            function_descriptors = self.c_function_descriptors_to_python(
+                c_concurrency_group.GetFunctionDescriptors())
+
+            async_eventloop = get_new_event_loop()
+            async_thread = threading.Thread(
+                target=lambda: async_eventloop.run_forever(),
+                name="{} AsyncIO Thread".format(cg_name)
+            )
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            async_thread.daemon = True
+            async_thread.start()
+
+            self.cgname_to_eventloop_dict[cg_name] = {
+                "eventloop": async_eventloop,
+                "thread": async_thread,
+            }
+
+            for fd in function_descriptors:
+                self.fd_to_cgname_dict[fd] = cg_name
+
+    def get_event_loop(self, function_descriptor, specified_cgname):
+        # __init__ will be invoked in default eventloop
+        if function_descriptor.function_name == "__init__":
+            return self.eventloop_for_default_cg, self.thread_for_default_cg 
+
+        if specified_cgname is not None:
+            if specified_cgname in self.cgname_to_eventloop_dict:
+                return self.cgname_to_eventloop_dict[specified_cgname]["eventloop"], self.cgname_to_eventloop_dict[specified_cgname]["thread"]
+
+        if function_descriptor in self.fd_to_cgname_dict:
+            curr_cgname = self.fd_to_cgname_dict[function_descriptor]
+            if curr_cgname in self.cgname_to_eventloop_dict:
+                return self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],  self.cgname_to_eventloop_dict[curr_cgname]["thread"] 
+            else:
+                raise ValueError("The function {} is defined to be executed in the concurrency group {} . But there is no this group.".format(
+                    function_descriptor, curr_cgname))
+
+        return self.eventloop_for_default_cg, self.thread_for_default_cg 
+
+    def run_async_func_in_event_loop(self, func, function_descriptor, specified_cgname, *args, **kwargs):
         cdef:
             CFiberEvent event
-        loop = self.create_or_get_event_loop()
+        eventloop, async_thread = self.get_event_loop(function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == self.async_thread.ident:
-            future = asyncio.ensure_future(coroutine, loop)
+        if threading.get_ident() == async_thread.ident:
+            future = asyncio.ensure_future(coroutine, eventloop)
         else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
