@@ -85,6 +85,7 @@ class PlacementGroup {
   std::vector<std::unordered_map<std::string, double>> GetBundles() {
     return options_.bundles;
   }
+  ray::internal::PlacementGroupState GetState() { return options_.state; }
   internal::PlacementStrategy GetStrategy() { return options_.strategy; }
   bool Wait(int timeout_seconds) { return callback_(id_, timeout_seconds); }
   void SetWaitCallbak(std::function<bool(const std::string &, int)> callback) {

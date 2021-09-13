@@ -299,6 +299,9 @@ std::vector<PlacementGroup> AbstractRayRuntime::GetAllPlacementGroups() {
 PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) {
   PlacementGroupID pg_id = PlacementGroupID::FromBinary(id);
   auto str_ptr = global_state_accessor_->GetPlacementGroupInfo(pg_id);
+  if (str_ptr == nullptr) {
+    return {};
+  }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
 }
@@ -307,6 +310,9 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
                                                      bool global) {
   auto full_name = task_submitter_->GetFullName(global, name);
   auto str_ptr = global_state_accessor_->GetPlacementGroupByName(full_name, "");
+  if (str_ptr == nullptr) {
+    return {};
+  }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
 }

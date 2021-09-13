@@ -294,6 +294,11 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   EXPECT_EQ(placement_group1.GetID(), first_placement_group.GetID());
 
   ray::RemovePlacementGroup(first_placement_group.GetID());
+  auto deleted_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(deleted_group.GetState(), ray::internal::PlacementGroupState::REMOVED);
+
+  auto not_exist_group = ray::GetPlacementGroup("not_exist_placement_group");
+  EXPECT_TRUE(not_exist_group.GetID().empty());
 }
 
 int main(int argc, char **argv) {
