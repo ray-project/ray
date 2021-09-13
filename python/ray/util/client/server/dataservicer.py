@@ -71,7 +71,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, basic_service: "RayletServicer"):
         self.basic_service = basic_service
         self.clients_lock = Lock()
-        self.clients_cv = threading.Condition(lock=self.clients_lock)
         self.num_clients = 0  # guarded by self.clients_lock
         # dictionary mapping client_id's to the last time they connected
         self.client_last_seen: Dict[str, float] = {}
