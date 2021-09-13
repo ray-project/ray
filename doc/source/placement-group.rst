@@ -80,6 +80,22 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
 
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Initialize Ray.
+      ray::Init();
+
+      // Construct a list of bundles.
+      std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
+
+      // Make a creation option with bundles and strategy.
+      ray::internal::PlacementGroupCreationOptions options{
+          false, name, bundles, ray::internal::PlacementStrategy::PACK};
+
+      PlacementGroup pg = ray::CreatePlacementGroup(options);
+
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
@@ -110,6 +126,20 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
       for (PlacementGroup group: allPlacementGroup) {
         System.out.println(group);
+      }
+
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Wait for the placement group to be ready within the specified time(unit is seconds).
+      boll ready = pg.Wait(60);
+      assert(ready);
+
+      // You can look at placement group states using this API.
+      std::vector<PlacementGroup> allPlacementGroup = ray.GetAllPlacementGroups();
+      for (const PlacementGroup &group : allPlacementGroup) {
+        std::cout << group.GetName() << std::endl;
       }
 
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
