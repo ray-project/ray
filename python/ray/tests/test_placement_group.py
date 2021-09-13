@@ -3,30 +3,55 @@ import os
 import sys
 import time
 
+from random import random
+
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
 
 import ray
+import ray.cluster_utils
+import ray._private.gcs_utils as gcs_utils
+
+from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
     generate_system_config_map, get_other_nodes,
     kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
     get_error_message)
-import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
-import ray._private.gcs_utils as gcs_utils
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
                                       get_current_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
 
 
 @ray.remote
 class Increase:
     def method(self, x):
         return x + 2
+
+
+def is_placement_group_removed(pg):
+    table = ray.util.placement_group_table(pg)
+    if "state" not in table:
+        return False
+    return table["state"] == "REMOVED"
+
+
+def get_ray_status_output(address):
+    redis_client = ray._private.services.create_redis_client(address, "")
+    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    return {
+        "demand": debug_status(
+            status, error).split("Demands:")[1].strip("\n").strip(" "),
+        "usage": debug_status(status, error).split("Demands:")[0].split(
+            "Usage:")[1].strip("\n").strip(" ")
+    }
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
@@ -1852,6 +1877,107 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster,
         gpu_ids_res.add(gpu_ids)
 
     assert len(gpu_ids_res) == 4
+
+
+@pytest.mark.parametrize("execution_number", range(3))
+def test_placement_group_remove_stress(ray_start_cluster, execution_number):
+    # This test checks the race condition between remove / creation.
+    # This test shouldn't be flaky. If it fails on the last ray.get
+    # that highly likely indicates a real bug.
+    # It also runs 3 times to make sure the test consistently passes.
+    # When 999 resource quantity is used, it fails about every other time
+    # when the test was written.
+    cluster = ray_start_cluster
+    resource_quantity = 999
+    num_nodes = 5
+    custom_resources = {"pg_custom": resource_quantity}
+    # Create pg that uses 1 resource of cpu & custom resource.
+    num_pg = resource_quantity
+
+    # TODO(sang): Cluster setup. Remove when running in real clusters.
+    nodes = []
+    for _ in range(num_nodes):
+        nodes.append(
+            cluster.add_node(
+                num_cpus=3,
+                num_gpus=resource_quantity,
+                resources=custom_resources))
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+    while not ray.is_initialized():
+        time.sleep(0.1)
+    bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
+
+    @ray.remote(num_cpus=0, num_gpus=1, max_calls=0)
+    def mock_task():
+        time.sleep(0.1)
+        return True
+
+    @ray.remote(num_cpus=0)
+    def pg_launcher(num_pgs_to_create):
+        print("Creating pgs")
+        pgs = []
+        for i in range(num_pgs_to_create):
+            pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
+
+        pgs_removed = []
+        pgs_unremoved = []
+        # Randomly choose placement groups to remove.
+        print("removing pgs")
+        for pg in pgs:
+            if random() < .5:
+                pgs_removed.append(pg)
+            else:
+                pgs_unremoved.append(pg)
+
+        tasks = []
+        # Randomly schedule tasks or actors on placement groups that
+        # are not removed.
+        for pg in pgs_unremoved:
+            tasks.append(mock_task.options(placement_group=pg).remote())
+        # Remove the rest of placement groups.
+        for pg in pgs_removed:
+            remove_placement_group(pg)
+        ray.get(tasks)
+        # Since placement groups are scheduled, remove them.
+        for pg in pgs_unremoved:
+            remove_placement_group(pg)
+
+    pg_launchers = []
+    for _ in range(3):
+        pg_launchers.append(pg_launcher.remote(num_pg // 3))
+
+    ray.get(pg_launchers, timeout=120)
+
+
+def test_placement_group_status_no_bundle_demand(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        pass
+
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(pg.ready())
+    ray.util.remove_placement_group(pg)
+    wait_for_condition(lambda: is_placement_group_removed(pg))
+    # Create a ready task after the placement group is removed.
+    # This shouldn't be reported to the resource demand.
+    r = pg.ready()  # noqa
+
+    # Wait until the usage is updated, which is
+    # when the demand is also updated.
+    def is_usage_updated():
+        demand_output = get_ray_status_output(cluster.address)
+        return demand_output["usage"] != ""
+
+    wait_for_condition(is_usage_updated)
+    # The output shouldn't include the pg.ready task demand.
+    demand_output = get_ray_status_output(cluster.address)
+    assert demand_output["demand"] == "(no resource demands)"
 
 
 if __name__ == "__main__":

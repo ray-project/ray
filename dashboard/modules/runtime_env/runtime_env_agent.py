@@ -15,8 +15,8 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
-from ray._private.runtime_env.conda import setup_conda_or_pip
-from ray._private.runtime_env.working_dir import setup_working_dir
+from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
+        self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
@@ -78,10 +81,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
                 context = RuntimeEnvContext(
-                    env_vars=runtime_env.get("env_vars"),
-                    resources_dir=self._runtime_env_dir)
-                setup_conda_or_pip(runtime_env, context, logger=per_job_logger)
-                setup_working_dir(runtime_env, context, logger=per_job_logger)
+                    env_vars=runtime_env.get("env_vars"))
+                self._conda_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
                 return context
 
             loop = asyncio.get_event_loop()
@@ -151,11 +155,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context)
 
-    async def DeleteRuntimeEnv(self, request, context):
-        # TODO(guyang.sgy): Delete runtime env local files.
-        return runtime_env_agent_pb2.DeleteRuntimeEnvReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-            error_message="Not implemented.")
+    async def DeleteURIs(self, request, context):
+        logger.info(f"Got request to delete URIS: {request.uris}.")
+
+        # Only a single URI is currently supported.
+        assert len(request.uris) == 1
+        if self._working_dir_manager.delete_uri(request.uris[0]):
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+        else:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="Path not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Dict, Optional, List
 
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ class Searcher:
             raise ValueError("Mode most either be a list or string")
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -124,10 +125,12 @@ class Searcher:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         return False
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
         """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
@@ -148,7 +151,7 @@ class Searcher:
     def on_trial_complete(self,
                           trial_id: str,
                           result: Optional[Dict] = None,
-                          error: bool = False):
+                          error: bool = False) -> None:
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -451,5 +454,6 @@ class ConcurrencyLimiter(Searcher):
         self.searcher.on_unpause(trial_id)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)
+                              config: Dict, **spec) -> bool:
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config, **spec)
