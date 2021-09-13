@@ -1,8 +1,8 @@
 from filelock import FileLock
 import pytest
 import ray
-from ray.experimental import workflow
-from ray.experimental.workflow import serialization
+from ray import workflow
+from ray.workflow import serialization
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tests.conftest import *  # noqa
 import subprocess
@@ -106,7 +106,7 @@ def test_dedupe_cluster_failure(reset_workflow, tmp_path):
     driver_script = f"""
 import time
 import ray
-from ray.experimental import workflow
+from ray import workflow
 from filelock import FileLock
 
 @workflow.step

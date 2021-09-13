@@ -3,9 +3,9 @@ from dataclasses import dataclass
 import logging
 import ray
 from ray.types import ObjectRef
-from ray.experimental.workflow import common
-from ray.experimental.workflow import storage
-from ray.experimental.workflow import workflow_storage
+from ray.workflow import common
+from ray.workflow import storage
+from ray.workflow import workflow_storage
 from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
