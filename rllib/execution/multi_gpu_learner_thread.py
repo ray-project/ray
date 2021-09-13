@@ -84,12 +84,13 @@ class MultiGPULearnerThread(LearnerThread):
                 old="MultiGPULearnerThread.minibatch_buffer_size",
                 error=False,
             )
-        super().__init__(local_worker=local_worker,
-                         minibatch_buffer_size=0,
-                         num_sgd_iter=num_sgd_iter,
-                         learner_queue_size=learner_queue_size,
-                         learner_queue_timeout=learner_queue_timeout,
-                         )
+        super().__init__(
+            local_worker=local_worker,
+            minibatch_buffer_size=0,
+            num_sgd_iter=num_sgd_iter,
+            learner_queue_size=learner_queue_size,
+            learner_queue_timeout=learner_queue_timeout,
+        )
         # Delete reference to parent's minibatch_buffer, which is not needed.
         # Instead, in multi-GPU mode, we pull tower stack indices from the
         # `self.ready_tower_stacks_buffer` buffer, whose size is exactly
@@ -117,7 +118,8 @@ class MultiGPULearnerThread(LearnerThread):
         # b) Those that are ready to be loaded with new data ("idle").
         self.idle_tower_stacks = queue.Queue()
         self.ready_tower_stacks = queue.Queue()
-        # In the beginning, all stacks are idle (no loading has taken place yet).
+        # In the beginning, all stacks are idle (no loading has taken place
+        # yet).
         for idx in self.tower_stack_indices:
             self.idle_tower_stacks.put(idx)
         # Start n threads that are responsible for loading data into the

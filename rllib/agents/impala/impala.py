@@ -164,9 +164,10 @@ def make_learner_thread(local_worker, config):
             logger.warning(
                 "In multi-GPU mode you should have at least as many "
                 "multi-GPU tower stacks (to load data into on one device) as "
-                "you have stack-index slots in the buffer! You have configured "
-                f"{num_stacks} stacks and a buffer of size {buffer_size}. "
-                "Setting `minibatch_buffer_size={num_stacks}`.")
+                "you have stack-index slots in the buffer! You have "
+                f"configured {num_stacks} stacks and a buffer of size "
+                f"{buffer_size}. Setting "
+                f"`minibatch_buffer_size={num_stacks}`.")
             config["minibatch_buffer_size"] = num_stacks
 
         learner_thread = MultiGPULearnerThread(
