@@ -8,6 +8,7 @@ Chain the function to make a sequential pipeline:
    step1 -> step2 -> step3 -> ...
 """
 
+
 def function_chain(steps: List[Callable]) -> Callable:
     assert len(steps) != 0
 
