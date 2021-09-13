@@ -706,8 +706,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
       task_manager_, reference_counter_, memory_store_,
-      [this](const ObjectID &object_id, bool pin_object) {
-        RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+      [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
+        RAY_LOG(DEBUG) << "Failed to recover object " << object_id << " due to "
+                       << rpc::ErrorType_Name(reason);
+        RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
       },
@@ -1462,8 +1464,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                 object_id));
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
