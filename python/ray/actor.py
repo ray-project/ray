@@ -213,6 +213,7 @@ class ActorClassMethodMetadata(object):
 
         actor_methods = inspect.getmembers(modified_class,
                                            is_function_or_method)
+        print(actor_methods)
         self.methods = dict(actor_methods)
 
         # Extract the signatures of each of the methods. This will be used
