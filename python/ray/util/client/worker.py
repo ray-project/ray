@@ -126,7 +126,7 @@ class Worker:
         Attempts to connect to the server specified by conn_str.
         """
 
-        if self.secure:
+        if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
             else:
