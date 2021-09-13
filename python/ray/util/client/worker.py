@@ -102,9 +102,7 @@ class Worker:
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
-        if secure and _credentials is None:
-            self._credentials = grpc.ssl_channel_credentials()
-        else:
+        if secure and _credentials is not None:
             self._credentials = _credentials
 
         self._connect_channel()
@@ -127,9 +125,14 @@ class Worker:
         """
         Attempts to connect to the server specified by conn_str.
         """
-        if self._credentials is not None:
+
+        if self.secure:
+            if self._credentials is not None:
+                credentials = self._credentials
+            else:
+                credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                self._conn_str, self._credentials, options=GRPC_OPTIONS)
+                self._conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
                 self._conn_str, options=GRPC_OPTIONS)
