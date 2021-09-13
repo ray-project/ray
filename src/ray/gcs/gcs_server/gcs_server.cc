@@ -251,12 +251,23 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
 
+  std::function<bool(std::shared_ptr<GcsActor>)> release_resources =
+      [this](std::shared_ptr<GcsActor> actor) { return true; };
+
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
     scheduler = std::make_unique<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
         schedule_success_handler, raylet_client_pool_, client_factory);
+    release_resources = [this](std::shared_ptr<GcsActor> actor) {
+      if (actor != nullptr && actor->GetActorWorkerAssignment() != nullptr) {
+        return gcs_resource_manager_->ReleaseResources(
+            actor->GetActorWorkerAssignment()->GetNodeID(),
+            actor->GetActorWorkerAssignment()->GetResources());
+      }
+      return false;
+    };
   } else {
     scheduler = std::make_unique<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
@@ -285,7 +296,8 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-      });
+      },
+      release_resources);
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);

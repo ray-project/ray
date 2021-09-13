@@ -114,7 +114,8 @@ GcsActorManager::GcsActorManager(
     std::function<std::string(const JobID &)> get_ray_namespace,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
-    const rpc::ClientFactoryFn &worker_client_factory)
+    const rpc::ClientFactoryFn &worker_client_factory,
+    std::function<bool(std::shared_ptr<GcsActor>)> release_resources)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
@@ -123,7 +124,8 @@ GcsActorManager::GcsActorManager(
       get_ray_namespace_(get_ray_namespace),
       runtime_env_manager_(runtime_env_manager),
       run_delayed_(run_delayed),
-      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
+      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
+      release_resources_(std::move(release_resources)) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
@@ -567,6 +569,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     RAY_LOG(INFO) << "Tried to destroy actor that does not exist " << actor_id;
     return;
   }
+
+  if (release_resources_) {
+    release_resources_(it->second);
+  }
+
   const auto &task_id = it->second->GetCreationTaskSpecification().TaskId();
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
