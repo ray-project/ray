@@ -349,13 +349,18 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-
+        num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
-            self._blocks,
-            num_blocks or self.num_blocks(),
+            self.move_blocks(),
+            num_blocks or num_blocks,
             random_shuffle=True,
             random_seed=seed)
         return Dataset(new_blocks)
+
+    def move_blocks(self):
+        blocks = self._blocks
+        self._blocks = None
+        return blocks
 
     def split(self,
               n: int,
