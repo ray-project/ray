@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, List, TypeVar, Optional, Dict
+from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
 from ray.types import ObjectRef
@@ -9,7 +9,7 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-class BaseWorker:
+class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
@@ -43,6 +43,11 @@ class WorkerGroup:
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
+        actor_cls (Optional[Type]): If specified use this class as the
+            remote actors. The provided class is expected to extend
+            ``BaseWorker``.
+        remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
+            these args will be used for the worker initialization.
 
 
     Example:
@@ -60,7 +65,11 @@ class WorkerGroup:
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0,
                  additional_resources_per_worker: Optional[Dict[
-                     str, float]] = None):
+                     str, float]] = None,
+                 actor_cls: Type = None,
+                 actor_cls_args: Optional[Tuple] = None,
+                 actor_cls_kwargs: Optional[Dict] = None
+                 ):
 
         if num_workers <= 0:
             raise ValueError("The provided `num_workers` must be greater "
@@ -77,16 +86,30 @@ class WorkerGroup:
         self.num_gpus_per_worker = num_gpus_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
+        if actor_cls:
+            if not issubclass(actor_cls, BaseWorkerMixin):
+                raise ValueError(f"The provided remote class {actor_cls} "
+                                 f"must extend `BaseWorkerMixin`")
+            self._base_cls = actor_cls
+        else:
+            self._base_cls = BaseWorkerMixin
+
+        self._actor_cls_args = actor_cls_args or []
+        self._actor_cls_kwargs = actor_cls_kwargs or {}
+
         # TODO(matt): Validate resources. Fast-fail if it is impossible to
         #  handle the request, rather than hang indefinitely.
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
-            resources=self.additional_resources_per_worker)(BaseWorker)
+            resources=self.additional_resources_per_worker)(self._base_cls)
         self.start()
 
     def _create_worker(self):
-        return self._remote_cls.remote()
+        if type(self._base_cls) == BaseWorkerMixin:
+            return self._remote_cls.remote()
+        else:
+            return self._remote_cls.remote(*self._actor_cls_args, **self._actor_cls_kwargs)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -220,3 +243,18 @@ class WorkerGroup:
 
     def __len__(self):
         return len(self.workers)
+
+
+def create_executable_worker_group(executable_cls: Type, *args,
+                                   **kwargs
+                                   ) -> WorkerGroup:
+    """Create a WorkerGroup from the provided ``executable_cls``.
+
+    This function will automatically handle subclassing BaseWorker.
+    """
+    class _WrappedExecutable(executable_cls, BaseWorkerMixin):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    return WorkerGroup(*args, actor_cls=_WrappedExecutable,
+                       **kwargs)

@@ -1000,6 +1000,32 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
 
+def test_to_workers(ray_start_2_cpus):
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+
+    class Incrementer:
+        def __init__(self, starting=0):
+            self.count = starting
+
+        def increment(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    workers = trainer.to_workers(Incrementer, starting=2)
+    assert ray.get([w.get_count.remote() for w in workers]) == [2, 2]
+
+    ray.get([w.increment.remote() for w in workers])
+    assert ray.get([w.get_count.remote() for w in workers]) == [3, 3]
+
+    ray.get(workers[0].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 3]
+
+    ray.get(workers[1].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 4]
+
 
 if __name__ == "__main__":
     import pytest

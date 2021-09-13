@@ -3,7 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, TypeVar, List, Optional, Dict, Union
+from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 
 import ray
 from ray import cloudpickle
@@ -17,7 +17,8 @@ from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
     check_for_failure
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.worker_group import WorkerGroup, \
+    create_executable_worker_group
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -257,8 +258,28 @@ class BackendExecutor:
 
         self.checkpoint_manager.on_init()
 
-    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
-        """Starts the worker group."""
+    def start(self, initialization_hook: Optional[Callable[[], None]] =
+    None, train_cls: Type = None, train_cls_args: Optional[Tuple] = None,
+              train_cls_kwargs: Optional[Dict] = None):
+        """Starts the worker group.
+
+        If a train_cls is provided, then
+
+        """
+        if train_cls and initialization_hook:
+            raise SGDBackendError("Both train_cls and initializaiton_hook "
+                                  "cannot be specified. If you are seeing "
+                                  "this error, then this is bug. "
+                                  "Please file an issue.")
+        if train_cls:
+            self.worker_group = create_executable_worker_group(
+                executable_cls=train_cls, num_workers=self._num_workers,
+                num_cpus_per_worker=self._num_cpus_per_worker,
+                num_gpus_per_worker=self._num_gpus_per_worker,
+                additional_resources_per_worker=self
+                    ._additional_resources_per_worker,
+                actor_cls_args=train_cls_args,
+                actor_cls_kwargs=train_cls_kwargs)
         self.worker_group = WorkerGroup(
             self._num_workers, self._num_cpus_per_worker,
             self._num_gpus_per_worker, self._additional_resources_per_worker)
