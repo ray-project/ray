@@ -77,6 +77,7 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
         "num_cpus": 4,  # increase CPUs to add pressure
     }],
     indirect=True)
+@pytest.mark.repeat(100)
 def test_failure_with_storage(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
@@ -85,14 +86,15 @@ def test_failure_with_storage(workflow_start_regular):
         wf = construct_workflow(length=3)
         result = wf.run(workflow_id="complex_workflow")
         index = _locate_initial_commit(debug_store) + 1
-
+        debug_store.log_off()
         def resume(num_records_replayed):
             key = debug_store.wrapped_storage.make_key("complex_workflow")
             asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
-            replays = [
-                debug_store.replay(i) for i in range(num_records_replayed)
-            ]
-            asyncio_run(asyncio.gather(*replays))
+            async def replay():
+                # We need to replay one by one to avoid conflict
+                for i in range(num_records_replayed):
+                    await debug_store.replay(i)
+            asyncio_run(replay())
             return ray.get(workflow.resume(workflow_id="complex_workflow"))
 
         with pytest.raises(ValueError):
@@ -105,6 +107,8 @@ def test_failure_with_storage(workflow_start_regular):
             step_len = 1
         else:
             step_len = max((len(debug_store) - index) // 5, 1)
+
+
         for j in range(index, len(debug_store), step_len):
             assert resume(j) == result
 
