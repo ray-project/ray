@@ -509,7 +509,7 @@ class WorkflowStorage:
         if not update:
             prefix = self._storage.make_key(*paths[:-1])
             scan_result = await self._storage.scan_prefix(prefix)
-            if key in scan_result:
+            if paths[-1] in scan_result:
                 return key
         try:
             upload_tasks: List[ObjectRef] = []
