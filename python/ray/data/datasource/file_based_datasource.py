@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 _PYARROW_FSES_NEEDING_URL_ENCODING = None
 
 
+# We delay creation of the set of pyarrow fses that need URL encoding in order
+# to delay the pyarrow import until we're sure that the user needs pyarrow.
 def _get_pyarrow_fses_needing_url_encoding():
     import pyarrow as pa
 
