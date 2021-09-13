@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import functools
 import logging
+import threading
 from typing import Callable, Any, Union
 
 import ray
@@ -145,6 +146,7 @@ cdef class ClientObjectRef(ObjectRef):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self.in_core_worker = False
+        self._mutex = threading.Lock()
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, concurrent.futures.Future):
@@ -240,5 +242,7 @@ cdef class ClientObjectRef(ObjectRef):
 
     cdef inline _wait_for_id(self):
         if self._id_future:
-            self._set_id(self._id_future.result())
-            self._id_future = None
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result())
+                    self._id_future = None

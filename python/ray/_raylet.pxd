@@ -86,6 +86,7 @@ cdef class ObjectRef(BaseID):
     cdef CObjectID native(self)
 
 cdef class ClientObjectRef(ObjectRef):
+    cdef object _mutex
     cdef object _id_future
 
     cdef _set_id(self, id)
@@ -99,6 +100,7 @@ cdef class ActorID(BaseID):
     cdef size_t hash(self)
 
 cdef class ClientActorRef(ActorID):
+    cdef object _mutex
     cdef object _id_future
 
     cdef _set_id(self, id)

@@ -38,8 +38,8 @@ class DataClient:
 
         # Waiting for response or shutdown.
         self.cv = threading.Condition()
-        # Serialize access to self.request_queue, self.asyncio_waiting_data and
-        # self._req_id
+        # Serialize access to self.request_queue, self.asyncio_waiting_data,
+        # self._req_id, and self.data_thread
         self.lock = threading.RLock()
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
@@ -75,13 +75,16 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
+                self.lock.acquire()
                 if response.req_id in self.asyncio_waiting_data:
                     callback = self.asyncio_waiting_data.pop(response.req_id)
+                    self.lock.release()
                     try:
                         callback(response)
                     except Exception:
                         logger.exception("Callback error:")
                 else:
+                    self.lock.release()
                     with self.cv:
                         self.ready_data[response.req_id] = response
                         self.cv.notify_all()
@@ -103,9 +106,12 @@ class DataClient:
 
             # This data thread needs to call disconnect() below, and it
             # cannot join itself. It is exiting anyway so setting it to None.
-            self.data_thread = None
-            from ray.util import disconnect
-            disconnect()
+            with self.lock:
+                still_connected = self.data_thread is not None
+                self.data_thread = None
+            if still_connected:
+                from ray.util import disconnect
+                disconnect()
 
             with self.cv:
                 with self.lock:
@@ -124,12 +130,15 @@ class DataClient:
                 self.cv.notify_all()
 
     def close(self) -> None:
-        if self.request_queue is not None:
-            self.request_queue.put(None)
-        # Normally, data_thread is None because close() is called from
-        # data_thread.
-        if self.data_thread is not None:
-            self.data_thread.join()
+        thread = None
+        with self.lock:
+            if self.request_queue is not None:
+                self.request_queue.put(None)
+            if self.data_thread is not None:
+                thread = self.data_thread
+                self.data_thread = None
+        if thread is not None:
+            thread.join()
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:

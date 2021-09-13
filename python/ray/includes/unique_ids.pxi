@@ -311,6 +311,7 @@ cdef class ActorID(BaseID):
 cdef class ClientActorRef(ActorID):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
+        self._mutex = threading.Lock()
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, Future):
@@ -359,8 +360,10 @@ cdef class ClientActorRef(ActorID):
 
     cdef _wait_for_id(self):
         if self._id_future:
-            self._set_id(self._id_future.result())
-            self._id_future = None
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result())
+                    self._id_future = None
 
 
 cdef class FunctionID(UniqueID):

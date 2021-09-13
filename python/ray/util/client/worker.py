@@ -233,9 +233,9 @@ class Worker:
         req = ray_client_pb2.GetRequest(
             ids=[r.id for r in ref], timeout=timeout)
         try:
-            data = self.data_client.GetObject(req)
+            data = self.server.GetObject(req, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -625,6 +625,13 @@ def make_client_id() -> str:
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then return the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        return ConnectionError(f"Request failed. GRPC error: {e}")
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)
