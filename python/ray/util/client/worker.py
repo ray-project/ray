@@ -204,8 +204,8 @@ class Worker:
                 # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
-            logger.warning("Waiting for Ray to become ready on the server, "
-                           f"retry in {timeout}s...")
+            logger.info("Waiting for Ray to become ready on the server, "
+                        f"retry in {timeout}s...")
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
                 # we already know the server exists, attempt to reconnect
@@ -274,21 +274,22 @@ class Worker:
                 continue
         raise ConnectionError("Client is shutting down.")
 
-    def _add_ids_to_request(self, request: Any):
+    def _add_ids_to_metadata(self, metadata: Any):
         """
         Adds a unique req_id and the current thread's identifier to the
-        request. These values are useful for preventing mutating operations
+        metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
             request - A gRPC message to add the thread and request IDs to
         """
-        request.thread_id = threading.get_ident()
+        thread_id = str(threading.get_ident())
         with self._req_id_lock:
             self._req_id += 1
             if self._req_id > INT32_MAX:
                 self._req_id = 1
-            request.req_id = self._req_id
+            req_id = str(self._req_id)
+        return metadata + [("thread_id", thread_id), ("req_id", req_id)]
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
@@ -449,9 +450,9 @@ class Worker:
             self, task: ray_client_pb2.ClientTask) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
-        self._add_ids_to_request(task)
+        metadata = self._add_ids_to_metadata(self.metadata)
         try:
-            ticket = self._call_stub("Schedule", task, metadata=self.metadata)
+            ticket = self._call_stub("Schedule", task, metadata=metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
         if not ticket.valid:
@@ -541,8 +542,8 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self._add_ids_to_request(term)
-            self._call_stub("Terminate", term, metadata=self.metadata)
+            metadata = self._add_ids_to_metadata(self.metadata)
+            self._call_stub("Terminate", term, metadata=metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
@@ -559,8 +560,8 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self._add_ids_to_request(term)
-            self._call_stub("Terminate", term, metadata=self.metadata)
+            metadata = self._add_ids_to_metadata(self.metadata)
+            self._call_stub("Terminate", term, metadata=metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
@@ -593,14 +594,14 @@ class Worker:
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
             key=key, value=value, overwrite=overwrite)
-        self._add_ids_to_request(req)
-        resp = self._call_stub("KVPut", req, metadata=self.metadata)
+        metadata = self._add_ids_to_metadata(self.metadata)
+        resp = self._call_stub("KVPut", req, metadata=metadata)
         return resp.already_exists
 
     def internal_kv_del(self, key: bytes) -> None:
         req = ray_client_pb2.KVDelRequest(key=key)
-        self._add_ids_to_request(req)
-        self._call_stub("KVDel", req, metadata=self.metadata)
+        metadata = self._add_ids_to_metadata(self.metadata)
+        self._call_stub("KVDel", req, metadata=metadata)
 
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
