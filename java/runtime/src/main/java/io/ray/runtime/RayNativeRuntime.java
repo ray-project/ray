@@ -167,15 +167,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
-  @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
-    if (nodeId == null) {
-      nodeId = UniqueId.NIL;
-    }
-    nativeSetResource(resourceName, capacity, nodeId.getBytes());
-  }
-
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
@@ -241,8 +232,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 
   private static native void nativeShutdown();
-
-  private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
 

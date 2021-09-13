@@ -99,7 +99,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        incr.step().run("incr")
+        incr.options(max_retries=1).step().run("incr")
 
     assert cnt_file.read_text() == "1"
 
@@ -217,12 +217,12 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_duplicate(workflow_start_regular):
-    @workflow.step
+    @workflow.step(name="f")
     def f(n, dep):
         return n
 
-    inner = f.options(name="f").step(10, None)
-    outer = f.options(name="f").step(20, inner)
+    inner = f.step(10, None)
+    outer = f.step(20, inner)
     assert 20 == outer.run("duplicate")
     # The outer will be checkpointed first. So there is no suffix for the name
     assert ray.get(workflow.get_output("duplicate", name="f")) == 20

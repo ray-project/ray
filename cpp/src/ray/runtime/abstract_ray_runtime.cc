@@ -22,7 +22,6 @@
 
 #include "../config_internal.h"
 #include "../util/function_helper.h"
-#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
 
@@ -226,6 +225,31 @@ void AbstractRayRuntime::ExitActor() {
     throw std::logic_error("This shouldn't be called on a non-actor worker.");
   }
   throw RayIntentionalSystemExitException("SystemExit");
+}
+
+const std::unique_ptr<ray::gcs::GlobalStateAccessor>
+    &AbstractRayRuntime::GetGlobalStateAccessor() {
+  return global_state_accessor_;
+}
+
+bool AbstractRayRuntime::WasCurrentActorRestarted() {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return false;
+  }
+
+  const auto &actor_id = GetCurrentActorID();
+  auto byte_ptr = global_state_accessor_->GetActorInfo(actor_id);
+  if (byte_ptr == nullptr) {
+    return false;
+  }
+
+  rpc::ActorTableData actor_table_data;
+  bool r = actor_table_data.ParseFromString(*byte_ptr);
+  if (!r) {
+    throw RayException("Received invalid protobuf data from GCS.");
+  }
+
+  return actor_table_data.num_restarts() != 0;
 }
 
 ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
