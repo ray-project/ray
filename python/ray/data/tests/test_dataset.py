@@ -20,7 +20,9 @@ from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    _unwrap_protocol, _is_url, _encode_url,
+    _get_pyarrow_fses_needing_url_encoding)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -926,17 +928,28 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "fs,data_path", [(None, lazy_fixture("local_path")),
-                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),  # Path contains space.
+            lazy_fixture("s3_path_with_space"))
+    ])
 def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    path1 = os.path.join(_unwrap_protocol(data_path), "test1.parquet")
+    if _is_url(data_path) and isinstance(
+            fs, _get_pyarrow_fses_needing_url_encoding()):
+        setup_data_path = _encode_url(_unwrap_protocol(data_path))
+    else:
+        setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(_unwrap_protocol(data_path), "test2.parquet")
+    path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -1061,7 +1074,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     pq.write_to_dataset(
         table,
         root_path=str(tmp_path),
-        partition_cols=["one"],
+        partition_cols=["two"],
         use_legacy_dataset=False)
 
     def _block_udf(block: pa.Table):
@@ -2114,6 +2127,11 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+    if fs is None:
+        os.remove(file_path)
+    else:
+        fs.delete_file(_unwrap_protocol(file_path))
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
