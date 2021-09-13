@@ -110,15 +110,7 @@ ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name
 
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
     const ray::internal::PlacementGroupCreationOptions &create_options) {
-  auto get_full_name = [](bool global, std::string name) -> std::string {
-    if (name.empty()) {
-      return "";
-    }
-    return global
-               ? name
-               : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
-  };
-  auto full_name = get_full_name(create_options.global, create_options.name);
+  auto full_name = GetFullName(create_options.global, create_options.name);
   auto options = ray::core::PlacementGroupCreationOptions(
       std::move(full_name), (ray::core::PlacementStrategy)create_options.strategy,
       create_options.bundles, false);

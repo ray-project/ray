@@ -294,6 +294,8 @@ java_binary(
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
         "//java:io_ray_ray_serve",
+        "//streaming/java:io_ray_ray_streaming-api",
+        "//streaming/java:io_ray_ray_streaming-runtime",
     ],
 )
 
@@ -302,6 +304,7 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
+        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

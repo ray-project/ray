@@ -215,11 +215,6 @@ def validate_config(config):
     if config["entropy_coeff"] < 0.0:
         raise ValueError("`entropy_coeff` must be >= 0.0!")
 
-    if config["vtrace"] and not config["in_evaluation"]:
-        if config["batch_mode"] != "truncate_episodes":
-            raise ValueError(
-                "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
-
     # Check whether worker to aggregation-worker ratio makes sense.
     if config["num_aggregation_workers"] > config["num_workers"]:
         raise ValueError(

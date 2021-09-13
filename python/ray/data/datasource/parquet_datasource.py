@@ -1,10 +1,10 @@
 import logging
-from typing import Optional, List, Union, TYPE_CHECKING
+from typing import Callable, Optional, List, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem)
@@ -30,6 +30,7 @@ class ParquetDatasource(FileBasedDatasource):
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             columns: Optional[List[str]] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a Parquet file-based datasource.
         """
@@ -58,7 +59,6 @@ class ParquetDatasource(FileBasedDatasource):
         if columns:
             schema = pa.schema([schema.field(column) for column in columns],
                                schema.metadata)
-        pieces = pq_ds.pieces
 
         def read_pieces(serialized_pieces: List[str]):
             # Implicitly trigger S3 subsystem initialization by importing
@@ -97,18 +97,36 @@ class ParquetDatasource(FileBasedDatasource):
                 table = pa.concat_tables(tables, promote=True)
             elif len(tables) == 1:
                 table = tables[0]
+            if _block_udf is not None:
+                table = _block_udf(table)
             # If len(tables) == 0, all fragments were empty, and we return the
             # empty table from the last fragment.
             return table
 
+        if _block_udf is not None:
+            # Try to infer dataset schema by passing dummy table through UDF.
+            dummy_table = schema.empty_table()
+            try:
+                inferred_schema = _block_udf(dummy_table).schema
+                inferred_schema = inferred_schema.with_metadata(
+                    schema.metadata)
+            except Exception:
+                logger.info(
+                    "Failed to infer schema of dataset by passing dummy table "
+                    "through UDF due to the following exception:",
+                    exc_info=True)
+                inferred_schema = schema
+        else:
+            inferred_schema = schema
         read_tasks = []
-        for pieces_ in np.array_split(pieces, parallelism):
-            if len(pieces_) == 0:
+        for pieces in np.array_split(pq_ds.pieces, parallelism):
+            if len(pieces) == 0:
                 continue
-            metadata = _get_metadata(pieces_, schema)
-            pieces_ = [cloudpickle.dumps(p) for p in pieces_]
+            metadata = _get_metadata(pieces, inferred_schema)
+            pieces = [cloudpickle.dumps(p) for p in pieces]
             read_tasks.append(
-                ReadTask(lambda pieces=pieces_: read_pieces(pieces), metadata))
+                ReadTask(
+                    lambda pieces_=pieces: read_pieces(pieces_), metadata))
 
         return read_tasks
 

@@ -71,9 +71,7 @@ class PlacementGroup:
             f"{len(self.bundle_cache)}")
 
         return bundle_reservation_check.options(
-            placement_group=self,
-            placement_group_bundle_index=0,
-            resources={
+            placement_group=self, resources={
                 "bundle": 0.001
             }).remote(self)
 
