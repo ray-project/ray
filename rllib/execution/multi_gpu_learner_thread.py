@@ -23,23 +23,27 @@ class MultiGPULearnerThread(LearnerThread):
 
     This class is used for async sampling algorithms.
 
-    Example:
-        2 GPUs; 3 multi-GPU tower stacks.
-        # Workers collect data from env and push it into inqueue.
-        - Workers -> (data) -> self.inqueue
-        # We also have two queues, indicating, which stacks are loaded and
-        # which are not.
-        - idle_tower_stacks = [0, 1, 2]  <- all 3 stacks are free at first.
-        - ready_tower_stacks = []  <- None of the 3 stacks is loaded with
-          data.
-        - ready_tower_stacks is managed by ready_tower_stacks_buffer for
-          possible minibatch-SGD iterations per loaded batch (this avoids
-          a reload from CPU to GPU for each SGD iter).
-        - n _MultiGPULoaderThreads: self.inqueue -get()->
-          policy.load_batch_into_buffer() -> ready_stacks = [0 ...]
-        - This thread: self.ready_tower_stacks_buffer -get()->
-          policy.learn_on_loaded_batch() -> if SGD-iters done,
-          put stack index back in idle_tower_stacks queue.
+    Example workflow: 2 GPUs and 3 multi-GPU tower stacks.
+    -> On each GPU, there are 3 slots for batches, indexed 0, 1, and 2.
+
+    Workers collect data from env and push it into inqueue:
+    Workers -> (data) -> self.inqueue
+
+    We also have two queues, indicating, which stacks are loaded and which
+    are not.
+    - idle_tower_stacks = [0, 1, 2]  <- all 3 stacks are free at first.
+    - ready_tower_stacks = []  <- None of the 3 stacks is loaded with data.
+
+    `ready_tower_stacks` is managed by `ready_tower_stacks_buffer` for
+    possible minibatch-SGD iterations per loaded batch (this avoids a reload
+    from CPU to GPU for each SGD iter).
+
+    n _MultiGPULoaderThreads: self.inqueue -get()->
+    policy.load_batch_into_buffer() -> ready_stacks = [0 ...]
+
+    This thread: self.ready_tower_stacks_buffer -get()->
+    policy.learn_on_loaded_batch() -> if SGD-iters done,
+    put stack index back in idle_tower_stacks queue.
     """
 
     def __init__(
