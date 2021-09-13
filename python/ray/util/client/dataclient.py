@@ -78,6 +78,8 @@ class DataClient:
                     reconnecting = self._process_rpc_error(e)
                     if not reconnecting:
                         break
+                    else:
+                        self._reconnect_channel()
         finally:
             logger.info("Shutting down data channel")
             self._shutdown()
@@ -122,8 +124,20 @@ class DataClient:
         """
         if not self.client_worker._can_reconnect(e):
             logger.info("Unrecoverable error in data channel.")
+            logger.debug(e)
             return False
+        return True
 
+    def _reconnect_channel(self):
+        """
+        Attempts to reconnect the gRPC channel and resend outstanding
+        requests. First, the server is pinged to see if the current channel
+        still works. If the ping fails, then the current channel is closed
+        and replaced with a new one.
+
+        Once a working channel is available, a new request queue is made
+        and filled with any outstanding requests to be resent to the server.
+        """
         # Ping the server to see if the current channel is reuseable
         try:
             ping_succeeded = self.client_worker.ping_server(timeout=5)
@@ -139,7 +153,7 @@ class DataClient:
                 self.client_worker._connect_channel(reconnecting=True)
             except ConnectionError:
                 logger.warning("Failed to reconnect the data channel")
-                return False
+                raise
             logger.info("Reconnection succeeded!")
 
         # Recreate the request queue, and resend outstanding requests
@@ -148,7 +162,6 @@ class DataClient:
             for request in self.outstanding_requests.values():
                 # Resend outstanding requests
                 self.request_queue.put(request)
-        return True
 
     def _shutdown(self):
         with self.cv:
