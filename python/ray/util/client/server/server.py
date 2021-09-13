@@ -23,7 +23,8 @@ import time
 import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
-                                    CLIENT_SERVER_MAX_THREADS, ResponseCache)
+                                    CLIENT_SERVER_MAX_THREADS,
+                                    _get_client_id_from_context, ResponseCache)
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -50,16 +51,10 @@ def _use_response_cache(func):
 
     @functools.wraps(func)
     def wrapper(self, request, context):
-        metadata = {k: v for k, v in context.invocation_metadata()}
-        expected_ids = ("client_id", "thread_id", "req_id")
-        if any(i not in metadata for i in expected_ids):
-            # Missing IDs, skip caching and call underlying stub directly
-            return func(request, context)
-
         # Get relevant IDs to check cache
-        client_id = metadata["client_id"]
-        thread_id = metadata["thread_id"]
-        req_id = metadata["req_id"]
+        client_id = _get_client_id_from_context(context, logger)
+        thread_id = request.thread_id
+        req_id = request.req_id
 
         # Check if response already cached
         response_cache = self.response_caches[client_id]

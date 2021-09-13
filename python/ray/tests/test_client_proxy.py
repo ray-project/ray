@@ -5,7 +5,6 @@ import pytest
 import random
 import sys
 import time
-from typing import List, Tuple
 from unittest.mock import patch
 
 import grpc
@@ -31,14 +30,6 @@ def start_ray_and_proxy_manager(n_ports=2):
     pm._free_ports = free_ports.copy()
 
     return pm, free_ports
-
-
-def get_dummy_metadata(req_id: int) -> List[Tuple[str, str]]:
-    """
-    Get mock request metadata for mutating RPC stubs to avoid caching logic.
-    """
-    return [("client_id", "dummy_client_id"), ("thread_id", "dummy_thread_id"),
-            ("req_id", str(req_id))]
 
 
 @pytest.mark.skipif(
@@ -344,14 +335,12 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
         # otherwise the SpecificServer will attempt to use the cached
         # response from previous calls
         response = task_servicer.KVPut(
-            ray_client_pb2.KVPutRequest(key=b"key", value=b"val"),
-            metadata=get_dummy_metadata(0))
+            ray_client_pb2.KVPutRequest(req_id=0, key=b"key", value=b"val"))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert not response.already_exists
 
         response = task_servicer.KVPut(
-            ray_client_pb2.KVPutRequest(key=b"key", value=b"val2"),
-            metadata=get_dummy_metadata(1))
+            ray_client_pb2.KVPutRequest(req_id=1, key=b"key", value=b"val2"))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert response.already_exists
 
@@ -361,8 +350,7 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
 
         response = task_servicer.KVPut(
             ray_client_pb2.KVPutRequest(
-                key=b"key", value=b"val2", overwrite=True),
-            metadata=get_dummy_metadata(2))
+                req_id=2, key=b"key", value=b"val2", overwrite=True))
         assert isinstance(response, ray_client_pb2.KVPutResponse)
         assert response.already_exists
 
