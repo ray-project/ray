@@ -486,7 +486,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
-                "Can't run an actor the server doesn't have a handle")
+                "Can't run an actor the server doesn't have a handle for")
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
         method = getattr(actor_handle, task.name)
         opts = decode_options(task.options)
