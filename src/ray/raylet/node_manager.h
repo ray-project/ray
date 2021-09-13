@@ -603,11 +603,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
-  /// Delete URI in local node.
-  ///
-  /// \param uri The URI of the resource.
-  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
-
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;

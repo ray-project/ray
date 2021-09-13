@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from collections import defaultdict
+import os
 from typing import Dict, List, Optional, Tuple, Any
 
 import ray
@@ -19,7 +20,7 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -178,6 +179,16 @@ class ServeController:
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
         return self.http_state.get_config()
+
+    def get_root_url(self):
+        """Return the root url for the serve instance."""
+        http_config = self.get_http_config()
+        if http_config.root_url == "":
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
+            else:
+                return f"http://{http_config.host}:{http_config.port}"
+        return http_config.root_url
 
     async def shutdown(self) -> List[GoalId]:
         """Shuts down the serve instance completely."""

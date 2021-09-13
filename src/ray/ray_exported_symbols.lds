@@ -26,7 +26,10 @@
 *ray*metrics*
 *opencensus*
 *ray*stats*
+*ray*rpc*
+*ray*gcs*
 *ray*CoreWorker*
+*ray*PeriodicalRunner*;
 *PyInit*
 *init_raylet*
 *Java*
@@ -34,3 +37,5 @@
 *ray*streaming*
 *aligned_free*
 *aligned_malloc*
+*absl*
+*grpc*

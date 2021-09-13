@@ -18,7 +18,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
     deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -44,6 +44,11 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # 2) fully connected and CNN default networks as well as
     # auto-wrapped LSTM- and attention nets.
     "_use_default_native_models": False,
+    # Experimental flag.
+    # If True, user specified no preprocessor to be created
+    # (via config.preprocessor_pref=None). If True, observations will arrive
+    # in model as they are returned by the env.
+    "_no_preprocessing": False,
 
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
@@ -693,12 +698,13 @@ class ModelCatalog:
             cls = get_preprocessor(observation_space)
             prep = cls(observation_space, options)
 
-        logger.debug("Created preprocessor {}: {} -> {}".format(
-            prep, observation_space, prep.shape))
+        if prep is not None:
+            logger.debug("Created preprocessor {}: {} -> {}".format(
+                prep, observation_space, prep.shape))
         return prep
 
     @staticmethod
-    @PublicAPI
+    @Deprecated(error=False)
     def register_custom_preprocessor(preprocessor_name: str,
                                      preprocessor_class: type) -> None:
         """Register a custom preprocessor class by name.
@@ -796,14 +802,15 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Tuple space, where at least one sub-space is image.
-        # -> Complex input model.
+        # Complex space, where at least one sub-space is image.
+        # -> Complex input model (which auto-flattens everything, but correctly
+        # processes image components with default CNN stacks).
         space_to_check = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
-        if isinstance(input_space,
-                      Tuple) or (isinstance(space_to_check, Tuple) and any(
-                          isinstance(s, Box) and len(s.shape) >= 2
-                          for s in space_to_check.spaces)):
+        if isinstance(input_space, (Dict, Tuple)) or (isinstance(
+                space_to_check, (Dict, Tuple)) and any(
+                    isinstance(s, Box) and len(s.shape) >= 2
+                    for s in tree.flatten(space_to_check.spaces))):
             return ComplexNet
 
         # Single, flattenable/one-hot-able space -> Simple FCNet.
@@ -860,6 +867,15 @@ class ModelCatalog:
         Raises:
             ValueError: If something is wrong with the given config.
         """
+        # Soft-deprecate custom preprocessors.
+        if config.get("custom_preprocessor") is not None:
+            deprecation_warning(
+                old="model.custom_preprocessor",
+                new="gym.ObservationWrapper around your env or handle complex "
+                "inputs inside your Model",
+                error=False,
+            )
+
         if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")
