@@ -150,13 +150,6 @@ PlacementGroup CreatePlacementGroup(
 /// \param[in] placement_group_id Id of the placement group.
 void RemovePlacementGroup(const std::string &placement_group_id);
 
-/// Wait for the placement group to be ready within the specified time.
-///
-/// \param[in] id Id of the placement group.
-/// \param[in] timeout_seconds Timeout in seconds.
-/// \return True if the placement group is created. False otherwise.
-bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds);
-
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
 
@@ -280,10 +273,6 @@ inline PlacementGroup CreatePlacementGroup(
 
 inline void RemovePlacementGroup(const std::string &placement_group_id) {
   return ray::internal::GetRayRuntime()->RemovePlacementGroup(placement_group_id);
-}
-
-inline bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds) {
-  return ray::internal::GetRayRuntime()->WaitPlacementGroupReady(id, timeout_seconds);
 }
 
 inline bool WasCurrentActorRestarted() {
