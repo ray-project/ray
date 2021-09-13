@@ -211,6 +211,56 @@ class ProxyManager():
             self.servers[client_id] = server
             return server
 
+    def _create_runtime_env(self, serialized_runtime_env: str,
+                            specific_server: SpecificServer):
+        """Creates the runtime_env by sending an RPC to the agent.
+
+            Includes retry logic to handle the case when the agent is
+            temporarily unreachable (e.g., hasn't been started up yet).
+            """
+        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+            serialized_runtime_env=serialized_runtime_env,
+            job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
+
+        retries = 0
+        max_retries = 5
+        wait_time_s = 0.5
+        while retries <= max_retries:
+            try:
+                r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+                if (r.status ==
+                        agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK):
+                    return r.serialized_runtime_env_context
+                elif (r.status == agent_manager_pb2.AgentRpcStatus.
+                      AGENT_RPC_STATUS_FAILED):
+                    raise RuntimeError(
+                        "Failed to create runtime_env for Ray client "
+                        f"server: {r.error_message}")
+                else:
+                    assert False, f"Unknown status: {r.status}."
+            except grpc.RpcError as e:
+                # Whitelist of errors we consider transient.
+                # NOTE(edoakes): we can get UNIMPLEMENTED while the server
+                # starts up because the agent runs multiple gRPC services
+                # on the same port.
+                if e.code() not in [
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNIMPLEMENTED
+                ]:
+                    raise e
+
+                logger.warning(f"CreateRuntimeEnv request failed: {e}. "
+                               f"Retrying after {wait_time_s}s. "
+                               f"{max_retries-retries} retries remaining.")
+
+            # Exponential backoff.
+            time.sleep(wait_time_s)
+            retries += 1
+            wait_time_s *= 2
+
+        raise TimeoutError(
+            f"CreateRuntimeEnv request failed after {max_retries} attempts.")
+
     def start_specific_server(self, client_id: str,
                               job_config: JobConfig) -> bool:
         """
@@ -227,17 +277,10 @@ class ProxyManager():
         if serialized_runtime_env == "{}":
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
-            create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+            serialized_runtime_env_context = self._create_runtime_env(
                 serialized_runtime_env=serialized_runtime_env,
-                job_id=f"ray_client_server_{specific_server.port}".encode(
-                    "utf-8"))
-            r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
-            if (r.status ==
-                    agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED):
-                raise RuntimeError(
-                    "Failed to create runtime_env for Ray client "
-                    f"server: {r.error_message}")
-            serialized_runtime_env_context = r.serialized_runtime_env_context
+                specific_server=specific_server,
+            )
 
         proc = start_ray_client_server(
             self.redis_address,
