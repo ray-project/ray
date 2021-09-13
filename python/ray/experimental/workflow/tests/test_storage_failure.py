@@ -76,7 +76,6 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
         "num_cpus": 4,  # increase CPUs to add pressure
     }],
     indirect=True)
-@pytest.mark.repeat(100)
 def test_failure_with_storage(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
