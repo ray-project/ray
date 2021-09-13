@@ -17,7 +17,6 @@ from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
-
 _PYARROW_FSES_NEEDING_URL_ENCODING = None
 
 
@@ -29,8 +28,7 @@ def _get_pyarrow_fses_needing_url_encoding():
     global _PYARROW_FSES_NEEDING_URL_ENCODING
 
     if _PYARROW_FSES_NEEDING_URL_ENCODING is None:
-        _PYARROW_FSES_NEEDING_URL_ENCODING = (
-            pa.fs.S3FileSystem,)
+        _PYARROW_FSES_NEEDING_URL_ENCODING = (pa.fs.S3FileSystem, )
 
     return _PYARROW_FSES_NEEDING_URL_ENCODING
 
@@ -237,8 +235,8 @@ def _resolve_paths_and_filesystem(
         if filesystem is None:
             filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
-        if is_url and isinstance(
-                filesystem, _get_pyarrow_fses_needing_url_encoding()):
+        if is_url and isinstance(filesystem,
+                                 _get_pyarrow_fses_needing_url_encoding()):
             # URL-encode the path if it's a URL.
             # We need to URL-encode paths since pyarrow filesystems appear to
             # not do any URL-encoding themselves. See
