@@ -433,7 +433,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     return id1 > id2
 
 
-class ReplayCache:
+class ResponseCache:
     """
     Cache for blocking method calls. Needed to prevent retried requests from
     being applied multiple times on the server, for example when the client
@@ -541,7 +541,7 @@ class ReplayCache:
             self.cv.notify_all()
 
 
-class OrderedReplayCache:
+class OrderedResponseCache:
     """
     Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
     ack's from the client to determine when it can clean up cache entries.

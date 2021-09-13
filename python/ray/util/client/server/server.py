@@ -24,7 +24,7 @@ import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
                                     CLIENT_SERVER_MAX_THREADS,
-                                    _get_client_id_from_context, ReplayCache)
+                                    _get_client_id_from_context, ResponseCache)
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -42,7 +42,7 @@ TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
                                             30)
 
 
-def _use_replay_cache(func):
+def _use_response_cache(func):
     """
     Decorator for gRPC stubs. Before calling the real stubs, checks if there's
     an existing entry in the caches. If there is, then return the cached
@@ -57,14 +57,14 @@ def _use_replay_cache(func):
         req_id = request.req_id
 
         # Check if response already cached
-        replay_cache = self.replay_caches[client_id]
-        cached_entry = replay_cache.check_cache(thread_id, req_id)
+        response_cache = self.response_caches[client_id]
+        cached_entry = response_cache.check_cache(thread_id, req_id)
         if cached_entry is not None:
             return cached_entry
 
         # Response wasn't cached, call underlying stub and cache result
         resp = func(self, request, context)
-        replay_cache.update_cache(thread_id, req_id, resp)
+        response_cache.update_cache(thread_id, req_id, resp)
         return resp
 
     return wrapper
@@ -90,7 +90,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.named_actors = set()
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
-        self.replay_caches: Dict[str, ReplayCache] = defaultdict(ReplayCache)
+        self.response_caches: Dict[str, ResponseCache] = defaultdict(
+            ResponseCache)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
@@ -136,7 +137,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 f"current one {current_job_config.runtime_env.uris}")
         return ray_client_pb2.InitResponse(ok=True)
 
-    @_use_replay_cache
+    @_use_response_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
@@ -148,7 +149,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             value = ray.experimental.internal_kv._internal_kv_get(request.key)
         return ray_client_pb2.KVGetResponse(value=value)
 
-    @_use_replay_cache
+    @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
         with disable_client_hook():
             ray.experimental.internal_kv._internal_kv_del(request.key)
@@ -268,8 +269,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         del self.object_refs[client_id]
         if client_id in self.client_side_ref_map:
             del self.client_side_ref_map[client_id]
-        if client_id in self.replay_caches:
-            del self.replay_caches[client_id]
+        if client_id in self.response_caches:
+            del self.response_caches[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
@@ -287,7 +288,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
-    @_use_replay_cache
+    @_use_response_cache
     def Terminate(self, req, context=None):
         if req.WhichOneof("terminate_type") == "task_object":
             try:
@@ -452,7 +453,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    @_use_replay_cache
+    @_use_response_cache
     def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s" % (task.name,

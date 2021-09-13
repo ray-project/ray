@@ -13,7 +13,7 @@ import time
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
-from ray.util.client.common import OrderedReplayCache
+from ray.util.client.common import OrderedResponseCache
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
@@ -78,8 +78,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         # dictionary mapping client_id's to their reconnect grace periods
         self.reconnect_grace_periods: Dict[str, float] = {}
         # dictionary mapping client_id's to their replay cache
-        self.replay_caches: Dict[str, OrderedReplayCache] = defaultdict(
-            OrderedReplayCache)
+        self.response_caches: Dict[str, OrderedResponseCache] = defaultdict(
+            OrderedResponseCache)
         # stopped event, useful for signally that the server is shut down
         self.stopped = threading.Event()
 
@@ -94,7 +94,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
         logger.debug(f"New data connection from client {client_id}: ")
         accepted_connection = self._init(client_id, context, start_time)
-        replay_cache = self.replay_caches[client_id]
+        response_cache = self.response_caches[client_id]
         if not accepted_connection:
             return
         try:
@@ -118,7 +118,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 assert isinstance(req, ray_client_pb2.DataRequest)
                 should_cache = _should_cache(req)
                 if should_cache:
-                    cached_resp = replay_cache.check_cache(req.req_id)
+                    cached_resp = response_cache.check_cache(req.req_id)
                     if cached_resp is not None:
                         yield cached_resp
                         continue
@@ -172,7 +172,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         connection_cleanup=cleanup_resp)
                 elif req_type == "acknowledge":
                     # Clean up acknowledged cache entries
-                    replay_cache.cleanup(req.acknowledge.req_id)
+                    response_cache.cleanup(req.acknowledge.req_id)
                     continue
                 else:
                     raise Exception(f"Unreachable code: Request type "
@@ -180,7 +180,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp.req_id = req.req_id
 
                 if should_cache:
-                    replay_cache.update_cache(req.req_id, resp)
+                    response_cache.update_cache(req.req_id, resp)
                 yield resp
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
@@ -214,8 +214,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 del self.client_last_seen[client_id]
                 if client_id in self.reconnect_grace_periods:
                     del self.reconnect_grace_periods[client_id]
-                if client_id in self.replay_caches:
-                    del self.replay_caches[client_id]
+                if client_id in self.response_caches:
+                    del self.response_caches[client_id]
                 self.num_clients -= 1
                 logger.debug(f"Removed clients. {self.num_clients}")
 

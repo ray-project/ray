@@ -1,5 +1,5 @@
-from ray.util.client.common import (_id_is_newer, ReplayCache,
-                                    OrderedReplayCache, INT32_MAX)
+from ray.util.client.common import (_id_is_newer, ResponseCache,
+                                    OrderedResponseCache, INT32_MAX)
 import threading
 import time
 
@@ -24,22 +24,22 @@ def test_id_is_newer():
     assert not _id_is_newer(INT32_MAX, 123)
 
 
-def test_replay_cache_complete_response():
-    cache = ReplayCache()
+def test_response_cache_complete_response():
+    cache = ResponseCache()
     cache.check_cache(123, 15)  # shouldn't block
     cache.update_cache(123, 15, "abcdef")
     assert cache.check_cache(123, 15) == "abcdef"
 
 
-def test_ordered_replay_cache_complete_response():
-    cache = OrderedReplayCache()
+def test_ordered_response_cache_complete_response():
+    cache = OrderedResponseCache()
     cache.check_cache(15)  # shouldn't block
     cache.update_cache(15, "vwxyz")
     assert cache.check_cache(15) == "vwxyz"
 
 
-def test_replay_cache_incomplete_response():
-    cache = ReplayCache()
+def test_response_cache_incomplete_response():
+    cache = ResponseCache()
 
     def populate_cache():
         time.sleep(2)
@@ -53,8 +53,8 @@ def test_replay_cache_incomplete_response():
     t.join()
 
 
-def test_ordered_replay_cache_incomplete_response():
-    cache = OrderedReplayCache()
+def test_ordered_response_cache_incomplete_response():
+    cache = OrderedResponseCache()
 
     def populate_cache():
         time.sleep(2)
@@ -68,8 +68,8 @@ def test_ordered_replay_cache_incomplete_response():
     t.join()
 
 
-def test_ordered_replay_cache_cleanup():
-    cache = OrderedReplayCache()
+def test_ordered_response_cache_cleanup():
+    cache = OrderedResponseCache()
 
     for i in range(1, 21):
         assert cache.check_cache(i) is None
@@ -104,9 +104,9 @@ def test_ordered_replay_cache_cleanup():
     cache.cleanup(23)
 
 
-def test_replay_cache_update_while_waiting():
+def test_response_cache_update_while_waiting():
     # Error when awaiting cache to update, but entry is cleaned up
-    cache = ReplayCache()
+    cache = ResponseCache()
     assert cache.check_cache(16, 123) is None
 
     def cleanup_cache():
@@ -122,9 +122,9 @@ def test_replay_cache_update_while_waiting():
     t.join()
 
 
-def test_ordered_replay_cache_cleanup_while_waiting():
+def test_ordered_response_cache_cleanup_while_waiting():
     # Error when awaiting cache to update, but entry is cleaned up
-    cache = OrderedReplayCache()
+    cache = OrderedResponseCache()
     assert cache.check_cache(123) is None
 
     def cleanup_cache():
