@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-QUEUE_JOIN_SECONDS = 5
+QUEUE_JOIN_SECONDS = 10
 
 
 def fill_queue(
@@ -95,6 +95,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         get_resp = self.basic_service._get_object(
                             req.get, client_id)
                     resp = ray_client_pb2.DataResponse(get=get_resp)
+                elif req_type == "wait":
+                    with self.clients_lock:
+                        wait_resp = self.basic_service.WaitObject(req.wait)
+                        resp = ray_client_pb2.DataResponse(wait=wait_resp)
                 elif req_type == "put":
                     put_resp = self.basic_service._put_object(
                         req.put, client_id)
@@ -115,6 +119,47 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.prep_runtime_env)
                         resp = ray_client_pb2.DataResponse(
                             prep_runtime_env=resp_prep)
+                elif req_type == "task":
+                    with self.clients_lock:
+                        resp_ticket = self.basic_service.Schedule(req.task)
+                        resp = ray_client_pb2.DataResponse(
+                            task_ticket=resp_ticket)
+                elif req_type == "terminate":
+                    with self.clients_lock:
+                        response = self.basic_service.Terminate(req.terminate)
+                        resp = ray_client_pb2.DataResponse(terminate=response)
+                elif req_type == "list_named_actors":
+                    with self.clients_lock:
+                        response = self.basic_service.ListNamedActors(
+                            req.list_named_actors)
+                        resp = ray_client_pb2.DataResponse(
+                            list_named_actors=response)
+                elif req_type == "cluster_info":
+                    with self.clients_lock:
+                        response = self.basic_service.ClusterInfo(
+                            req.cluster_info)
+                        resp = ray_client_pb2.DataResponse(
+                            cluster_info=response)
+                elif req_type == "kv_get":
+                    with self.clients_lock:
+                        response = self.basic_service.KVGet(req.kv_get)
+                        resp = ray_client_pb2.DataResponse(kv_get=response)
+                elif req_type == "kv_exists":
+                    with self.clients_lock:
+                        response = self.basic_service.KVExists(req.kv_exists)
+                        resp = ray_client_pb2.DataResponse(kv_exists=response)
+                elif req_type == "kv_put":
+                    with self.clients_lock:
+                        response = self.basic_service.KVPut(req.kv_put)
+                        resp = ray_client_pb2.DataResponse(kv_put=response)
+                elif req_type == "kv_del":
+                    with self.clients_lock:
+                        response = self.basic_service.KVDel(req.kv_del)
+                        resp = ray_client_pb2.DataResponse(kv_del=response)
+                elif req_type == "kv_list":
+                    with self.clients_lock:
+                        response = self.basic_service.KVList(req.kv_list)
+                        resp = ray_client_pb2.DataResponse(kv_list=response)
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
@@ -128,7 +173,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(
-                    "Queue filler thread failed to  join before timeout: {}".
+                    "Queue filler thread failed to join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
             with self.clients_lock:
                 # Could fail before client accounting happens
