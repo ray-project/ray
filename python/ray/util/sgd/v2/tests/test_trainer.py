@@ -17,6 +17,8 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
+from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
+    TrainClass as HorovodTrainClass
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
     fashion_mnist_train_func
 from ray.util.sgd.v2.examples.train_linear import train_func as \
@@ -628,6 +630,25 @@ def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
     for worker_result in results:
         assert len(worker_result) == num_epochs
         assert worker_result[num_epochs - 1] < worker_result[0]
+
+def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
+    num_workers = 2
+    num_epochs = 2
+    trainer = Trainer("horovod", num_workers)
+    trainer.start()
+    executor = trainer.run_executable(
+        HorovodTrainClass, config={
+            "num_epochs": num_epochs,
+            "lr": 1e-3
+        })
+    results = []
+    for epoch in range(num_epochs):
+        results.append(executor.execute().train(epoch=epoch))
+    trainer.shutdown()
+
+    assert len(results) == num_epochs
+    for i in range(num_workers):
+        assert results[num_epochs - 1][i] < results[0][i]
 
 
 def test_init_failure(ray_start_2_cpus):
