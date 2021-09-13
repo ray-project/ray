@@ -64,9 +64,7 @@ class RuntimeEnvDict:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
-    def __init__(self,
-                 runtime_env_json: dict,
-                 working_dir: Optional[str] = None):
+    def __init__(self, runtime_env_json: dict):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
         # unspecified. However, if all values are None this is set to {}.
@@ -80,7 +78,7 @@ class RuntimeEnvDict:
             working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
-            working_dir = Path(working_dir).absolute() if working_dir else None
+            working_dir = None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -215,13 +213,13 @@ def override_task_or_actor_runtime_env(
                 "Overriding working_dir for actors is not supported. "
                 "Please use ray.init(runtime_env={'working_dir': ...}) "
                 "to configure per-job environment instead.")
-        # NOTE(edoakes): this is sort of hacky, but we pass in the parent
+        # NOTE(edoakes): this is sort of hacky, but we manually add the right
         # working_dir here so the relative path to a requirements.txt file
         # works. The right solution would be to merge the runtime_env with the
         # parent runtime env before validation.
-        runtime_env_dict = RuntimeEnvDict(
-            runtime_env, working_dir=parent_runtime_env.get(
-                "working_dir")).get_parsed_dict()
+        if parent_runtime_env.get("working_dir"):
+            runtime_env["working_dir"] = parent_runtime_env["working_dir"]
+        runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
     else:
         runtime_env_dict = {}
 
