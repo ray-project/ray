@@ -1,10 +1,11 @@
 import asyncio
+from collections import defaultdict
 from dataclasses import dataclass
 import json
 import logging
 import os
 import time
-from typing import Dict
+from typing import Dict, Set
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -54,6 +55,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
+        # Keeps track of the URIs contained within each env so we can
+        # invalidate the env cache when a URI is deleted.
+        # This is a temporary mechanism until we have per-URI caching.
+        self._working_dir_uri_to_envs: Dict[str, Set[str]] = defaultdict(set)
 
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
@@ -86,6 +91,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
                     runtime_env, context, logger=per_job_logger)
+
+                # Add the mapping of URIs -> the serialized environment to be
+                # used for cache invalidation.
+                for uri in runtime_env.get("uris", []):
+                    self._working_dir_uri_to_envs[uri].add(
+                        serialized_runtime_env)
+
                 return context
 
             loop = asyncio.get_event_loop()
@@ -160,13 +172,21 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         # Only a single URI is currently supported.
         assert len(request.uris) == 1
-        if self._working_dir_manager.delete_uri(request.uris[0]):
+
+        uri = request.uris[0]
+
+        # Invalidate the env cache for any environments that contain this URI.
+        for env in self._working_dir_uri_to_envs.get(uri, []):
+            if env in self._env_cache:
+                del self._env_cache[env]
+
+        if self._working_dir_manager.delete_uri(uri):
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
         else:
             return runtime_env_agent_pb2.DeleteURIsReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="Path not found.")
+                error_message=f"Local file for URI {uri} not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
