@@ -32,26 +32,31 @@ class DataClient:
             metadata: metadata to pass to gRPC requests
         """
         self.channel = channel
-        self.request_queue = queue.Queue()
+        self._client_id = client_id
+        self._metadata = metadata
         self.data_thread = self._start_datathread()
-        self.ready_data: Dict[int, Any] = {}
+
+        # Serialize access to all mutable internal states: self.request_queue,
+        # self.ready_data, self.asyncio_waiting_data,
+        # self._in_shutdown, self._req_id and calling self._next_id().
+        self.lock = threading.Lock()
 
         # Waiting for response or shutdown.
-        self.cv = threading.Condition()
-        # Serialize access to self.request_queue, self.asyncio_waiting_data,
-        # and self._req_id. Needs to be reentrant to avoid deadlock.
-        self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
 
+        self.request_queue = queue.Queue()
+        self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
         self.asyncio_waiting_data: Dict[int, ResponseCallable] = {}
-        self._req_id = 0
-        self._client_id = client_id
-        self._metadata = metadata
         self._in_shutdown = False
+        self._req_id = 0
+
         self.data_thread.start()
 
+    # Must hold self.lock when calling this function.
     def _next_id(self) -> int:
+        assert self.lock.locked()
         self._req_id += 1
         if self._req_id > INT32_MAX:
             self._req_id = 1
@@ -79,35 +84,38 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
-                self.lock.acquire()
                 if response.req_id in self.asyncio_waiting_data:
-                    callback = self.asyncio_waiting_data.pop(response.req_id)
-                    self.lock.release()
                     try:
+                        # NOTE: calling self.asyncio_waiting_data.pop() results
+                        # in the destructor of ClientObjectRef running, which
+                        # calls ReleaseObject(). So self.asyncio_waiting_data
+                        # is accessed without holding self.lock. Holding the
+                        # lock shouldn't be necessary either.
+                        callback = self.asyncio_waiting_data.pop(
+                            response.req_id)
                         callback(response)
                     except Exception:
                         logger.exception("Callback error:")
                 else:
-                    self.lock.release()
-                    with self.cv:
+                    with self.lock:
                         self.ready_data[response.req_id] = response
                         self.cv.notify_all()
         except grpc.RpcError as e:
-            with self.cv:
+            with self.lock:
                 self._in_shutdown = True
                 self._last_exception = e
                 self.cv.notify_all()
 
-            with self.lock:
-                # Abort async requests with the error.
-                err = ConnectionError(
-                    "Failed during this or a previous request. "
-                    f"Exception that broke the connection: {e}")
-                for callback in self.asyncio_waiting_data.values():
-                    callback(err)
+                callbacks = self.asyncio_waiting_data.values()
                 self.asyncio_waiting_data = {}
-                # Since self._in_shutdown is set to True, no new item
-                # will be added to self.asyncio_waiting_data
+
+            # Abort async requests with the error.
+            err = ConnectionError("Failed during this or a previous request. "
+                                  f"Exception that broke the connection: {e}")
+            for callback in callbacks:
+                callback(err)
+            # Since self._in_shutdown is set to True, no new item
+            # will be added to self.asyncio_waiting_data
 
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
@@ -127,10 +135,15 @@ class DataClient:
     def close(self) -> None:
         thread = None
         with self.lock:
+            self._in_shutdown = True
+            # Notify blocking operations to fail.
+            self.cv.notify_all()
+            # Add sentinel to terminate streaming RPC.
             if self.request_queue is not None:
                 self.request_queue.put(None)
             if self.data_thread is not None:
                 thread = self.data_thread
+        # Wait until streaming RPCs are done.
         if thread is not None:
             thread.join()
 
@@ -141,12 +154,14 @@ class DataClient:
             req_id = self._next_id()
             req.req_id = req_id
             self.request_queue.put(req)
-        with self.cv:
+
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
             self._check_shutdown()
+
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
+
         return data
 
     def _async_send(self,
@@ -160,19 +175,35 @@ class DataClient:
                 self.asyncio_waiting_data[req_id] = callback
             self.request_queue.put(req)
 
+    # Must hold self.lock when calling this function.
     def _check_shutdown(self):
-        with self.cv:
-            if not self._in_shutdown:
-                return
+        assert self.lock.locked()
+        if not self._in_shutdown:
+            return
+
+        self.lock.release()
+
+        # Do not try disconnect() or throw exceptions in self.data_thread.
+        # Otherwise deadlock can occur.
+        if threading.current_thread().ident == self.data_thread.ident:
+            return
 
         from ray.util import disconnect
         disconnect()
 
-        raise ConnectionError(
-            "Request can't be sent because the data channel is terminated. "
-            "This is likely because the data channel disconnected at some "
-            "point before this request was prepared. Ray Client has been "
-            f"disconnected. Last exception {self._last_exception}")
+        self.lock.acquire()
+
+        msg = ("Request can't be sent because the data channel is terminated. "
+               "This is likely because the data channel disconnected at some "
+               "point before this request was prepared. Ray Client has been "
+               "disconnected. ")
+        last_exception = getattr(self, "_last_exception", None)
+        if last_exception is not None:
+            msg += f"Last exception: {last_exception}"
+        else:
+            msg += "Likely due to explicit shutdown."
+
+        raise ConnectionError(msg)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
@@ -245,39 +276,3 @@ class DataClient:
         req = ray_client_pb2.DataRequest(list_named_actors=request, )
         resp = self._blocking_send(req)
         return resp.list_named_actors
-
-    def ClusterInfo(self, request: ray_client_pb2.ClusterInfoRequest
-                    ) -> ray_client_pb2.ClusterInfoResponse:
-        req = ray_client_pb2.DataRequest(cluster_info=request, )
-        resp = self._blocking_send(req)
-        return resp.cluster_info
-
-    def KVGet(self, request: ray_client_pb2.KVGetRequest
-              ) -> ray_client_pb2.KVGetResponse:
-        req = ray_client_pb2.DataRequest(kv_get=request, )
-        resp = self._blocking_send(req)
-        return resp.kv_get
-
-    def KVExists(self, request: ray_client_pb2.KVExistsRequest
-                 ) -> ray_client_pb2.KVExistsResponse:
-        req = ray_client_pb2.DataRequest(kv_exists=request, )
-        resp = self._blocking_send(req)
-        return resp.kv_exists
-
-    def KVPut(self, request: ray_client_pb2.KVPutRequest
-              ) -> ray_client_pb2.KVPutResponse:
-        req = ray_client_pb2.DataRequest(kv_put=request, )
-        resp = self._blocking_send(req)
-        return resp.kv_put
-
-    def KVDel(self, request: ray_client_pb2.KVDelRequest
-              ) -> ray_client_pb2.KVDelResponse:
-        req = ray_client_pb2.DataRequest(kv_del=request, )
-        resp = self._blocking_send(req)
-        return resp.kv_del
-
-    def KVList(self, request: ray_client_pb2.KVListRequest
-               ) -> ray_client_pb2.KVListResponse:
-        req = ray_client_pb2.DataRequest(kv_list=request, )
-        resp = self._blocking_send(req)
-        return resp.kv_list

@@ -602,7 +602,8 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_function(pickled: bytes, name: str, obj_type: str, worker):
+def check_oversized_function(pickled: bytes, name: str, obj_type: str,
+                             worker: "ray.Worker") -> None:
     """Send a warning message if the pickled function is too large.
 
     Args:

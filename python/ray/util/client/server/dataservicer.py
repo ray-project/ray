@@ -49,8 +49,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
-        client_id = metadata.get("client_id") or ""
-        if client_id == "":
+        client_id = metadata.get("client_id")
+        if client_id is None:
             logger.error("Client connecting with no client_id")
             return
         logger.debug(f"New data connection from client {client_id}: ")
@@ -134,32 +134,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.list_named_actors)
                         resp = ray_client_pb2.DataResponse(
                             list_named_actors=response)
-                elif req_type == "cluster_info":
-                    with self.clients_lock:
-                        response = self.basic_service.ClusterInfo(
-                            req.cluster_info)
-                        resp = ray_client_pb2.DataResponse(
-                            cluster_info=response)
-                elif req_type == "kv_get":
-                    with self.clients_lock:
-                        response = self.basic_service.KVGet(req.kv_get)
-                        resp = ray_client_pb2.DataResponse(kv_get=response)
-                elif req_type == "kv_exists":
-                    with self.clients_lock:
-                        response = self.basic_service.KVExists(req.kv_exists)
-                        resp = ray_client_pb2.DataResponse(kv_exists=response)
-                elif req_type == "kv_put":
-                    with self.clients_lock:
-                        response = self.basic_service.KVPut(req.kv_put)
-                        resp = ray_client_pb2.DataResponse(kv_put=response)
-                elif req_type == "kv_del":
-                    with self.clients_lock:
-                        response = self.basic_service.KVDel(req.kv_del)
-                        resp = ray_client_pb2.DataResponse(kv_del=response)
-                elif req_type == "kv_list":
-                    with self.clients_lock:
-                        response = self.basic_service.KVList(req.kv_list)
-                        resp = ray_client_pb2.DataResponse(kv_list=response)
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")

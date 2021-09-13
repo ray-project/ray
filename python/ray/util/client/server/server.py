@@ -327,8 +327,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def GetObject(self, request: ray_client_pb2.GetRequest, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
-        client_id = metadata.get("client_id") or ""
-        if client_id == "":
+        client_id = metadata.get("client_id")
+        if client_id is None:
             return ray_client_pb2.GetResponse(
                 valid=False,
                 error=cloudpickle.dumps(
@@ -611,7 +611,9 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+        futures.ThreadPoolExecutor(
+            max_workers=CLIENT_SERVER_MAX_THREADS,
+            thread_name_prefix="ray_client_server"),
         options=GRPC_OPTIONS)
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
