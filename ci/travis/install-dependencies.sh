@@ -346,7 +346,7 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
 
@@ -360,13 +360,13 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.
