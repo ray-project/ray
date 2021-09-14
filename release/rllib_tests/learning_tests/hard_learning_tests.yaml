@@ -292,8 +292,6 @@ ddppo-breakoutnoframeskip-v4:
         entropy_coeff: 0.01
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        model:
-            vf_share_layers: true
 
 dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
