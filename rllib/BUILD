@@ -1866,6 +1866,23 @@ py_test(
 # for `examples/all_stuff.py`.
 # --------------------------------------------------------------------
 
+py_test(
+    name = "examples/action_masking_tf",
+    main = "examples/action_masking.py",
+    tags = ["team:ml", "examples", "examples_A"],
+    size = "small",
+    srcs = ["examples/action_masking.py"],
+    args = ["--stop-iter=2"]
+)
+
+py_test(
+    name = "examples/action_masking_torch",
+    main = "examples/action_masking.py",
+    tags = ["team:ml", "examples", "examples_A"],
+    size = "small",
+    srcs = ["examples/action_masking.py"],
+    args = ["--stop-iter=2", "--framework=torch"]
+)
 
 py_test(
     name = "examples/attention_net_tf",
@@ -2273,9 +2290,9 @@ py_test(
     name = "examples/custom_observation_filters",
     main = "examples/custom_observation_filters.py",
     tags = ["team:ml", "examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_observation_filters.py"],
-    args = ["--stop-iters=2"]
+    args = ["--stop-iters=3"]
 )
 
 py_test(
@@ -2527,21 +2544,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_tf",
+    name = "examples/parallel_evaluation_and_training_13_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=13"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_tf2",
+    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+)
+
+py_test(
+    name = "examples/parallel_evaluation_and_training_11_episodes_tf2",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=11"]
+)
+
+py_test(
+    name = "examples/parallel_evaluation_and_training_14_episodes_torch",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=14"]
 )
 
 py_test(

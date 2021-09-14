@@ -72,6 +72,7 @@ class RayRuntime {
   virtual void RemovePlacementGroup(const std::string &group_id) = 0;
   virtual bool WaitPlacementGroupReady(const std::string &group_id,
                                        int timeout_seconds) = 0;
+  virtual bool WasCurrentActorRestarted() = 0;
 };
 }  // namespace internal
 }  // namespace ray

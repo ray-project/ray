@@ -44,6 +44,12 @@ class TaskCaller {
     return *this;
   }
 
+  TaskCaller &SetPlacementGroup(PlacementGroup group, int bundle_index) {
+    task_options_.group = group;
+    task_options_.bundle_index = bundle_index;
+    return *this;
+  }
+
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_{};

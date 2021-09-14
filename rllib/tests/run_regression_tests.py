@@ -130,9 +130,11 @@ if __name__ == "__main__":
                         t.stopping_criterion.get("episode_reward_mean"))
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = t.stopping_criterion["episode_reward_mean"]
+                    min_reward = t.stopping_criterion.get(
+                        "episode_reward_mean")
 
-                if reward_mean >= min_reward:
+                # If min reward not defined, always pass.
+                if min_reward is None or reward_mean >= min_reward:
                     passed = True
                     break
 
