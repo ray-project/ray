@@ -7,205 +7,127 @@
 #include <chrono>
 #include <thread>
 
-enum Role {
-  SLAVE = 0,
-  MASTER = 1,
-};
-MSGPACK_ADD_ENUM(Role);
+std::string MAIN_SERVER_NAME = "main_actor";
+std::string BACKUP_SERVER_NAME = "backup_actor";
 
-inline std::string RoleName(Role role) {
-  return role == Role::SLAVE ? "slave_actor" : "master_actor";
+namespace common {
+inline std::pair<bool, std::string> Get(
+    const std::string &key, const std::unordered_map<std::string, std::string> &data) {
+  auto it = data.find(key);
+  if (it == data.end()) {
+    return std::pair<bool, std::string>{};
+  }
+
+  return {true, it->second};
 }
+}  // namespace common
 
-inline std::string DestRoleName(Role role) {
-  return role == Role::SLAVE ? "master_actor" : "slave_actor";
-}
+class MainServer;
 
-class KVStore {
+class BackupServer {
  public:
-  KVStore(Role role) : role_(role) {
-    was_restared_ = ray::WasCurrentActorRestarted();
-
-    if (was_restared_) {
-      HanldeFaileover();
+  BackupServer() {
+    // Handle failover when the actor restarted.
+    if (ray::WasCurrentActorRestarted()) {
+      HanldeFailover();
     }
+    RAYLOG(INFO) << "BackupServer created";
   }
 
-  std::unordered_map<std::string, std::string> GetAllData() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_;
-  }
+  // The main server will get all BackupServer's data when it restarted.
+  std::unordered_map<std::string, std::string> GetAllData();
 
-  std::pair<bool, std::string> Get(const std::string &key) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    auto it = data_.find(key);
-    if (it == data_.end()) {
-      return std::pair<bool, std::string>{};
+  // The main server will sync data at first before puting data.
+  void SyncData(const std::string &key, const std::string &val);
+
+ private:
+  // Get all data from MainServer.
+  void HanldeFailover();
+
+  std::unordered_map<std::string, std::string> data_;
+  std::mutex mtx_;
+};
+
+std::unordered_map<std::string, std::string> BackupServer::GetAllData() {
+  std::unique_lock<std::mutex> lock(mtx_);
+  return data_;
+}
+
+void BackupServer::SyncData(const std::string &key, const std::string &val) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  data_[key] = val;
+}
+
+class MainServer {
+ public:
+  MainServer() {
+    if (ray::WasCurrentActorRestarted()) {
+      HanldeFailover();
     }
 
-    return {true, it->second};
+    dest_actor_ = ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
+    RAYLOG(INFO) << "MainServer created";
   }
 
-  virtual void Put(const std::string &key, const std::string &val) = 0;
+  std::unordered_map<std::string, std::string> GetAllData();
 
-  virtual bool Del(const std::string &key) = 0;
+  std::pair<bool, std::string> Get(const std::string &key);
 
-  virtual void SyncData(const std::string &key, const std::string &val) = 0;
+  void Put(const std::string &key, const std::string &val);
 
-  Role GetRole() const { return role_; }
+ private:
+  void HanldeFailover();
 
-  bool WasRestarted() const { return was_restared_; }
-
-  bool Empty() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_.empty();
-  }
-
-  size_t Size() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_.size();
-  }
-
- protected:
-  void HanldeFaileover() {
-    dest_actor_ = ray::GetActor<KVStore>(DestRoleName(role_));
-    data_ = *dest_actor_.get().Task(&KVStore::GetAllData).Remote().Get();
-    RAYLOG(INFO) << RoleName(role_) << " pull all data from " << DestRoleName(role_)
-                 << " was_restared:" << was_restared_ << ", data size: " << data_.size();
-  }
-
-  Role role_ = Role::SLAVE;
-  bool was_restared_ = false;
   std::unordered_map<std::string, std::string> data_;
   std::mutex mtx_;
 
-  boost::optional<ray::ActorHandle<KVStore>> dest_actor_;
+  boost::optional<ray::ActorHandle<BackupServer>> dest_actor_;
 };
 
-class Master : public KVStore {
- public:
-  Master() : KVStore(Role::MASTER) {
-    dest_actor_ = ray::GetActor<KVStore>(RoleName(Role::SLAVE));
-    RAYLOG(INFO) << RoleName(role_) << "Master created";
-  }
-
-  void Put(const std::string &key, const std::string &val) {
-    auto r = (*dest_actor_).Task(&KVStore::SyncData).Remote(key, val);
-    std::vector<ray::ObjectRef<void>> objects{r};
-    auto result = ray::Wait(objects, 1, 2000);
-    if (result.ready.empty()) {
-      RAYLOG(WARNING) << RoleName(role_) << " SyncData failed.";
-    }
-
-    std::unique_lock<std::mutex> lock(mtx_);
-    data_[key] = val;
-  }
-
-  bool Del(const std::string &key) {
-    auto r = (*dest_actor_).Task(&KVStore::Del).Remote(key);
-    std::vector<ray::ObjectRef<bool>> objects{r};
-    auto result = ray::Wait(objects, 1, 2000);
-    if (result.ready.empty()) {
-      RAYLOG(WARNING) << RoleName(role_) << " Del Slave data failed.";
-    }
-
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_.erase(key) > 0;
-  }
-
-  void SyncData(const std::string &key, const std::string &val) {
-    throw std::logic_error("SyncData is not supported in Master.");
-  }
-};
-
-class Slave : public KVStore {
- public:
-  Slave() : KVStore(Role::SLAVE) { RAYLOG(INFO) << RoleName(role_) << "Slave created"; }
-
-  bool Del(const std::string &key) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return data_.erase(key) > 0;
-  }
-
-  void SyncData(const std::string &key, const std::string &val) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    data_[key] = val;
-  }
-
-  void Put(const std::string &key, const std::string &val) {
-    throw std::logic_error("Put is not supported in Slave.");
-  }
-};
-
-static KVStore *Create(Role role) {
-  if (role == Role::MASTER) {
-    return new Master();
-  }
-  return new Slave();
+std::unordered_map<std::string, std::string> MainServer::GetAllData() {
+  std::unique_lock<std::mutex> lock(mtx_);
+  return data_;
 }
 
-RAY_REMOTE(Create, &KVStore::GetAllData, &KVStore::Get, &KVStore::Put, &KVStore::SyncData,
-           &KVStore::Del, &KVStore::GetRole, &KVStore::WasRestarted, &KVStore::Empty,
-           &KVStore::Size);
+void BackupServer::HanldeFailover() {
+  // Get all data from MainServer.
+  auto dest_actor = *ray::GetActor<MainServer>(MAIN_SERVER_NAME);
+  data_ = *dest_actor.Task(&MainServer::GetAllData).Remote().Get();
+  RAYLOG(INFO) << "BackupServer get all data from MainServer";
+}
 
-void PrintActor(ray::ActorHandle<KVStore> &actor) {
-  Role role = *actor.Task(&KVStore::GetRole).Remote().Get();
-  bool empty = *actor.Task(&KVStore::Empty).Remote().Get();
-  bool was_restarted = *actor.Task(&KVStore::WasRestarted).Remote().Get();
+std::pair<bool, std::string> MainServer::Get(const std::string &key) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  return common::Get(key, data_);
+}
 
-  if (empty) {
-    std::cout << RoleName(role) << " is empty, "
-              << "was_restarted: " << was_restarted << "\n";
-    return;
+void MainServer::Put(const std::string &key, const std::string &val) {
+  // SyncData before put data.
+  auto r = (*dest_actor_).Task(&BackupServer::SyncData).Remote(key, val);
+  std::vector<ray::ObjectRef<void>> objects{r};
+  auto result = ray::Wait(objects, 1, 2000);
+  if (result.ready.empty()) {
+    RAYLOG(WARNING) << "MainServer SyncData failed.";
   }
 
-  auto pair = *actor.Task(&KVStore::Get).Remote("hello").Get();
-  size_t size = *actor.Task(&KVStore::Size).Remote().Get();
-
-  std::cout << RoleName(role) << " was_restarted: " << was_restarted << ", size: " << size
-            << ", value: " << pair.second << "\n";
+  std::unique_lock<std::mutex> lock(mtx_);
+  data_[key] = val;
 }
 
-void BasiceUsage() {
-  ray::ActorHandle<KVStore> master_actor = ray::Actor(Create)
-                                               .SetMaxRestarts(1)
-                                               .SetName(RoleName(Role::MASTER))
-                                               .Remote(Role::MASTER);
-  ray::ActorHandle<KVStore> slave_actor = ray::Actor(Create)
-                                              .SetMaxRestarts(1)
-                                              .SetName(RoleName(Role::SLAVE))
-                                              .Remote(Role::SLAVE);
-
-  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
-
-  PrintActor(master_actor);
-  PrintActor(slave_actor);
-
-  master_actor.Task(&KVStore::Del).Remote("hello").Get();
-  PrintActor(master_actor);
-  PrintActor(slave_actor);
-
-  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
-  PrintActor(master_actor);
-  PrintActor(slave_actor);
+void MainServer::HanldeFailover() {
+  // Get all data from BackupServer.
+  dest_actor_ = ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
+  data_ = *dest_actor_.get().Task(&BackupServer::GetAllData).Remote().Get();
+  RAYLOG(INFO) << "MainServer get all data from BackupServer";
 }
 
-void Faileover() {
-  auto master_actor = *ray::GetActor<KVStore>(RoleName(Role::MASTER));
-  master_actor.Kill(false);
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  PrintActor(master_actor);
+static MainServer *CreateMainServer() { return new MainServer(); }
 
-  auto slave_actor = *ray::GetActor<KVStore>(RoleName(Role::SLAVE));
-  PrintActor(slave_actor);
+static BackupServer *CreateBackupServer() { return new BackupServer(); }
 
-  slave_actor.Kill(false);
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  PrintActor(slave_actor);
+RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainServer::Put);
 
-  master_actor.Kill();
-  slave_actor.Kill();
-}
+RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::SyncData);
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}, {"CPU", 1}}};
@@ -215,42 +137,68 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   return ray::CreatePlacementGroup(options);
 }
 
-void PlacementGroup() {
+void StartServer() {
   auto placement_group = CreateSimplePlacementGroup("first_placement_group");
   assert(placement_group.Wait(10));
 
-  ray::ActorHandle<KVStore> master_actor = ray::Actor(Create)
-                                               .SetMaxRestarts(1)
-                                               .SetPlacementGroup(placement_group, 0)
-                                               .SetName(RoleName(Role::MASTER))
-                                               .Remote(Role::MASTER);
-  ray::ActorHandle<KVStore> slave_actor = ray::Actor(Create)
-                                              .SetMaxRestarts(1)
-                                              .SetPlacementGroup(placement_group, 1)
-                                              .SetName(RoleName(Role::SLAVE))
-                                              .Remote(Role::SLAVE);
-
-  master_actor.Task(&KVStore::Put).Remote("hello", "world").Get();
-  PrintActor(master_actor);
-  PrintActor(slave_actor);
-
-  master_actor.Kill(false);
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  PrintActor(master_actor);
-  PrintActor(slave_actor);
-
-  ray::RemovePlacementGroup(placement_group.GetID());
+  ray::Actor(CreateMainServer)
+      .SetMaxRestarts(1)
+      .SetPlacementGroup(placement_group, 0)
+      .SetName(MAIN_SERVER_NAME)
+      .Remote();
+  ray::Actor(CreateBackupServer)
+      .SetMaxRestarts(1)
+      .SetPlacementGroup(placement_group, 1)
+      .SetName(BACKUP_SERVER_NAME)
+      .Remote();
 }
 
+void KillMainServer() {
+  auto main_server = *ray::GetActor<MainServer>(MAIN_SERVER_NAME);
+  main_server.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
+class Client {
+ public:
+  Client() : main_actor_(*ray::GetActor<MainServer>(MAIN_SERVER_NAME)) {}
+
+  void Put(const std::string &key, const std::string &val) {
+    main_actor_.Task(&MainServer::Put).Remote(key, val).Get();
+  }
+
+  std::pair<bool, std::string> Get(const std::string &key) {
+    return *main_actor_.Task(&MainServer::Get).Remote(key).Get();
+  }
+
+ private:
+  ray::ActorHandle<MainServer> main_actor_;
+};
+
 int main(int argc, char **argv) {
-  /// initialization
+  /// Start ray cluster and ray runtime.
   ray::Init();
 
-  BasiceUsage();
-  Faileover();
-  PlacementGroup();
+  StartServer();
 
-  /// shutdown
+  Client client;
+  client.Put("hello", "ray");
+
+  auto get_result = [&client](const std::string &key) {
+    bool ok;
+    std::string result;
+    std::tie(ok, result) = client.Get("hello");
+    assert(ok);
+    assert(result == "ray");
+  };
+
+  get_result("hello");
+
+  // Kill main server and then get result.
+  KillMainServer();
+  get_result("hello");
+
+  /// Stop ray cluster and ray runtime.
   ray::Shutdown();
   return 0;
 }
