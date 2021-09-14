@@ -28,7 +28,7 @@ from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
+from ray.tune.suggest.optuna import OptunaSearch
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
@@ -659,10 +659,10 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         from optuna.samplers import TPESampler
-        space = [
-            ot_param.suggest_uniform("width", 0, 20),
-            ot_param.suggest_uniform("height", -100, 100)
-        ]
+        space = OptunaSearch.convert_search_space({
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
 
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
