@@ -11,6 +11,9 @@ Below are examples for using RaySGD with a variety of models, frameworks, and us
 General Examples
 ----------------
 
+PyTorch
+~~~~~~~
+
 * :doc:`/raysgd/v2/examples/train_linear_example`:
   Simple example for PyTorch.
 
@@ -20,8 +23,14 @@ General Examples
 * :doc:`/raysgd/v2/examples/transformers/transformers_example`:
   End-to-end example for HuggingFace Transformers (PyTorch).
 
+TensorFlow
+~~~~~~~~~~
+
 * :doc:`/raysgd/v2/examples/tensorflow_mnist_example`:
   End-to-end example for TensorFlow
+
+Horovod
+~~~~~~~~~~
 
 * :doc:`/raysgd/v2/examples/horovod/horovod_example`:
   End-to-end example for Horovod (with PyTorch)

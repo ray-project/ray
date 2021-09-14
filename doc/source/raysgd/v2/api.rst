@@ -11,6 +11,14 @@ Trainer
 .. autoclass:: ray.util.sgd.v2.Trainer
     :members:
 
+.. _sgd-api-iterator:
+
+SGDIterator
+~~~~~~~~~~~
+
+.. autoclass:: ray.util.sgd.v2.SGDIterator
+    :members:
+
 .. _sgd-api-backend-config:
 
 BackendConfig
@@ -61,6 +69,7 @@ TBXLoggerCallback
 
 .. autoclass:: ray.util.sgd.v2.callbacks.TBXLoggerCallback
 
+.. _sgd-api-checkpoint-strategy:
 
 CheckpointStrategy
 ------------------

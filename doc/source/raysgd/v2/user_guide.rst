@@ -87,9 +87,9 @@ training.
 
     .. note::
        The current TensorFlow implementation supports
-       ``MultiWorkerMirroredStrategy`` with the Keras API. If there are other
-       strategies you wish to see supported by RaySGD, please let us know by
-       submitting a `feature request on GitHub`_.
+       ``MultiWorkerMirroredStrategy`` (and ``MirroredStrategy``). If there are
+       other strategies you wish to see supported by RaySGD, please let us know
+       by submitting a `feature request on GitHub`_.
 
     These instructions closely follow TensorFlow's `Multi-worker training
     with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_
@@ -145,6 +145,8 @@ with one of the following:
     horovod_trainer = Trainer(backend="horovod", num_workers=2)
 
 For more configurability, please reference the :ref:`sgd-api-trainer` API.
+To customize the ``backend`` setup, you can replace the string argument with a
+:ref:`sgd-api-backend-config` object.
 
 Run training function
 ~~~~~~~~~~~~~~~~~~~~~
@@ -255,7 +257,7 @@ Using ``Trainer.run``, these results can be processed through :ref:`Callbacks
 <sgd-callbacks>` with a ``handle_result`` method defined.
 
 For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
-``SGDIterator`` which will iterate over the reported results.
+:ref:`sgd-api-iterator` which will iterate over the reported results.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.).
 
@@ -485,7 +487,7 @@ Configuring checkpoints
 +++++++++++++++++++++++
 
 For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a ``CheckpointStrategy`` can be passed into
+checkpoints to disk), a :ref:`sgd-api-checkpoint-strategy` can be passed into
 ``Trainer.run``.
 
 As an example, to disable writing checkpoints to disk:
