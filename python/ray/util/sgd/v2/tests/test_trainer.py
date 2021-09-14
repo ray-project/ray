@@ -638,14 +638,14 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_epochs = 2
     trainer = Trainer("horovod", num_workers)
     trainer.start()
-    executor = trainer.run_executable(
+    workers = trainer.to_workers(
         HorovodTrainClass, config={
             "num_epochs": num_epochs,
             "lr": 1e-3
         })
     results = []
     for epoch in range(num_epochs):
-        results.append(executor.execute().train(epoch=epoch))
+        results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
     trainer.shutdown()
 
     assert len(results) == num_epochs

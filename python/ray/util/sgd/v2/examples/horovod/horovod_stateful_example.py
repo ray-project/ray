@@ -122,10 +122,10 @@ class TrainClass:
 def main(num_workers, use_gpu, num_epochs, config):
     trainer = Trainer("horovod", use_gpu=use_gpu, num_workers=num_workers)
     trainer.start()
-    executor = trainer.run_executable(TrainClass, config)
+    workers = trainer.to_workers(TrainClass, config)
     results = []
     for epoch in range(num_epochs):
-        loss = executor.execute().train(epoch=epoch)
+        loss = ray.get([w.train.remote(epoch=epoch) for w in workers])
         results.append(loss)
     trainer.shutdown()
     print(results)

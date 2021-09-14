@@ -57,8 +57,7 @@ class WorkerGroup:
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
         actor_cls (Optional[Type]): If specified use this class as the
-            remote actors. The provided class is expected to extend
-            ``BaseWorker``.
+            remote actors.
         remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
             these args will be used for the worker initialization.
 
