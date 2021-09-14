@@ -207,8 +207,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     return
                 last_seen = self.client_last_seen[client_id]
                 if last_seen > start_time:
+                    # The client successfully reconnected and updated
+                    # last seen some time during the grace period
                     logger.debug("Client reconnected, skipping cleanup")
                     return
+                # Either the client shut down gracefully, or the client
+                # failed to reconnect within the grace period. Clean up
+                # the connection.
                 self.basic_service.release_all(client_id)
                 del self.client_last_seen[client_id]
                 if client_id in self.reconnect_grace_periods:
