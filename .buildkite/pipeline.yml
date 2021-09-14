@@ -231,6 +231,7 @@
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
+    - buildkite-agent artifact upload "/tmp/ray/**/*"
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -238,6 +239,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky
       python/ray/tests/...
+    - buildkite-agent artifact upload "/tmp/ray/**/*"
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -245,6 +247,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
+    - buildkite-agent artifact upload "/tmp/ray/**/*"
 - label: ":core: Debug Test"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
