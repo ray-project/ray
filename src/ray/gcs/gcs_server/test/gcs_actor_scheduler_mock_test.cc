@@ -60,5 +60,12 @@ class GcsActorSchedulerTest : public ::testing::Test {
   MockCallback schedule_success_handler;
 };
 
+TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
+
+}
+
+TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
+
+}
 }  // namespace gcs
 }  // namespace ray
