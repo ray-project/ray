@@ -109,7 +109,7 @@ These variants can be installed with:
 
 Availiable variant strings include:
 
-* ``default``: same as ``pip install ray``, includes things like :ref:`Ray dashboard <ray-dashboard>` and cluster launcher
+* ``default``: includes things like :ref:`Ray dashboard <ray-dashboard>` and cluster launcher
 * ``serve``: includes dependencies for :ref:`Ray Serve <rayserve>`
 * ``tune``: includes dependencies for :ref:`Ray Tune <tune-60-seconds>`
 * ``rllib``: includes dependencies for :ref:`RLlib <rllib-index>`
