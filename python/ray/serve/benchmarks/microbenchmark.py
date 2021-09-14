@@ -80,8 +80,8 @@ async def trial(result_json, intermediate_handles, num_replicas,
 
             async def __call__(self, req):
                 if self.handle is None:
-                    self.handle = serve.get_deployment(deployment_name).get_handle(
-                    sync=False)
+                    self.handle = serve.get_deployment(
+                        deployment_name).get_handle(sync=False)
                 obj_ref = await self.handle.remote(req)
                 return await obj_ref
 
