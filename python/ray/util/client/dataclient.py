@@ -193,15 +193,14 @@ class DataClient:
 
         self.lock.acquire()
 
-        msg = ("Request can't be sent because the data channel is terminated. "
-               "This is likely because the data channel disconnected at some "
-               "point before this request was prepared. Ray Client has been "
-               "disconnected. ")
         last_exception = getattr(self, "_last_exception", None)
         if last_exception is not None:
-            msg += f"Last exception: {last_exception}"
+            msg = ("Request can't be sent because the Ray client has already "
+                   "been disconnected due to an error. Last exception: "
+                   f"{last_exception}")
         else:
-            msg += "Likely due to explicit shutdown."
+            msg = ("Request can't be sent because the Ray client has already "
+                   "been disconnected.")
 
         raise ConnectionError(msg)
 
@@ -247,32 +246,8 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def WaitObject(self, request: ray_client_pb2.WaitRequest
-                   ) -> ray_client_pb2.WaitResponse:
-        req = ray_client_pb2.DataRequest(wait=request, )
-        resp = self._blocking_send(req)
-        return resp.wait
-
     def ReleaseObject(self,
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
         self._async_send(datareq)
-
-    def Schedule(self, request: ray_client_pb2.ClientTask,
-                 callback: ResponseCallable):
-        datareq = ray_client_pb2.DataRequest(task=request)
-        self._async_send(datareq, callback)
-
-    def Terminate(self, request: ray_client_pb2.TerminateRequest
-                  ) -> ray_client_pb2.TerminateResponse:
-        req = ray_client_pb2.DataRequest(terminate=request, )
-        resp = self._blocking_send(req)
-        return resp.terminate
-
-    def ListNamedActors(self,
-                        request: ray_client_pb2.ClientListNamedActorsRequest
-                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
-        req = ray_client_pb2.DataRequest(list_named_actors=request, )
-        resp = self._blocking_send(req)
-        return resp.list_named_actors

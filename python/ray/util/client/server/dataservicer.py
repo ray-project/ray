@@ -115,21 +115,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.prep_runtime_env)
                         resp = ray_client_pb2.DataResponse(
                             prep_runtime_env=resp_prep)
-                elif req_type == "task":
-                    with self.clients_lock:
-                        resp_ticket = self.basic_service.Schedule(req.task)
-                        resp = ray_client_pb2.DataResponse(
-                            task_ticket=resp_ticket)
-                elif req_type == "terminate":
-                    with self.clients_lock:
-                        response = self.basic_service.Terminate(req.terminate)
-                        resp = ray_client_pb2.DataResponse(terminate=response)
-                elif req_type == "list_named_actors":
-                    with self.clients_lock:
-                        response = self.basic_service.ListNamedActors(
-                            req.list_named_actors)
-                        resp = ray_client_pb2.DataResponse(
-                            list_named_actors=response)
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
