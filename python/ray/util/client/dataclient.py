@@ -98,23 +98,7 @@ class DataClient:
             self._last_exception = e
         finally:
             logger.info("Shutting down data channel")
-            with self.lock:
-                self._in_shutdown = True
-                self.cv.notify_all()
-
-                callbacks = self.asyncio_waiting_data.values()
-                self.asyncio_waiting_data = {}
-
-            if self._last_exception:
-                # Abort async requests with the error.
-                err = ConnectionError(
-                    "Failed during this or a previous request. Exception that "
-                    f"broke the connection: {self._last_exception}")
-                for callback in callbacks:
-                    if callback:
-                        callback(err)
-                # Since self._in_shutdown is set to True, no new item
-                # will be added to self.asyncio_waiting_data
+            self._shutdown()
 
     def _process_response(self, response: Any) -> None:
         """
@@ -159,6 +143,28 @@ class DataClient:
             self._last_exception = e
             return False
         return True
+
+    def _shutdown(self) -> None:
+        """
+        Shutdown the data channel
+        """
+        with self.lock:
+            self._in_shutdown = True
+            self.cv.notify_all()
+
+            callbacks = self.asyncio_waiting_data.values()
+            self.asyncio_waiting_data = {}
+
+        if self._last_exception:
+            # Abort async requests with the error.
+            err = ConnectionError(
+                "Failed during this or a previous request. Exception that "
+                f"broke the connection: {self._last_exception}")
+            for callback in callbacks:
+                if callback:
+                    callback(err)
+            # Since self._in_shutdown is set to True, no new item
+            # will be added to self.asyncio_waiting_data
 
     def _acknowledge(self, req_id: int):
         self.request_queue.put(
