@@ -23,7 +23,7 @@ from ray.util.client.common import (ClientServerHandle,
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env import RuntimeEnvContext
-import ray._private.runtime_env.working_dir as working_dir_pkg
+from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -52,7 +52,7 @@ def _get_client_id_from_context(context: Any) -> str:
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
-        context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
     return client_id
 
 
@@ -224,7 +224,8 @@ class ProxyManager():
         context = RuntimeEnvContext(
             env_vars=runtime_env.get("env_vars"),
             resources_dir=self.node.get_runtime_env_dir_path())
-        working_dir_pkg.setup_working_dir(runtime_env, context)
+        WorkingDirManager(self.node.get_runtime_env_dir_path()).setup(
+            runtime_env, context)
 
         proc = start_ray_client_server(
             self.redis_address,
