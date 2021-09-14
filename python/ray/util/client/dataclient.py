@@ -113,6 +113,26 @@ class DataClient:
         """
         Processes RPC errors that occur while reading from data stream.
         """
+        self._shutdown(e)
+
+        if e.code() == grpc.StatusCode.CANCELLED:
+            # Gracefully shutting down
+            logger.info("Cancelling data channel")
+        elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                          grpc.StatusCode.RESOURCE_EXHAUSTED):
+            # TODO(barakmich): The server may have
+            # dropped. In theory, we can retry, as per
+            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+            # in practice we may need to think about the correct semantics
+            # here.
+            logger.info("Server disconnected from data channel")
+        else:
+            logger.exception("Got Error from data channel -- shutting down:")
+
+    def _shutdown(self, e: grpc.RpcError) -> None:
+        """
+        Shutdown the data channel
+        """
         with self.lock:
             self._in_shutdown = True
             self._last_exception = e
@@ -128,20 +148,6 @@ class DataClient:
             callback(err)
         # Since self._in_shutdown is set to True, no new item
         # will be added to self.asyncio_waiting_data
-
-        if e.code() == grpc.StatusCode.CANCELLED:
-            # Gracefully shutting down
-            logger.info("Cancelling data channel")
-        elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                          grpc.StatusCode.RESOURCE_EXHAUSTED):
-            # TODO(barakmich): The server may have
-            # dropped. In theory, we can retry, as per
-            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-            # in practice we may need to think about the correct semantics
-            # here.
-            logger.info("Server disconnected from data channel")
-        else:
-            logger.exception("Got Error from data channel -- shutting down:")
 
     def close(self) -> None:
         thread = None
