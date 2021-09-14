@@ -54,6 +54,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
 
+  // Get a node ID that this bundle is scheduled on.
+  const NodeID NodeId() const;
+
   // Return the index of the bundle.
   int64_t Index() const;
 

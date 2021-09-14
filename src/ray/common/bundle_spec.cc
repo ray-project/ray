@@ -74,6 +74,10 @@ PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
+const NodeID BundleSpecification::NodeId() const {
+  return NodeID::FromBinary(message_->node_id());
+}
+
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }

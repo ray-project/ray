@@ -180,7 +180,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CancelResourceReserve(
-        BundleSpecification &bundle_spec,
+        const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;

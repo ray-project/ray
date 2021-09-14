@@ -22,6 +22,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
+namespace gcs {
 
 using ::testing::_;
 using StatusCallback = std::function<void(Status status)>;
@@ -147,6 +148,26 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
+
+TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request,
+                         [&registered_placement_group_count](const Status &status) {
+                           ++registered_placement_group_count;
+                         });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
+  // Fill the cache and verify it.
+  const auto &bundle_specs = placement_group->GetBundles();
+  ASSERT_EQ(placement_group->cached_bundle_specs_, bundle_specs);
+  ASSERT_FALSE(placement_group->cached_bundle_specs_.empty());
+  // Invalidate the cache and verify it.
+  RAY_UNUSED(placement_group->GetMutableBundle(0));
+  ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
+}
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   auto request = Mocker::GenCreatePlacementGroupRequest();
@@ -373,8 +394,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
             placement_group->GetPlacementGroupID());
   const auto &bundles =
       mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
-  EXPECT_TRUE(NodeID::FromBinary(bundles[0]->GetMutableMessage().node_id()).IsNil());
-  EXPECT_FALSE(NodeID::FromBinary(bundles[1]->GetMutableMessage().node_id()).IsNil());
+  EXPECT_TRUE(NodeID::FromBinary(bundles[0]->GetMessage().node_id()).IsNil());
+  EXPECT_FALSE(NodeID::FromBinary(bundles[1]->GetMessage().node_id()).IsNil());
 
   // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
   placement_group = mock_placement_group_scheduler_->placement_groups_.back();
@@ -574,6 +595,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
   }
 }
 
+}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {

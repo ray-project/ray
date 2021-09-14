@@ -45,22 +45,27 @@ std::string GcsPlacementGroup::GetRayNamespace() const {
   return placement_group_table_data_.ray_namespace();
 }
 
-std::vector<std::shared_ptr<const BundleSpecification>> GcsPlacementGroup::GetBundles() const {
-  const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<const BundleSpecification>> ret_bundles;
-  for (const auto &bundle : bundles) {
-    ret_bundles.push_back(std::make_shared<const BundleSpecification>(bundle));
+const std::vector<std::shared_ptr<const BundleSpecification>>
+    &GcsPlacementGroup::GetBundles() const {
+  // Fill the cache if it wasn't.
+  if (cached_bundle_specs_.empty()) {
+    const auto &bundles = placement_group_table_data_.bundles();
+    for (const auto &bundle : bundles) {
+      cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
+    }
   }
-  return ret_bundles;
+  return cached_bundle_specs_;
 }
 
-std::vector<std::shared_ptr<const BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
-    const {
-  const auto &bundles = placement_group_table_data_.bundles();
+std::vector<std::shared_ptr<const BundleSpecification>>
+GcsPlacementGroup::GetUnplacedBundles() const {
+  const auto &bundle_specs = GetBundles();
+  RAY_CHECK(bundle_specs.size() == placement_group_table_data_.bundles_size());
+
   std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
-  for (const auto &bundle : bundles) {
-    if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
-      unplaced_bundles.push_back(std::make_shared<const BundleSpecification>(bundle));
+  for (const auto &bundle : bundle_specs) {
+    if (bundle->NodeId().IsNil()) {
+      unplaced_bundles.push_back(bundle);
     }
   }
   return unplaced_bundles;
@@ -83,6 +88,8 @@ std::string GcsPlacementGroup::DebugString() const {
 }
 
 rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
+  // Invalidate the cache.
+  cached_bundle_specs_.clear();
   return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 

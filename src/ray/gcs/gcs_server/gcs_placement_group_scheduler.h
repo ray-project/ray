@@ -41,9 +41,8 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
-using BundleLocations =
-    absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
-                        pair_hash>;
+using BundleLocations = absl::flat_hash_map<
+    BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
 
 class GcsPlacementGroup;
 
@@ -133,26 +132,29 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleMap Schedule(
+      std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleMap Schedule(
+      std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleMap Schedule(
+      std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
@@ -160,9 +162,10 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context,
-                       GcsResourceScheduler &gcs_resource_scheduler) override;
+  ScheduleMap Schedule(
+      std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 enum class LeasingState {
@@ -240,7 +243,8 @@ class LeaseStatusTracker {
   /// Return bundles that should be scheduled.
   ///
   /// \return List of bundle specification that are supposed to be scheduled.
-  const std::vector<std::shared_ptr<const BundleSpecification>> &GetBundlesToSchedule() const;
+  const std::vector<std::shared_ptr<const BundleSpecification>> &GetBundlesToSchedule()
+      const;
 
   /// This method returns bundle locations that succeed to prepare resources.
   ///
