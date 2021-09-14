@@ -49,7 +49,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](auto a) { schedule_failure_handler(a); },
         [this](auto a) { schedule_success_handler(a); }, client_pool,
         [this](const rpc::Address &) { return core_worker_client; });
-    gcs_node_manager->AddNode(std::make_shared<rpc::GcsNodeInfo>());
+    auto node_info = std::make_shared<rpc::GcsNodeInfo>();
+    node_info->set_state(rpc::GcsNodeInfo::ALIVE);
+    node_info->set_node_id(NodeID::FromRandom().Binary());
+    gcs_node_manager->AddNode(node_info);
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   instrumented_io_context io_context;
@@ -73,7 +76,12 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _))
       .WillOnce(testing::SaveArg<1>(&cb));
+  EXPECT_CALL(*core_worker_client, KillActor(_, _));
   actor_scheduler->Schedule(actor);
+  actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
+  ray::rpc::RequestWorkerLeaseReply reply;
+  reply.set_worker_address("127.0.0.1:6979");
+  cb(Status::OK(), reply);
 }
 
 TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {}
