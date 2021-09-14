@@ -62,9 +62,6 @@ CLIENT_SERVER_MAX_THREADS = float(
 ClientObjectRef = raylet.ClientObjectRef
 ClientActorRef = raylet.ClientActorRef
 
-# Wait 30 seconds for client to reconnect after unexpected disconnection
-DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
-
 
 class ClientStub:
     pass
@@ -224,15 +221,6 @@ class ClientActorHandle(ClientStub):
                 dict(
                     inspect.getmembers(actor_class.actor_cls,
                                        is_function_or_method)).keys())
-
-    def __del__(self) -> None:
-        if ray is None:
-            # The ray API stub might be set to None when the script exits.
-            # Should be safe to skip call_release in this case, since the
-            # client should have already disconnected at this point.
-            return
-        if ray.is_connected():
-            ray.call_release(self.actor_ref.id)
 
     def __dir__(self) -> List[str]:
         if self._dir is not None:
@@ -397,7 +385,7 @@ class ClientServerHandle:
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
     grpc_server: grpc.Server
 
-    def stop(self, grace: int):
+    def stop(self, grace: int) -> None:
         self.grpc_server.stop(grace)
         self.data_servicer.stopped.set()
 
@@ -436,7 +424,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     return id1 > id2
 
 
-class ReplayCache:
+class ResponseCache:
     """
     Cache for blocking method calls. Needed to prevent retried requests from
     being applied multiple times on the server, for example when the client
@@ -544,7 +532,7 @@ class ReplayCache:
             self.cv.notify_all()
 
 
-class OrderedReplayCache:
+class OrderedResponseCache:
     """
     Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
     ack's from the client to determine when it can clean up cache entries.

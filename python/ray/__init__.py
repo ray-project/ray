@@ -101,6 +101,7 @@ from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import data  # noqa: E402,F401
 from ray import util  # noqa: E402
 from ray import _private  # noqa: E402,F401
+from ray import workflow  # noqa: E402,F401
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
@@ -153,11 +154,6 @@ __all__ += [
     "UniqueID",
     "PlacementGroupID",
 ]
-
-# Add an alias so we can point to the final location in docs.
-# TODO(yic) remove this once workflow is out of alpha.
-from ray.experimental import workflow  # noqa
-__all__.append(workflow)
 
 
 # Remove modules from top-level ray

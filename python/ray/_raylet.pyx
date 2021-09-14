@@ -184,8 +184,10 @@ cdef RayObjectsToDataMetadataPairs(
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs):
     result = []
     for i in range(object_refs.size()):
-        result.append(ObjectRef(object_refs[i].object_id(),
-                                object_refs[i].call_site()))
+        result.append(ObjectRef(
+            object_refs[i].object_id(),
+            object_refs[i].owner_address().SerializeAsString(),
+            object_refs[i].call_site()))
     return result
 
 
@@ -1839,7 +1841,8 @@ cdef class CoreWorker:
 
     def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
-            self.async_event_loop.stop()
+            self.async_event_loop.call_soon_threadsafe(
+                self.async_event_loop.stop)
         if self.async_thread is not None:
             self.async_thread.join()
 
@@ -1900,12 +1903,6 @@ cdef class CoreWorker:
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
-
-    def set_resource(self, basestring resource_name,
-                     double capacity, NodeID client_id):
-        CCoreWorkerProcess.GetCoreWorker().SetResource(
-            resource_name.encode("ascii"), capacity,
-            CNodeID.FromBinary(client_id.binary()))
 
     def get_job_config(self):
         cdef CJobConfig c_job_config
