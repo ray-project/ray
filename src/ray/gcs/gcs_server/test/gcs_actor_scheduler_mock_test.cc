@@ -50,7 +50,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](auto a) { schedule_success_handler(a); }, client_pool,
         [this](const rpc::Address &) { return core_worker_client; });
     gcs_node_manager->AddNode(std::make_shared<rpc::GcsNodeInfo>());
-
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   instrumented_io_context io_context;
@@ -72,15 +71,11 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(actor_data);
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
-  EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _)).
-      WillOnce(testing::SaveArg<1>(&cb));
+  EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _))
+      .WillOnce(testing::SaveArg<1>(&cb));
   actor_scheduler->Schedule(actor);
-
-
 }
 
-TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
-
-}
+TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {}
 }  // namespace gcs
 }  // namespace ray
