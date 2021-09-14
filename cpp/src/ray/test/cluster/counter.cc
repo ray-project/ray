@@ -21,7 +21,10 @@
 #include "unistd.h"
 #endif
 
-Counter::Counter(int init) {
+Counter::Counter(int init, bool with_exception) {
+  if (with_exception) {
+    throw std::invalid_argument("creation error");
+  }
   count = init;
   is_restared = ray::WasCurrentActorRestarted();
 }
@@ -29,7 +32,7 @@ Counter::Counter(int init) {
 Counter *Counter::FactoryCreate() { return new Counter(0); }
 
 Counter *Counter::FactoryCreateException() {
-  throw std::invalid_argument("creation error");
+  return new Counter(0, true);
 }
 
 Counter *Counter::FactoryCreate(int init) { return new Counter(init); }

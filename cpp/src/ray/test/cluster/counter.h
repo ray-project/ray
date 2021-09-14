@@ -21,7 +21,7 @@
 /// a class of user code
 class Counter {
  public:
-  Counter(int init);
+  Counter(int init, bool with_exception = false);
   static Counter *FactoryCreate();
   static Counter *FactoryCreateException();
   static Counter *FactoryCreate(int init);
