@@ -28,6 +28,10 @@ Counter::Counter(int init) {
 
 Counter *Counter::FactoryCreate() { return new Counter(0); }
 
+Counter *Counter::FactoryCreateException() {
+  throw std::invalid_argument("creation error");
+}
+
 Counter *Counter::FactoryCreate(int init) { return new Counter(init); }
 
 Counter *Counter::FactoryCreate(int init1, int init2) {
@@ -78,7 +82,8 @@ bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
 
 bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
 
-RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
+RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), Counter::FactoryCreateException,
+           RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
            &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc,
            &Counter::CheckRestartInActorCreationTask, &Counter::CheckRestartInActorTask);

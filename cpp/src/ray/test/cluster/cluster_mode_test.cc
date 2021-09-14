@@ -246,6 +246,10 @@ TEST(RayClusterModeTest, ExceptionTest) {
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
+
+  auto actor2 = ray::Actor(Counter::FactoryCreateException).Remote();
+  auto object2 = actor2.Task(&Counter::Plus1).Remote();
+  EXPECT_THROW(object2.Get(), ray::internal::RayActorException);
 }
 
 TEST(RayClusterModeTest, GetAllNodeInfoTest) {

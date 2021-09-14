@@ -23,6 +23,7 @@ class Counter {
  public:
   Counter(int init);
   static Counter *FactoryCreate();
+  static Counter *FactoryCreateException();
   static Counter *FactoryCreate(int init);
   static Counter *FactoryCreate(int init1, int init2);
 
