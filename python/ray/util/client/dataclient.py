@@ -144,9 +144,11 @@ class DataClient:
         """
         if not self.client_worker._can_reconnect(e):
             logger.info("Unrecoverable error in data channel.")
-            logger.exception(e)
+            logger.debug(e)
             self._last_exception = e
             return False
+        logger.debug("Recoverable error in data channel.")
+        logger.debug(e)
         return True
 
     def _shutdown(self) -> None:
