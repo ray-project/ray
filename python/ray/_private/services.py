@@ -158,7 +158,7 @@ def find_redis_address(address=None):
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
     #     --agent_command=/usr/bin/python
-    #     -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
+    #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
     #         --dashboard-agent-port=41856 --node-manager-port=58578
     #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
@@ -1178,7 +1178,7 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            import ray.new_dashboard.optional_deps  # noqa: F401
+            import ray.dashboard.optional_deps  # noqa: F401
         except ImportError:
             if require_dashboard:
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
@@ -1186,7 +1186,7 @@ def start_dashboard(require_dashboard,
                 return None, None
 
         # Start the dashboard process.
-        dashboard_dir = "new_dashboard"
+        dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
         command = [
@@ -1491,7 +1491,7 @@ def start_raylet(redis_address,
     # than just blindly importing the relevant packages.
     def check_should_start_agent():
         try:
-            import ray.new_dashboard.optional_deps  # noqa: F401
+            import ray.dashboard.optional_deps  # noqa: F401
 
             return True
         except ImportError:
@@ -1504,7 +1504,7 @@ def start_raylet(redis_address,
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard/agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
