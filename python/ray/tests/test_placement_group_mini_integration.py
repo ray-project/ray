@@ -11,8 +11,7 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
-from ray.util.placement_group import (placement_group,
-                                      remove_placement_group)
+from ray.util.placement_group import (placement_group, remove_placement_group)
 
 
 @pytest.mark.parametrize("execution_number", range(3))
