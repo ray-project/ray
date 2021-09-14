@@ -2348,6 +2348,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_train_fn",
+    main = "examples/custom_train_fn.py",
+    tags = ["team:ml", "examples", "examples_C", "examples_C_UtoZ"],
+    size = "medium",
+    srcs = ["examples/custom_train_fn.py"],
+)
+
+py_test(
     name = "examples/custom_vector_env_tf",
     main = "examples/custom_vector_env.py",
     tags = ["team:ml", "examples", "examples_C", "examples_C_UtoZ"],

@@ -440,13 +440,21 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: tests/ dir (M-Z)"
+- label: ":brain: RLlib: tests/ dir (M-Z (no R))"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+- label: ":brain: RLlib: tests/ dir (R)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir_R,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
 - label: ":octopus: Tune tests and examples {1/2}"
