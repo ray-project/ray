@@ -638,7 +638,7 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_epochs = 2
     trainer = Trainer("horovod", num_workers)
     trainer.start()
-    workers = trainer.to_workers(
+    workers = trainer.to_worker_group(
         HorovodTrainClass, config={
             "num_epochs": num_epochs,
             "lr": 1e-3
@@ -1024,7 +1024,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer.shutdown()
 
 
-def test_to_workers(ray_start_2_cpus):
+def test_to_worker_group(ray_start_2_cpus):
     config = TestConfig()
     trainer = Trainer(config, num_workers=2)
 
@@ -1038,7 +1038,7 @@ def test_to_workers(ray_start_2_cpus):
         def get_count(self):
             return self.count
 
-    workers = trainer.to_workers(Incrementer, starting=2)
+    workers = trainer.to_worker_group(Incrementer, starting=2)
     assert ray.get([w.get_count.remote() for w in workers]) == [2, 2]
 
     ray.get([w.increment.remote() for w in workers])

@@ -428,7 +428,7 @@ class Trainer:
 
             config = {"lr": 0.1}
             trainer = Trainer(num_workers=2, backend="torch")
-            workers = trainer.to_workers(train_cls=Trainer, config=config)
+            workers = trainer.to_worker_group(train_cls=Trainer, config=config)
             futures = [w.train_epoch.remote() for w in workers]
             assert ray.get(futures) == [1, 1]
             assert ray.get(workers[0].train_epoch.remote()) == 1
@@ -442,7 +442,7 @@ class Trainer:
         """
         if self._executor.is_started:
             raise RuntimeError("The Trainer must not be active to use "
-                               "`to_workers`. Either shutdown the "
+                               "`to_worker_group`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
         self._executor.start(
             train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
@@ -453,8 +453,8 @@ class SGDWorkerGroup:
     """A container for a group of Ray actors.
 
     You should not instantiate this directly and only use this as the output
-    of ``Trainer.to_workers``. You can index or iterate this object like you
-    would a List.
+    of ``Trainer.to_worker_group``. You can index or iterate this object like
+    you would a List.
 
     .. code-block:: python
 
@@ -468,12 +468,11 @@ class SGDWorkerGroup:
 
         config = {"lr": 0.1}
         trainer = Trainer(num_workers=2, backend="torch")
-        workers = trainer.to_workers(train_cls=Trainer, config=config)
+        workers = trainer.to_worker_group(train_cls=Trainer, config=config)
         futures = [w.train_epoch.remote() for w in workers]
         assert ray.get(futures) == [1, 1]
         assert ray.get(workers[0].train_epoch.remote()) == 1
-        workers.shutdown()
-
+        workers.shutdown()`
     """
 
     def __init__(self, worker_group: WorkerGroup):
