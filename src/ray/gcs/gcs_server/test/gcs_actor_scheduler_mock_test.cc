@@ -40,7 +40,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_node_manager = std::make_unique<MockGcsNodeManager>();
     pub_sub = std::make_shared<MockGcsPubSub>();
     raylet_client = std::make_shared<MockRayletClientInterface>();
-    core_worker_client = std::make_shared<MockCoreWorkerClientInterface>();
+    core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address&) {
           return raylet_client;
@@ -65,7 +65,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::unique_ptr<MockGcsNodeManager> gcs_node_manager;
   std::shared_ptr<MockGcsPubSub> pub_sub;
-  std::shared_ptr<MockCoreWorkerClientInterface> core_worker_client;
+  std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
   MockCallback schedule_failure_handler;
   MockCallback schedule_success_handler;

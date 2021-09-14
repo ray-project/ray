@@ -11,7 +11,7 @@ class MockWorkerAddress : public WorkerAddress {
 namespace ray {
 namespace rpc {
 
-class MockCoreWorkerClientInterface : public MockSubscriberClientInterface, public CoreWorkerClientInterface {
+class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientInterface, public CoreWorkerClientInterface {
  public:
   MOCK_METHOD(const rpc::Address&, Addr, (), (const, override));
   MOCK_METHOD(void, PushActorTask, (std::unique_ptr<PushTaskRequest> request, bool skip_queue, const ClientCallback<PushTaskReply> &callback), (override));
