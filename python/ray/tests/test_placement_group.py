@@ -424,6 +424,7 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
             print(os.getpid())
             import time
             time.sleep(50)
+            print(ray.util.placement_group_table())
 
         # Schedule a long running task and actor.
         task_ref = long_running_task.options(
