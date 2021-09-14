@@ -151,7 +151,7 @@ def client_mode_convert_actor(actor_cls, in_args, in_kwargs, **kwargs):
     The common case for this decorator is for instantiating an ActorClass
     transparently as a ClientActorClass. This happens in circumstances where
     the ActorClass is declared early, in a library and only then is Ray used in
-    client mode -- nescessitating a conversion.
+    client mode -- necessitating a conversion.
     """
     from ray.util.client import ray
 

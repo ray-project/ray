@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-QUEUE_JOIN_SECONDS = 5
+QUEUE_JOIN_SECONDS = 10
 
 
 def _get_reconnecting_from_context(context: Any) -> bool:
@@ -87,8 +87,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         # set to True if client shuts down gracefully
         cleanup_requested = False
         metadata = {k: v for k, v in context.invocation_metadata()}
-        client_id = metadata.get("client_id") or ""
-        if client_id == "":
+        client_id = metadata.get("client_id")
+        if client_id is None:
             logger.error("Client connecting with no client_id")
             return
         logger.debug(f"New data connection from client {client_id}: ")
@@ -186,7 +186,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(
-                    "Queue filler thread failed to  join before timeout: {}".
+                    "Queue filler thread failed to join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
             cleanup_delay = self.reconnect_grace_periods.get(client_id)
             if not cleanup_requested and cleanup_delay is not None:
