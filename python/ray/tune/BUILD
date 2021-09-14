@@ -40,7 +40,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:serverless", "client", "py37", "exclusive"]
+    tags = ["team:ml", "client", "py37", "exclusive"]
 )
 
 py_test(

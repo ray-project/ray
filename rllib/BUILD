@@ -1759,7 +1759,7 @@ py_test(
 
 py_test(
     name = "tests/test_ray_client",
-    tags = ["team:serverless", "tests_dir", "tests_dir_R"],
+    tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_ray_client.py"]
 )
