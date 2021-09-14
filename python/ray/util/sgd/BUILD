@@ -6,7 +6,7 @@ py_test(
     name = "test_client",
     size = "large",
     srcs = ["tests/test_client.py"],
-    tags = ["team:serverless", "exclusive", "client"],
+    tags = ["team:ml", "exclusive", "client"],
     deps = [":sgd_lib"]
 )
 
@@ -31,7 +31,7 @@ py_test(
     size = "small",
     main = "test_tensorflow.py",
     srcs = ["tests/test_tensorflow.py"],
-    tags = ["team:serverless", "exclusive", "tf", "client_unit_tests", "client"]
+    tags = ["team:ml", "exclusive", "tf", "client_unit_tests", "client"]
 )
 
 py_test(
@@ -71,7 +71,7 @@ py_test(
     main = "test_torch_basic.py",
     size = "small",
     srcs = ["tests/test_torch_basic.py"],
-    tags = ["team:serverless", "exclusive", "pytorch", "client", "client_unit_tests"],
+    tags = ["team:ml", "exclusive", "pytorch", "client", "client_unit_tests"],
     deps = [":sgd_lib"]
 )
 
