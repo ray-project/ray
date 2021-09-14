@@ -19,12 +19,20 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
+from ray.data.impl.split import (
+    _split_block_at_indices, _merge_blocks, _get_split_sizes, _create_splits,
+    _get_block_split_indices, Bin, BinSet, BlockData, BlockSet,
+    _allocate_blocks_to_actors, _split_block_over_actor_bins,
+    _split_block_over_actor_bins_by_node)
 import ray.data.tests.util as util
 from ray.data.tests.conftest import *  # noqa
+
+DUMMY_BLOCK_METADATA = BlockMetadata(
+    num_rows=None, size_bytes=None, schema=None, input_files=None)
 
 
 def maybe_pipeline(ds, enabled):
@@ -59,31 +67,6 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(run.options(placement_group=pg).remote())
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_equal_split(shutdown_only, pipelined):
-    ray.init(num_cpus=2)
-
-    def range2x(n):
-        if pipelined:
-            return ray.data.range(n).repeat(2)
-        else:
-            return ray.data.range(2 * n)
-
-    def counts(shards):
-        @ray.remote(num_cpus=0)
-        def count(s):
-            return s.count()
-
-        return ray.get([count.remote(s) for s in shards])
-
-    r1 = counts(range2x(10).split(3, equal=True))
-    assert all(c == 6 for c in r1), r1
-
-    r2 = counts(range2x(10).split(3, equal=False))
-    assert all(c >= 6 for c in r2), r2
-    assert not all(c == 6 for c in r2), r2
 
 
 def test_callable_classes(shutdown_only):
@@ -140,6 +123,441 @@ def test_callable_classes(shutdown_only):
     assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
     assert len(actor_reuse) == 10, actor_reuse
+
+
+def test_split_block_at_indices():
+    block = list(range(10))
+    block_accessor = BlockAccessor.for_block(block)
+    meta = block_accessor.get_metadata(["foo", "bar"])
+    indices = [1, 4, 8]
+    splits = _split_block_at_indices(block, meta, indices)
+    assert len(splits) == 2 * (len(indices) - 1)
+    b1, m1 = splits[:2]
+    assert b1 == block[1:4]
+    assert m1.num_rows == 3
+    assert m1.input_files == ["foo", "bar"]
+    b2, m2 = splits[2:4]
+    assert b2 == block[4:8]
+    assert m2.num_rows == 4
+    assert m2.input_files == ["foo", "bar"]
+
+
+def test_merge_blocks():
+    block1 = list(range(10))
+    block2 = list(range(10, 20))
+    input_files = ["foo", "bar"]
+    merged_block, merged_meta = _merge_blocks(
+        block1, block2, input_files=input_files)
+    assert merged_block == block1 + block2
+    assert merged_meta.num_rows == 20
+    assert merged_meta.input_files == ["foo", "bar"]
+
+
+@pytest.mark.parametrize(
+    "block_size,capacities,offset,expected_indices,expected_bins", [
+        (4, [3, 2, 1], 0, [0, 3, 4], [0, 1]),
+        (6, [3, 2, 1], 0, [0, 3, 5, 6], [0, 1, 2]),
+        (6, [1, 2, 3], 0, [0, 3, 5, 6], [2, 1, 0]),
+        (8, [3, 2, 1], 0, [0, 3, 5, 6], [0, 1, 2]),
+        (12, [4, 4, 4], 0, [0, 4, 8, 12], [0, 1, 2]),
+        (8, [1, 2, 3], 4, [4, 7, 8], [2, 1]),
+        (3, [], 0, None, None),
+    ])
+def test_get_block_split_indices(block_size, capacities, offset,
+                                 expected_indices, expected_bins):
+    bins = [Bin(idx, cap) for idx, cap in enumerate(capacities)]
+    bin_set = BinSet(bins)
+    split_indices, out_bins, out_offset = _get_block_split_indices(
+        bin_set, block_size, offset)
+    assert split_indices == expected_indices
+    if out_bins is not None:
+        assert out_bins == [bins[idx] for idx in expected_bins]
+    if out_offset is not None:
+        assert out_offset == min(block_size, sum(capacities) + offset)
+
+
+def test_get_block_split_indices_single_split(block_size, capacities, offset,
+                                              expected_indices, expected_bins):
+    # _get_block_split_indices() should raise an error when called on a block
+    # that completely fits within a single bin.
+    bin_set = BinSet([Bin(0, 10)])
+    with pytest.raises(ValueError):
+        _get_block_split_indices(bin_set, 5, 0)
+
+
+def test_get_split_sizes():
+    a = [1, 4, 8, 9]
+    sizes = _get_split_sizes(a)
+    assert sizes == [3, 4, 1]
+
+
+@patch("ray.data.impl.split._cached_split_block_at_indices")
+def test_create_splits(mock_cached_func):
+    block = object()
+    block_metadata = {}
+    split_indices = [1, 2, 3]
+    split_resources = {"foo": 1}
+    num_split_returns = 2 * (len(split_indices) - 1)
+    mock_cached_func.return_value.options \
+        .return_value.remote.return_value = list(
+            range(num_split_returns))
+
+    splits = _create_splits(block, block_metadata, split_indices,
+                            split_resources)
+
+    mock_cached_func.assert_called_once()
+    mock_cached_func.return_value.options.assert_called_once_with(
+        num_returns=num_split_returns, resources=split_resources)
+    mock_cached_func.return_value.options.return_value \
+        .remote.assert_called_once_with(
+            block, block_metadata, split_indices)
+    assert splits == [(0, 1), (2, 3)]
+
+
+@pytest.mark.parametrize(
+    "block_sizes,capacities,bin_subsets,overallocate,expected_allocation",
+    [
+        (  # Test baseline + largest blocks first.
+            [1, 2, 3],  # block sizes
+            [3, 2, 1],  # bin capacities
+            [[0, 1, 2], [0, 1, 2], [0, 1, 2]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[2], [1], [0]],  # the expected block allocation for each bin
+        ),
+        (  # Test bin sorting
+            [1, 2, 3],  # block sizes
+            [1, 2, 3],  # bin capacities
+            [[0, 1, 2], [0, 1, 2], [0, 1, 2]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[0], [1], [2]],  # the expected block allocation for each bin
+        ),
+        (  # Test blocks to largest capacity.
+            [1, 2, 3],  # block sizes
+            [1, 2, 6],  # bin capacities
+            [[0, 1, 2], [0, 1, 2], [0, 1, 2]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[], [0], [1, 2]],  # the expected block allocation for each bin
+        ),
+        (  # Test infeasible block sizes.
+            [2, 4, 4],  # block sizes
+            [3, 2, 1],  # bin capacities
+            [[0, 1, 2], [0, 1, 2], [0, 1, 2]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[0], [], []],  # the expected block allocation for each bin
+        ),
+        (  # Test subsetting.
+            [3, 3, 3],  # block sizes
+            [3, 3, 3],  # bin capacities
+            [[2], [1], [0]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[2], [1], [0]],  # the expected block allocation for each bin
+        ),
+        (  # Test less bins than blocks.
+            [1, 2, 3, 4],  # block sizes
+            [5, 5],  # bin capacities
+            [[0, 1], [0, 1], [0, 1], [0, 1]],  # bin subsets per block
+            False,  # whether to overallocate
+            [[3, 0], [2, 1]],  # the expected block allocation for each bin
+        ),
+        (  # Test more bins than blocks.
+            [1, 2, 3],  # block sizes
+            [1, 2, 3, 6],  # bin capacities
+            [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]
+             ],  # bin subsets per block
+            False,  # whether to overallocate
+            [[], [], [1], [2, 0]
+             ],  # the expected block allocation for each bin
+        ),
+    ])
+def test_allocate_blocks_to_actors(block_sizes, capacities, bin_subsets,
+                                   overallocate, expected_allocation):
+    blocks = [
+        BlockData(idx, None, block_size)
+        for idx, block_size in enumerate(block_sizes)
+    ]
+    block_set = BlockSet(blocks)
+    bins = [Bin(idx, cap) for idx, cap in enumerate(capacities)]
+    bin_set = BinSet(bins)
+    bin_subsets = {
+        blocks[idx]: subset
+        for idx, subset in enumerate(bin_subsets)
+    }
+    _allocate_blocks_to_actors(block_set, bin_set, lambda b: bin_subsets[b],
+                               overallocate)
+    for bin_idx, allocation in enumerate(expected_allocation):
+        bin_ = bin_set.get_bin(bin_idx)
+        expected_allocation_ = [blocks[block_id] for block_id in allocation]
+        # Test that the expected blocks were allocated.
+        assert set(bin_.allocated_blocks) == set(expected_allocation_)
+        # Test bin slack.
+        assert bin_.slack == (capacities[bin_idx] - sum(
+            [b.num_rows for b in expected_allocation_]))
+        # Test that blocks are marked as allocated.
+        for block in bin_.allocated_blocks:
+            assert block.allocated
+
+
+def test_allocate_blocks_to_primary_actors_e2e():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_allocate_blocks_to_secondary_actors_e2e():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_allocate_blocks_to_arbitrary_actors_e2e():
+    # TODO(Clark): Add test.
+    assert False
+
+
+@pytest.mark.parametrize(
+    ("block_size,capacities,split_resources,offset,"
+     "expected_splits,expected_allocation,expected_offset"),
+    [
+        (  # Test baseline
+            4,  # block size
+            [3, 2, 1],  # bin capacities
+            {},  # split resources
+            0,  # offset
+            [3, 1],  # expected split sizes
+            [[3], [1], []],  # expected bin allocations
+            4,  # expected offset
+        ),
+        (  # Full pack.
+            6,  # block size
+            [1, 2, 3],  # bin capacities
+            {},  # split resources
+            0,  # offset
+            [3, 2, 1],  # expected split sizes
+            [[1], [2], [3]],  # expected bin allocations
+            6,  # expected offset
+        ),
+        (  # Overfull.
+            8,  # block size
+            [1, 2, 3],  # bin capacities
+            {},  # split resources
+            0,  # offset
+            [3, 2, 1],  # expected split sizes
+            [[1], [2], [3]],  # expected bin allocations
+            6,  # expected offset
+        ),
+    ])
+def test_split_block_over_actor_bins_helper(
+        ray_start_regular_shared, block_size, capacities, split_resources,
+        offset, expected_splits, expected_allocation, expected_offset):
+    data = list(range(block_size))
+    block_accessor = BlockAccessor.for_block(data)
+    block_data = BlockData(
+        ray.put(data), block_accessor.get_metadata(None), block_size)
+    block_set = BlockSet([block_data])
+    bins = [Bin(idx, cap) for idx, cap in enumerate(capacities)]
+    bin_set = BinSet(bins)
+
+    did_split, new_offset = _split_block_over_actor_bins(
+        block_data, block_set, bin_set, split_resources, offset)
+    # Explicitly remove original block from block set.
+    block_set.discard_block(block_data)
+    if len(expected_splits) > 0:
+        assert did_split
+    else:
+        assert not did_split
+    assert block_set.num_blocks() == len(expected_splits)
+    assert set([block.num_rows for block in block_set.get_allocated_blocks()
+                ]) == set(expected_splits)
+    for bin_idx, allocation in enumerate(expected_allocation):
+        bin_ = bin_set.get_bin(bin_idx)
+        # Test that the expected blocks were allocated.
+        allocated_block_sizes = [
+            block.num_rows for block in bin_.allocated_blocks
+        ]
+        assert sorted(allocated_block_sizes) == sorted(allocation)
+        # Test bin slack.
+        assert bin_.slack == (capacities[bin_idx] - sum(allocated_block_sizes))
+        # Test that blocks are marked as allocated.
+        for block in bin_.allocated_blocks:
+            assert block.allocated
+    assert new_offset == expected_offset
+
+
+def test_split_blocks_over_actors():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_rebalance_larger_blocks():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_rebalance_smaller_blocks():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_rebalance_blocks_e2e():
+    # TODO(Clark): Add test.
+    assert False
+
+
+def test_locality_aware_fair_split_e2e():
+    # TODO(Clark): Add test.
+    assert False
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_equal_split(shutdown_only, pipelined):
+    ray.init(num_cpus=2)
+
+    def range2x(n):
+        if pipelined:
+            return ray.data.range(n).repeat(2)
+        else:
+            return ray.data.range(2 * n)
+
+    def counts(shards):
+        @ray.remote(num_cpus=0)
+        def count(s):
+            return s.count()
+
+        return ray.get([count.remote(s) for s in shards])
+
+    r1 = counts(range2x(10).split(3, equal=True))
+    assert all(c == 6 for c in r1), r1
+
+    r2 = counts(range2x(10).split(3, equal=False))
+    assert all(c >= 6 for c in r2), r2
+    assert not all(c == 6 for c in r2), r2
+
+
+def test_split(ray_start_regular_shared):
+    ds = ray.data.range(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_sizes() == [2] * 10
+
+    datasets = ds.split(5)
+    assert [2] * 5 == [len(dataset._blocks) for dataset in datasets]
+    assert 190 == sum([dataset.sum() for dataset in datasets])
+
+    datasets = ds.split(3)
+    assert [4, 3, 3] == [len(dataset._blocks) for dataset in datasets]
+    assert 190 == sum([dataset.sum() for dataset in datasets])
+
+    datasets = ds.split(1)
+    assert [10] == [len(dataset._blocks) for dataset in datasets]
+    assert 190 == sum([dataset.sum() for dataset in datasets])
+
+    datasets = ds.split(10)
+    assert [1] * 10 == [len(dataset._blocks) for dataset in datasets]
+    assert 190 == sum([dataset.sum() for dataset in datasets])
+
+    datasets = ds.split(11)
+    assert [1] * 10 + [0] == [len(dataset._blocks) for dataset in datasets]
+    assert 190 == sum([dataset.sum() for dataset in datasets])
+
+
+def test_split_hints(ray_start_regular_shared):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+    def assert_split_assignment(block_node_ids, actor_node_ids,
+                                expected_split_result):
+        """Helper function to setup split hints test.
+
+        Args:
+            block_node_ids: a list of blocks with their locations. For
+                example ["node1", "node2"] represents two blocks with
+                "node1", "node2" as their location respectively.
+            actor_node_ids: a list of actors with their locations. For
+                example ["node1", "node2"] represents two actors with
+                "node1", "node2" as their location respectively.
+            expected_split_result: a list of allocation result, each entry
+                in the list stores the block_index in the split dataset.
+                For example, [[0, 1], [2]] represents the split result has
+                two datasets, datasets[0] contains block 0 and 1; and
+                datasets[1] contains block 2.
+        """
+        num_blocks = len(block_node_ids)
+        ds = ray.data.range(num_blocks, parallelism=num_blocks)
+        blocks = list(ds._blocks)
+        assert len(block_node_ids) == len(blocks)
+        actors = [Actor.remote() for i in range(len(actor_node_ids))]
+        with patch("ray.experimental.get_object_locations") as location_mock:
+            with patch("ray.state.actors") as state_mock:
+                block_locations = {}
+                for i, node_id in enumerate(block_node_ids):
+                    if node_id:
+                        block_locations[blocks[i]] = {"node_ids": [node_id]}
+                location_mock.return_value = block_locations
+
+                actor_state = {}
+                for i, node_id in enumerate(actor_node_ids):
+                    actor_state[actors[i]._actor_id.hex()] = {
+                        "Address": {
+                            "NodeID": node_id
+                        }
+                    }
+
+                state_mock.return_value = actor_state
+
+                datasets = ds.split(len(actors), locality_hints=actors)
+                assert len(datasets) == len(actors)
+                for i in range(len(actors)):
+                    assert {blocks[j]
+                            for j in expected_split_result[i]} == set(
+                                datasets[i]._blocks)
+
+    assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
+                            [[1, 2], [0]])
+    assert_split_assignment(["node1", "node1", "node1"], ["node1", "node2"],
+                            [[2, 1], [0]])
+    assert_split_assignment(["node2", "node2", None], ["node1", "node2"],
+                            [[0, 2], [1]])
+    assert_split_assignment(["node2", "node2", None], [None, None],
+                            [[2, 1], [0]])
+    assert_split_assignment(["n1", "n2", "n3", "n1", "n2"], ["n1", "n2"],
+                            [[0, 2, 3], [1, 4]])
+
+    assert_split_assignment(["n1", "n2"], ["n1", "n2", "n3"], [[0], [1], []])
+
+    # perfect split:
+    #
+    # split 300 blocks
+    #   with node_ids interleaving between "n0", "n1", "n2"
+    #
+    # to 3 actors
+    #   with has node_id "n1", "n2", "n0"
+    #
+    # expect that block 1, 4, 7... are assigned to actor with node_id n1
+    #             block 2, 5, 8... are assigned to actor with node_id n2
+    #             block 0, 3, 6... are assigned to actor with node_id n0
+    assert_split_assignment(
+        ["n0", "n1", "n2"] * 100, ["n1", "n2", "n0"],
+        [range(1, 300, 3),
+         range(2, 300, 3),
+         range(0, 300, 3)])
+
+    # even split regardless of locality:
+    #
+    # split 301 blocks
+    #   with block 0 to block 50 on "n0",
+    #        block 51 to block 300 on "n1"
+    #
+    # to 3 actors
+    #   with node_ids "n1", "n2", "n0"
+    #
+    # expect that block 200 to block 300 are assigned to actor with node_id n1
+    #             block 100 to block 199 are assigned to actor with node_id n2
+    #             block 0 to block 99 are assigned to actor with node_id n0
+    assert_split_assignment(["n0"] * 50 + ["n1"] * 251, ["n1", "n2", "n0"], [
+        range(200, 301),
+        range(100, 200),
+        list(range(0, 50)) + list(range(50, 100))
+    ])
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1624,135 +2042,6 @@ def test_split_at_indices(ray_start_regular_shared):
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
-def test_split(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
-    assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
-
-    datasets = ds.split(5)
-    assert [2] * 5 == [len(dataset._blocks) for dataset in datasets]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
-
-    datasets = ds.split(3)
-    assert [4, 3, 3] == [len(dataset._blocks) for dataset in datasets]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
-
-    datasets = ds.split(1)
-    assert [10] == [len(dataset._blocks) for dataset in datasets]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
-
-    datasets = ds.split(10)
-    assert [1] * 10 == [len(dataset._blocks) for dataset in datasets]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
-
-    datasets = ds.split(11)
-    assert [1] * 10 + [0] == [len(dataset._blocks) for dataset in datasets]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
-
-
-def test_split_hints(ray_start_regular_shared):
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            pass
-
-    def assert_split_assignment(block_node_ids, actor_node_ids,
-                                expected_split_result):
-        """Helper function to setup split hints test.
-
-        Args:
-            block_node_ids: a list of blocks with their locations. For
-                example ["node1", "node2"] represents two blocks with
-                "node1", "node2" as their location respectively.
-            actor_node_ids: a list of actors with their locations. For
-                example ["node1", "node2"] represents two actors with
-                "node1", "node2" as their location respectively.
-            expected_split_result: a list of allocation result, each entry
-                in the list stores the block_index in the split dataset.
-                For example, [[0, 1], [2]] represents the split result has
-                two datasets, datasets[0] contains block 0 and 1; and
-                datasets[1] contains block 2.
-        """
-        num_blocks = len(block_node_ids)
-        ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks)
-        assert len(block_node_ids) == len(blocks)
-        actors = [Actor.remote() for i in range(len(actor_node_ids))]
-        with patch("ray.experimental.get_object_locations") as location_mock:
-            with patch("ray.state.actors") as state_mock:
-                block_locations = {}
-                for i, node_id in enumerate(block_node_ids):
-                    if node_id:
-                        block_locations[blocks[i]] = {"node_ids": [node_id]}
-                location_mock.return_value = block_locations
-
-                actor_state = {}
-                for i, node_id in enumerate(actor_node_ids):
-                    actor_state[actors[i]._actor_id.hex()] = {
-                        "Address": {
-                            "NodeID": node_id
-                        }
-                    }
-
-                state_mock.return_value = actor_state
-
-                datasets = ds.split(len(actors), locality_hints=actors)
-                assert len(datasets) == len(actors)
-                for i in range(len(actors)):
-                    assert {blocks[j]
-                            for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks)
-
-    assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
-                            [[1, 2], [0]])
-    assert_split_assignment(["node1", "node1", "node1"], ["node1", "node2"],
-                            [[2, 1], [0]])
-    assert_split_assignment(["node2", "node2", None], ["node1", "node2"],
-                            [[0, 2], [1]])
-    assert_split_assignment(["node2", "node2", None], [None, None],
-                            [[2, 1], [0]])
-    assert_split_assignment(["n1", "n2", "n3", "n1", "n2"], ["n1", "n2"],
-                            [[0, 2, 3], [1, 4]])
-
-    assert_split_assignment(["n1", "n2"], ["n1", "n2", "n3"], [[0], [1], []])
-
-    # perfect split:
-    #
-    # split 300 blocks
-    #   with node_ids interleaving between "n0", "n1", "n2"
-    #
-    # to 3 actors
-    #   with has node_id "n1", "n2", "n0"
-    #
-    # expect that block 1, 4, 7... are assigned to actor with node_id n1
-    #             block 2, 5, 8... are assigned to actor with node_id n2
-    #             block 0, 3, 6... are assigned to actor with node_id n0
-    assert_split_assignment(
-        ["n0", "n1", "n2"] * 100, ["n1", "n2", "n0"],
-        [range(1, 300, 3),
-         range(2, 300, 3),
-         range(0, 300, 3)])
-
-    # even split regardless of locality:
-    #
-    # split 301 blocks
-    #   with block 0 to block 50 on "n0",
-    #        block 51 to block 300 on "n1"
-    #
-    # to 3 actors
-    #   with node_ids "n1", "n2", "n0"
-    #
-    # expect that block 200 to block 300 are assigned to actor with node_id n1
-    #             block 100 to block 199 are assigned to actor with node_id n2
-    #             block 0 to block 99 are assigned to actor with node_id n0
-    assert_split_assignment(["n0"] * 50 + ["n1"] * 251, ["n1", "n2", "n0"], [
-        range(200, 301),
-        range(100, 200),
-        list(range(0, 50)) + list(range(50, 100))
-    ])
-
-
 def test_from_dask(ray_start_regular_shared):
     import dask.dataframe as dd
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
@@ -2476,6 +2765,83 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {node1_id, node2_id}
+
+
+@pytest.mark.parametrize(
+    ("block_size,preferred_nodes,capacities,bin_subsets,"
+     "expected_splits,expected_allocation,expected_leftover_size"),
+    [
+        (  # Test baseline (two locations with full bin set)
+            6,  # block size
+            [0, 1],  # block's preferred nodes
+            [3, 2, 1],  # bin capacities
+            [[0, 1], [2]],  # bin subsets for each node
+            [3, 2, 1],  # expected split sizes
+            [[3], [2], [1]],  # expected bin allocations
+            0,  # expected leftover size
+        ),
+    ])
+def test_split_block_over_actor_bins_by_node(
+        ray_start_cluster, block_size, preferred_nodes, capacities,
+        bin_subsets, expected_splits, expected_allocation,
+        expected_leftover_size):
+    cluster = ray_start_cluster
+    num_nodes = 3
+    for n in range(num_nodes):
+        cluster.add_node(resources={f"foo:{n}": 100})
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node_ids = ray.get([
+        get_node_id.options(resources={
+            f"foo:{idx}": 0.001
+        }).remote() for idx in range(num_nodes)
+    ])
+    print(ray.nodes())
+    # preferred_node_ids = [node_ids[pref] for pref in preferred_nodes]
+
+    data = list(range(block_size))
+    block_accessor = BlockAccessor.for_block(data)
+    block_data = BlockData(
+        ray.put(data), block_accessor.get_metadata(None), block_size,
+        preferred_nodes)
+    block_set = BlockSet([block_data])
+    bins = [Bin(idx, cap) for idx, cap in enumerate(capacities)]
+    bin_set = BinSet(bins)
+
+    _split_block_over_actor_bins_by_node(block_data, block_set, bin_set,
+                                         lambda n: bin_subsets[n],
+                                         lambda n: f"foo:{n}")
+
+    assert block_set.num_blocks() == len(expected_splits)
+    assert set([block.num_rows for block in block_set.get_allocated_blocks()
+                ]) == set(expected_splits)
+    bin_to_node = {
+        bin_: node
+        for node, bins in enumerate(bin_subsets) for bin_ in bins
+    }
+    for bin_idx, allocation in enumerate(expected_allocation):
+        bin_ = bin_set.get_bin(bin_idx)
+        # Test that the expected blocks were allocated.
+        allocated_block_sizes = [
+            block.num_rows for block in bin_.allocated_blocks
+        ]
+        assert sorted(allocated_block_sizes) == sorted(allocation)
+        # Test bin slack.
+        assert bin_.slack == (capacities[bin_idx] - sum(allocated_block_sizes))
+        # Test that blocks are marked as allocated.
+        assert all(block.allocated for block in bin_.allocated_blocks)
+        # Confirm that blocks were split on the appropriate node.
+        blocks = [block.block for block in bin_.allocated_blocks]
+        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(blocks)
+        locations = []
+        for block in blocks:
+            locations.extend(location_data[block]["node_ids"])
+        assert set(locations) == {node_ids[bin_to_node[bin_idx]]}
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])

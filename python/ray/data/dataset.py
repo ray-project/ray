@@ -1,6 +1,6 @@
 import logging
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
-    Dict, Optional, Union, TYPE_CHECKING
+    Optional, Union, TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
 
-import collections
 import itertools
 import numpy as np
 
@@ -32,6 +31,7 @@ from ray.data.impl.compute import get_compute, cache_wrapper, \
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle
 from ray.data.impl.sort import sort_impl
+from ray.data.impl.split import split
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
@@ -362,11 +362,12 @@ class Dataset(Generic[T]):
         self._blocks.clear()
         return blocks
 
-    def split(self,
-              n: int,
-              *,
-              equal: bool = False,
-              locality_hints: List[Any] = None) -> List["Dataset[T]"]:
+    def split(
+            self,
+            n: int,
+            *,
+            equal: bool = False,
+            locality_hints: Optional[List[Any]] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
         This returns a list of sub-datasets that can be passed to Ray tasks
@@ -385,8 +386,7 @@ class Dataset(Generic[T]):
         Args:
             n: Number of child datasets to return.
             equal: Whether to guarantee each split has an equal
-                number of records. This may drop records if they cannot be
-                divided equally among the splits.
+                number of records. This will drop at most ds.count() % n rows.
             locality_hints: A list of Ray actor handles of size ``n``. The
                 system will try to co-locate the blocks of the ith dataset
                 with the ith actor to maximize data locality.
@@ -394,140 +394,9 @@ class Dataset(Generic[T]):
         Returns:
             A list of ``n`` disjoint dataset splits.
         """
-        if n <= 0:
-            raise ValueError(f"The number of splits {n} is not positive.")
-
-        if n > self.num_blocks() and equal:
-            raise NotImplementedError(
-                f"The number of splits {n} > the number of dataset blocks "
-                f"{self.num_blocks()}, yet an equal split was requested.")
-
-        if locality_hints and len(locality_hints) != n:
-            raise ValueError(
-                f"The length of locality_hints {len(locality_hints)} "
-                "doesn't equal the number of splits {n}.")
-
-        # TODO(ekl) we could do better than truncation here. This could be a
-        # problem if block sizes are very skewed.
-        def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
-            if not equal:
-                return splits
-            lower_bound = min([s.count() for s in splits])
-            assert lower_bound > 0, splits
-            return [s.limit(lower_bound) for s in splits]
-
-        block_refs = list(self._blocks)
-        metadata_mapping = {
-            b: m
-            for b, m in zip(self._blocks, self._blocks.get_metadata())
-        }
-
-        if locality_hints is None:
-            return equalize([
-                Dataset(
-                    BlockList(
-                        list(blocks), [metadata_mapping[b] for b in blocks]))
-                for blocks in np.array_split(block_refs, n)
-            ])
-
-        # If the locality_hints is set, we use a two-round greedy algorithm
-        # to co-locate the blocks with the actors based on block
-        # and actor's location (node_id).
-        #
-        # The split algorithm tries to allocate equally-sized blocks regardless
-        # of locality. Thus we first calculate the expected number of blocks
-        # for each split.
-        #
-        # In the first round, for each actor, we look for all blocks that
-        # match the actor's node_id, then allocate those matched blocks to
-        # this actor until we reach the limit(expected number).
-        #
-        # In the second round: fill each actor's allocation with
-        # remaining unallocated blocks until we reach the limit.
-
-        ray.wait(block_refs, num_returns=len(block_refs))
-
-        def build_allocation_size_map(num_blocks: int,
-                                      actors: List[Any]) -> Dict[Any, int]:
-            """Given the total number of blocks and a list of actors, calcuate
-            the expected number of blocks to allocate for each actor.
-            """
-            num_actors = len(actors)
-            num_blocks_per_actor = num_blocks // num_actors
-            num_blocks_left = num_blocks - num_blocks_per_actor * n
-            num_blocks_by_actor = {}
-            for i, actor in enumerate(actors):
-                num_blocks_by_actor[actor] = num_blocks_per_actor
-                if i < num_blocks_left:
-                    num_blocks_by_actor[actor] += 1
-            return num_blocks_by_actor
-
-        def build_block_refs_by_node_id(blocks: List[ObjectRef[Block]]
-                                        ) -> Dict[str, List[ObjectRef[Block]]]:
-            """Build the reverse index from node_id to block_refs. For
-            simplicity, if the block is stored on multiple nodes we
-            only pick the first one.
-            """
-            block_ref_locations = ray.experimental.get_object_locations(blocks)
-            block_refs_by_node_id = collections.defaultdict(list)
-            for block_ref in blocks:
-                node_ids = block_ref_locations.get(block_ref, {}).get(
-                    "node_ids", [])
-                node_id = node_ids[0] if node_ids else None
-                block_refs_by_node_id[node_id].append(block_ref)
-            return block_refs_by_node_id
-
-        def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
-            """Build a map from a actor to its node_id.
-            """
-            actors_state = ray.state.actors()
-            return {
-                actor: actors_state.get(actor._actor_id.hex(), {}).get(
-                    "Address", {}).get("NodeID")
-                for actor in actors
-            }
-
-        # expected number of blocks to be allocated for each actor
-        expected_block_count_by_actor = build_allocation_size_map(
-            len(block_refs), locality_hints)
-        # the reverse index from node_id to block_refs
-        block_refs_by_node_id = build_block_refs_by_node_id(block_refs)
-        # the map from actor to its node_id
-        node_id_by_actor = build_node_id_by_actor(locality_hints)
-
-        allocation_per_actor = collections.defaultdict(list)
-
-        # In the first round, for each actor, we look for all blocks that
-        # match the actor's node_id, then allocate those matched blocks to
-        # this actor until we reach the limit(expected number)
-        for actor in locality_hints:
-            node_id = node_id_by_actor[actor]
-            matching_blocks = block_refs_by_node_id[node_id]
-            expected_block_count = expected_block_count_by_actor[actor]
-            allocation = []
-            while matching_blocks and len(allocation) < expected_block_count:
-                allocation.append(matching_blocks.pop())
-            allocation_per_actor[actor] = allocation
-
-        # In the second round: fill each actor's allocation with
-        # remaining unallocated blocks until we reach the limit
-        remaining_block_refs = list(
-            itertools.chain.from_iterable(block_refs_by_node_id.values()))
-        for actor in locality_hints:
-            while len(allocation_per_actor[actor]
-                      ) < expected_block_count_by_actor[actor]:
-                allocation_per_actor[actor].append(remaining_block_refs.pop())
-
-        assert len(remaining_block_refs) == 0, len(remaining_block_refs)
-
-        return equalize([
-            Dataset(
-                BlockList(
-                    allocation_per_actor[actor],
-                    [metadata_mapping[b]
-                     for b in allocation_per_actor[actor]]))
-            for actor in locality_hints
-        ])
+        block_lists = split(
+            self._blocks, n, equal=equal, locality_hints=locality_hints)
+        return [Dataset(block_list) for block_list in block_lists]
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
@@ -1334,8 +1203,6 @@ class Dataset(Generic[T]):
                  spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
-        Time complexity: O(dataset size / parallelism)
-
         Returns:
             A Spark dataframe created from this dataset.
         """
@@ -1549,39 +1416,9 @@ class Dataset(Generic[T]):
 
     def _split(self, index: int,
                return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
-        get_num_rows = cached_remote_fn(_get_num_rows)
-        split_block = cached_remote_fn(_split_block, num_returns=4)
-
-        count = 0
-        left_blocks = []
-        left_metadata = []
-        right_blocks = []
-        right_metadata = []
-        for b, m in zip(self._blocks, self._blocks.get_metadata()):
-            if m.num_rows is None:
-                num_rows = ray.get(get_num_rows.remote(b))
-            else:
-                num_rows = m.num_rows
-            if count >= index:
-                if not return_right_half:
-                    break
-                right_blocks.append(b)
-                right_metadata.append(m)
-            elif count + num_rows < index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            elif count + num_rows == index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            else:
-                b0, m0, b1, m1 = split_block.remote(b, m, index - count,
-                                                    return_right_half)
-                left_blocks.append(b0)
-                left_metadata.append(ray.get(m0))
-                right_blocks.append(b1)
-                right_metadata.append(ray.get(m1))
-            count += num_rows
-
+        (left_blocks, left_metadata, right_blocks,
+         right_metadata) = _split_blocks(self._blocks,
+                                         self._blocks.get_metadata())
         left = Dataset(BlockList(left_blocks, left_metadata))
         if return_right_half:
             right = Dataset(BlockList(right_blocks, right_metadata))
@@ -1684,3 +1521,39 @@ def _split_block(
         b1 = None
         m1 = None
     return b0, m0, b1, m1
+
+
+def _split_blocks(
+        blocks: BlockList, metadata: List[BlockMetadata], split_point: int,
+        return_right_half: bool
+) -> (List[Block], List[BlockMetadata], List[Block], List[BlockMetadata]):
+    get_num_rows = cached_remote_fn(_get_num_rows)
+    split_block = cached_remote_fn(_split_block, num_returns=4)
+
+    count = 0
+    left_blocks = []
+    left_metadata = []
+    right_blocks = []
+    right_metadata = []
+    for b, m in zip(blocks, metadata):
+        if m.num_rows is None:
+            num_rows = ray.get(get_num_rows.remote(b))
+        else:
+            num_rows = m.num_rows
+        if count >= split_point:
+            if not return_right_half:
+                break
+            right_blocks.append(b)
+            right_metadata.append(m)
+        elif count + num_rows <= split_point:
+            left_blocks.append(b)
+            left_metadata.append(m)
+        else:
+            b0, m0, b1, m1 = split_block.remote(b, m, split_point - count,
+                                                return_right_half)
+            left_blocks.append(b0)
+            left_metadata.append(ray.get(m0))
+            right_blocks.append(b1)
+            right_metadata.append(ray.get(m1))
+        count += num_rows
+    return left_blocks, left_metadata, right_blocks, right_metadata
