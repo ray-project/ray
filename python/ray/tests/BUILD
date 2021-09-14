@@ -77,6 +77,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_mini_integration.py",
     "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
