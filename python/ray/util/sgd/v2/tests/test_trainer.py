@@ -19,9 +19,10 @@ from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
     TrainClass as HorovodTrainClass
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
+    as \
     fashion_mnist_train_func
-from ray.util.sgd.v2.examples.train_linear import train_func as \
+from ray.util.sgd.v2.examples.train_linear_example import train_func as \
     linear_train_func
 
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \

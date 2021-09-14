@@ -130,7 +130,7 @@ class FiberState {
 
  private:
   /// The fiber channel used to send task between the submitter thread
-  /// (main direct_actor_trasnport thread) and the fiber_worker_thread_ (defined below)
+  /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
   FiberChannel channel_;
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.

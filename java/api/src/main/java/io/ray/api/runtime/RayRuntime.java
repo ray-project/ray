@@ -12,7 +12,6 @@ import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
@@ -88,15 +87,6 @@ public interface RayRuntime {
    * @param localOnly Whether only free objects for local object store or not.
    */
   void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
-
-  /**
-   * Set the resource for the specific node.
-   *
-   * @param resourceName The name of resource.
-   * @param capacity The capacity of the resource.
-   * @param nodeId The node that we want to set its resource.
-   */
-  void setResource(String resourceName, double capacity, UniqueId nodeId);
 
   <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
@@ -250,10 +240,10 @@ public interface RayRuntime {
    * Wait for the placement group to be ready within the specified time.
    *
    * @param id Id of placement group.
-   * @param timeoutMs Timeout in milliseconds.
+   * @param timeoutSeconds Timeout in seconds.
    * @return True if the placement group is created. False otherwise.
    */
-  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
+  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds);
 
   /** Create concurrency group instance at runtime. */
   ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
