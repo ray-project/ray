@@ -13,6 +13,7 @@ post_build_cmds:
   - pip uninstall -y numpy ray || true
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/test_wheels/fix-many-ppo-pg-bug/6540069bb6564d85b78078775c660419d75beb8f/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  # - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[all] gym[atari]
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
