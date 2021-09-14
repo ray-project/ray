@@ -570,13 +570,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-          RAY_LOG(ERROR) << "Will resubmit task after a " << delay
-                         << "ms delay: " << spec.DebugString();
+          RAY_LOG(INFO) << "Will resubmit task after a " << delay
+                        << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
-                         << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
+                        << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -2207,19 +2207,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_spec.GetDebuggerBreakpoint(), return_objects, creation_task_exception_pb_bytes,
       is_application_level_error);
 
-  // Get the reference counts for any IDs that we borrowed during this task and
-  // return them to the caller. This will notify the caller of any IDs that we
-  // (or a nested task) are still borrowing. It will also notify the caller of
-  // any new IDs that were contained in a borrowed ID that we (or a nested
-  // task) are now borrowing.
-  if (!borrowed_ids.empty()) {
-    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
-  }
-  // Unpin the borrowed IDs.
+  // Get the reference counts for any IDs that we borrowed during this task,
+  // remove the local reference for these IDs, and return the ref count info to
+  // the caller. This will notify the caller of any IDs that we (or a nested
+  // task) are still borrowing. It will also notify the caller of any new IDs
+  // that were contained in a borrowed ID that we (or a nested task) are now
+  // borrowing.
   std::vector<ObjectID> deleted;
-  for (const auto &borrowed_id : borrowed_ids) {
-    RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
+  if (!borrowed_ids.empty()) {
+    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
   memory_store_->Delete(deleted);
 
