@@ -19,7 +19,8 @@ try:
 except ImportError:
     logger.info(
         "xgboost_ray is not installed. Please run "
-        "`pip install git+https://github.com/ray-project/xgboost_ray`.")
+        "`pip install 'git+https://github.com/ray-project/"
+        "xgboost_ray#xgboost_ray[default]'`.")
 
 __all__ = [
     "train", "predict", "RayParams", "RayDMatrix", "RayFileType",

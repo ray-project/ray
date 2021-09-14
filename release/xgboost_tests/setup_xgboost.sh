@@ -5,7 +5,7 @@ pip install pytest
 pip uninstall -y xgboost_ray || true
 
 # Install xgboost package
-pip install -U "${XGBOOST_RAY_PACKAGE:-xgboost_ray}"
+pip install -U "${XGBOOST_RAY_PACKAGE:-xgboost_ray}[default]"
 
 # Create test dataset
 sudo mkdir -p /data || true

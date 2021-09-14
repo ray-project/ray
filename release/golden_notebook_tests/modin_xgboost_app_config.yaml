@@ -16,4 +16,4 @@ python:
 post_build_cmds:
   - pip uninstall -y ray || true
   - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
+  - pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray[default]

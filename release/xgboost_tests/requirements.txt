@@ -1,2 +1,2 @@
 ray[tune]
-xgboost_ray
+xgboost_ray[default]
