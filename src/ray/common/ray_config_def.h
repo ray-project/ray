@@ -98,9 +98,6 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
-/// The fraction of resource utilization on a node after which the scheduler starts
-/// to prefer spreading tasks to other nodes. This balances between locality and
-/// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
            getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
                ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))

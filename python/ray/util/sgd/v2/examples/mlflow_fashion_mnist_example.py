@@ -3,7 +3,7 @@ import argparse
 import mlflow
 
 from ray.util.sgd.v2 import Trainer
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func
 
 
 def main(num_workers=1, use_gpu=False):
