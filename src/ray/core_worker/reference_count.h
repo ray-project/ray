@@ -297,10 +297,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs that were passed by reference in the task spec or that were
   /// serialized in inlined arguments.
   ///
-  /// NOTE(swang): These arguments should be pinned with an artificial local
-  /// reference during task execution, and this method unpins this reference so
-  /// that the reference deletion is atomic with removing the borrow
-  /// information.
+  /// NOTE(swang): Task arguments should be pinned with a fake local reference
+  /// during task execution. This method removes the fake references so that
+  /// the reference deletion is atomic with removing the ref count information.
   ///
   /// See GetAndClearLocalBorrowersInternal for the spec of the returned table
   /// and how this mutates the local reference count.
