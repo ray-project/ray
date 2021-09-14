@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include "ray/util/macros.h"
+#include "ray/util/logging.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -252,9 +253,51 @@ inline std::string GetThreadName() {
 #endif
 }
 
-#define CHECK_THREAD_IDEOPMENT                                      \
-  {                                                                 \
-  static std::thread::id __id = std::this_thread::get_id();             \
-  RAY_CHECK(__id == std::this_thread::get_id())                         \
-  << "Thread safety break, running in thread " << GetThreadName(); \
+namespace ray {
+template <typename T>
+class ThreadIdempotent {
+ public:
+  template<typename ...Ts>
+  ThreadIdempotent(Ts&& ...ts)
+      : t_(std::forward<Ts>(ts)...) {}
+
+  T& operator*() {
+    ThreadCheck();
+    return t_;
   }
+
+  T* operator->() {
+    ThreadCheck();
+    return &t_;
+  }
+
+  const T& operator*() const {
+    ThreadCheck();
+    return t_;
+  }
+
+  const T* operator->() const {
+    ThreadCheck();
+    return &t_;
+  }
+
+ private:
+  void ThreadCheck() const {
+    if(id_ == std::thread::id()) {
+      thread_name_ = GetThreadName();
+      RAY_LOG(DEBUG) << "Run in thread: " << thread_name_;
+      id_ = std::this_thread::get_id();
+    }
+
+    RAY_CHECK(id_ == std::this_thread::get_id()) <<
+        "Thread idempotent is broken. Previously run in thread " <<
+        thread_name_ << ", and now run in thread " <<
+        GetThreadName();
+  }
+
+  T t_;
+  mutable std::string thread_name_;
+  mutable std::thread::id id_;
+};
+
+}

@@ -83,18 +83,17 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             gcs::StatusCallback callback) override {
-    CHECK_THREAD_IDEOPMENT
     if (::RayConfig::instance().actor_register_async()) {
       auto actor_id = task_spec.ActorCreationId();
-      registering_actors_[actor_id] = {};
+      (*registering_actors_)[actor_id] = {};
       if (callback != nullptr) {
-        registering_actors_[actor_id].emplace_back(std::move(callback));
+        (*registering_actors_)[actor_id].emplace_back(std::move(callback));
       }
       return gcs_client_->Actors().AsyncRegisterActor(
           task_spec, [actor_id, this](Status status) {
             std::vector<ray::gcs::StatusCallback> cbs;
-            cbs = std::move(registering_actors_[actor_id]);
-            registering_actors_.erase(actor_id);
+            cbs = std::move((*registering_actors_)[actor_id]);
+            registering_actors_->erase(actor_id);
             for (auto &cb : cbs) {
               cb(status);
             }
@@ -106,15 +105,13 @@ class DefaultActorCreator : public ActorCreatorInterface {
   }
 
   bool IsActorInRegistering(const ActorID &actor_id) const override {
-    CHECK_THREAD_IDEOPMENT
-    return registering_actors_.find(actor_id) != registering_actors_.end();
+    return registering_actors_->find(actor_id) != registering_actors_->end();
   }
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                        gcs::StatusCallback callback) override {
-    CHECK_THREAD_IDEOPMENT
-    auto iter = registering_actors_.find(actor_id);
-    RAY_CHECK(iter != registering_actors_.end());
+    auto iter = registering_actors_->find(actor_id);
+    RAY_CHECK(iter != registering_actors_->end());
     iter->second.emplace_back(std::move(callback));
   }
 
@@ -125,8 +122,8 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
  private:
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-
-  absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>> registering_actors_;
+  using RegisteringActorType = absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>>;
+  ThreadIdempotent<RegisteringActorType> registering_actors_;
 };
 
 }  // namespace core
