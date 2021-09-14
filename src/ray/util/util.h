@@ -237,3 +237,24 @@ inline void SetThreadName(const std::string &thread_name) {
   pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
 }
+
+inline std::string GetThreadName() {
+#if defined(__linux__)
+  char name[128];
+  auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
+  if (rc != 0) {
+    return "ERROR";
+  } else {
+    return name;
+  }
+#else
+  return "UNKNOWN";
+#endif
+}
+
+#define CHECK_THREAD_IDEOPMENT                                      \
+  {                                                                 \
+  static std::thread::id __id = std::this_thread::get_id();             \
+  RAY_CHECK(__id == std::this_thread::get_id())                         \
+  << "Thread safety break, running in thread " << GetThreadName(); \
+  }

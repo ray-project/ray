@@ -83,6 +83,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             gcs::StatusCallback callback) override {
+    CHECK_THREAD_IDEOPMENT
     if (::RayConfig::instance().actor_register_async()) {
       auto actor_id = task_spec.ActorCreationId();
       registering_actors_[actor_id] = {};
@@ -105,11 +106,13 @@ class DefaultActorCreator : public ActorCreatorInterface {
   }
 
   bool IsActorInRegistering(const ActorID &actor_id) const override {
+    CHECK_THREAD_IDEOPMENT
     return registering_actors_.find(actor_id) != registering_actors_.end();
   }
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                        gcs::StatusCallback callback) override {
+    CHECK_THREAD_IDEOPMENT
     auto iter = registering_actors_.find(actor_id);
     RAY_CHECK(iter != registering_actors_.end());
     iter->second.emplace_back(std::move(callback));
