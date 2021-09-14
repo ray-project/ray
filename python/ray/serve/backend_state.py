@@ -1121,7 +1121,7 @@ class BackendState:
                     self._curr_goal,
                     RuntimeError(
                         f"Deployment '{self._name}' failed, rolling back to "
-                        "version {rollback_info.version} asynchronously."))
+                        f"version {rollback_info.version} asynchronously."))
 
                 self._curr_goal = None
                 self._rollback_info = None
