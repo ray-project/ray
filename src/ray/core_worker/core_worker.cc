@@ -570,13 +570,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-          RAY_LOG(ERROR) << "Will resubmit task after a " << delay
-                         << "ms delay: " << spec.DebugString();
+          RAY_LOG(INFO) << "Will resubmit task after a " << delay
+                        << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
-                         << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
+                        << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
