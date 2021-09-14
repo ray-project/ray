@@ -33,6 +33,25 @@ ray.get(foo.remote("abc", "def"))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_core_worker_error_message():
+    script = """
+import ray
+import sys
+
+ray.init(local_mode=True)
+
+# In local mode this generates an ERROR level log.
+ray._private.utils.push_error_to_driver(
+    ray.worker.global_worker, "type", "Hello there")
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    err_str = proc.stderr.read().decode("ascii")
+
+    assert "Hello there" in err_str, err_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time

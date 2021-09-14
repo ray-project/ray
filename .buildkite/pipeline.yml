@@ -481,7 +481,7 @@
     - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/experimental/workflow/... python/ray/data/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/workflow/... python/ray/data/...
 
 - label: ":book: Doc tests and examples"
   conditions:
