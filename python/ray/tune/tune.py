@@ -7,6 +7,7 @@ import os
 import signal
 import sys
 import time
+import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -105,14 +106,6 @@ def run(
         max_concurrent_trials: Optional[int] = None,
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
-        ray_auto_init: Optional = None,
-        run_errored_only: Optional = None,
-        global_checkpoint_period: Optional = None,
-        with_server: Optional = None,
-        upload_dir: Optional = None,
-        sync_to_cloud: Optional = None,
-        sync_to_driver: Optional = None,
-        sync_on_checkpoint: Optional = None,
         _remote: bool = None,
 ) -> ExperimentAnalysis:
     """Executes training.
@@ -349,36 +342,19 @@ def run(
                 trial_executor,
                 raise_on_failed_trial,
                 callbacks,
+                max_concurrent_trials,
                 # Deprecated args
                 loggers,
-                ray_auto_init,
-                run_errored_only,
-                global_checkpoint_period,
-                with_server,
-                upload_dir,
-                sync_to_cloud,
-                sync_to_driver,
-                sync_on_checkpoint,
                 _remote=False))
 
     all_start = time.time()
-    if global_checkpoint_period:
-        raise ValueError("global_checkpoint_period is deprecated. Set env var "
-                         "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
-    if ray_auto_init:
-        raise ValueError("ray_auto_init is deprecated. "
-                         "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
-                         "call 'ray.init' before calling 'tune.run'.")
-    if with_server:
-        raise ValueError(
-            "with_server is deprecated. It is now enabled by default "
-            "if 'server_port' is not None.")
-    if sync_on_checkpoint or sync_to_cloud or sync_to_driver or upload_dir:
-        raise ValueError(
-            "sync_on_checkpoint / sync_to_cloud / sync_to_driver / "
-            "upload_dir must now be set via `tune.run("
-            "sync_config=SyncConfig(...)`. See `ray.tune.SyncConfig` for "
-            "more details.")
+
+    if loggers:
+        # Raise DeprecationWarning in 1.9, remove in 1.10/1.11
+        warnings.warn(
+            "The `loggers` argument is deprecated. Please pass the respective "
+            "`LoggerCallback` classes to the `callbacks` argument instead. "
+            "See https://docs.ray.io/en/latest/tune/api_docs/logging.html")
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
