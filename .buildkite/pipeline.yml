@@ -282,42 +282,79 @@
     - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
       rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
-- label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning discr. actions TF2 (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_tf,-fake_gpus,-flaky
+      --test_tag_filters=learning_tests_discrete_tf,-fake_gpus,-flaky
       rllib/...
-- label: ":brain: RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions TF2 (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_continuous_tf,-fake_gpus,-flaky
+      rllib/...
+- label: ":brain: RLlib: Learning discr. actions TF1 (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_tf,-fake_gpus,-flaky
+      --test_tag_filters=learning_tests_discrete_tf,-fake_gpus,-flaky
       rllib/...
-- label: ":brain: RLlib: Learning tests with Torch (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions TF1 (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_continuous_tf,-fake_gpus,-flaky
+      rllib/...
+- label: ":brain: RLlib: Learning discr. actions Torch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_torch,-fake_gpus,-flaky
+      --test_tag_filters=learning_tests_discrete_torch,-fake_gpus,-flaky
       rllib/...
-- label: ":brain: RLlib: Learning tests w/ fake GPUs (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions Torch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=fake_gpus,-flaky
+      --test_tag_filters=learning_tests_continuous_torch,-fake_gpus,-flaky
       rllib/...
+- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=fake_gpus_tf,-flaky
+      rllib/...
+- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs Torch (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=fake_gpus_torch,-flaky
+      rllib/...
+
 - label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
@@ -362,21 +399,28 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_A,examples_B,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: Examples {C/D}"
+- label: ":brain: RLlib: Examples {Ca..t}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_C,examples_D,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+      --test_tag_filters=examples_C_AtoT,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+- label: ":brain: RLlib: Examples {Cu..z}"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_C_UtoZ,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: Examples {E/P}"
+- label: ":brain: RLlib: Examples {D/P}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      --test_tag_filters=examples_D,examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
 - label: ":brain: RLlib: Examples {Q/Z}"

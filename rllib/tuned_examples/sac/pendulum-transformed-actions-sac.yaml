@@ -40,6 +40,4 @@ pendulum-sac:
           entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 0
-        clip_actions: False
-        normalize_actions: true
         metrics_smoothing_episodes: 5
