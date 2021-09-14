@@ -9,6 +9,19 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+def create_executable_class(executable_cls: Type) -> Type:
+    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
+
+    This function will automatically handle subclassing BaseWorker.
+    """
+
+    class _WrappedExecutable(executable_cls, BaseWorkerMixin):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    return _WrappedExecutable
+
+
 class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
@@ -87,9 +100,10 @@ class WorkerGroup:
         self.workers = []
         if actor_cls:
             if not issubclass(actor_cls, BaseWorkerMixin):
-                raise ValueError(f"The provided remote class {actor_cls} "
-                                 f"must extend `BaseWorkerMixin`")
-            self._base_cls = actor_cls
+                self._base_cls = create_executable_class(actor_cls)
+            else:
+                # The provided class already subclasses the mixin.
+                self._base_cls = actor_cls
         else:
             self._base_cls = BaseWorkerMixin
 
@@ -243,16 +257,3 @@ class WorkerGroup:
 
     def __len__(self):
         return len(self.workers)
-
-
-def create_executable_class(executable_cls: Type) -> Type:
-    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
-
-    This function will automatically handle subclassing BaseWorker.
-    """
-
-    class _WrappedExecutable(executable_cls, BaseWorkerMixin):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-    return _WrappedExecutable
