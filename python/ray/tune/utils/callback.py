@@ -61,7 +61,6 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     # Deprecate: 1.9
     # Create LegacyLoggerCallback for passed Logger classes
     if loggers:
-        # Deprecate: 1.9
         add_loggers = []
         for trial_logger in loggers:
             if isinstance(trial_logger, LoggerCallback):
