@@ -574,6 +574,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         if client_id == "":
             return
         reconnecting = _get_reconnecting_from_context(context)
+        if reconnecting is None:
+            # Invalid or missing reconnecting metadata
+            return
 
         if reconnecting:
             with self.clients_lock:

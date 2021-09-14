@@ -31,8 +31,12 @@ def _get_reconnecting_from_context(context: Any) -> bool:
     Get `reconnecting` from gRPC metadata, or False if not present
     """
     metadata = {k: v for k, v in context.invocation_metadata()}
-    val = metadata.get("reconnecting") or "False"
-    assert val in ("True", "False")
+    val = metadata.get("reconnecting")
+    if val is None or val not in ("True", "False"):
+        logger.error(
+            f'Client connecting with invalid value for "reconnecting": {val}')
+        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+        return None
     return val == "True"
 
 

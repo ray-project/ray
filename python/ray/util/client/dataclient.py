@@ -41,7 +41,8 @@ class DataClient:
 
         # Serialize access to all mutable internal states: self.request_queue,
         # self.ready_data, self.asyncio_waiting_data,
-        # self._in_shutdown, self._req_id and calling self._next_id().
+        # self._in_shutdown, self._req_id, self.outstanding_requests and
+        # calling self._next_id()
         self.lock = threading.Lock()
 
         # Waiting for response or shutdown.
@@ -96,6 +97,7 @@ class DataClient:
                 except grpc.RpcError as e:
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
+                        self._last_exception = e
                         return
                     self._reconnect_channel()
         except Exception as e:
@@ -145,7 +147,6 @@ class DataClient:
         if not self.client_worker._can_reconnect(e):
             logger.info("Unrecoverable error in data channel.")
             logger.debug(e)
-            self._last_exception = e
             return False
         logger.debug("Recoverable error in data channel.")
         logger.debug(e)
@@ -167,9 +168,13 @@ class DataClient:
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "
                 f"broke the connection: {self._last_exception}")
-            for callback in callbacks:
-                if callback:
-                    callback(err)
+        else:
+            err = ConnectionError(
+                "Request cannot be fulfilled because the data client has "
+                "disconnected.")
+        for callback in callbacks:
+            if callback:
+                callback(err)
             # Since self._in_shutdown is set to True, no new item
             # will be added to self.asyncio_waiting_data
 
@@ -222,13 +227,6 @@ class DataClient:
                 self.request_queue.put(request)
 
     def close(self) -> None:
-        if self.request_queue is not None:
-            # Intentional shutdown, tell server it can clean up the connection
-            # immediately and ignore the reconnect grace period.
-            cleanup_request = ray_client_pb2.DataRequest(
-                connection_cleanup=ray_client_pb2.ConnectionCleanupRequest())
-            self.request_queue.put(cleanup_request)
-            self.request_queue.put(None)
         thread = None
         with self.lock:
             self._in_shutdown = True
@@ -236,6 +234,12 @@ class DataClient:
             self.cv.notify_all()
             # Add sentinel to terminate streaming RPC.
             if self.request_queue is not None:
+                # Intentional shutdown, tell server it can clean up the
+                # connection immediately and ignore the reconnect grace period.
+                cleanup_request = ray_client_pb2.DataRequest(
+                    connection_cleanup=ray_client_pb2.ConnectionCleanupRequest(
+                    ))
+                self.request_queue.put(cleanup_request)
                 self.request_queue.put(None)
             if self.data_thread is not None:
                 thread = self.data_thread
