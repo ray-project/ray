@@ -72,11 +72,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.basic_service = basic_service
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
-        # dictionary mapping client_ids to the last time they connected
+        # dictionary mapping client_id's to the last time they connected
         self.client_last_seen: Dict[str, float] = {}
-        # dictionary mapping client_ids to their reconnect grace periods
+        # dictionary mapping client_id's to their reconnect grace periods
         self.reconnect_grace_periods: Dict[str, float] = {}
-        # dictionary mapping client_ids to their reponse cache
+        # dictionary mapping client_id's to their replay cache
         self.response_caches: Dict[str, OrderedResponseCache] = defaultdict(
             OrderedResponseCache)
         # stopped event, useful for signally that the server is shut down
@@ -115,7 +115,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
-                if _should_cache(req):
+                should_cache = _should_cache(req)
+                if should_cache:
                     cached_resp = response_cache.check_cache(req.req_id)
                     if cached_resp is not None:
                         yield cached_resp
@@ -177,7 +178,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
 
-                if _should_cache(req):
+                if should_cache:
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
         finally:

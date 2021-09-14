@@ -395,8 +395,6 @@ class ClientServerHandle:
     grpc_server: grpc.Server
 
     def stop(self, grace: int) -> None:
-        # In addition to stopping the server, signal to the data servicer
-        # that we no longer have to wait for clients to reconect.
         self.grpc_server.stop(grace)
         self.data_servicer.stopped.set()
 
