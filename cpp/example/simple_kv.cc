@@ -90,13 +90,25 @@ class Master : public KVStore {
   }
 
   void Put(const std::string &key, const std::string &val) {
-    (*dest_actor_).Task(&KVStore::SyncData).Remote(key, val).Get();
+    auto r = (*dest_actor_).Task(&KVStore::SyncData).Remote(key, val);
+    std::vector<ray::ObjectRef<void>> objects{r};
+    auto result = ray::Wait(objects, 1, 2000);
+    if (result.ready.empty()) {
+      RAYLOG(WARNING) << RoleName(role_) << " SyncData failed.";
+    }
+
     std::unique_lock<std::mutex> lock(mtx_);
     data_[key] = val;
   }
 
   bool Del(const std::string &key) {
-    (*dest_actor_).Task(&KVStore::Del).Remote(key).Get();
+    auto r = (*dest_actor_).Task(&KVStore::Del).Remote(key);
+    std::vector<ray::ObjectRef<bool>> objects{r};
+    auto result = ray::Wait(objects, 1, 2000);
+    if (result.ready.empty()) {
+      RAYLOG(WARNING) << RoleName(role_) << " Del Slave data failed.";
+    }
+
     std::unique_lock<std::mutex> lock(mtx_);
     return data_.erase(key) > 0;
   }
