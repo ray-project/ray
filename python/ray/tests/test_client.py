@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 import _thread
+from unittest.mock import patch
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -623,6 +624,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
