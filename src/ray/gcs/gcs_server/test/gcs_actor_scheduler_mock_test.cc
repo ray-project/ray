@@ -33,7 +33,7 @@ struct MockCallback {
   void operator()(std::shared_ptr<GcsActor> a) { return Call(a); }
 };
 
-class GcsActorSchedulerTest : public ::testing::Test {
+class GcsActorSchedulerTest : public Test {
  public:
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
@@ -51,7 +51,9 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](const rpc::Address &) { return core_worker_client; });
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
-    node_info->set_node_id(NodeID::FromRandom().Binary());
+    node_id = NodeID::FromRandom();
+    node_info->set_node_id(node_id.Binary());
+    worker_id = WorkerID::FrmRandom();
     gcs_node_manager->AddNode(node_info);
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
@@ -65,6 +67,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
   MockCallback schedule_failure_handler;
   MockCallback schedule_success_handler;
+  NodeID node_id;
+  WorkerID worker_id;
 };
 
 TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
@@ -79,11 +83,40 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
   actor_scheduler->Schedule(actor);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
+  actor_scheduler->CancelOnNode(node_id);
   ray::rpc::RequestWorkerLeaseReply reply;
-  reply.set_worker_address("127.0.0.1:6979");
+  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
   cb(Status::OK(), reply);
 }
 
-TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {}
+TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
+  auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  rpc::ActorTableData actor_data;
+  actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
+  actor_data.set_actor_id(actor_id.Binary());
+  auto actor = std::make_shared<GcsActor>(actor_data);
+  rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
+  EXPECT_CALL(*core_worker_client, KillActor(_, _));
+  EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _))
+      .WillOnce(testing::SaveArg<1>(&request_worker_lease_cb));
+
+  std::function<void(ray::Status)> async_put_with_index_cb;
+  EXPECT_CALL(*store_client, AsyncPutWithIndex(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
+  actor_scheduler->Schedule(actor);
+  rpc::RequestWorkerLeaseReply reply;
+  reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
+  reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
+  request_worker_lease_cb(Status::OK(), reply);
+
+  rpc::ClientCallback<rpc::PushTaskReply> push_normal_task_cb;
+  EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
+      .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
+  async_put_with_index_cb(Status::OK());
+  actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
+  actor_scheduler->CancelOnWorker(node_id, worker_id);
+  push_normal_task_cb(Status::OK(), rpc::PushTaskReply());
+}
 }  // namespace gcs
 }  // namespace ray
