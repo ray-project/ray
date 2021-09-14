@@ -298,7 +298,9 @@ class TrialExecutor(metaclass=ABCMeta):
                     for trial in all_trials:
                         if (trial.status is Trial.PENDING
                                 and not _can_fulfill_no_autoscaler(trial)):
-                            raise TuneError(
+                            # TODO(xwjiang): #18608
+                            #  Raise an Error once  is resolved.
+                            logger.warning(
                                 _get_insufficient_resources_error_msg(trial))
                 else:
                     # TODO(xwjiang): Output a more helpful msg for autoscaler.
@@ -315,7 +317,6 @@ class TrialExecutor(metaclass=ABCMeta):
             trials (List[Trial]): The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
-
         if self._queue_trials:
             return
         self._may_warn_insufficient_resources(trials)

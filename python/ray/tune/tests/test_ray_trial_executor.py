@@ -7,7 +7,8 @@ import unittest
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune import Trainable, TuneError
+from ray.tune import Trainable
+from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import TRAINING_ITERATION
@@ -16,11 +17,12 @@ from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from unittest.mock import patch
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "1"
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
         self.cluster = Cluster(
             initialize_head=True,
             connect=True,
@@ -33,14 +35,32 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         ray.shutdown()
         self.cluster.shutdown()
 
-    # no autoscaler case, resource is not sufficient. Raise error.
-    def testRaiseErrorNoAutoscaler(self):
+    # no autoscaler case, resource is not sufficient. Log warning for now.
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testRaiseErrorNoAutoscaler(self, mocked_warn):
+        class FailureInjectorCallback(Callback):
+            """Adds random failure injection to the TrialExecutor."""
+
+            def __init__(self, steps=5):
+                self._step = 0
+                self.steps = steps
+
+            def on_step_begin(self, iteration, trials, **info):
+                self._step += 1
+                if self._step >= self.steps:
+                    raise RuntimeError
+
         def train(config):
             pass
 
-        with pytest.raises(TuneError) as cm:
+        with self.assertRaises(RuntimeError):
             tune.run(
                 train,
+                callbacks=[
+                    # Make sure that the test is not stuck forever,
+                    # as what would happen for the users now, unfortunately.
+                    FailureInjectorCallback(),
+                ],
                 resources_per_trial={
                     "cpu": 5,  # more than what the cluster can offer.
                     "gpu": 3,
@@ -52,7 +72,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                "(possibly via `resources_per_trial` "
                "or via `num_workers` for rllib) "
                "and/or add more resources to your Ray runtime.")
-        assert str(cm._excinfo[1]) == msg
+        mocked_warn.assert_called_with(msg)
 
 
 class RayTrialExecutorTest(unittest.TestCase):
