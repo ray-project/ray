@@ -60,7 +60,6 @@ const std::vector<std::shared_ptr<const BundleSpecification>>
 std::vector<std::shared_ptr<const BundleSpecification>>
 GcsPlacementGroup::GetUnplacedBundles() const {
   const auto &bundle_specs = GetBundles();
-  RAY_CHECK(bundle_specs.size() == placement_group_table_data_.bundles_size());
 
   std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
   for (const auto &bundle : bundle_specs) {
