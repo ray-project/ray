@@ -137,7 +137,7 @@ r2d2-stateless-cartpole:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 55000
+        timesteps_total: 65000
     stop:
         time_total_s: 800
     config:
