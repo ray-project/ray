@@ -196,10 +196,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   app_name_ = app_name;
   log_dir_ = log_dir;
 
-  // All the logging sinks to add.
-  std::vector<spdlog::sink_ptr> sinks;
-  auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
-
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -247,31 +243,26 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+    file_logger = spdlog::rotating_logger_mt(
+        RayLog::GetLoggerName(),
         dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
         log_rotation_max_size_, log_rotation_file_num_);
-    sinks.push_back(file_sink);
+    spdlog::set_default_logger(file_logger);
   } else {
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
+    auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
     console_sink->set_level(level);
-    sinks.push_back(console_sink);
+
+    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    err_sink->set_pattern(log_format_pattern_);
+    err_sink->set_level(spdlog::level::err);
+
+    auto logger = std::shared_ptr<spdlog::logger>(
+        new spdlog::logger(RayLog::GetLoggerName(), {console_sink, err_sink}));
+    logger->set_level(level);
+    spdlog::set_default_logger(logger);
   }
-
-  // In all cases, log errors to the console log so they are in driver logs.
-  // https://github.com/ray-project/ray/issues/12893
-  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-  err_sink->set_pattern(log_format_pattern_);
-  err_sink->set_level(spdlog::level::err);
-  sinks.push_back(err_sink);
-
-  // Set the combined logger.
-  auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(), sinks.begin(),
-                                                 sinks.end());
-  logger->set_level(level);
-  spdlog::set_pattern(log_format_pattern_);
-  spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
-  spdlog::set_default_logger(logger);
 }
 
 void RayLog::UninstallSignalAction() {
