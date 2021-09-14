@@ -2002,7 +2002,7 @@ def test_placement_group_status(ray_start_cluster):
     wait_for_condition(is_usage_updated)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "0.0/4.0 CPU (0.0 used, 1.0 reserved in placement groups)"
+    expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
     assert cpu_usage == expected
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
@@ -2015,7 +2015,7 @@ def test_placement_group_status(ray_start_cluster):
     time.sleep(5)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "3.0/4.0 CPU (1.0 used, 1.0 reserved in placement groups)"
+    expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
     assert cpu_usage == expected
 
 

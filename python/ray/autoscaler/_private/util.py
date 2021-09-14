@@ -483,14 +483,14 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
             line = (f" {(used * to_GiB):.2f}/"
                     f"{(total * to_GiB):.3f} GiB {resource}")
             if used_in_pg:
-                line = line + (f" ({(pg_used * to_GiB):.2f} used, "
+                line = line + (f" ({(pg_used * to_GiB):.2f} used of "
                                f"{(pg_total * to_GiB):.2f} GiB " +
                                "reserved in placement groups)")
             usage_lines.append(line)
         else:
             line = f" {used}/{total} {resource}"
             if used_in_pg:
-                line += (f" ({pg_used} used, "
+                line += (f" ({pg_used} used of "
                          f"{pg_total} reserved in placement groups)")
             usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
