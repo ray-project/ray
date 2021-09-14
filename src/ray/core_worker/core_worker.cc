@@ -2592,8 +2592,20 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   };
 
   const auto actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Received HandleWaitForActorOutOfScope for " << actor_id;
-  actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
+  if (actor_creator_->IsActorInRegistering(actor_id)) {
+    actor_creator_->AsyncWaitForActorRegisterFinish(
+        actor_id, [this, actor_id, respond = std::move(respond)](auto status) {
+                    if(!status.ok()) {
+                      respond(actor_id);
+                    } else {
+                      RAY_LOG(DEBUG) << "Received HandleWaitForActorOutOfScope for " << actor_id;
+                      actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
+                    }
+                  });
+  } else {
+    RAY_LOG(DEBUG) << "Received HandleWaitForActorOutOfScope for " << actor_id;
+    actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
+  }
 }
 
 void CoreWorker::ProcessSubscribeForObjectEviction(

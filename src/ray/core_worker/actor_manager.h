@@ -16,6 +16,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client.h"
@@ -182,6 +183,7 @@ class ActorManager {
   /// getting them from GCS frequently.
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
+
 };
 
 }  // namespace core
