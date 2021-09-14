@@ -147,7 +147,7 @@ if __name__ == "__main__":
         type=int,
         default=5,
         metavar="N",
-        help="number of epochs to train (default: 10)")
+        help="number of epochs to train (default: 5)")
     parser.add_argument(
         "--lr",
         type=float,
