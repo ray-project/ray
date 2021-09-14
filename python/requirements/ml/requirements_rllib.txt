@@ -8,8 +8,8 @@ gym[atari]==0.18.3
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-mlagents==0.21.0
-mlagents_envs==0.21.0
+mlagents==0.27.0
+mlagents_envs==0.27.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.11.0
 pymunk==6.0.0
