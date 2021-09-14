@@ -44,7 +44,7 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray=="${RAY_VERSION}" ray—cpp=="${RAY_VERSION}"
+    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
     failed=false
     cpp_failed=false

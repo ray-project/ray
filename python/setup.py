@@ -48,6 +48,7 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
                "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
 
+RAY_EXTRA_CPP = True
 
 def find_version(*filepath):
     # Extract version information from filepath
@@ -198,7 +199,7 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
-    if os.getenv("RAY_EXTRA_CPP") == "1":
+    if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     if sys.version_info >= (3, 7, 0):
