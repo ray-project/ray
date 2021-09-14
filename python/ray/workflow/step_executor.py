@@ -7,7 +7,6 @@ import ray
 from ray import ObjectRef
 from ray._private import signature
 
-
 from ray.workflow import workflow_context
 from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
@@ -26,7 +25,7 @@ from ray.workflow.common import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.common import (StepID, WorkflowRef, WorkflowInputs)
+    from ray.workflow.common import (WorkflowRef, WorkflowInputs)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -226,7 +225,7 @@ def commit_step(store: workflow_storage.WorkflowStorage,
         assert not ret.executed
         tasks = [
             _write_step_inputs(store, w.step_id, w.data)
-            for w in ret.iter_workflows_in_dag()
+            for w in ret._iter_workflows_in_dag()
         ]
         asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
 

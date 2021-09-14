@@ -14,9 +14,8 @@ import ray
 from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
-from ray.workflow.common import (Workflow, WorkflowData, StepID,
-                                 WorkflowMetaData, WorkflowStatus, WorkflowRef,
-                                 StepType)
+from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
+                                 WorkflowStatus, WorkflowRef, StepType)
 from ray.workflow import workflow_context
 from ray.workflow import serialization_context
 from ray.workflow.storage import (DataLoadError, DataSaveError,

@@ -1,4 +1,3 @@
-import asyncio
 from typing import List, Any, Union, Dict, Callable, Tuple, Optional
 
 import ray
@@ -96,34 +95,11 @@ def _construct_resume_workflow_from_step(
             instant_workflow_outputs[i] = r
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
 
-    # TODO (Alex): Refactor to remove this special case handling of object refs
-    resolved_object_refs = []
-    identifiers_to_await = []
-    promises_to_await = []
-
-    for identifier in result.object_refs:
-        if identifier not in objectref_cache:
-            paths = reader._key_step_args(identifier)
-            promise = reader._get(paths)
-            promises_to_await.append(promise)
-            identifiers_to_await.append(identifier)
-
-    loop = asyncio.get_event_loop()
-    object_refs_to_cache = loop.run_until_complete(
-        asyncio.gather(*promises_to_await))
-
-    for identifier, object_ref in zip(identifiers_to_await,
-                                      object_refs_to_cache):
-        objectref_cache[identifier] = object_ref
-
-    for identifier in result.object_refs:
-        resolved_object_refs.append(objectref_cache[identifier])
-
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
-        **result.ray_options).step(resolved_object_refs, input_workflows,
-                                   workflow_refs, instant_workflow_outputs)
+        **result.ray_options).step(input_workflows, workflow_refs,
+                                   instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     recovery_workflow.data.step_type = result.step_type
     return recovery_workflow
