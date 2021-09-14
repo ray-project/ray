@@ -55,6 +55,7 @@ py_test_module_list(
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
+    "test_client_reconnect.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -135,7 +136,6 @@ py_test_module_list(
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
-    "test_client_reconnect.py"
   ],
   size = "small",
   extra_srcs = SRCS,
