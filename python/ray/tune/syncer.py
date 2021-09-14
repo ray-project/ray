@@ -15,8 +15,8 @@ from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import get_node_ip_address
 from ray.util.debug import log_once
-from ray.util.services import get_node_ip_address
 from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,

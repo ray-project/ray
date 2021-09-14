@@ -6,7 +6,7 @@ from ray import logger
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
-from ray.util.services import get_node_ip_address
+from ray.util import get_node_ip_address
 
 
 def try_import_kubernetes():
