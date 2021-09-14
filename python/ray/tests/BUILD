@@ -74,6 +74,9 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_object_assign_owner.py",
     "test_output.py",
+    "test_placement_group.py",
+    "test_placement_group_2.py",
+    "test_placement_group_3.py",
     "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
@@ -225,16 +228,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_placement_group.py",
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 
