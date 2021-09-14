@@ -113,8 +113,6 @@ if __name__ == "__main__":
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
-        remaining_args.append("--serialized-runtime-env")
-        remaining_args.append(args.serialized_runtime_env or "{}")
 
         def start_worker(remaining_args):
             setup = import_attr(args.worker_setup_hook)
