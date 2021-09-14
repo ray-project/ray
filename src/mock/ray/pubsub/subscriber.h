@@ -28,11 +28,22 @@ namespace pubsub {
 
 class MockSubscribeChannelInterface : public SubscribeChannelInterface {
  public:
-  MOCK_METHOD(void, Subscribe, (const rpc::Address &publisher_address, const std::string &key_id_binary, SubscriptionCallback subscription_callback, SubscriptionFailureCallback subscription_failure_callback), (override));
-  MOCK_METHOD(bool, Unsubscribe, (const rpc::Address &publisher_address, const std::string &key_id_binary), (override));
-  MOCK_METHOD(void, HandlePublishedMessage, (const rpc::Address &publisher_address, const rpc::PubMessage &pub_message), (const, override));
-  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address), (override));
-  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address, const std::string &key_id_binary), (override));
+  MOCK_METHOD(void, Subscribe,
+              (const rpc::Address &publisher_address, const std::string &key_id_binary,
+               SubscriptionCallback subscription_callback,
+               SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+  MOCK_METHOD(bool, Unsubscribe,
+              (const rpc::Address &publisher_address, const std::string &key_id_binary),
+              (override));
+  MOCK_METHOD(void, HandlePublishedMessage,
+              (const rpc::Address &publisher_address, const rpc::PubMessage &pub_message),
+              (const, override));
+  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address),
+              (override));
+  MOCK_METHOD(void, HandlePublisherFailure,
+              (const rpc::Address &publisher_address, const std::string &key_id_binary),
+              (override));
   MOCK_METHOD(bool, SubscriptionExists, (const PublisherID &publisher_id), (override));
   MOCK_METHOD(const rpc::ChannelType, GetChannelType, (), (const, override));
   MOCK_METHOD(bool, CheckNoLeaks, (), (const, override));
@@ -48,12 +59,23 @@ namespace pubsub {
 template <typename KeyIdType>
 class MockSubscriberChannel : public SubscriberChannel<KeyIdType> {
  public:
-  MOCK_METHOD(void, Subscribe, (const rpc::Address &publisher_address, const std::string &key_id, SubscriptionCallback subscription_callback, SubscriptionFailureCallback subscription_failure_callback), (override));
-  MOCK_METHOD(bool, Unsubscribe, (const rpc::Address &publisher_address, const std::string &key_id), (override));
+  MOCK_METHOD(void, Subscribe,
+              (const rpc::Address &publisher_address, const std::string &key_id,
+               SubscriptionCallback subscription_callback,
+               SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+  MOCK_METHOD(bool, Unsubscribe,
+              (const rpc::Address &publisher_address, const std::string &key_id),
+              (override));
   MOCK_METHOD(bool, CheckNoLeaks, (), (const, override));
-  MOCK_METHOD(void, HandlePublishedMessage, (const rpc::Address &publisher_address, const rpc::PubMessage &pub_message), (const, override));
-  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address), (override));
-  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address, const std::string &key_id_binary), (override));
+  MOCK_METHOD(void, HandlePublishedMessage,
+              (const rpc::Address &publisher_address, const rpc::PubMessage &pub_message),
+              (const, override));
+  MOCK_METHOD(void, HandlePublisherFailure, (const rpc::Address &publisher_address),
+              (override));
+  MOCK_METHOD(void, HandlePublisherFailure,
+              (const rpc::Address &publisher_address, const std::string &key_id_binary),
+              (override));
   MOCK_METHOD(bool, SubscriptionExists, (const PublisherID &publisher_id), (override));
   MOCK_METHOD(const rpc::ChannelType, GetChannelType, (), (const, override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
@@ -97,8 +119,17 @@ namespace pubsub {
 
 class MockSubscriberInterface : public SubscriberInterface {
  public:
-  MOCK_METHOD(void, Subscribe, (std::unique_ptr<rpc::SubMessage> sub_message, const rpc::ChannelType channel_type, const rpc::Address &publisher_address, const std::string &key_id_binary, SubscriptionCallback subscription_callback, SubscriptionFailureCallback subscription_failure_callback), (override));
-  MOCK_METHOD(bool, Unsubscribe, (const rpc::ChannelType channel_type, const rpc::Address &publisher_address, const std::string &key_id_binary), (override));
+  MOCK_METHOD(void, Subscribe,
+              (std::unique_ptr<rpc::SubMessage> sub_message,
+               const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+               const std::string &key_id_binary,
+               SubscriptionCallback subscription_callback,
+               SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+  MOCK_METHOD(bool, Unsubscribe,
+              (const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+               const std::string &key_id_binary),
+              (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
@@ -110,8 +141,14 @@ namespace pubsub {
 
 class MockSubscriberClientInterface : public SubscriberClientInterface {
  public:
-  MOCK_METHOD(void, PubsubLongPolling, (const rpc::PubsubLongPollingRequest &request, const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback), (override));
-  MOCK_METHOD(void, PubsubCommandBatch, (const rpc::PubsubCommandBatchRequest &request, const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback), (override));
+  MOCK_METHOD(void, PubsubLongPolling,
+              (const rpc::PubsubLongPollingRequest &request,
+               const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback),
+              (override));
+  MOCK_METHOD(void, PubsubCommandBatch,
+              (const rpc::PubsubCommandBatchRequest &request,
+               const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback),
+              (override));
 };
 
 }  // namespace pubsub
