@@ -48,6 +48,14 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu",
+    size = "medium",
+    srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
@@ -70,6 +78,15 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
 
 py_test(
     name = "test_worker_group",

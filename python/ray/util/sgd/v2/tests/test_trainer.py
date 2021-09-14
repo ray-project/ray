@@ -7,23 +7,20 @@ import horovod.torch as hvd_torch
 import pytest
 import ray
 import ray.util.sgd.v2 as sgd
-import tensorflow as tf
-import torch
 from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
     HorovodConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
+    horovod_torch_train_func
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
     fashion_mnist_train_func
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
-
-from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -496,31 +493,6 @@ def test_tensorflow_mnist(ray_start_2_cpus):
     assert accuracy[-1] > accuracy[0]
 
 
-@pytest.mark.skipif(
-    len(tf.config.list_physical_devices("GPU")) < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=True)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-    result = results[0]
-
-    loss = result["loss"]
-    assert len(loss) == epochs
-    assert loss[-1] < loss[0]
-
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
-
-
 def test_torch_linear(ray_start_2_cpus):
     num_workers = 2
     epochs = 3
@@ -555,26 +527,6 @@ def test_torch_fashion_mnist(ray_start_2_cpus):
         assert result[-1] < result[0]
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_torch_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(fashion_mnist_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1] < result[0]
-
-
 def test_horovod_simple(ray_start_2_cpus):
     def simple_fn():
         hvd_torch.init()
@@ -593,28 +545,6 @@ def test_horovod_torch_mnist(ray_start_2_cpus):
     num_workers = 2
     num_epochs = 2
     trainer = Trainer("horovod", num_workers)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func,
-        config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
-
-
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
-    num_workers = 2
-    num_epochs = 2
-    trainer = Trainer("horovod", num_workers, use_gpu=True)
     trainer.start()
     results = trainer.run(
         horovod_torch_train_func,
@@ -944,7 +874,6 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
 
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
-
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
         Trainer(
