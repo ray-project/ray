@@ -11,7 +11,7 @@ a2c-stateless-cartpole:
     config:
         num_gpus: 2
         num_workers: 23
-        lr: 0.001
+        lr: 0.0005
         # Test w/ GTrXL net.
         model:
             use_attention: true
