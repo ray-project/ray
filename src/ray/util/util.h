@@ -23,8 +23,8 @@
 #include <thread>
 #include <unordered_map>
 
-#include "ray/util/macros.h"
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -257,42 +257,40 @@ namespace ray {
 template <typename T>
 class ThreadIdempotent {
  public:
-  template<typename ...Ts>
-  ThreadIdempotent(Ts&& ...ts)
-      : t_(std::forward<Ts>(ts)...) {}
+  template <typename... Ts>
+  ThreadIdempotent(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
 
-  T& operator*() {
+  T &operator*() {
     ThreadCheck();
     return t_;
   }
 
-  T* operator->() {
+  T *operator->() {
     ThreadCheck();
     return &t_;
   }
 
-  const T& operator*() const {
+  const T &operator*() const {
     ThreadCheck();
     return t_;
   }
 
-  const T* operator->() const {
+  const T *operator->() const {
     ThreadCheck();
     return &t_;
   }
 
  private:
   void ThreadCheck() const {
-    if(id_ == std::thread::id()) {
+    if (id_ == std::thread::id()) {
       thread_name_ = GetThreadName();
       RAY_LOG(DEBUG) << "Run in thread: " << thread_name_;
       id_ = std::this_thread::get_id();
     }
 
-    RAY_CHECK(id_ == std::this_thread::get_id()) <<
-        "Thread idempotent is broken. Previously run in thread " <<
-        thread_name_ << ", and now run in thread " <<
-        GetThreadName();
+    RAY_CHECK(id_ == std::this_thread::get_id())
+        << "Thread idempotent is broken. Previously run in thread " << thread_name_
+        << ", and now run in thread " << GetThreadName();
   }
 
   T t_;
@@ -300,4 +298,4 @@ class ThreadIdempotent {
   mutable std::thread::id id_;
 };
 
-}
+}  // namespace ray
