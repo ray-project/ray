@@ -102,8 +102,9 @@ class Worker:
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
-        if secure and _credentials is not None:
+        if _credentials is not None:
             self._credentials = _credentials
+            self._secure = True
 
         self._connect_channel()
 
