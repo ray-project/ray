@@ -21,7 +21,7 @@ long_running_tests:
 microbenchmark: core
 nightly_tests: core
 rllib_tests: ml
-runtime_env_test: serve
+runtime_env_tests: serve
 serve_tests: serve
 sgd_tests: ml
 xgboost_tests: ml
