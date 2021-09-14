@@ -95,10 +95,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         get_resp = self.basic_service._get_object(
                             req.get, client_id)
                     resp = ray_client_pb2.DataResponse(get=get_resp)
-                elif req_type == "wait":
-                    with self.clients_lock:
-                        wait_resp = self.basic_service.WaitObject(req.wait)
-                        resp = ray_client_pb2.DataResponse(wait=wait_resp)
                 elif req_type == "put":
                     put_resp = self.basic_service._put_object(
                         req.put, client_id)
