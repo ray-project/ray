@@ -570,13 +570,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-          RAY_LOG(ERROR) << "Will resubmit task after a " << delay
-                         << "ms delay: " << spec.DebugString();
+          RAY_LOG(INFO) << "Will resubmit task after a " << delay
+                        << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
-                         << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
+                        << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -706,8 +706,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
       task_manager_, reference_counter_, memory_store_,
-      [this](const ObjectID &object_id, bool pin_object) {
-        RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+      [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
+        RAY_LOG(DEBUG) << "Failed to recover object " << object_id << " due to "
+                       << rpc::ErrorType_Name(reason);
+        RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
       },
@@ -1458,8 +1460,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                 object_id));
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
@@ -1561,11 +1562,6 @@ Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
     return Status::OK();
   }
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
-}
-
-Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const NodeID &node_id) {
-  return local_raylet_client_->SetResource(resource_name, capacity, node_id);
 }
 
 void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
