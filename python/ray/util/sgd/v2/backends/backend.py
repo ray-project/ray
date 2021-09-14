@@ -18,7 +18,7 @@ from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
     check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup, \
-    create_executable_worker_group
+    create_executable_class
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -258,31 +258,28 @@ class BackendExecutor:
 
         self.checkpoint_manager.on_init()
 
+    def _create_executable_worker_group(self, train_cls, train_cls_args,
+                                        train_cls_kwargs):
+        executable_cls = create_executable_class(train_cls)
+        return WorkerGroup(
+            num_workers=self._num_workers,
+            num_cpus_per_worker=self._num_cpus_per_worker,
+            num_gpus_per_worker=self._num_gpus_per_worker,
+            additional_resources_per_worker=self.
+            _additional_resources_per_worker,
+            actor_cls=executable_cls,
+            actor_cls_args=train_cls_args,
+            actor_cls_kwargs=train_cls_kwargs)
+
     def start(self,
               initialization_hook: Optional[Callable[[], None]] = None,
-              train_cls: Type = None,
+              train_cls: Optional[Type] = None,
               train_cls_args: Optional[Tuple] = None,
               train_cls_kwargs: Optional[Dict] = None):
-        """Starts the worker group.
-
-        If a train_cls is provided, then
-
-        """
-        if train_cls and initialization_hook:
-            raise SGDBackendError("Both train_cls and initializaiton_hook "
-                                  "cannot be specified. If you are seeing "
-                                  "this error, then this is bug. "
-                                  "Please file an issue.")
+        """Starts the worker group."""
         if train_cls:
-            self.worker_group = create_executable_worker_group(
-                executable_cls=train_cls,
-                num_workers=self._num_workers,
-                num_cpus_per_worker=self._num_cpus_per_worker,
-                num_gpus_per_worker=self._num_gpus_per_worker,
-                additional_resources_per_worker=self.
-                _additional_resources_per_worker,
-                actor_cls_args=train_cls_args,
-                actor_cls_kwargs=train_cls_kwargs)
+            self.worker_group = self._create_executable_worker_group(
+                train_cls, train_cls_args, train_cls_kwargs)
         else:
             self.worker_group = WorkerGroup(
                 self._num_workers, self._num_cpus_per_worker,

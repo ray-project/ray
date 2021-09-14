@@ -245,9 +245,8 @@ class WorkerGroup:
         return len(self.workers)
 
 
-def create_executable_worker_group(executable_cls: Type, *args,
-                                   **kwargs) -> WorkerGroup:
-    """Create a WorkerGroup from the provided ``executable_cls``.
+def create_executable_class(executable_cls: Type) -> Type:
+    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
 
     This function will automatically handle subclassing BaseWorker.
     """
@@ -256,4 +255,4 @@ def create_executable_worker_group(executable_cls: Type, *args,
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-    return WorkerGroup(*args, actor_cls=_WrappedExecutable, **kwargs)
+    return _WrappedExecutable

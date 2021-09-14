@@ -409,7 +409,7 @@ class Trainer:
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
 
-    def to_workers(self, train_cls: Type, *args, **kwargs) -> "Workers":
+    def to_workers(self, train_cls: Type, *args, **kwargs) -> "SGDWorkerGroup":
         """Returns Ray actors with the provided class and the backend started.
 
         This is useful if you want to provide your own class for training
@@ -446,10 +446,35 @@ class Trainer:
                                "Trainer or don't start it in the first place.")
         self._executor.start(
             train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
-        return Workers(self._executor.worker_group)
+        return SGDWorkerGroup(self._executor.worker_group)
 
 
-class Workers:
+class SGDWorkerGroup:
+    """A container for a group of Ray actors.
+
+    You should not instantiate this directly and only use this as the output
+    of ``Trainer.to_workers``. You can index or iterate this object like you
+    would a List.
+
+    .. code-block:: python
+
+        class Trainer:
+            def __init__(self, config):
+                self.config = config
+
+            def train_epoch(self):
+                ...
+                return 1
+
+        config = {"lr": 0.1}
+        trainer = Trainer(num_workers=2, backend="torch")
+        workers = trainer.to_workers(train_cls=Trainer, config=config)
+        futures = [w.train_epoch.remote() for w in workers]
+        assert ray.get(futures) == [1, 1]
+        assert ray.get(workers[0].train_epoch.remote()) == 1
+        workers.shutdown()`
+    """
+
     def __init__(self, worker_group: WorkerGroup):
         self._worker_group = worker_group
 
@@ -460,12 +485,11 @@ class Workers:
         """Shutdown all the workers.
 
         Args:
-          patience_s (float): Attempt a graceful shutdown
-            of the workers for this many seconds. Fallback to force kill
-            if graceful shutdown is not complete after this time. If
-            this is less than or equal to 0, immediately force kill all
-            workers.
-
+            patience_s (float): Attempt a graceful shutdown
+                of the workers for this many seconds. Fallback to force kill
+                if graceful shutdown is not complete after this time. If
+                this is less than or equal to 0, immediately force kill all
+                workers.
         """
         self._worker_group.shutdown(patience_s=patience_s)
 
