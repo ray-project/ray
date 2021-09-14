@@ -81,6 +81,7 @@ def _get_insufficient_resources_warning_msg() -> str:
 def _get_insufficient_resources_error_msg(trial: Trial) -> str:
     trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
     return (
+        f"If autoscaler is still scaling up, ignore this message. "
         f"You asked for {trial_cpu_gpu['CPU']} cpu and "
         f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
         f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
@@ -298,13 +299,13 @@ class TrialExecutor(metaclass=ABCMeta):
                     for trial in all_trials:
                         if (trial.status is Trial.PENDING
                                 and not _can_fulfill_no_autoscaler(trial)):
-                            # TODO(xwjiang): #18608
-                            #  Raise an Error once  is resolved.
+                            # TODO(xwjiang):
+                            #  Raise an Error once #18608 is resolved.
                             logger.warning(
                                 _get_insufficient_resources_error_msg(trial))
                 else:
-                    # TODO(xwjiang): Output a more helpful msg for autoscaler.
-                    # https://github.com/ray-project/ray/issues/17799
+                    # TODO(xwjiang): #17799.
+                    #  Output a more helpful msg for autoscaler.
                     logger.warning(_get_insufficient_resources_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
