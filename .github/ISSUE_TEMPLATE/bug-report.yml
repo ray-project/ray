@@ -18,7 +18,7 @@ body:
         whether the same issue was reported already.
       options:
         - label: >
-            I had searched in the [issues](https://github.com/ray-project/ray/issues) and found no similar
+            I searched the [issues](https://github.com/ray-project/ray/issues) and found no similar
             issues.
           required: true
 
@@ -28,10 +28,10 @@ body:
       description: |
         What component are you using? Ray has many subprojects, please make sure to choose the component that
         you found the bug. For third party projects, please refer to their corresponding repos.
-      multiple: false
+      multiple: true
       options:
         - "Ray Core"
-        - "Ray tune"
+        - "Ray Tune"
         - "Ray Serve"
         - "RLlib"
         - "Ray Clusters"
@@ -47,7 +47,7 @@ body:
       label: What happened and What you expected to happen
       description: Describe what happened and What do you think went wrong.
       placeholder: >
-        Please provide the context in which the problem occurred and explain what happened. beside this,
+        Please provide the context in which the problem occurred and explain what happened. Further,
         please also explain why you think the behaviour is erroneous. It is extremely helpful if you can 
         copy and paste the fragment of logs showing the exact error messages or wrong behaviour here.
 
@@ -59,8 +59,8 @@ body:
     attributes:
       label: How to reproduce
       description: >
-        What should we do to reproduce the problem? If you are not able to provide a reproducible case,
-        please post on our [Discussion page](https://discuss.ray.io/) instead.
+        What should we do to reproduce the problem? Providing a narrow reproduction will significantly
+        increase the likelihood of your issue being addressed by the Ray team!
       placeholder: >
         Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to 
         reproduce the issue. The snippet should have **no external library dependencies** 
@@ -76,11 +76,11 @@ body:
       description: Anything else we need to know?
       placeholder: >
         How often does this problem occur? (Once? Every time? Only when certain conditions are met?)
-        Any relevant logs to include? Put them here please.
+        Any relevant logs to include?
 
   - type: checkboxes
     attributes:
-      label: Are you willing to submit PR?
+      label: Are you willing to submit a PR?
       description: >
         This is absolutely not required, but we are happy to guide you in the contribution process
         especially if you already have a good understanding of how to implement the fix.
