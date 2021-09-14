@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,14 +20,16 @@ typedef struct GoSlice {
 #endif
 
 typedef struct DataBuffer {
-  int size;
+  size_t size;
   void *p;
 } DataBuffer;
 
-typedef struct ReturnValue {
+typedef struct DataValue {
   struct DataBuffer *data;
   struct DataBuffer *meta;
-} ReturnValue;
+} DataValue;
+
+DataValue *go_worker_AllocateDataValue(void *data_ptr,size_t data_size,void *meta_ptr,size_t meta_size);
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
                           char *log_dir, char *node_ip_address, int node_manager_port,
@@ -48,8 +52,9 @@ int go_worker_GetNextJobID(void *p);
 int go_worker_CreateActor(char *type_name, char **result);
 
 // todo calloptions
-int go_worker_SubmitActorTask(void *actor_id, char *method_name, int num_returns,
-                              void **object_ids);
+int go_worker_SubmitActorTask(void *actor_id, char *method_name,
+                              DataValue **input_values, int num_input_value,
+                              int num_returns, void **object_ids);
 
 int go_worker_Get(void **object_ids, int object_ids_size, int timeout, void **objects);
 

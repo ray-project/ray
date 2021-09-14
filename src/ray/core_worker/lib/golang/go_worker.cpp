@@ -17,6 +17,21 @@ inline ID ByteArrayToId(char *bytes) {
   return ID::FromBinary(id_str);
 }
 
+DataBuffer *AllocateDataBuffer(void *ptr, int size) {
+  auto db = new DataBuffer();
+  db->p = ptr;
+  db->size = size;
+  return db;
+}
+
+RAY_EXPORT DataValue *go_worker_AllocateDataValue(void *data_ptr, size_t data_size,
+                                                  void *meta_ptr, size_t meta_size) {
+  auto dv = new DataValue();
+  dv->data = AllocateDataBuffer(data_ptr, data_size);
+  dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
+  return dv;
+}
+
 RAY_EXPORT void go_worker_Initialize(int workerMode, char *store_socket,
                                      char *raylet_socket, char *log_dir,
                                      char *node_ip_address, int node_manager_port,
@@ -43,12 +58,12 @@ RAY_EXPORT void go_worker_Initialize(int workerMode, char *store_socket,
         fd_list.len = 1;
         fd_list.cap = 1;
 
-        std::vector<DataBuffer> args_array_list;
+        std::vector<DataValue *> args_array_list;
         for (auto &it : args) {
-          DataBuffer db;
-          db.p = it->GetData()->Data();
-          db.size = it->GetSize();
-          args_array_list.push_back(db);
+          auto data = it->GetData();
+          auto meta = it->GetMetadata();
+          args_array_list.push_back(go_worker_AllocateDataValue(
+              data->Data(), data->Size(), meta->Data(), meta->Size()));
         }
 
         GoSlice args_go;
@@ -56,9 +71,9 @@ RAY_EXPORT void go_worker_Initialize(int workerMode, char *store_socket,
         args_go.len = args_array_list.size();
         args_go.cap = args_array_list.size();
 
-        std::vector<std::shared_ptr<ReturnValue>> return_value_list;
+        std::vector<std::shared_ptr<DataValue>> return_value_list;
         for (size_t i = 0; i < return_ids.size(); i++) {
-          return_value_list.push_back(make_shared<ReturnValue>());
+          return_value_list.push_back(make_shared<DataValue>());
         }
         GoSlice return_value_list_go;
         return_value_list_go.data = &return_value_list[0];
@@ -214,7 +229,22 @@ RAY_EXPORT int go_worker_CreateActor(char *type_name, char **result) {
   return result_length;
 }
 
+inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(DataBuffer *db) {
+  return std::make_shared<ray::LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(db->p),
+                                                  db->size, false);
+}
+
+inline std::shared_ptr<ray::RayObject> DataValueToRayObject(DataValue *in) {
+  std::vector<ObjectID> contained_object_ids;
+  auto contained_object_refs =
+      ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  std::shared_ptr<ray::Buffer> data = DataBufferToRayBuffer(in->data);
+  std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
+  return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
+}
+
 RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id, char *method_name,
+                                         DataValue **input_values, int num_input_value,
                                          int num_returns, void **object_ids) {
   auto actor_id_obj = ByteArrayToId<ray::ActorID>((char *)actor_id);
   std::vector<std::string> function_descriptor_list = {method_name};
@@ -226,10 +256,31 @@ RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id, char *method_name,
   std::string name = "";
   std::unordered_map<std::string, double> resources;
   ray::core::TaskOptions task_options{name, num_returns, resources};
+  std::vector<std::unique_ptr<ray::TaskArg>> args;
 
+  for (size_t i = 0; i < num_input_value; i++) {
+    //    auto java_id = env->GetObjectField(arg, java_function_arg_id);
+    //    if (java_id) {
+    //      auto java_id_bytes = static_cast<jbyteArray>(
+    //          env->CallObjectMethod(java_id, java_base_id_get_bytes));
+    //      RAY_CHECK_JAVA_EXCEPTION(env);
+    //      auto id = JavaByteArrayToId<ObjectID>(env, java_id_bytes);
+    //      auto java_owner_address =
+    //          env->GetObjectField(arg, java_function_arg_owner_address);
+    //      RAY_CHECK(java_owner_address);
+    //      auto owner_address = JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
+    //          env, java_owner_address);
+    //      return std::unique_ptr<TaskArg>(new TaskArgByReference(id, owner_address));
+    //    }
+    //    auto java_value =
+    //        static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
+    //    RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
+    auto value = DataValueToRayObject(static_cast<DataValue *>(input_values[i]));
+    args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
+  }
   std::vector<ObjectID> obj_ids;
   ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id_obj, ray_function, {}, task_options, &obj_ids);
+      actor_id_obj, ray_function, args, task_options, &obj_ids);
 
   int object_id_size = ObjectID::Size();
   for (size_t i = 0; i < obj_ids.size(); i++) {
@@ -241,11 +292,9 @@ RAY_EXPORT int go_worker_SubmitActorTask(void *actor_id, char *method_name,
   return 0;
 }
 
-DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
-  DataBuffer *data_db = new DataBuffer();
-  void *result = malloc(buffer->Size());
-  memcpy(result, (char *)buffer->Data(), buffer->Size());
-  data_db->p = result;
+DataBuffer *RayBufferToDataBuffer(const std::shared_ptr<ray::Buffer> buffer) {
+  auto data_db = new DataBuffer();
+  data_db->p = buffer->Data();
   data_db->size = buffer->Size();
   return data_db;
 }
@@ -268,14 +317,12 @@ RAY_EXPORT int go_worker_Get(void **object_ids, int object_ids_size, int timeout
     return 1;
   }
   for (size_t i = 0; i < results.size(); i++) {
-    ReturnValue *rv = new ReturnValue();
-    rv->data = RayObjectToDataBuffer(results[i]->GetData());
-    rv->meta = RayObjectToDataBuffer(results[i]->GetMetadata());
+    auto rv = new DataValue();
+    rv->data = RayBufferToDataBuffer(results[i]->GetData());
+    rv->meta = RayBufferToDataBuffer(results[i]->GetMetadata());
     objects[i] = rv;
   }
   return 0;
 }
 
-RAY_EXPORT void go_worker_shutdown(){
-  ray::core::CoreWorkerProcess::Shutdown();
-}
+RAY_EXPORT void go_worker_shutdown() { ray::core::CoreWorkerProcess::Shutdown(); }

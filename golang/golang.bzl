@@ -52,7 +52,6 @@ def go_library_link_impl(ctx, **kwargs):
         execution_requirements = {
             "no-sandbox": "1",
             "no-remote": "1",
-            "no-cache": "1",
             "local": "1",
         },
     )

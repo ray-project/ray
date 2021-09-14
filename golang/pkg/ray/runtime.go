@@ -187,14 +187,24 @@ func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *actorTaskCaller
     for i := 0; i < returnNum; i++ {
         methodReturnTypes = append(methodReturnTypes, methodType.Out(i))
     }
-
     return &actorTaskCaller{
         actorHandle:             ah,
         invokeMethod:            methodType,
         invokeMethodName:        methodName,
         invokeMethodReturnTypes: methodReturnTypes,
-        params:                  []reflect.Value{},
+        params:                  createInputValues(args),
     }
+}
+
+func createInputValues(args []interface{}) []unsafe.Pointer {
+    inputValues := make([]unsafe.Pointer, 0, len(args))
+    for _, arg := range args {
+        dataPtr, dataSize := createDataBuffer(arg)
+        metaPtr, metaSize := createMetaBuffer(arg)
+        dv := C.go_worker_AllocateDataValue(dataPtr, dataSize, metaPtr, metaSize)
+        inputValues = append(inputValues, unsafe.Pointer(dv))
+    }
+    return inputValues
 }
 
 type actorTaskCaller struct {
@@ -202,7 +212,7 @@ type actorTaskCaller struct {
     invokeMethod            reflect.Type
     invokeMethodName        string
     invokeMethodReturnTypes []reflect.Type
-    params                  []reflect.Value
+    params                  []unsafe.Pointer
 }
 
 func (atc *actorTaskCaller) Remote() *ObjectRef {
@@ -214,7 +224,13 @@ func (atc *actorTaskCaller) Remote() *ObjectRef {
     }
     methodName := C.CString(atc.invokeMethodName)
     defer C.free(unsafe.Pointer(methodName))
-    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), methodName, C.int(returnNum), returObjectIdArrayPointer)
+    inputPtr := unsafe.Pointer(uintptr(0))
+    if len(atc.params) != 0 {
+        inputPtr = unsafe.Pointer(&(atc.params[0]))
+    }
+
+    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId),
+        methodName, (**C.struct_DataValue)(inputPtr), C.int(len(atc.params)), C.int(returnNum), returObjectIdArrayPointer)
     if success != 0 {
         panic("failed to submit task")
     }
@@ -257,27 +273,37 @@ func (or *ObjectRef) Get() ([]interface{}, error) {
     }
     returnGoValues := make([]interface{}, or.returnObjectNum, or.returnObjectNum)
     for index, returnValue := range returnValues {
-        rv := (*C.struct_ReturnValue)(returnValue)
-        metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), rv.meta.size)
-        typeString := string(metaBytes)
-        if err, contains := errorMap[typeString]; contains {
+        rv := (*C.struct_DataValue)(returnValue)
+        goValue, err := dataValueToGoValue(rv)
+        if err != nil {
             return nil, err
         }
-        goType := GetActorType(typeString)
-        if goType == nil {
-            panic(fmt.Errorf("failed to get type:%s", typeString))
-        }
-        returnGoValue := reflect.New(goType).Interface()
-        dataBytes := C.GoBytes(unsafe.Pointer(rv.data.p), rv.data.size)
-        err := msgpack.Unmarshal(dataBytes, returnGoValue)
-        if err != nil {
-            panic(fmt.Errorf("failed to unmarshal %d return value", index))
-        }
-        returnGoValues[index] = returnGoValue
+        returnGoValues[index] = goValue
     }
     return returnGoValues, nil
 }
 
-func Shutdown(){
+func dataValueToGoValue(rv *C.struct_DataValue) (interface{}, error) {
+    metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), C.int(rv.meta.size))
+    typeString := string(metaBytes)
+    if err, contains := errorMap[typeString]; contains {
+        return nil, err
+    }
+    goType := GetActorType(typeString)
+    if goType == nil {
+        panic(fmt.Errorf("failed to get type:%s", typeString))
+    }
+    returnGoValue := reflect.New(goType).Interface()
+    // copy memory from C heap
+    dataBytes := C.GoBytes(unsafe.Pointer(rv.data.p), C.int(rv.data.size))
+    // TODO: unmarshal use the C heap memory directly?
+    err := msgpack.Unmarshal(dataBytes, returnGoValue)
+    if err != nil {
+        panic(fmt.Errorf("failed to unmarshal value: %s", string(dataBytes)))
+    }
+    return returnGoValue, nil
+}
+
+func Shutdown() {
     C.go_worker_shutdown()
 }

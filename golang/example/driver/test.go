@@ -19,6 +19,12 @@ func main() {
     if err != nil {
         panic(err)
     }
+    util.Logger.Infof("invoked increase1")
+
+    _, err = actor_ref.Task((*actor.Counter).Increase, 10).Remote().Get()
+    if err != nil {
+        panic(err)
+    }
     util.Logger.Infof("invoked increase")
 
     values, err := actor_ref.Task((*actor.Counter).Get).Remote().Get()
