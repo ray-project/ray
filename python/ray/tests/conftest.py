@@ -48,7 +48,7 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
-
+    print(address_info)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -137,7 +137,7 @@ def _ray_start_cluster(**kwargs):
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
         if len(remote_nodes) == 1 and do_init:
-            ray.init(address=cluster.address, namespace=namespace)
+            print(ray.init(address=cluster.address, namespace=namespace))
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -183,7 +183,7 @@ def ray_start_object_store_memory(request):
         "_system_config": system_config,
         "object_store_memory": store_size,
     }
-    ray.init(**init_kwargs)
+    print(ray.init(**init_kwargs))
     yield store_size
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -262,7 +262,7 @@ def two_node_cluster():
         head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
+    print(ray.init(address=cluster.address))
     yield cluster, remote_node
 
     # The code after the yield will run as teardown code.

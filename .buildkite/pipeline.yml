@@ -231,6 +231,7 @@
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
+  artifact_paths: "/tmp/ray/"
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
