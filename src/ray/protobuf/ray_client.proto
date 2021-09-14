@@ -350,9 +350,6 @@ message DataRequest {
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
-    ClientTask task = 8;
-    ClientListNamedActorsRequest list_named_actors = 9;
-    TerminateRequest terminate = 10;
   }
 }
 
@@ -366,9 +363,6 @@ message DataResponse {
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
-    ClientTaskTicket task_ticket = 8;
-    ClientListNamedActorsResponse list_named_actors = 9;
-    TerminateResponse terminate = 10;
   }
 }
 
