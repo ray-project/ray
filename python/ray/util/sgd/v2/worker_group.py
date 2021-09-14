@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def _execute(self, func: Callable[..., T], *args, **kwargs) -> T:
+    def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
         Args:
@@ -104,6 +104,7 @@ class WorkerGroup:
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
+        assert issubclass(self._base_cls, BaseWorkerMixin)
 
         self._actor_cls_args = actor_cls_args or []
         self._actor_cls_kwargs = actor_cls_kwargs or {}
@@ -178,7 +179,10 @@ class WorkerGroup:
                                "group has most likely been shut down. Please"
                                "create a new WorkerGroup or restart this one.")
 
-        return [w._execute.remote(func, *args, **kwargs) for w in self.workers]
+        return [
+            w._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
+            for w in self.workers
+        ]
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
@@ -210,7 +214,7 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index]._execute.remote(
+        return self.workers[worker_index]._BaseWorkerMixin__execute.remote(
             func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,
