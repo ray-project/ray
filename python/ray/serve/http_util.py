@@ -4,6 +4,7 @@ import inspect
 import json
 from typing import Any, Dict, List, Optional, Tuple, Type
 
+import starlette.responses
 import starlette.requests
 
 from ray.serve.exceptions import RayServeException
@@ -164,13 +165,15 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         return serve.get_replica_context().servable_object
 
     # Find all the class method routes
-    member_methods = {
-        func
-        for _, func in inspect.getmembers(cls, inspect.isfunction)
-    }
     class_method_routes = [
-        route for route in fastapi_app.routes
-        if isinstance(route, APIRoute) and route.endpoint in member_methods
+        route for route in fastapi_app.routes if
+        # User defined routes must all be APIRoute.
+        isinstance(route, APIRoute)
+        # We want to find the route that's bound to the `cls`.
+        # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
+        # because the FastAPI supports different routes for the methods with
+        # same name. See #17559.
+        and (cls.__qualname__ in route.endpoint.__qualname__)
     ]
 
     # Modify these routes and mount it to a new APIRouter.

@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import click
 from datetime import datetime
@@ -23,9 +23,11 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -278,6 +280,8 @@ class TrialRunner:
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
         self._updated_queue = False
+        self._result_wait_time = int(
+            os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -322,13 +326,32 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
-        self._callbacks.setup()
-
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
+
+    def setup_experiments(self, experiments: List[Experiment],
+                          total_num_samples: int) -> None:
+        """Obtains any necessary information from experiments.
+
+        Mainly used to setup callbacks.
+
+        Args:
+            experiments (List[Experiment]): List of Experiments
+                to use.
+            total_num_samples (int): Total number of samples
+                factoring in grid search samplers.
+        """
+        experiment = experiments[0]
+        spec = experiment.public_spec if experiment else {}
+        spec["total_num_samples"] = total_num_samples
+        self._callbacks.setup(**spec)
+
+    def end_experiment_callbacks(self) -> None:
+        """Calls ``on_experiment_end`` method in callbacks."""
+        self._callbacks.on_experiment_end(trials=self._trials)
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
@@ -515,6 +538,19 @@ class TrialRunner:
             else:
                 self.add_trial(trial)
 
+    def update_pending_trial_resources(
+            self, resources: Union[dict, PlacementGroupFactory]):
+        """Update trial resources when resuming from checkpoint.
+
+        Only updating the pending ones.
+        """
+        assert resources
+        if isinstance(resources, dict) and "gpu" not in resources:
+            resources["gpu"] = 0
+        for trial in self._trials:
+            if trial.status == Trial.PENDING:
+                trial.update_resources(resources=resources)
+
     def is_finished(self):
         """Returns whether all trials have finished running."""
         # The checks here are partly redundant but optimized for quick
@@ -585,10 +621,10 @@ class TrialRunner:
 
         if may_handle_events:
             if self.trial_executor.get_running_trials():
-                timeout = None
+                timeout = self._result_wait_time
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
-                self._process_events(timeout=timeout)  # blocking
+                self._process_events(timeout=timeout)
             else:
                 self._run_and_catch(self.trial_executor.on_no_available_trials)
 
@@ -1226,6 +1262,11 @@ class TrialRunner:
 
     def cleanup_trials(self):
         self._run_and_catch(self.trial_executor.cleanup)
+
+    def cleanup(self):
+        """Cleanup trials and callbacks."""
+        self.cleanup_trials()
+        self.end_experiment_callbacks()
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""

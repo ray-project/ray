@@ -23,7 +23,7 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
-SUPPORTED_BAZEL = (3, 2, 0)
+SUPPORTED_BAZEL = (3, 4, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -32,6 +32,12 @@ PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
 CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+
+# In automated builds, we do a few adjustments before building. For instance,
+# the bazel environment is set up slightly differently, and symlinks are
+# replaced with junctions in Windows. This variable is set e.g. in our conda
+# feedstock.
+is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
@@ -100,9 +106,9 @@ else:
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
-    setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.",
-                           BUILD_TYPE)
+    setup_spec = SetupSpec(
+        SetupType.RAY_CPP, "ray-cpp",
+        "A subpackage of Ray which provides the Ray C++ API.", BUILD_TYPE)
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
@@ -172,16 +178,16 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
-            "aiohttp",  # noqa
-            "aiohttp_cors",  # noqa
-            "aioredis < 2",  # noqa
-            "colorful",  # noqa
-            "py-spy >= 0.2.0",  # noqa
-            "jsonschema",  # noqa
-            "requests",  # noqa
-            "gpustat",  # noqa
-            "opencensus",  # noqa
-            "prometheus_client >= 0.7.1",  # noqa
+            "aiohttp",
+            "aiohttp_cors",
+            "aioredis < 2",
+            "colorful",
+            "py-spy >= 0.2.0",
+            "jsonschema",
+            "requests",
+            "gpustat",
+            "opencensus",
+            "prometheus_client >= 0.7.1",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
@@ -190,8 +196,11 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
         ],
-        "cpp": ["ray-cpp==" + setup_spec.version]
     }
+
+    if os.getenv("RAY_EXTRA_CPP") == "1":
+        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+
     if sys.version_info >= (3, 7, 0):
         setup_spec.extras["k8s"].append("kopf")
 
@@ -301,6 +310,90 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
+def patch_isdir():
+    """
+    Python on Windows is having hard times at telling if a symlink is
+    a directory - it can "guess" wrong at times, which bites when
+    finding packages. Replace with a fixed version which unwraps links first.
+    """
+    orig_isdir = os.path.isdir
+
+    def fixed_isdir(path):
+        while os.path.islink(path):
+            try:
+                link = os.readlink(path)
+            except OSError:
+                break
+            path = os.path.abspath(os.path.join(os.path.dirname(path), link))
+        return orig_isdir(path)
+
+    os.path.isdir = fixed_isdir
+
+
+def replace_symlinks_with_junctions():
+    """
+    Per default Windows requires admin access to create symlinks, while
+    junctions (which behave similarly) can be created by users.
+
+    This function replaces symlinks (which might be broken when checked
+    out without admin rights) with junctions so Ray can be built both
+    with and without admin access.
+    """
+    assert is_native_windows_or_msys()
+
+    # Update this list if new symlinks are introduced to the source tree
+    _LINKS = {
+        r"ray\new_dashboard": "../../dashboard",
+        r"ray\rllib": "../../rllib",
+        r"ray\streaming": "../../streaming/python/",
+    }
+    root_dir = os.path.dirname(__file__)
+    for link, default in _LINKS.items():
+        path = os.path.join(root_dir, link)
+        try:
+            out = subprocess.check_output(
+                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path))
+        except subprocess.CalledProcessError:
+            out = b""
+        if os.path.basename(path) in out.decode("utf8").splitlines():
+            logger.info(f"'{link}' is already converted to junction point")
+        else:
+            logger.info(f"Converting '{link}' to junction point...")
+            if os.path.isfile(path):
+                with open(path) as inp:
+                    target = inp.read()
+                os.unlink(path)
+            elif os.path.isdir(path):
+                target = default
+                try:
+                    # unlink() works on links as well as on regular files,
+                    # and links to directories are considered directories now
+                    os.unlink(path)
+                except OSError as err:
+                    # On Windows attempt to unlink a regular directory results
+                    # in a PermissionError with errno set to errno.EACCES.
+                    if err.errno != errno.EACCES:
+                        raise
+                    # For regular directories deletion is done with rmdir call.
+                    os.rmdir(path)
+            else:
+                raise ValueError(f"Unexpected type of entry: '{path}'")
+            target = os.path.abspath(
+                os.path.join(os.path.dirname(path), target))
+            logger.info("Setting {} -> {}".format(link, target))
+            subprocess.check_call(
+                f"MKLINK /J '{os.path.basename(link)}' '{target}'",
+                shell=True,
+                cwd=os.path.dirname(path))
+
+
+if is_automated_build and is_native_windows_or_msys():
+    # Automated replacements should only happen in automatic build
+    # contexts for now
+    patch_isdir()
+    replace_symlinks_with_junctions()
+
+
 def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
@@ -321,7 +414,7 @@ def build(build_python, build_java, build_cpp):
         SHELL = bazel_env.get("SHELL")
         if SHELL:
             bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env["BAZEL_SH"]
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
@@ -369,12 +462,32 @@ def build(build_python, build_java, build_cpp):
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
+    bazel_flags = ["--verbose_failures"]
+
+    if not is_automated_build:
+        bazel_precmd_flags = []
+    if is_automated_build:
+        root_dir = os.path.join(
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
+        out_dir = os.path.join(
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+
+        for d in (root_dir, out_dir):
+            if not os.path.exists(d):
+                os.makedirs(d)
+
+        bazel_precmd_flags = [
+            "--output_user_root=" + root_dir, "--output_base=" + out_dir
+        ]
+
+        if is_native_windows_or_msys():
+            bazel_flags.append("--enable_runfiles=false")
+
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
-    bazel_flags = ["--verbose_failures"]
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
@@ -382,7 +495,7 @@ def build(build_python, build_java, build_cpp):
 
     return bazel_invoke(
         subprocess.check_call,
-        ["build"] + bazel_flags + ["--"] + bazel_targets,
+        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env)
 
 

@@ -277,12 +277,25 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
+   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
    data/modin/index.rst
    data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
 
 .. toctree::
    :hidden:
@@ -300,7 +313,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
@@ -320,12 +333,12 @@ Papers
    :maxdepth: -1
    :caption: Ray SGD
 
-   raysgd/raysgd.rst
-   raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_ptl.rst
-   raysgd/raysgd_tune.rst
-   raysgd/raysgd_ref.rst
+   raysgd/v2/raysgd.rst
+   raysgd/v2/user_guide.rst
+   raysgd/v2/examples.rst
+   raysgd/v2/architecture.rst
+   raysgd/v2/api.rst
+   RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
    :hidden:
@@ -336,12 +349,13 @@ Papers
    joblib.rst
    xgboost-ray.rst
    lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst

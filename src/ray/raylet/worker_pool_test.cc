@@ -89,9 +89,9 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnv(const rpc::DeleteRuntimeEnvRequest &request,
-                        const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) {
-    rpc::DeleteRuntimeEnvReply reply;
+  void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+    rpc::DeleteURIsReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
@@ -231,10 +231,6 @@ class WorkerPoolMock : public WorkerPool {
     }
     if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
       PushRestoreWorker(worker);
-      return;
-    }
-    if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
-      PushUtilWorker(worker);
       return;
     }
     PushWorker(worker);
@@ -532,19 +528,19 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // Capped by soft limit of 5.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }

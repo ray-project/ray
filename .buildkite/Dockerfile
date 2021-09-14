@@ -29,11 +29,15 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
-    sudo unzip apt-utils dialog tzdata wget rsync \
+    sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
-    openjdk-8-jre openjdk-8-jdk clang-format-7
-RUN ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+    openjdk-8-jre openjdk-8-jdk clang-format-7 jq \
+    clang-tidy-12 clang-12
+RUN ln -s /usr/bin/clang-format-7 /usr/bin/clang-format && \
+    ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
+    ln -s /usr/bin/clang-12 /usr/bin/clang
+
 RUN curl -o- https://get.docker.com | sh
 
 # System conf for tests
@@ -44,7 +48,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
-    (if [ ${BUILDKITE_PULL_REQUEST} != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
+    (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
 RUN mkdir /ray

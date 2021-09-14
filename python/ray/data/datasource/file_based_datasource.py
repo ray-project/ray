@@ -1,16 +1,36 @@
 import logging
-from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
+import os
+from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
+from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
+
+_PYARROW_FSES_NEEDING_URL_ENCODING = None
+
+
+# We delay creation of the set of pyarrow fses that need URL encoding in order
+# to delay the pyarrow import until we're sure that the user needs pyarrow.
+def _get_pyarrow_fses_needing_url_encoding():
+    import pyarrow as pa
+
+    global _PYARROW_FSES_NEEDING_URL_ENCODING
+
+    if _PYARROW_FSES_NEEDING_URL_ENCODING is None:
+        _PYARROW_FSES_NEEDING_URL_ENCODING = (pa.fs.S3FileSystem, )
+
+    return _PYARROW_FSES_NEEDING_URL_ENCODING
 
 
 @DeveloperAPI
@@ -21,7 +41,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     and tailored to particular file formats. Classes deriving from this class
     must implement _read_file().
 
-    Current subclasses: JSONDatasource, CSVDatasource
+    Current subclasses:
+        JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
     def prepare_read(
@@ -30,9 +51,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             paths: Union[str, List[str]],
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         import pyarrow as pa
         import numpy as np
 
@@ -59,7 +82,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                         builder.add_block(data)
                     else:
                         builder.add(data)
-            return builder.build()
+            block = builder.build()
+            if _block_udf is not None:
+                block = _block_udf(block)
+            return block
 
         read_tasks = []
         for read_paths, file_sizes in zip(
@@ -97,6 +123,62 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_files().")
+
+    def do_write(self,
+                 blocks: List[ObjectRef[Block]],
+                 metadata: List[BlockMetadata],
+                 path: str,
+                 dataset_uuid: str,
+                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 _block_udf: Optional[Callable[[Block], Block]] = None,
+                 **write_args) -> List[ObjectRef[WriteResult]]:
+        """Creates and returns write tasks for a file-based datasource."""
+        path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        path = path[0]
+        filesystem.create_dir(path, recursive=True)
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
+
+        _write_block_to_file = self._write_block
+
+        def write_block(write_path: str, block: Block):
+            logger.debug(f"Writing {write_path} file.")
+            fs = filesystem
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            if _block_udf is not None:
+                block = _block_udf(block)
+            with fs.open_output_stream(write_path) as f:
+                _write_block_to_file(f, BlockAccessor.for_block(block))
+
+        write_block = cached_remote_fn(write_block)
+
+        file_format = self._file_format()
+        write_tasks = []
+        for block_idx, block in enumerate(blocks):
+            write_path = os.path.join(
+                path, f"{dataset_uuid}_{block_idx:06}.{file_format}")
+            write_task = write_block.remote(write_path, block)
+            write_tasks.append(write_task)
+
+        return write_tasks
+
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
+        """Writes a block to a single file, passing all kwargs to the writer.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _write_files().")
+
+    def _file_format(self):
+        """Returns the file format string, to be used as the file extension
+        when writing files.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _file_format().")
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
@@ -143,15 +225,24 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
+        is_url = False
         if filesystem is not None:
             # If we provide a filesystem, _resolve_filesystem_and_path will not
             # slice off the protocol from the provided URI/path when resolved.
+            is_url = _is_url(path)
             path = _unwrap_protocol(path)
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
         if filesystem is None:
             filesystem = resolved_filesystem
         resolved_path = filesystem.normalize_path(resolved_path)
+        if is_url and isinstance(filesystem,
+                                 _get_pyarrow_fses_needing_url_encoding()):
+            # URL-encode the path if it's a URL.
+            # We need to URL-encode paths since pyarrow filesystems appear to
+            # not do any URL-encoding themselves. See
+            # https://github.com/ray-project/ray/issues/18414
+            resolved_path = _encode_url(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
@@ -224,6 +315,16 @@ def _expand_directory(path: str,
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
+
+
+def _is_url(path) -> bool:
+    return urlparse(path).scheme != ""
+
+
+def _encode_url(path):
+    from urllib.parse import quote
+
+    return quote(path)
 
 
 def _unwrap_protocol(path):

@@ -619,11 +619,7 @@ class ActorClass:
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
         if namespace is not None:
-            if not isinstance(namespace, str):
-                raise TypeError(f"namespace must be None or a string, "
-                                f"got: '{type(namespace)}'.")
-            elif namespace == "":
-                raise ValueError("Actor namespace cannot be an empty string.")
+            ray._private.utils.validate_namespace(namespace)
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -726,18 +722,13 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+
         if runtime_env is None:
             runtime_env = meta.runtime_env
-        if runtime_env:
-            if runtime_env.get("working_dir"):
-                raise NotImplementedError(
-                    "Overriding working_dir for actors is not supported. "
-                    "Please use ray.init(runtime_env={'working_dir': ...}) "
-                    "to configure per-job environment instead.")
-            runtime_env_dict = runtime_support.RuntimeEnvDict(
-                runtime_env).get_parsed_dict()
-        else:
-            runtime_env_dict = {}
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
@@ -955,7 +946,7 @@ class ActorHandle:
     def __repr__(self):
         return ("Actor("
                 f"{self._ray_actor_creation_function_descriptor.class_name}, "
-                f"{self._actor_id.hex()}")
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):

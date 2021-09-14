@@ -254,6 +254,9 @@ message GcsNodeInfo {
   int32 metrics_export_port = 9;
   // Timestamp that the node is dead.
   int64 timestamp = 10;
+
+  // The total resources of this node.
+  map<string, double> resources_total = 11;
 }
 
 message HeartbeatTableData {
@@ -459,15 +462,17 @@ message ResourcesData {
   bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 10;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 11;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
-  bool object_pulls_queued = 12;
+  bool object_pulls_queued = 10;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 11;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 12;
+  // The timestamp that normal task resources are measured.
+  int64 resources_normal_task_timestamp = 13;
 }
 
 message ResourceUsageBatchData {

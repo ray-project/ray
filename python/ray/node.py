@@ -323,11 +323,9 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._resource_dir = os.path.join(self._session_dir,
-                                          "runtime_resources")
-        try_to_create_directory(self._resource_dir)
-        import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._resource_dir
+        self._runtime_env_dir = os.path.join(self._session_dir,
+                                             "runtime_resources")
+        try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -693,10 +691,12 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-        for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(
-                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+        redis_log_files = []
+        if self._ray_params.external_addresses is None:
+            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
+            for i in range(self._ray_params.num_redis_shards):
+                redis_log_files.append(
+                    self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(
@@ -808,10 +808,9 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.worker_setup_hook,
-            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
-            self._resource_dir,
+            self._runtime_env_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -879,7 +878,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

@@ -91,12 +91,15 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    try:
+    if not failure:
         ray.get(tail_oid)
-        assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
-        assert failure
+    else:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
+        with pytest.raises(ray.exceptions.OwnerDiedError):
+            ray.get(tail_oid)
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -233,8 +236,11 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
         ray.get(outer_oid)
         _fill_object_store_and_get(inner_oid)
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     inner_oid_bytes = inner_oid.binary()
@@ -286,6 +292,10 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
+    if failure:
+        with pytest.raises(ray.exceptions.OwnerDiedError):
+            ray.get(final_oid)
+
 
 @pytest.mark.parametrize("failure", [False, True])
 def test_borrowed_id_failure(one_worker_100MiB, failure):
@@ -314,7 +324,8 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
         def resolve_ref(self):
             assert self.ref is not None
             if failure:
-                with pytest.raises(ray.exceptions.ObjectLostError):
+                with pytest.raises(
+                        ray.exceptions.ReferenceCountingAssertionError):
                     ray.get(self.ref)
             else:
                 ray.get(self.ref)
@@ -572,6 +583,44 @@ def test_inlined_nested_refs(ray_start_cluster, inline_args):
     x = foo.remote(nested_ref)
     del nested_ref
     ray.get(x)
+
+
+# https://github.com/ray-project/ray/issues/17553
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_return_nested_ids(shutdown_only, inline_args):
+    config = dict()
+    if inline_args:
+        config["max_direct_call_object_size"] = 100 * 1024 * 1024
+    else:
+        config["max_direct_call_object_size"] = 0
+    ray.init(object_store_memory=100 * 1024 * 1024, _system_config=config)
+
+    class Nested:
+        def __init__(self, blocks):
+            self._blocks = blocks
+
+    @ray.remote
+    def echo(fn):
+        return fn()
+
+    @ray.remote
+    def create_nested():
+        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
+        return Nested(refs)
+
+    @ray.remote
+    def test():
+        ref = create_nested.remote()
+        result1 = ray.get(ref)
+        del ref
+        result = echo.remote(lambda: result1)  # noqa
+        del result1
+
+        time.sleep(5)
+        block = ray.get(result)._blocks[0]
+        print(ray.get(block))
+
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

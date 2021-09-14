@@ -164,7 +164,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
-    fill_node_type_max_workers(with_defaults)
+    fill_node_type_min_max_workers(with_defaults)
     return with_defaults
 
 
@@ -264,27 +264,28 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_max_workers(config):
+def fill_node_type_min_max_workers(config):
     """Sets default per-node max workers to global max_workers.
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
+    Sets default per-node min workers to zero.
+    Also sets default max_workers for the head node to zero.
     """
     assert "max_workers" in config, "Global max workers should be set."
     node_types = config["available_node_types"]
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
 
-        # Log a warning if head node type's max_workers is absent.
-        if (node_type_name == config["head_node_type"]
-                and "max_workers" not in node_type_data):
-            cli_logger.warning(
-                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
-                    node_type=node_type_name,
-                    max_workers=config["max_workers"],
-                    version=ray.__version__))
-
-        # The key part of this function:
-        node_type_data.setdefault("max_workers", config["max_workers"])
+        node_type_data.setdefault("min_workers", 0)
+        if "max_workers" not in node_type_data:
+            if node_type_name == config["head_node_type"]:
+                logger.info("setting max workers for head node type to 0")
+                node_type_data.setdefault("max_workers", 0)
+            else:
+                global_max_workers = config["max_workers"]
+                logger.info(f"setting max workers for {node_type_name} to "
+                            f"{global_max_workers}")
+                node_type_data.setdefault("max_workers", global_max_workers)
 
 
 def with_head_node_ip(cmds, head_ip=None):
@@ -500,6 +501,11 @@ def format_resource_demand_summary(
     for bundle, count in resource_demand:
         (pg_filtered_bundle,
          using_placement_group) = filter_placement_group_from_bundle(bundle)
+
+        # bundle is a special keyword for placement group ready tasks
+        # do not report the demand for this.
+        if "bundle" in pg_filtered_bundle.keys():
+            continue
 
         bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
         if using_placement_group:

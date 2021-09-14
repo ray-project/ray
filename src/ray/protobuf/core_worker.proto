@@ -125,6 +125,8 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
+  // Whether the result contains an application-level error (exception).
+  bool is_application_level_error = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -181,22 +183,26 @@ message WaitForActorOutOfScopeRequest {
 message WaitForActorOutOfScopeReply {
 }
 
-message AddObjectLocationOwnerRequest {
+message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  bytes node_id = 3;
+  bytes node_id = 2;
+  repeated ObjectLocationStateUpdate object_location_states = 3;
 }
 
-message AddObjectLocationOwnerReply {
+message UpdateObjectLocationBatchReply {
 }
 
-message RemoveObjectLocationOwnerRequest {
-  bytes intended_worker_id = 1;
-  bytes object_id = 2;
-  bytes node_id = 3;
+enum ObjectLocationState {
+  // The latest object state.
+  // Object is added.
+  ADDED = 0;
+  // Object is removed.
+  REMOVED = 1;
 }
 
-message RemoveObjectLocationOwnerReply {
+message ObjectLocationStateUpdate {
+  bytes object_id = 1;
+  ObjectLocationState state = 2;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -272,11 +278,7 @@ message PlasmaObjectReadyReply {
 }
 
 message SpillObjectsRequest {
-  // The IDs of objects to be spilled.
-  repeated bytes object_ids_to_spill = 1;
-  // The owner addresses of the objects to be spilled. Must be in the same order as
-  // object_ids_to_spill.
-  repeated Address owner_addresses = 2;
+  repeated ObjectReference object_refs_to_spill = 1;
 }
 
 message SpillObjectsReply {
@@ -328,14 +330,6 @@ message ExitReply {
   bool success = 1;
 }
 
-message RunOnUtilWorkerRequest {
-  string request = 1;
-  repeated string args = 2;
-}
-
-message RunOnUtilWorkerReply {
-}
-
 message AssignObjectOwnerRequest {
   // The ID of added object.
   bytes object_id = 1;
@@ -373,12 +367,10 @@ service CoreWorkerService {
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
-  // Add object location to the ownership-based object directory.
-  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
-      returns (AddObjectLocationOwnerReply);
-  // Remove object location from the ownership-based object directory.
-  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
-      returns (RemoveObjectLocationOwnerReply);
+  // Update the batched object location information to the ownership-based object
+  // directory.
+  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
+      returns (UpdateObjectLocationBatchReply);
   // Get object locations from the ownership-based object directory.
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
@@ -405,8 +397,6 @@ service CoreWorkerService {
   rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-  // Run a request on io worker
-  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.

@@ -8,6 +8,7 @@ build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 build:linux --cxxopt="-std=c++14"
+build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"
 build:macos --cxxopt="-std=c++14"
 build:clang-cl --cxxopt="-std=c++14"
 build:msvc --cxxopt="/std:c++14"
@@ -80,6 +81,7 @@ build:manylinux2010 --linkopt="-lrt"
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -DTHREAD_SANITIZER
+build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
@@ -93,6 +95,9 @@ build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
+# https://github.com/google/sanitizers/issues/1017
+build:asan-clang --copt -mllvm
+build:asan-clang --copt -asan-use-private-alias=1
 
 build:asan-build --strip=never
 build:asan-build -c dbg

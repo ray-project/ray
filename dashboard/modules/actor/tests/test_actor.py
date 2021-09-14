@@ -274,7 +274,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
-                "state", "address", "timestamp", "pid", "creationTaskException"
+                "state", "address", "timestamp", "pid",
+                "creationTaskException", "rayNamespace"
             }
         else:
             raise Exception("Unknown state: {}".format(

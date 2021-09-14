@@ -44,6 +44,10 @@ message RequestWorkerLeaseReply {
   bool runtime_env_setup_failed = 5;
   // PID of the worker process.
   uint32 worker_pid = 6;
+  // Whether the request was rejected because of insufficient resources.
+  bool rejected = 7;
+  // The (normal task) resources data to be carried by the Reply.
+  ResourcesData resources_data = 8;
 }
 
 message PrepareBundleResourcesRequest {

@@ -1,10 +1,8 @@
 import ray
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
-
-import numpy as np
 
 from ray.actor import ActorClass
 from ray.serve.config import BackendConfig, ReplicaConfig
@@ -19,7 +17,6 @@ Duration = float
 
 @dataclass
 class EndpointInfo:
-    http_methods: List[str]
     python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
 
@@ -44,38 +41,30 @@ class BackendInfo:
         self.end_time_ms = end_time_ms
 
 
-class TrafficPolicy:
-    def __init__(self, traffic_dict: Dict[str, float]) -> None:
-        self.traffic_dict: Dict[str, float] = dict()
-        self.shadow_dict: Dict[str, float] = dict()
-        self.set_traffic_dict(traffic_dict)
+@dataclass
+class ReplicaName:
+    deployment_tag: BackendTag
+    replica_suffix: str
+    replica_tag: ReplicaTag = ""
+    delimiter: str = "#"
 
-    @property
-    def backend_tags(self):
-        return set(self.traffic_dict.keys()).union(
-            set(self.shadow_dict.keys()))
+    def __init__(self, deployment_tag: str, replica_suffix: str):
+        self.deployment_tag = deployment_tag
+        self.replica_suffix = replica_suffix
+        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
 
-    def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
-        prob = 0
-        for backend, weight in traffic_dict.items():
-            if weight < 0:
-                raise ValueError(
-                    "Attempted to assign a weight of {} to backend '{}'. "
-                    "Weights cannot be negative.".format(weight, backend))
-            prob += weight
+    @classmethod
+    def from_str(self, replica_name):
+        parsed = replica_name.split(self.delimiter)
+        assert len(parsed) == 2, (
+            f"Given replica name {replica_name} didn't match pattern, please "
+            f"ensure it has exactly two fields with delimiter {self.delimiter}"
+        )
+        self.deployment_tag = parsed[0]
+        self.replica_suffix = parsed[1]
+        self.replica_tag = replica_name
 
-        # These weights will later be plugged into np.random.choice, which
-        # uses a tolerance of 1e-8.
-        if not np.isclose(prob, 1, atol=1e-8):
-            raise ValueError("Traffic dictionary weights must sum to 1, "
-                             "currently they sum to {}".format(prob))
-        self.traffic_dict = traffic_dict
+        return self
 
-    def set_shadow(self, backend: str, proportion: float):
-        if proportion == 0 and backend in self.shadow_dict:
-            del self.shadow_dict[backend]
-        else:
-            self.shadow_dict[backend] = proportion
-
-    def __repr__(self) -> str:
-        return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
+    def __str__(self):
+        return self.replica_tag

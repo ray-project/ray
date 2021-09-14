@@ -20,36 +20,26 @@ package ray.rpc;
 import "src/ray/protobuf/agent_manager.proto";
 
 message CreateRuntimeEnvRequest {
-  // Runtime env description.
   string serialized_runtime_env = 1;
-  // Job id.
   bytes job_id = 2;
 }
 
 message CreateRuntimeEnvReply {
-  // The status of runtime env creation.
   AgentRpcStatus status = 1;
-  // The error message.
   string error_message = 2;
-  // Runtime env context.
   string serialized_runtime_env_context = 3;
 }
 
-message DeleteRuntimeEnvRequest {
-  // Runtime env description.
-  string serialized_runtime_env = 1;
+message DeleteURIsRequest {
+  repeated string uris = 1;
 }
 
-message DeleteRuntimeEnvReply {
-  // The status of runtime env deletion.
+message DeleteURIsReply {
   AgentRpcStatus status = 1;
-  // The error message.
   string error_message = 2;
 }
 
 service RuntimeEnvService {
-  // Create runtime env.
   rpc CreateRuntimeEnv(CreateRuntimeEnvRequest) returns (CreateRuntimeEnvReply);
-  // Delete runtime env.
-  rpc DeleteRuntimeEnv(DeleteRuntimeEnvRequest) returns (DeleteRuntimeEnvReply);
+  rpc DeleteURIs(DeleteURIsRequest) returns (DeleteURIsReply);
 }

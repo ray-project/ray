@@ -215,32 +215,39 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+def getenv_default(key: str, default: Optional[str] = None):
+    """Return environment variable with default value"""
+    # If the environment variable is set but "", still return default
+    return os.environ.get(key, None) or default
+
+
 GLOBAL_CONFIG = {
-    "ANYSCALE_USER": os.environ.get("ANYSCALE_USER",
+    "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
-    "ANYSCALE_HOST": os.environ.get("ANYSCALE_HOST",
+    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
                                     "https://beta.anyscale.com"),
-    "ANYSCALE_CLI_TOKEN": os.environ.get("ANYSCALE_CLI_TOKEN"),
-    "ANYSCALE_CLOUD_ID": os.environ.get(
+    "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
+    "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
         "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
-    "ANYSCALE_PROJECT": os.environ.get("ANYSCALE_PROJECT", ""),
-    "RAY_VERSION": os.environ.get("RAY_VERSION", "2.0.0.dev0"),
-    "RAY_REPO": os.environ.get("RAY_REPO",
+    "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
+    "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
+    "RAY_REPO": getenv_default("RAY_REPO",
                                "https://github.com/ray-project/ray.git"),
-    "RAY_BRANCH": os.environ.get("RAY_BRANCH", "master"),
-    "RELEASE_AWS_BUCKET": os.environ.get("RELEASE_AWS_BUCKET",
+    "RAY_BRANCH": getenv_default("RAY_BRANCH", "master"),
+    "RELEASE_AWS_BUCKET": getenv_default("RELEASE_AWS_BUCKET",
                                          "ray-release-automation-results"),
-    "RELEASE_AWS_LOCATION": os.environ.get("RELEASE_AWS_LOCATION", "dev"),
-    "RELEASE_AWS_DB_NAME": os.environ.get("RELEASE_AWS_DB_NAME", "ray_ci"),
-    "RELEASE_AWS_DB_TABLE": os.environ.get("RELEASE_AWS_DB_TABLE",
+    "RELEASE_AWS_LOCATION": getenv_default("RELEASE_AWS_LOCATION", "dev"),
+    "RELEASE_AWS_DB_NAME": getenv_default("RELEASE_AWS_DB_NAME", "ray_ci"),
+    "RELEASE_AWS_DB_TABLE": getenv_default("RELEASE_AWS_DB_TABLE",
                                            "release_test_result"),
-    "RELEASE_AWS_DB_SECRET_ARN": os.environ.get(
+    "RELEASE_AWS_DB_SECRET_ARN": getenv_default(
         "RELEASE_AWS_DB_SECRET_ARN",
         "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
         "rds-db-credentials/cluster-7RB7EYTTBK2EUC3MMTONYRBJLE/ray_ci-MQN2hh",
     ),
-    "RELEASE_AWS_DB_RESOURCE_ARN": os.environ.get(
+    "RELEASE_AWS_DB_RESOURCE_ARN": getenv_default(
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
@@ -268,6 +275,10 @@ def maybe_fetch_api_token():
             SecretId="arn:aws:secretsmanager:us-west-2:029272617770:secret:"
             "release-automation/"
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
+
+
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
 
 
 class ReleaseTestTimeoutError(RuntimeError):
@@ -374,11 +385,21 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        raise RuntimeError(f"Could not populate wheels sanity check command: "
+                           f"Commit hash missing. Got: {commit}")
+
+    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -510,6 +531,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         schema=schema,
         sql=sql,
     )
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -869,8 +912,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1186,6 +1233,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1445,7 +1493,8 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1460,6 +1509,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
@@ -1677,6 +1727,8 @@ def run_test_config(
 
     logger.info(f"Final results: {result}")
 
+    log_results_and_artifacts(result)
+
     shutil.rmtree(temp_dir)
 
     return result
@@ -1858,6 +1910,9 @@ if __name__ == "__main__":
             raise RuntimeError(f"Could not find wheels for "
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
+
+        # RAY_COMMIT is set by find_ray_wheels
+        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 

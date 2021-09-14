@@ -3,10 +3,10 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
-    name = "mlflow_fashion_mnist",
+    name = "mlflow_fashion_mnist_example",
     size = "medium",
-    main = "examples/mlflow_fashion_mnist.py",
-    srcs = ["examples/mlflow_fashion_mnist.py"],
+    main = "examples/mlflow_fashion_mnist_example.py",
+    srcs = ["examples/mlflow_fashion_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
@@ -25,10 +25,10 @@ py_test(
 )
 
 py_test(
-    name = "tune_linear",
+    name = "tune_linear_example",
     size = "medium",
-    main = "examples/tune_linear.py",
-    srcs = ["examples/tune_linear.py"],
+    main = "examples/tune_linear_example.py",
+    srcs = ["examples/tune_linear_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
@@ -57,7 +57,7 @@ py_test(
 
 py_test(
     name = "test_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]

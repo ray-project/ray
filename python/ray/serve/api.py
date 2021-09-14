@@ -7,38 +7,48 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
-                    Type, Union, overload)
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
+                    overload)
 from weakref import WeakValueDictionary
 
+from fastapi import FastAPI, APIRouter
 from starlette.requests import Request
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
 
+import ray
 from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
+from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger, LoggingContext)
-
-import ray
-
-if TYPE_CHECKING:
-    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
 
 _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
+
+
+def _get_controller_namespace(detached):
+    controller_namespace = ray.get_runtime_context().namespace
+
+    if not detached:
+        return controller_namespace
+
+    # Start controller in "serve" namespace if detached and currently
+    # in anonymous namespace.
+    if _UUID_RE.fullmatch(controller_namespace) is not None:
+        controller_namespace = "serve"
+    return controller_namespace
 
 
 def _get_global_client():
@@ -94,6 +104,7 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
+        self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -110,7 +121,7 @@ class Client:
 
     @property
     def root_url(self):
-        return self._http_config.root_url
+        return self._root_url
 
     def __del__(self):
         if not self._detached:
@@ -138,7 +149,10 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    ray.get_actor(self._controller_name)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached)
+                    ray.get_actor(
+                        self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -159,7 +173,15 @@ class Client:
 
         ready, _ = ray.wait(
             [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-        return len(ready) == 1
+        # AsyncGoal could return exception if set, ray.get()
+        # retrieves and throws it to user code explicitly.
+        if len(ready) == 1:
+            async_goal_exception = ray.get(ready)[0]
+            if async_goal_exception is not None:
+                raise async_goal_exception
+            return True
+        else:
+            return False
 
     @_ensure_connected
     def deploy(self,
@@ -183,10 +205,10 @@ class Client:
             ray_actor_options["runtime_env"].setdefault(
                 "uris", curr_job_env.get("uris"))
         else:
-            ray_actor_options[
-                "runtime_env"] = ray.get_runtime_context().runtime_env
-            if "working_dir" in ray_actor_options["runtime_env"]:
-                del ray_actor_options["runtime_env"]["working_dir"]
+            ray_actor_options["runtime_env"] = curr_job_env
+
+        if "working_dir" in ray_actor_options["runtime_env"]:
+            del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
@@ -271,14 +293,22 @@ class Client:
         if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        if asyncio.get_event_loop().is_running() and sync:
+        try:
+            asyncio_loop_running = asyncio.get_event_loop().is_running()
+        except RuntimeError as ex:
+            if "There is no current event loop in thread" in str(ex):
+                asyncio_loop_running = False
+            else:
+                raise ex
+
+        if asyncio_loop_running and sync:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
                 "serve/http-servehandle.html#sync-and-async-handles")
 
-        if not asyncio.get_event_loop().is_running() and not sync:
+        if not asyncio_loop_running and not sync:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "
@@ -332,9 +362,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown(). This should *not* be set in
-          an anonymous Ray namespace because you will not be able to reconnect
-          to the instance after the script exits.
+          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -369,22 +397,12 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    current_namespace = ray.get_runtime_context().namespace
-    if detached:
-        if _UUID_RE.fullmatch(current_namespace) is not None:
-            raise RuntimeError(
-                "serve.start(detached=True) should not be called in anonymous "
-                "Ray namespaces because you won't be able to reconnect to the "
-                "Serve instance after the script exits. If you want to start "
-                "a long-lived Serve instance, provide a namespace when "
-                "connecting to Ray. See the documentation for more details: "
-                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
-            )
+    controller_namespace = _get_controller_namespace(detached)
 
     try:
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
-                    f"'{current_namespace}'.")
+                    f"'{controller_namespace}'.")
         return client
     except RayServeException:
         pass
@@ -410,6 +428,7 @@ def start(
         resources={
             get_current_node_resource_key(): 0.01
         },
+        namespace=controller_namespace,
     ).remote(
         controller_name,
         http_options,
@@ -430,7 +449,7 @@ def start(
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
     logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
-                f"namespace '{current_namespace}'.")
+                f"namespace '{controller_namespace}'.")
     return client
 
 
@@ -453,12 +472,15 @@ def _connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
+        controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = _get_controller_namespace(detached=False)
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name)
+        controller = ray.get_actor(
+            controller_name, namespace=controller_namespace)
     except ValueError:
         raise RayServeException("There is no "
                                 "instance running on this Ray cluster. Please "
@@ -506,12 +528,12 @@ def get_replica_context() -> ReplicaContext:
 
 
 @PublicAPI(stability="beta")
-def ingress(app: Union["FastAPI", "APIRouter"]):
-    """Mark a FastAPI application ingress for Serve.
+def ingress(app: Union["FastAPI", "APIRouter", Callable]):
+    """Mark an ASGI application ingress for Serve.
 
     Args:
-        app(FastAPI,APIRouter): the app or router object serve as ingress
-            for this deployment.
+        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
+            as ingress for this backend. It can be any ASGI compatible object.
 
     Example:
     >>> app = FastAPI()
@@ -532,7 +554,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        make_fastapi_class_based_view(app, cls)
+        if isinstance(app, (FastAPI, APIRouter)):
+            make_fastapi_class_based_view(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
         # this ingress deployment. We don't use copy.copy here to avoid
@@ -540,7 +563,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class FastAPIWrapper(cls):
+        class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -577,8 +600,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                     asyncio.get_event_loop().run_until_complete(
                         self._serve_asgi_lifespan.shutdown())
 
-        FastAPIWrapper.__name__ = cls.__name__
-        return FastAPIWrapper
+        ASGIAppWrapper.__name__ = cls.__name__
+        return ASGIAppWrapper
 
     return decorator
 

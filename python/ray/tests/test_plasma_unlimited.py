@@ -177,7 +177,7 @@ def test_fd_reuse_no_memory_corruption(shutdown_only):
     @ray.remote
     class Actor:
         def produce(self, i):
-            s = int(random.random() * 200)
+            s = random.randrange(1, 200)
             z = np.ones(s * 1024 * 1024)
             z[0] = i
             return z

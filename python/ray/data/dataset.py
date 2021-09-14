@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
@@ -24,7 +23,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, WriteTask
+from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
+                                 NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -275,7 +275,7 @@ class Dataset(Generic[T]):
         better performance (you can implement filter by dropping records).
 
         Examples:
-            >>> ds.flat_map(lambda x: x % 2 == 0)
+            >>> ds.filter(lambda x: x % 2 == 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -570,8 +570,6 @@ class Dataset(Generic[T]):
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
-        Time complexity: O(1)
-
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
@@ -786,11 +784,11 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_parquet(self,
+                      path: str,
+                      *,
+                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                      **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -808,33 +806,22 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_parquet_args: Options to pass to
+                pyarrow.parquet.write_table(), which is used to write out each
+                block to a file.
         """
-        import pyarrow.parquet as pq
+        self.write_datasource(
+            ParquetDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_parquet_args)
 
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def parquet_write(write_path, block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow()
-            with pq.ParquetWriter(write_path, table.schema) as writer:
-                writer.write_table(table)
-
-        refs = [
-            parquet_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.parquet"),
-                block) for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
-
-    def write_json(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_json(self,
+                   path: str,
+                   *,
+                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                   **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -852,33 +839,23 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            pandas_json_args: These args will be passed to
+                pandas.DataFrame.to_json(), which we use under the hood to
+                write out each Datasets block. These
+                are dict(orient="records", lines=True) by default.
         """
+        self.write_datasource(
+            JSONDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **pandas_json_args)
 
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def json_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_json(write_path, orient="records", lines=True)
-
-        refs = [
-            json_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.json"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
-
-    def write_csv(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+    def write_csv(self,
+                  path: str,
+                  *,
+                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                  **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -896,28 +873,14 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def csv_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_csv(
-                write_path, mode="a", header=True, index=False)
-
-        refs = [
-            csv_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.csv"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            CSVDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            **arrow_csv_args)
 
     def write_numpy(
             self,
@@ -942,23 +905,11 @@ class Dataset(Generic[T]):
                 files will be written to.
             filesystem: The filesystem implementation to write to.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def numpy_write(write_path: str, block: Block):
-            np.save(open(write_path, "wb"), block)
-
-        refs = [
-            numpy_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.npy"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            NumpyDatasource(),
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
@@ -974,19 +925,15 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks,
-                                               self._blocks.get_metadata(),
-                                               **write_args)
-        progress = ProgressBar("Write Progress", len(write_tasks))
-        remote_write = cached_remote_fn(_remote_write)
-
-        write_task_outputs = [remote_write.remote(w) for w in write_tasks]
+        write_results = datasource.do_write(self._blocks,
+                                            self._blocks.get_metadata(),
+                                            **write_args)
+        progress = ProgressBar("Write Progress", len(write_results))
         try:
-            progress.block_until_complete(write_task_outputs)
-            datasource.on_write_complete(write_tasks,
-                                         ray.get(write_task_outputs))
+            progress.block_until_complete(write_results)
+            datasource.on_write_complete(ray.get(write_results))
         except Exception as e:
-            datasource.on_write_failed(write_tasks, e)
+            datasource.on_write_failed(write_results, e)
             raise
         finally:
             progress.close()
@@ -1076,14 +1023,24 @@ class Dataset(Generic[T]):
                     f"is invalid. Supported batch type: {BatchType}")
 
         batcher = Batcher(batch_size=batch_size)
-        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
-            block_window = list(block_window)
-            ray.wait(block_window, num_returns=1, fetch_local=True)
-            block = ray.get(block_window[0])
+
+        def batch_block(block: ObjectRef[Block]):
+            block = ray.get(block)
             batcher.add(block)
             while batcher.has_batch():
                 yield format_batch(batcher.next_batch(), batch_format)
 
+        block_window = []  # Handle empty sliding window gracefully.
+        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
+            block_window = list(block_window)
+            ray.wait(block_window, num_returns=1, fetch_local=True)
+            yield from batch_block(block_window[0])
+
+        # Consume remainder of final block window.
+        for block in block_window[1:]:
+            yield from batch_block(block)
+
+        # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
             yield format_batch(batcher.next_batch(), batch_format)
 
@@ -1236,6 +1193,8 @@ class Dataset(Generic[T]):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
+                # TODO(Clark): Support batches containing our extension array
+                # TensorArray.
                 yield batch.values, target_col.values
 
         return tf.data.Dataset.from_generator(
@@ -1289,14 +1248,29 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
+        This works by first converting this dataset into a distributed set of
+        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
+        Then the individual dataframes are used to create the modin DataFrame
+        using
+        ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
+        from modin.distributed.dataframe.pandas.partitions import (
+            from_partitions)
+        pd_objs = self.to_pandas()
+        return from_partitions(pd_objs, axis=0)
+
+    def to_spark(self,
+                 spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -1304,7 +1278,14 @@ class Dataset(Generic[T]):
         Returns:
             A Spark dataframe created from this dataset.
         """
-        raise NotImplementedError  # P2
+        import raydp
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_blocks()
+        ]
+        return raydp.spark.ray_dataset_to_spark_dataframe(
+            spark, self.schema(), self.get_blocks(), locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -1321,6 +1302,22 @@ class Dataset(Generic[T]):
 
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
+
+    def to_numpy(self) -> List[ObjectRef[np.ndarray]]:
+        """Convert this dataset into a distributed set of NumPy ndarrays.
+
+        This is only supported for datasets convertible to NumPy ndarrays.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A list of remote NumPy ndarrays created from this dataset.
+        """
+
+        block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        return [block_to_ndarray.remote(block) for block in self._blocks]
 
     def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
@@ -1577,13 +1574,14 @@ def _get_sum(block: Block) -> int:
     return sum(block.iter_rows())
 
 
-def _remote_write(task: WriteTask) -> Any:
-    return task()
-
-
 def _block_to_df(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
+
+
+def _block_to_ndarray(block: Block):
+    block = BlockAccessor.for_block(block)
+    return block.to_numpy()
 
 
 def _block_to_arrow(block: Block):

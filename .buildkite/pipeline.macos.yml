@@ -11,8 +11,6 @@ common: &common
     LANG: en_US.UTF-8
 
 prelude_commands: &prelude_commands |-
-  # Warm up ebs to avoid cold start
-  dd if=/dev/sda1 of=/dev/null
   ./ci/travis/upload_build_info.sh
   (which bazel && bazel clean) || true;
   . ./ci/travis/ci.sh init && source ~/.zshrc

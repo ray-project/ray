@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ray.data.impl.block_builder import BlockBuilder
 
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
 
@@ -16,7 +17,7 @@ T = TypeVar("T")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor``, ``ArrowBlockAccessor``, and ``TensorBlockAccessor``.
-Block = Union[List[T], np.ndarray, "pyarrow.Table"]
+Block = Union[List[T], np.ndarray, "pyarrow.Table", bytes]
 
 
 @DeveloperAPI
@@ -84,6 +85,10 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
+    def to_numpy(self) -> np.ndarray:
+        """Convert this block into a NumPy ndarray."""
+        raise NotImplementedError
+
     def to_arrow(self) -> Union["pyarrow.Table", "pyarrow.Tensor"]:
         """Convert this block into an Arrow table or tensor."""
         raise NotImplementedError
@@ -112,12 +117,17 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
+        _check_pyarrow_version()
         import pyarrow
 
         if isinstance(block, pyarrow.Table):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
+        elif isinstance(block, bytes):
+            from ray.data.impl.arrow_block import \
+                ArrowBlockAccessor
+            return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data.impl.simple_block import \
                 SimpleBlockAccessor

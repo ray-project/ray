@@ -61,9 +61,10 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to record the creation sites of object references. This adds more
-/// information to `ray memstat`, but introduces a little extra overhead when
-/// creating object references.
-RAY_CONFIG(bool, record_ref_creation_sites, true)
+/// information to `ray memory`, but introduces a little extra overhead when
+/// creating object references (e.g. 5~10 microsec per call in Python).
+/// TODO: maybe group this under RAY_DEBUG.
+RAY_CONFIG(bool, record_ref_creation_sites, false)
 
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -360,7 +361,7 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 1.0)
+RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -401,6 +402,9 @@ RAY_CONFIG(int, publish_batch_size, 5000)
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 
+/// The maximum batch size for OBOD report.
+RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
+
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
@@ -410,9 +414,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_task_scheduling_enabled,
-           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
+           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -449,6 +453,11 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 
 /// grpc keepalive sent interval
+/// This is only configured in GCS server now.
+/// NOTE: It is not ideal for other components because
+/// they have a failure model that considers network failures as component failures
+/// and this configuration break that assumption. We should apply to every other component
+/// after we change this failure assumption from code.
 RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 
 /// grpc keepalive timeout
@@ -456,3 +465,6 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
+
+/// Event severity threshold value
+RAY_CONFIG(std::string, event_level, "warning")

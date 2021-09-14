@@ -14,6 +14,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
+from ray.tune.utils import flatten_dict
 
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
@@ -236,7 +237,7 @@ class HyperOptSearch(Searcher):
             _lookup(config, self._space, k)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)
@@ -284,6 +285,10 @@ class HyperOptSearch(Searcher):
 
         # Taken from HyperOpt.base.evaluate
         config = hpo.base.spec_from_misc(new_trial["misc"])
+
+        # We have to flatten nested spaces here so parameter names match
+        config = flatten_dict(config, flatten_list=True)
+
         ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
         memo = self.domain.memo_from_config(config)
         hpo.utils.use_obj_for_literal_in_memo(self.domain.expr, ctrl,
@@ -336,7 +341,18 @@ class HyperOptSearch(Searcher):
         self._hpopt_trials.refresh()
 
     def _to_hyperopt_result(self, result: Dict) -> Dict:
-        return {"loss": self.metric_op * result[self.metric], "status": "ok"}
+        try:
+            return {
+                "loss": self.metric_op * result[self.metric],
+                "status": "ok"
+            }
+        except KeyError as e:
+            raise RuntimeError(
+                f"Hyperopt expected to see the metric `{self.metric}` in the "
+                f"last result, but it was not found. To fix this, make "
+                f"sure your call to `tune.report` or your return value of "
+                f"your trainable class `step()` contains the above metric "
+                f"as a key.") from e
 
     def _get_hyperopt_trial(self, trial_id: str) -> Optional[Dict]:
         if trial_id not in self._live_trial_mapping:

@@ -77,10 +77,12 @@ cdef class BaseID:
 cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
+        c_string owner_addr
         # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
+        c_string call_site_data
 
     cdef CObjectID native(self)
 

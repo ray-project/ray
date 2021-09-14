@@ -141,12 +141,15 @@ void ParallelRunning(int nthreads, int loop_times,
   }
 }
 
-void ReadEventFromFile(std::vector<std::string> &vc, std::string log_file) {
+void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file,
+                         std::string filter = "") {
   std::string line;
   std::ifstream read_file;
   read_file.open(log_file, std::ios::binary);
   while (std::getline(read_file, line)) {
-    vc.push_back(line);
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
   }
   read_file.close();
 }
@@ -223,7 +226,7 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   }
 
   std::vector<std::string> vc;
-  ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
+  ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
 
   EXPECT_EQ((int)vc.size(), 1000);
 
@@ -236,6 +239,55 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   }
 
   boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
+  ray::RayEventContext::Instance().ResetEventContext();
+  TestEventReporter::event_list.clear();
+  ray::EventManager::Instance().ClearReporters();
+  ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RAY_EVENT(INFO, "label 0") << "send message 0";
+
+  std::thread private_thread = std::thread(std::bind([&]() {
+    auto custom_fields = std::unordered_map<std::string, std::string>();
+    custom_fields.emplace("node_id", "node 1");
+    custom_fields.emplace("job_id", "job 1");
+    custom_fields.emplace("task_id", "task 1");
+    ray::RayEventContext::Instance().SetEventContext(
+        rpc::Event_SourceType::Event_SourceType_GCS, custom_fields);
+    RAY_EVENT(INFO, "label 2") << "send message 2";
+  }));
+
+  private_thread.join();
+
+  RAY_EVENT(INFO, "label 1") << "send message 1";
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+
+  EXPECT_EQ(result.size(), 3);
+  CheckEventDetail(result[0], "", "", "", "COMMON", "INFO", "label 0", "send message 0");
+  CheckEventDetail(result[1], "job 1", "node 1", "task 1", "GCS", "INFO", "label 2",
+                   "send message 2");
+  CheckEventDetail(result[2], "job 1", "node 1", "task 1", "GCS", "INFO", "label 1",
+                   "send message 1");
+
+  ray::RayEventContext::Instance().ResetEventContext();
+  TestEventReporter::event_list.clear();
+
+  std::thread private_thread_2 = std::thread(std::bind([&]() {
+    ray::RayEventContext::Instance().SetSourceType(
+        rpc::Event_SourceType::Event_SourceType_RAYLET);
+    ray::RayEventContext::Instance().SetCustomField("job_id", "job 1");
+    RAY_EVENT(INFO, "label 2") << "send message 2";
+  }));
+
+  private_thread_2.join();
+
+  RAY_EVENT(INFO, "label 3") << "send message 3";
+
+  EXPECT_EQ(result.size(), 2);
+  CheckEventDetail(result[0], "job 1", "", "", "RAYLET", "INFO", "label 2",
+                   "send message 2");
+  CheckEventDetail(result[1], "", "", "", "COMMON", "INFO", "label 3", "send message 3");
 }
 
 TEST(EVENT_TEST, LOG_MULTI_THREAD) {
@@ -262,7 +314,7 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
       });
 
   std::vector<std::string> vc;
-  ReadEventFromFile(vc, log_dir + "/event_GCS.log");
+  ReadContentFromFile(vc, log_dir + "/event_GCS.log");
 
   std::set<std::string> label_set;
   std::set<std::string> message_set;
@@ -333,7 +385,7 @@ TEST(EVENT_TEST, WITH_FIELD) {
       << "send message 1";
 
   std::vector<std::string> vc;
-  ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
+  ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
 
   EXPECT_EQ((int)vc.size(), 1);
 
@@ -360,14 +412,17 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
-  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+  ray::RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields);
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
   RAY_CHECK(1 > 0) << "correct test case";
 
   ASSERT_DEATH({ RAY_CHECK(1 < 0) << "incorrect test case"; }, "");
 
   std::vector<std::string> vc;
-  ReadEventFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
   json out_custom_fields;
   rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
 
@@ -381,9 +436,164 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
   boost::filesystem::remove_all(log_dir.c_str());
 }
 
+TEST(EVENT_TEST, TEST_RAY_EVENT_INIT) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  auto custom_fields = std::unordered_map<std::string, std::string>();
+  custom_fields.emplace("node_id", "node 1");
+  custom_fields.emplace("job_id", "job 1");
+  custom_fields.emplace("task_id", "task 1");
+  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+
+  RAY_EVENT(FATAL, "label") << "test error event";
+
+  std::vector<std::string> vc;
+  ReadContentFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  EXPECT_EQ((int)vc.size(), 1);
+  json out_custom_fields;
+  rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
+
+  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL", "label",
+                   "NULL");
+
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, TEST_LOG_LEVEL) {
+  TestEventReporter::event_list.clear();
+  EventManager::Instance().ClearReporters();
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
+  EXPECT_EQ(TestEventReporter::event_list.size(), 0);
+
+  // Test info level
+  ray::RayEvent::SetLevel("info");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+  EXPECT_EQ(result.size(), 4);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "INFO", "label", "test info");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "WARNING", "label",
+                   "test warning");
+  CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[3], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test warning level
+  ray::RayEvent::SetLevel("warning");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 3);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "WARNING", "label",
+                   "test warning");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test error level
+  ray::RayEvent::SetLevel("error");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 2);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
+  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+
+  // Test fatal level
+  ray::RayEvent::SetLevel("FATAL");
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  EXPECT_EQ(result.size(), 1);
+  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
+  result.clear();
+}
+
+TEST(EVENT_TEST, TEST_LOG_EVENT) {
+  std::string log_dir = GenerateLogDir();
+  // Initialize log level to error
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR, log_dir);
+
+  TestEventReporter::event_list.clear();
+  EventManager::Instance().ClearReporters();
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
+  EXPECT_EQ(TestEventReporter::event_list.size(), 0);
+
+  // Add some events. Only ERROR and FATAL events would be printed in general log.
+  RAY_EVENT(INFO, "label") << "test info";
+  RAY_EVENT(WARNING, "label") << "test warning";
+  RAY_EVENT(ERROR, "label") << "test error";
+  RAY_EVENT(FATAL, "label") << "test fatal";
+
+  std::vector<std::string> vc;
+  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
+                      "[ Event ");
+  EXPECT_EQ((int)vc.size(), 2);
+  // Check ERROR event
+  EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[0], testing::HasSubstr("test error"));
+  // Check FATAL event. We convert fatal events to error logs.
+  EXPECT_THAT(vc[1], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[1], testing::HasSubstr("test fatal"));
+
+  boost::filesystem::remove_all(log_dir.c_str());
+
+  // Set log level smaller than event level.
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::INFO, log_dir);
+  ray::RayEvent::SetLevel("error");
+
+  // Add some events. All events would be printed in general log.
+  RAY_EVENT(INFO, "label") << "test info 2";
+  RAY_EVENT(WARNING, "label") << "test warning 2";
+  RAY_EVENT(ERROR, "label") << "test error 2";
+  RAY_EVENT(FATAL, "label") << "test fatal 2";
+
+  vc.clear();
+  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
+                      "[ Event ");
+  EXPECT_EQ((int)vc.size(), 4);
+  // Check INFO event
+  EXPECT_THAT(vc[0], testing::HasSubstr(" I "));
+  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[0], testing::HasSubstr("test info 2"));
+  // Check WARNING event
+  EXPECT_THAT(vc[1], testing::HasSubstr(" W "));
+  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[1], testing::HasSubstr("test warning 2"));
+  // Check ERROR event
+  EXPECT_THAT(vc[2], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[2], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[2], testing::HasSubstr("test error 2"));
+  // Check FATAL event. We convert fatal events to error logs.
+  EXPECT_THAT(vc[3], testing::HasSubstr(" E "));
+  EXPECT_THAT(vc[3], testing::HasSubstr("Event"));
+  EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
+
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  // Use ERROR type logger by default to avoid printing large scale logs in current test.
+  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR);
   return RUN_ALL_TESTS();
 }

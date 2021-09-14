@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
         } else {
-          RAY_LOG(DEBUG) << "Agent command is empty.";
+          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
         }
 
         node_manager_config.report_resources_period_ms =
@@ -257,7 +257,8 @@ int main(int argc, char *argv[]) {
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
-                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir);
+                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir,
+                            RayConfig::instance().event_level());
         };
 
         raylet->Start();

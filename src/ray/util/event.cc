@@ -15,6 +15,7 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 
+#include "absl/base/call_once.h"
 #include "absl/time/time.h"
 
 namespace ray {
@@ -121,7 +122,7 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 ///
 EventManager::EventManager() {
   RayLog::AddFatalLogCallbacks({[](const std::string &label, const std::string &content) {
-    RayEvent::ReportEvent("FATAL", label, content);
+    RayEvent::ReportEvent("FATAL", label, content, __FILE__, __LINE__);
   }});
 }
 
@@ -148,6 +149,12 @@ void EventManager::ClearReporters() { reporter_map_.clear(); }
 ///
 thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
+std::unique_ptr<RayEventContext> RayEventContext::global_context_ = nullptr;
+
+std::atomic<int> RayEventContext::global_context_started_setting_(0);
+
+std::atomic<bool> RayEventContext::global_context_finished_setting_(false);
+
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
     context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
@@ -155,35 +162,101 @@ RayEventContext &RayEventContext::Instance() {
   return *context_;
 }
 
+RayEventContext &RayEventContext::GlobalInstance() {
+  if (global_context_finished_setting_ == false) {
+    static RayEventContext tmp_instance_;
+    return tmp_instance_;
+  }
+  return *global_context_;
+}
+
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
     const std::unordered_map<std::string, std::string> &custom_fields) {
-  source_type_ = source_type;
-  custom_fields_ = custom_fields;
+  SetSourceType(source_type);
+  SetCustomFields(custom_fields);
+
+  if (!global_context_started_setting_.fetch_or(1)) {
+    global_context_ = std::make_unique<RayEventContext>();
+    global_context_->SetSourceType(source_type);
+    global_context_->SetCustomFields(custom_fields);
+    global_context_finished_setting_ = true;
+  }
 }
 
 void RayEventContext::ResetEventContext() {
   source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   custom_fields_.clear();
+  global_context_started_setting_ = 0;
+  global_context_finished_setting_ = false;
 }
 
-void RayEventContext::SetCustomFields(const std::string &key, const std::string &value) {
+void RayEventContext::SetCustomField(const std::string &key, const std::string &value) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_[key] = value;
 }
 
 void RayEventContext::SetCustomFields(
     const std::unordered_map<std::string, std::string> &custom_fields) {
+  // This method should be used while source type has been set.
+  RAY_CHECK(GetInitialzed());
   custom_fields_ = custom_fields;
 }
 ///
 /// RayEvent
 ///
+static rpc::Event_Severity severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+
+static void SetEventLevel(const std::string &event_level) {
+  std::string level = event_level;
+  std::transform(level.begin(), level.end(), level.begin(), ::tolower);
+  if (level == "info") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+  } else if (level == "warning") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_WARNING;
+  } else if (level == "error") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_ERROR;
+  } else if (level == "fatal") {
+    severity_threshold_ = rpc::Event_Severity::Event_Severity_FATAL;
+  } else {
+    RAY_LOG(WARNING) << "Unrecognized setting of event level " << level;
+  }
+  RAY_LOG(INFO) << "Set ray event level to " << level;
+}
+
 void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
-                           const std::string &message) {
+                           const std::string &message, const char *file_name,
+                           int line_number) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
-  RayEvent(severity_ele, label) << message;
+  RayEvent(severity_ele, EventLevelToLogLevel(severity_ele), label, file_name,
+           line_number)
+      << message;
+}
+
+bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
+  return event_level >= severity_threshold_;
+}
+
+void RayEvent::SetLevel(const std::string &event_level) { SetEventLevel(event_level); }
+
+RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) {
+  switch (severity) {
+  case rpc::Event_Severity_INFO:
+    return RayLogLevel::INFO;
+  case rpc::Event_Severity_WARNING:
+    return RayLogLevel::WARNING;
+  case rpc::Event_Severity_ERROR:
+  // Converts fatal events to error logs because fatal logs will lead to process exiting
+  // directly.
+  case rpc::Event_Severity_FATAL:
+    return RayLogLevel::ERROR;
+  default:
+    RAY_LOG(ERROR) << "Can't cast severity " << severity;
+  }
+  return RayLogLevel::INFO;
 }
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
@@ -196,38 +269,58 @@ void RayEvent::SendMessage(const std::string &message) {
     return;
   }
 
-  rpc::Event event;
+  const RayEventContext &context = RayEventContext::Instance().GetInitialzed()
+                                       ? RayEventContext::Instance()
+                                       : RayEventContext::GlobalInstance();
 
-  std::string event_id_buffer = std::string(18, ' ');
-  FillRandom(&event_id_buffer);
-  event.set_event_id(StringToHex(event_id_buffer));
+  static const int kEventIDSize = 18;
+  static const std::string kEmptyEventIdHex = "disabled";
+  std::string event_id;
+  if (IsLevelEnabled(severity_)) {
+    std::string event_id_buffer = std::string(kEventIDSize, ' ');
+    FillRandom(&event_id_buffer);
+    event_id = StringToHex(event_id_buffer);
+    rpc::Event event;
+    event.set_event_id(event_id);
 
-  event.set_source_type(RayEventContext::Instance().GetSourceType());
-  event.set_source_hostname(RayEventContext::Instance().GetSourceHostname());
-  event.set_source_pid(RayEventContext::Instance().GetSourcePid());
+    event.set_source_type(context.GetSourceType());
+    event.set_source_hostname(context.GetSourceHostname());
+    event.set_source_pid(context.GetSourcePid());
 
-  event.set_severity(severity_);
-  event.set_label(label_);
-  event.set_message(message);
-  event.set_timestamp(current_sys_time_us());
+    event.set_severity(severity_);
+    event.set_label(label_);
+    event.set_message(message);
+    event.set_timestamp(current_sys_time_us());
 
-  auto mp = RayEventContext::Instance().GetCustomFields();
-  for (const auto &pair : mp) {
-    custom_fields_[pair.first] = pair.second;
+    auto mp = context.GetCustomFields();
+    for (const auto &pair : mp) {
+      custom_fields_[pair.first] = pair.second;
+    }
+    event.mutable_custom_fields()->insert(mp.begin(), mp.end());
+
+    EventManager::Instance().Publish(event, custom_fields_);
+  } else {
+    event_id = kEmptyEventIdHex;
   }
-  event.mutable_custom_fields()->insert(mp.begin(), mp.end());
-
-  EventManager::Instance().Publish(event, custom_fields_);
+  if (ray::RayLog::IsLevelEnabled(log_severity_)) {
+    ::ray::RayLog(file_name_, line_number_, log_severity_)
+        << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+  }
 }
+
+static absl::once_flag init_once_;
 
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir) {
-  RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-  auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
-  ray::EventManager::Instance().AddReporter(
-      std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-  RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+                  const std::string &log_dir, const std::string &event_level) {
+  absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
+    RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+    auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+    ray::EventManager::Instance().AddReporter(
+        std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+    SetEventLevel(event_level);
+    RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
+  });
 }
 
 }  // namespace ray
