@@ -15,9 +15,10 @@ import ray
 from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
                                                   get_or_create_conda_env)
-from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                get_release_wheel_url)
+                                get_release_wheel_url, try_to_create_directory)
+
+default_logger = logging.getLogger(__name__)
 
 
 def _resolve_current_ray_path():
@@ -37,11 +38,9 @@ def _resolve_install_from_source_ray_dependencies():
     return ray_install_requires
 
 
-def _inject_ray_to_conda_site(conda_path,
-                              logger: Optional[logging.Logger] = None):
+def _inject_ray_to_conda_site(
+        conda_path, logger: Optional[logging.Logger] = default_logger):
     """Write the current Ray site package directory to a new site"""
-    if logger is None:
-        logger = logging.getLogger(__name__)
     python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = subprocess.check_output(
         [python_binary, "-c",
@@ -105,7 +104,7 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
 
 
 def current_ray_pip_specifier(
-        logger: Optional[logging.Logger] = None) -> Optional[str]:
+        logger: Optional[logging.Logger] = default_logger) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
 
     Returns:
@@ -117,8 +116,6 @@ def current_ray_pip_specifier(
         Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/[..].whl"
             if running a stable release, a nightly or a specific commit
     """
-    if logger is None:
-        logger = logging.getLogger(__name__)
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
         # Running in Buildkite CI after the wheel has been built.
         # Wheels are at in the ray/.whl directory, but use relative path to
@@ -199,10 +196,7 @@ class CondaManager:
     def setup(self,
               runtime_env: dict,
               context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = None):
-        if logger is None:
-            logger = logging.getLogger(__name__)
-
+              logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.get("conda") and not runtime_env.get("pip"):
             return
 
