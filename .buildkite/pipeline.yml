@@ -135,7 +135,7 @@
 - label: ":cpp: Tests"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - CC=clang bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
       --test_tag_filters=-flaky
       -- //:all -rllib/... -core_worker_test
@@ -143,9 +143,8 @@
 - label: ":cpp: Tests (ASAN)"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+    - CC=clang bazel test --config=ci --config=asan --config=asan-clang $(./scripts/bazel_export_options)
       --build_tests_only
-      --config=asan-buildkite
       --jobs=2
       --test_tag_filters=-flaky
       -- //:all -//:core_worker_test
@@ -162,7 +161,7 @@
 - label: ":cpp: Tests (TSAN)"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=tsan $(./scripts/bazel_export_options)
+    - CC=clang bazel test --config=ci --config=tsan $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
       --test_tag_filters=-flaky
@@ -482,7 +481,7 @@
     - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/experimental/workflow/... python/ray/data/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/workflow/... python/ray/data/...
 
 - label: ":book: Doc tests and examples"
   conditions:

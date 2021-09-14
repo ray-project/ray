@@ -231,7 +231,7 @@ class AxSearch(Searcher):
                            "a ConcurrencyLimiter.")
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict):
+                              config: Dict, **spec):
         if self._ax:
             return False
         space = self.convert_search_space(config)

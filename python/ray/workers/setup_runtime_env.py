@@ -1,24 +1,16 @@
 import sys
 import argparse
-import json
 import logging
 
 from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.runtime_env.conda import setup_conda_or_pip
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    help="the serialized parsed runtime env dict")
-parser.add_argument(
     "--serialized-runtime-env-context",
     type=str,
     help="the serialized runtime env context")
-parser.add_argument(
-    "--from-ray-client", type=bool, required=False, default=False)
 
 
 def setup_worker(input_args):
@@ -26,19 +18,11 @@ def setup_worker(input_args):
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
 
-    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-    runtime_env_context: RuntimeEnvContext = None
-    if args.serialized_runtime_env_context:
-        runtime_env_context = RuntimeEnvContext.deserialize(
-            args.serialized_runtime_env_context)
-    else:
-        runtime_env_context = RuntimeEnvContext(
-            env_vars=runtime_env.get("env_vars"))
-
-    # Ray client server setups runtime env by itself instead of agent.
-    if args.from_ray_client:
-        if runtime_env.get("conda") or runtime_env.get("pip"):
-            setup_conda_or_pip(runtime_env, runtime_env_context, logger=logger)
+    # NOTE(edoakes): args.serialized_runtime_env_context is only None in the
+    # case that we're starting the main Ray client proxy server. That case
+    # should probably not even go through this codepath.
+    runtime_env_context = RuntimeEnvContext.deserialize(
+        args.serialized_runtime_env_context or "{}")
 
     runtime_env_context.exec_worker(remaining_args)
 
