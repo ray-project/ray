@@ -39,12 +39,12 @@ cc_library(
 )
 
 cc_binary(
-    name = "simple_kv",
+    name = "simple_kv_store",
     srcs = glob([
-        "simple_kv.cc",
+        "simple_kv_store.cc",
     ]),
     data = [
-        "simple_kv.so",
+        "simple_kv_store.so",
     ],
     linkstatic = True,
     deps = [
@@ -53,9 +53,9 @@ cc_binary(
 )
 
 cc_binary(
-    name = "simple_kv.so",
+    name = "simple_kv_store.so",
     srcs = glob([
-        "simple_kv.cc",
+        "simple_kv_store.cc",
     ]),
     linkopts = ["-shared"],
     linkstatic = True,
