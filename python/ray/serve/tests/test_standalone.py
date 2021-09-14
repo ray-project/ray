@@ -18,7 +18,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
@@ -289,6 +289,7 @@ def test_http_root_url(ray_shutdown):
     f.deploy()
     assert f.url == root_url + "/f"
     serve.shutdown()
+    ray.shutdown()
     del os.environ[SERVE_ROOT_URL_ENV_KEY]
 
     port = new_port()
@@ -297,6 +298,15 @@ def test_http_root_url(ray_shutdown):
     assert f.url != root_url + "/f"
     assert f.url == f"http://127.0.0.1:{port}/f"
     serve.shutdown()
+    ray.shutdown()
+
+    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -433,6 +443,34 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 
     assert ray.get_actor(
         client._controller_name, namespace=controller_namespace)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_checkpoint_isolation_namespace(ray_shutdown):
+    info = ray.init(namespace="test_namespace1")
+
+    address = info["redis_address"]
+
+    driver_template = """
+import ray
+from ray import serve
+
+ray.init(address="{address}", namespace="{namespace}")
+
+serve.start(detached=True, http_options={{"port": {port}}})
+
+@serve.deployment
+class A:
+    pass
+
+A.deploy()"""
+
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace1", port=8000))
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace2", port=8001))
 
 
 if __name__ == "__main__":

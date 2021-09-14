@@ -16,12 +16,10 @@ import subprocess
 import sys
 import time
 from typing import Optional
-import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -226,16 +224,6 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
-
-
-def _log_dashboard_dependency_warning_once():
-    if log_once("dashboard_failed_import"
-                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
-        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
-        warning_message += " To disable this message, set " \
-                           "RAY_DISABLE_IMPORT_WARNING " \
-                           "env var to '1'."
-        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -1195,7 +1183,6 @@ def start_dashboard(require_dashboard,
             if require_dashboard:
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
@@ -1281,6 +1268,7 @@ def start_gcs_server(redis_address,
                      config=None,
                      fate_share=None,
                      gcs_server_port=None,
+                     metrics_agent_port=None,
                      node_ip_address=None):
     """Start a gcs server.
     Args:
@@ -1294,6 +1282,7 @@ def start_gcs_server(redis_address,
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port (int): Port number of the gcs server.
+        metrics_agent_port(int): The port where metrics agent is bound to.
         node_ip_address(str): IP Address of a node where gcs server starts.
     Returns:
         ProcessInfo for the process that was started.
@@ -1311,6 +1300,7 @@ def start_gcs_server(redis_address,
         f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
+        f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_password:
@@ -1332,7 +1322,6 @@ def start_raylet(redis_address,
                  worker_path,
                  setup_worker_path,
                  worker_setup_hook,
-                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1345,7 +1334,7 @@ def start_raylet(redis_address,
                  worker_port_list=None,
                  object_manager_port=None,
                  redis_password=None,
-                 dashboard_agent_port=None,
+                 metrics_agent_port=None,
                  metrics_export_port=None,
                  dashboard_agent_listen_port=None,
                  use_valgrind=False,
@@ -1376,8 +1365,6 @@ def start_raylet(redis_address,
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1390,8 +1377,7 @@ def start_raylet(redis_address,
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
-        dashboard_agent_port(int): The port where the dashboard agent is bound
-            to.
+        metrics_agent_port(int): The port where metrics agent is bound to.
         metrics_export_port(int): The port at which metrics are exposed to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1448,8 +1434,6 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            setup_worker_path,
-            worker_setup_hook,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1462,9 +1446,8 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", setup_worker_path, worker_setup_hook, redis_address,
-            plasma_store_name, raylet_name, redis_password, session_dir,
-            log_dir, node_ip_address)
+            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1472,8 +1455,10 @@ def start_raylet(redis_address,
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    python_executable = sys.executable
-    start_worker_command_args = [
+    start_worker_command = [
+        sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1481,15 +1466,13 @@ def start_raylet(redis_address,
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
+        f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
-        start_worker_command_args += [f"--redis-password={redis_password}"]
-    start_worker_command = _wrap_worker_command(
-        setup_worker_path, worker_setup_hook, session_dir, python_executable,
-        "python", start_worker_command_args)
+        start_worker_command += [f"--redis-password={redis_password}"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1512,9 +1495,7 @@ def start_raylet(redis_address,
 
             return True
         except ImportError:
-            _log_dashboard_dependency_warning_once()
-
-        return False
+            return False
 
     if not check_should_start_agent():
         # An empty agent command will cause the raylet not to start it.
@@ -1527,7 +1508,7 @@ def start_raylet(redis_address,
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
-            f"--dashboard-agent-port={dashboard_agent_port}",
+            f"--dashboard-agent-port={metrics_agent_port}",
             f"--listen-port={dashboard_agent_listen_port}",
             "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
             f"--object-store-name={plasma_store_name}",
@@ -1535,7 +1516,6 @@ def start_raylet(redis_address,
             f"--temp-dir={temp_dir}",
             f"--session-dir={session_dir}",
             f"--runtime-env-dir={resource_dir}",
-            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
@@ -1565,6 +1545,7 @@ def start_raylet(redis_address,
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
+        f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
@@ -1595,21 +1576,6 @@ def start_raylet(redis_address,
     return process_info
 
 
-def _wrap_worker_command(setup_worker_path, worker_setup_hook, session_dir,
-                         worker_entrypoint, worker_language, worker_command):
-    if sys.platform == "win32":
-        return [worker_entrypoint] + worker_command
-    wrapped_worker_command = [
-        sys.executable, setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
-        f"--worker-entrypoint={worker_entrypoint}",
-        f"--worker-language={worker_language}"
-    ]
-    wrapped_worker_command += worker_command
-    return wrapped_worker_command
-
-
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1623,8 +1589,6 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        setup_worker_path,
-        worker_setup_hook,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1666,21 +1630,19 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command_args = ["-D{}={}".format(*pair) for pair in pairs]
+    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command_args += ["-cp", ray_jars]
+    command += ["-cp", ray_jars]
 
-    command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
+    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
+    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
-                                session_dir, "java", "java", command_args)
+    return command
 
 
-def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
-                             worker_setup_hook, redis_address,
+def build_cpp_worker_command(cpp_worker_options, redis_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
@@ -1699,7 +1661,8 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         The command string for starting CPP worker.
     """
 
-    command_args = [
+    command = [
+        DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1711,9 +1674,7 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
-                                session_dir, DEFAULT_WORKER_EXECUTABLE, "cpp",
-                                command_args)
+    return command
 
 
 def determine_plasma_store_config(object_store_memory,
@@ -1920,15 +1881,16 @@ def start_monitor(redis_address,
     return process_info
 
 
-def start_ray_client_server(redis_address,
-                            ray_client_server_port,
-                            stdout_file=None,
-                            stderr_file=None,
-                            redis_password=None,
-                            fate_share=None,
-                            server_type: str = "proxy",
-                            serialized_runtime_env: Optional[str] = None,
-                            session_dir: Optional[str] = None):
+def start_ray_client_server(
+        redis_address,
+        ray_client_server_port,
+        stdout_file=None,
+        stderr_file=None,
+        redis_password=None,
+        fate_share=None,
+        metrics_agent_port=None,
+        server_type: str = "proxy",
+        serialized_runtime_env_context: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1939,8 +1901,8 @@ def start_ray_client_server(redis_address,
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         server_type (str): Whether to start the proxy version of Ray Client.
-        serialized_runtime_env (str|None): If specified, the serialized
-            runtime_env to start the client server in.
+        serialized_runtime_env_context (str|None): If specified, the serialized
+            runtime_env_context to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1951,25 +1913,24 @@ def start_ray_client_server(redis_address,
     conda_shim_flag = (
         "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
-    python_executable = sys.executable
     command = [
-        python_executable,
+        sys.executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
-        f"--worker-entrypoint={python_executable}",
         "-m",
         "ray.util.client.server",
-        "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port),
-        "--mode=" + server_type
+        f"--redis-address={redis_address}",
+        f"--port={ray_client_server_port}",
+        f"--mode={server_type}"
     ]
     if redis_password:
-        command.append("--redis-password=" + redis_password)
-
-    if serialized_runtime_env:
-        command.append("--serialized-runtime-env=" + serialized_runtime_env)
-    if session_dir:
-        command.append(f"--session-dir={session_dir}")
+        command.append(f"--redis-password={redis_password}")
+    if serialized_runtime_env_context:
+        command.append(
+            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
+        )
+    if metrics_agent_port:
+        command.append(f"--metrics-agent-port={metrics_agent_port}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

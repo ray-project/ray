@@ -280,6 +280,8 @@ class TrialRunner:
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
         self._updated_queue = False
+        self._result_wait_time = int(
+            os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -619,10 +621,10 @@ class TrialRunner:
 
         if may_handle_events:
             if self.trial_executor.get_running_trials():
-                timeout = None
+                timeout = self._result_wait_time
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
-                self._process_events(timeout=timeout)  # blocking
+                self._process_events(timeout=timeout)
             else:
                 self._run_and_catch(self.trial_executor.on_no_available_trials)
 

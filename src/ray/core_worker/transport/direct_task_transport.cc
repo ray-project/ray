@@ -517,8 +517,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
               RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                  task_spec.TaskId(), task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
-                  nullptr));
+                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -638,7 +637,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          if (!task_spec.GetMessage().retry_exceptions() ||
+              !reply.is_application_level_error() ||
+              !task_finisher_->RetryTaskIfPossible(task_id)) {
+            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          }
         }
       });
 }

@@ -22,7 +22,6 @@
 
 #include "../config_internal.h"
 #include "../util/function_helper.h"
-#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
 
@@ -129,7 +128,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{});
+                                                           ray::rpc::Address{},
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -200,28 +200,13 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string GetFullName(bool global, const std::string &name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
-}
-
-/// TODO(qicosmos): Now only support global name, will support the name of a current job.
 std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  auto full_actor_name = GetFullName(global, actor_name);
-  auto pair = core_worker.GetNamedActorHandle(actor_name, "");
-  if (!pair.second.ok()) {
-    RAY_LOG(WARNING) << pair.second.message();
+  auto actor_id = task_submitter_->GetActor(global, actor_name);
+  if (actor_id.IsNil()) {
     return "";
   }
 
-  std::string actor_id;
-  auto actor_handle = pair.first;
-  RAY_CHECK(actor_handle);
-  return actor_handle->GetActorID().Binary();
+  return actor_id.Binary();
 }
 
 void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_restart) {
@@ -240,6 +225,45 @@ void AbstractRayRuntime::ExitActor() {
     throw std::logic_error("This shouldn't be called on a non-actor worker.");
   }
   throw RayIntentionalSystemExitException("SystemExit");
+}
+
+const std::unique_ptr<ray::gcs::GlobalStateAccessor>
+    &AbstractRayRuntime::GetGlobalStateAccessor() {
+  return global_state_accessor_;
+}
+
+bool AbstractRayRuntime::WasCurrentActorRestarted() {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return false;
+  }
+
+  const auto &actor_id = GetCurrentActorID();
+  auto byte_ptr = global_state_accessor_->GetActorInfo(actor_id);
+  if (byte_ptr == nullptr) {
+    return false;
+  }
+
+  rpc::ActorTableData actor_table_data;
+  bool r = actor_table_data.ParseFromString(*byte_ptr);
+  if (!r) {
+    throw RayException("Received invalid protobuf data from GCS.");
+  }
+
+  return actor_table_data.num_restarts() != 0;
+}
+
+ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  return task_submitter_->CreatePlacementGroup(create_options);
+}
+
+void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
+  return task_submitter_->RemovePlacementGroup(group_id);
+}
+
+bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
+                                                 int timeout_seconds) {
+  return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 
 }  // namespace internal

@@ -17,6 +17,8 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -26,31 +28,15 @@ namespace raylet {
 void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << request.agent_ip_address()
-                << ", port: " << request.agent_port() << ", pid: " << request.agent_pid();
-  auto serialized_register_agent = request.SerializeAsString();
-  put_agent_address_(
-      serialized_register_agent,
-      [this, request, reply, send_reply_callback](ray::Status status,
-                                                  const boost::optional<int> &result) {
-        RAY_UNUSED(result);
-        if (status.ok()) {
-          agent_pid_ = request.agent_pid();
-          agent_ip_address_ = request.agent_ip_address();
-          agent_port_ = request.agent_port();
-          runtime_env_agent_client_ =
-              runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
-          RAY_LOG(INFO) << "Update agent address success, node id = " << options_.node_id
-                        << ", ip = " << request.agent_ip_address()
-                        << ", port = " << request.agent_port()
-                        << ", pid = " << request.agent_pid();
-          reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-          send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-        } else {
-          RAY_LOG(ERROR) << "Failed to update agent address, " << status;
-          send_reply_callback(status, nullptr, nullptr);
-        }
-      });
+  agent_ip_address_ = request.agent_ip_address();
+  agent_port_ = request.agent_port();
+  agent_pid_ = request.agent_pid();
+  runtime_env_agent_client_ =
+      runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
+  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
+                << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  reply->set_status(rpc::AGENT_RPC_STATUS_OK);
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
 void AgentManager::StartAgent() {
@@ -97,8 +83,11 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered, restart it.";
+            RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
+                    .WithField("ip", agent_ip_address_)
+                    .WithField("pid", agent_pid_)
+                << "Agent process with pid " << child.GetId()
+                << " has not registered, restart it.";
             child.Kill();
           }
         },
@@ -107,8 +96,11 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
 
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code;
+    RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
+            .WithField("ip", agent_ip_address_)
+            .WithField("pid", agent_pid_)
+        << "Agent process with pid " << child.GetId() << " exit, return value "
+        << exit_code;
     RAY_UNUSED(delay_executor_([this] { StartAgent(); },
                                RayConfig::instance().agent_restart_interval_ms()));
   });
@@ -158,43 +150,39 @@ void AgentManager::CreateRuntimeEnv(const JobID &job_id,
       });
 }
 
-void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
-                                    DeleteRuntimeEnvCallback callback) {
+void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
+                              DeleteURIsCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv later: "
-        << serialized_runtime_env;
-    delay_executor_([this, serialized_runtime_env,
-                     callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
+        << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
+    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
                     RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteRuntimeEnvRequest request;
-  request.set_serialized_runtime_env(serialized_runtime_env);
-  runtime_env_agent_client_->DeleteRuntimeEnv(
-      request, [this, serialized_runtime_env, callback](
-                   Status status, const rpc::DeleteRuntimeEnvReply &reply) {
-        if (status.ok()) {
-          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback();
-          } else {
-            RAY_LOG(ERROR) << "Failed to delete runtime env: " << serialized_runtime_env
-                           << ", error message: " << reply.error_message();
-            callback();
-          }
+  rpc::DeleteURIsRequest request;
+  for (const auto &uri : uris) {
+    request.add_uris(uri);
+  }
+  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
+                                                     Status status,
+                                                     const rpc::DeleteURIsReply &reply) {
+    if (status.ok()) {
+      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+        callback(true);
+      } else {
+        RAY_LOG(ERROR) << "Failed to delete URIs"
+                       << ", error message: " << reply.error_message();
+        callback(false);
+      }
 
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to delete the runtime env: " << serialized_runtime_env
-              << ", status = " << status
-              << ", maybe there are some network problems, will retry it later.";
-          delay_executor_(
-              [this, serialized_runtime_env, callback] {
-                DeleteRuntimeEnv(serialized_runtime_env, callback);
-              },
-              RayConfig::instance().agent_manager_retry_interval_ms());
-        }
-      });
+    } else {
+      RAY_LOG(ERROR) << "Failed to delete URIs"
+                     << ", status = " << status
+                     << ", maybe there are some network problems, will retry it later.";
+      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+                      RayConfig::instance().agent_manager_retry_interval_ms());
+    }
+  });
 }
 
 }  // namespace raylet

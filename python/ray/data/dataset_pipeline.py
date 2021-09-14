@@ -139,12 +139,65 @@ class DatasetPipeline(Generic[T]):
         Returns:
             A list of ``n`` disjoint pipeline splits.
         """
+        return self._split(
+            n,
+            lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints))
+
+    def split_at_indices(self,
+                         indices: List[int]) -> List["DatasetPipeline[T]"]:
+        """Split the datasets within the pipeline at the given indices
+        (like np.split).
+
+        This will split each dataset contained within this pipeline, thereby
+        producing len(indices) + 1 pipelines with the first pipeline containing
+        the [0, indices[0]) slice from each dataset, the second pipeline
+        containing the [indices[0], indices[1]) slice from each dataset, and so
+        on, with the final pipeline will containing the
+        [indices[-1], self.count()) slice from each dataset.
+
+        Examples:
+            >>> p1, p2, p3 = ray.data.range(
+                    8).repeat(2).split_at_indices([2, 5])
+            >>> p1.take()
+            [0, 1, 0, 1]
+            >>> p2.take()
+            [2, 3, 4, 2, 3, 4]
+            >>> p3.take()
+            [5, 6, 7, 5, 6, 7]
+
+        Time complexity: O(num splits)
+
+        See also: ``DatasetPipeline.split``
+
+        Args:
+            indices: List of sorted integers which indicate where the pipeline
+                will be split. If an index exceeds the length of the pipeline,
+                an empty pipeline will be returned.
+
+        Returns:
+            The pipeline splits.
+        """
+
+        if len(indices) < 1:
+            raise ValueError("indices must be at least of length 1")
+        if sorted(indices) != indices:
+            raise ValueError("indices must be sorted")
+        if indices[0] < 0:
+            raise ValueError("indices must be positive")
+
+        return self._split(
+            len(indices) + 1, lambda ds: ds.split_at_indices(indices))
+
+    def _split(self, n: int,
+               splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
+
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, equal, locality_hints)
+            self, n, splitter)
 
         class SplitIterator:
-            def __init__(self, split_index):
+            def __init__(self, split_index, coordinator):
                 self.split_index = split_index
+                self.coordinator = coordinator
                 self.warn_threshold = 100
                 self.wait_delay_s = 0.1
 
@@ -156,29 +209,29 @@ class DatasetPipeline(Generic[T]):
                 tries = 0
                 while ds is None:
                     ds = ray.get(
-                        coordinator.next_dataset_if_ready.remote(
+                        self.coordinator.next_dataset_if_ready.remote(
                             self.split_index))
                     # Wait for other shards to catch up reading.
                     if not ds:
                         time.sleep(self.wait_delay_s)
                         tries += 1
                     if tries > self.warn_threshold:
-                        print("Warning: shard {} of the pipeline has been "
-                              "stalled more than {}s waiting for other shards "
-                              "to catch up.".format(
+                        print("Warning: reader on shard {} of the pipeline "
+                              "has been blocked more than {}s waiting for "
+                              "other readers to catch up. All pipeline shards "
+                              "must be read from concurrently.".format(
                                   self.split_index,
                                   self.wait_delay_s * self.warn_threshold))
                         self.warn_threshold *= 2
                 return lambda: ds
 
-        splits = []
-        for i in range(n):
+        return [
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
-            splits.append(
-                DatasetPipeline(SplitIterator(i), progress_bars=False))
-
-        return splits
+            DatasetPipeline(
+                SplitIterator(idx, coordinator), progress_bars=False)
+            for idx in range(n)
+        ]
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.

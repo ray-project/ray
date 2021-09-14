@@ -297,7 +297,7 @@ struct ObjectReaderTest : public ::testing::Test {
 
 typedef ::testing::Types<SpilledObjectReader, MemoryObjectReader> Implementations;
 
-TYPED_TEST_CASE(ObjectReaderTest, Implementations);
+TYPED_TEST_SUITE(ObjectReaderTest, Implementations);
 
 TYPED_TEST(ObjectReaderTest, Getters) {
   std::string data("data");

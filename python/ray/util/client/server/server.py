@@ -3,7 +3,6 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
-import os
 import queue
 import pickle
 
@@ -86,6 +85,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         f"failed with: {e}")
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
+
+        # NOTE(edoakes): this code should not be necessary anymore because we
+        # only allow a single client/job per server. There is an existing test
+        # that tests the behavior of multiple clients with the same job config
+        # connecting to one server (test_client_init.py::test_num_clients),
+        # so I'm leaving it here for now.
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -99,15 +104,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 f"request one {job_config.runtime_env.uris} "
                 f"current one {current_job_config.runtime_env.uris}")
         return ray_client_pb2.InitResponse(ok=True)
-
-    def PrepRuntimeEnv(self, request,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
-        try:
-            self._prepare_runtime_env(job_config.runtime_env)
-        except Exception as e:
-            raise grpc.RpcError(f"Prepare runtime env failed with {e}")
-        return ray_client_pb2.PrepRuntimeEnvResponse()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -283,7 +279,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def _async_get_object(
             self,
-            request,
+            request: ray_client_pb2.GetRequest,
             client_id: str,
             req_id: int,
             result_queue: queue.Queue,
@@ -292,11 +288,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         main loop when the desired object is ready. If there is some failure
         in scheduling, a GetResponse will be immediately returned.
         """
-        if request.id not in self.object_refs[client_id]:
-            return ray_client_pb2.GetResponse(valid=False)
+        refs = []
+        for rid in request.ids:
+            ref = self.object_refs[client_id].get(rid, None)
+            if ref:
+                refs.append(ref)
+            else:
+                return ray_client_pb2.GetResponse(valid=False)
         try:
-            object_ref = self.object_refs[client_id][request.id]
-            logger.debug("async get: %s" % object_ref)
+            logger.debug("async get: %s" % refs)
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
@@ -310,35 +310,42 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     except Exception as e:
                         get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(e))
-
                     resp = ray_client_pb2.DataResponse(
                         get=get_resp, req_id=req_id)
                     resp.req_id = req_id
-
                     result_queue.put(resp)
 
-                object_ref._on_completed(send_get_response)
+                for ref in refs:
+                    ref._on_completed(send_get_response)
                 return None
+
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
 
-    def GetObject(self, request, context=None):
+    def GetObject(self, request: ray_client_pb2.GetRequest, context=None):
         return self._get_object(request, "", context)
 
-    def _get_object(self, request, client_id: str, context=None):
-        if request.id not in self.object_refs[client_id]:
-            return ray_client_pb2.GetResponse(valid=False)
-        objectref = self.object_refs[client_id][request.id]
-        logger.debug("get: %s" % objectref)
+    def _get_object(self,
+                    request: ray_client_pb2.GetRequest,
+                    client_id: str,
+                    context=None):
+        objectrefs = []
+        for rid in request.ids:
+            ref = self.object_refs[client_id].get(rid, None)
+            if ref:
+                objectrefs.append(ref)
+            else:
+                return ray_client_pb2.GetResponse(valid=False)
         try:
+            logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
-                item = ray.get(objectref, timeout=request.timeout)
+                items = ray.get(objectrefs, timeout=request.timeout)
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        item_ser = dumps_from_server(item, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=item_ser)
+        items_ser = dumps_from_server(items, client_id, self)
+        return ray_client_pb2.GetResponse(valid=True, data=items_ser)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
@@ -505,15 +512,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
 
-    def _prepare_runtime_env(self, job_runtime_env):
-        """Download runtime environment to local node"""
-        uris = job_runtime_env.uris
-        from ray._private import runtime_env
-        with disable_client_hook():
-            working_dir = runtime_env.ensure_runtime_env_setup(uris)
-            if working_dir:
-                os.chdir(working_dir)
-
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
             options: Optional[Dict]) -> ray.remote_function.RemoteFunction:
@@ -564,7 +562,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 def return_exception_in_context(err, context):
     if context is not None:
         context.set_details(encode_exception(err))
-        context.set_code(grpc.StatusCode.INTERNAL)
+        # Note: https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        # ABORTED used here since it should never be generated by the
+        # grpc lib -- this way we know the error was generated by ray logic
+        context.set_code(grpc.StatusCode.ABORTED)
 
 
 def encode_exception(exception) -> str:
@@ -710,6 +711,12 @@ def main():
         type=int,
         default=0,
         help="The PID of the process for setup worker runtime env.")
+    parser.add_argument(
+        "--metrics-agent-port",
+        required=False,
+        type=int,
+        default=0,
+        help="The port to use for connecting to the runtime_env agent.")
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
@@ -725,7 +732,10 @@ def main():
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport, args.redis_address, redis_password=args.redis_password)
+            hostport,
+            args.redis_address,
+            redis_password=args.redis_password,
+            runtime_env_agent_port=args.metrics_agent_port)
     else:
         server = serve(hostport, ray_connect_handler)
 

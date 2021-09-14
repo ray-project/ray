@@ -190,12 +190,10 @@ message ReportHeartbeatReply {
 }
 
 message CheckAliveRequest {
-  int32 seq = 1;
 }
 
 message CheckAliveReply {
   GcsStatus status = 1;
-  int32 seq = 2;
 }
 
 message GetInternalConfigRequest {

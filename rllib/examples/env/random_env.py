@@ -2,7 +2,7 @@ import gym
 from gym.spaces import Discrete, Tuple
 import numpy as np
 
-from ray.rllib.examples.env.multi_agent import make_multiagent
+from ray.rllib.examples.env.multi_agent import make_multi_agent
 
 
 class RandomEnv(gym.Env):
@@ -62,4 +62,4 @@ class RandomEnv(gym.Env):
 
 
 # Multi-agent version of the RandomEnv.
-RandomMultiAgentEnv = make_multiagent(lambda c: RandomEnv(c))
+RandomMultiAgentEnv = make_multi_agent(lambda c: RandomEnv(c))

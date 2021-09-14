@@ -76,8 +76,6 @@ class RayParams:
             worker_setup_hook to set up the environment for the worker process.
         worker_setup_hook (str): The module path to a Python function that will
             be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -105,7 +103,7 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        dashboard_agent_port(int): The port to bind dashboard agent.
+        metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
         no_monitor(bool): If True, the ray autoscaler monitor for this cluster
@@ -153,8 +151,6 @@ class RayParams:
                  worker_path=None,
                  setup_worker_path=None,
                  worker_setup_hook=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
-                 runtime_env_setup_hook=ray_constants.
-                 DEFAULT_RUNTIME_ENV_SETUP_HOOK,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
@@ -171,7 +167,7 @@ class RayParams:
                  ray_debugger_external=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
-                 dashboard_agent_port=None,
+                 metrics_agent_port=None,
                  metrics_export_port=None,
                  tracing_startup_hook=None,
                  no_monitor=False,
@@ -206,7 +202,6 @@ class RayParams:
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
         self.worker_setup_hook = worker_setup_hook
-        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
@@ -217,7 +212,7 @@ class RayParams:
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
-        self.dashboard_agent_port = dashboard_agent_port
+        self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
@@ -298,7 +293,7 @@ class RayParams:
             "gcs_server": wrap_port(self.gcs_server_port),
             "client_server": wrap_port(self.ray_client_server_port),
             "dashboard": wrap_port(self.dashboard_port),
-            "dashboard_agent": wrap_port(self.dashboard_agent_port),
+            "dashboard_agent": wrap_port(self.metrics_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports

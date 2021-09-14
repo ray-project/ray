@@ -89,9 +89,9 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnv(const rpc::DeleteRuntimeEnvRequest &request,
-                        const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) {
-    rpc::DeleteRuntimeEnvReply reply;
+  void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+    rpc::DeleteURIsReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
@@ -231,10 +231,6 @@ class WorkerPoolMock : public WorkerPool {
     }
     if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
       PushRestoreWorker(worker);
-      return;
-    }
-    if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
-      PushUtilWorker(worker);
       return;
     }
     PushWorker(worker);
@@ -419,11 +415,6 @@ class WorkerPoolTest : public ::testing::Test {
         [](const std::string &ip_address, int port) {
           return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
               new MockRuntimeEnvAgentClient());
-        },
-        /*put_agent_address=*/
-        [](const std::string &value, const PutAgentAddressCallback &callback) {
-          RAY_UNUSED(value);
-          callback(ray::Status::OK(), 0);
         },
         false);
     const rpc::RegisterAgentRequest request;

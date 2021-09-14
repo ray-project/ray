@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hiredis/hiredis.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -82,11 +83,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         msg.ToBytes(), nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 0, resources};
-    std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
 
-    driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids);
+    RAY_UNUSED(driver.SubmitActorTask(self_actor_id, func, args, options));
   }
 
   void SubmitTestToActor(ActorID &actor_id, const std::string test) {
@@ -98,11 +98,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         buffer, nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options("", 0, resources);
-    std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", test, "execute_test", "")};
 
-    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+    RAY_UNUSED(driver.SubmitActorTask(actor_id, func, args, options));
   }
 
   bool CheckCurTest(ActorID &actor_id, const std::string test_name) {
@@ -114,11 +113,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         buffer, nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 1, resources};
-    std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "check_current_test_status", "")};
 
-    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+    auto return_refs = driver.SubmitActorTask(actor_id, func, args, options);
+    auto return_ids = ObjectRefsToIds(return_refs);
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
@@ -233,6 +232,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     options.raylet_ip_address = "127.0.0.1";
     options.driver_name = "queue_tests";
     options.num_workers = 1;
+    options.metrics_agent_port = -1;
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);
 
