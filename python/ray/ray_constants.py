@@ -273,8 +273,12 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
 
+# The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
+# NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
+GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
+
 # The cgroup v1 default root directory.
 CGROUP_V1_ROOT = "/sys/fs/cgroup"
 
-# The rott cgroup name for ray.
+# The ray root cgroup name.
 RAY_PARENT_CGROUP_NAME = "ray"

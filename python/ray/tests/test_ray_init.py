@@ -218,17 +218,17 @@ def test_ray_address(input, call_ray_start):
         assert not isinstance(res, ClientContext)
 
 
+class Credentials(grpc.ChannelCredentials):
+    def __init__(self, name):
+        self.name = name
+
+
+class Stop(Exception):
+    def __init__(self, credentials):
+        self.credentials = credentials
+
+
 def test_ray_init_credentials_with_client(monkeypatch):
-    class Credentials(grpc.ChannelCredentials):
-        def __init__(self, name):
-            self.name = name
-
-    class Stop(Exception):
-        def __init__(self, credentials):
-            self.credentials = credentials
-
-    orig_init = Worker.__init__
-
     def mock_init(self,
                   conn_str="",
                   secure=False,
@@ -236,13 +236,26 @@ def test_ray_init_credentials_with_client(monkeypatch):
                   connection_retries=3,
                   _credentials=None):
         raise (Stop(_credentials))
-        orig_init(self, conn_str, secure, metadata, connection_retries,
-                  _credentials)
 
     monkeypatch.setattr(Worker, "__init__", mock_init)
     with pytest.raises(Stop) as stop:
         with ray_start_client_server(_credentials=Credentials("test")):
             pass
+
+    assert stop.value.credentials.name == "test"
+
+
+def test_ray_init_credential(monkeypatch):
+    def mock_secure_channel(conn_str,
+                            credentials,
+                            options=None,
+                            compression=None):
+        raise (Stop(credentials))
+
+    monkeypatch.setattr(grpc, "secure_channel", mock_secure_channel)
+
+    with pytest.raises(Stop) as stop:
+        ray.init("ray://127.0.0.1", _credentials=Credentials("test"))
 
     assert stop.value.credentials.name == "test"
 

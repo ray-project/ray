@@ -7,10 +7,11 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
-                    Type, Union, overload)
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
+                    overload)
 from weakref import WeakValueDictionary
 
+from fastapi import FastAPI, APIRouter
 from starlette.requests import Request
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
@@ -29,9 +30,6 @@ from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger, LoggingContext)
-
-if TYPE_CHECKING:
-    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
@@ -106,6 +104,7 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
+        self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -122,7 +121,7 @@ class Client:
 
     @property
     def root_url(self):
-        return self._http_config.root_url
+        return self._root_url
 
     def __del__(self):
         if not self._detached:
@@ -206,8 +205,7 @@ class Client:
             ray_actor_options["runtime_env"].setdefault(
                 "uris", curr_job_env.get("uris"))
         else:
-            ray_actor_options[
-                "runtime_env"] = ray.get_runtime_context().runtime_env
+            ray_actor_options["runtime_env"] = curr_job_env
 
         if "working_dir" in ray_actor_options["runtime_env"]:
             del ray_actor_options["runtime_env"]["working_dir"]
@@ -295,14 +293,22 @@ class Client:
         if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        if asyncio.get_event_loop().is_running() and sync:
+        try:
+            asyncio_loop_running = asyncio.get_event_loop().is_running()
+        except RuntimeError as ex:
+            if "There is no current event loop in thread" in str(ex):
+                asyncio_loop_running = False
+            else:
+                raise ex
+
+        if asyncio_loop_running and sync:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
                 "serve/http-servehandle.html#sync-and-async-handles")
 
-        if not asyncio.get_event_loop().is_running() and not sync:
+        if not asyncio_loop_running and not sync:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "
@@ -522,12 +528,12 @@ def get_replica_context() -> ReplicaContext:
 
 
 @PublicAPI(stability="beta")
-def ingress(app: Union["FastAPI", "APIRouter"]):
-    """Mark a FastAPI application ingress for Serve.
+def ingress(app: Union["FastAPI", "APIRouter", Callable]):
+    """Mark an ASGI application ingress for Serve.
 
     Args:
-        app(FastAPI,APIRouter): the app or router object serve as ingress
-            for this deployment.
+        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
+            as ingress for this backend. It can be any ASGI compatible object.
 
     Example:
     >>> app = FastAPI()
@@ -548,7 +554,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        make_fastapi_class_based_view(app, cls)
+        if isinstance(app, (FastAPI, APIRouter)):
+            make_fastapi_class_based_view(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
         # this ingress deployment. We don't use copy.copy here to avoid
@@ -556,7 +563,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class FastAPIWrapper(cls):
+        class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -593,8 +600,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                     asyncio.get_event_loop().run_until_complete(
                         self._serve_asgi_lifespan.shutdown())
 
-        FastAPIWrapper.__name__ = cls.__name__
-        return FastAPIWrapper
+        ASGIAppWrapper.__name__ = cls.__name__
+        return ASGIAppWrapper
 
     return decorator
 

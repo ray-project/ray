@@ -22,7 +22,6 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.resource_spec import ResourceSpec
-from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -327,10 +326,9 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._resource_dir = os.path.join(self._session_dir,
-                                          "runtime_resources")
-        try_to_create_directory(self._resource_dir)
-        working_dir_pkg.PKG_DIR = self._resource_dir
+        self._runtime_env_dir = os.path.join(self._session_dir,
+                                             "runtime_resources")
+        try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -815,7 +813,7 @@ class Node:
             self._ray_params.worker_setup_hook,
             self._temp_dir,
             self._session_dir,
-            self._resource_dir,
+            self._runtime_env_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -883,7 +881,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

@@ -214,7 +214,7 @@ class NevergradSearch(Searcher):
                 self._nevergrad_opt.suggest(self._points_to_evaluate[i])
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._nevergrad_opt or self._space:
             return False
         space = self.convert_search_space(config)

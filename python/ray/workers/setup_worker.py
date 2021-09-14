@@ -76,10 +76,6 @@ def start_worker_in_container(container_option, args, remaining_args):
     if container_option.get("worker_path"):
         remaining_args[1] = container_option.get("worker_path")
     entrypoint_args.extend(remaining_args)
-    # setup_runtime_env will install conda,pip according to
-    # serialized-runtime-env, so add this argument
-    entrypoint_args.append("--serialized-runtime-env")
-    entrypoint_args.append(args.serialized_runtime_env or "{}")
     # now we will start a container, add argument worker-shim-pid
     entrypoint_args.append("--worker-shim-pid={}".format(os.getpid()))
 
