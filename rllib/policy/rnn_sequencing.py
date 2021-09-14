@@ -412,7 +412,8 @@ def timeslice_along_seq_lens_with_overlap(
             key = "state_in_{}".format(i)
             while key in data:
                 data[key] = np.zeros_like(sample_batch[key][0:1])
-                del data["state_out_{}".format(i)]
+                # Del state_out_n from data if exists.
+                data.pop("state_out_{}".format(i), None)
                 i += 1
                 key = "state_in_{}".format(i)
         # TODO: This will not work with attention nets as their state_outs are

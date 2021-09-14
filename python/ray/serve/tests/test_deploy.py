@@ -251,6 +251,34 @@ def test_config_change(serve_instance, use_handle):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconfigure_with_exception(serve_instance):
+    @serve.deployment
+    class A:
+        def __init__(self):
+            self.config = "yoo"
+
+        def reconfigure(self, config):
+            if config == "hi":
+                raise Exception("oops")
+
+            self.config = config
+
+        def __call__(self, *args):
+            return self.config
+
+    A.options(user_config="not_hi").deploy()
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
+
+    with pytest.raises(RuntimeError):
+        A.options(user_config="hi").deploy()
+
+    # Ensure we should be able to rollback to "hi" config
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
     # Tests that redeploying a deployment with a single replica waits for the
