@@ -92,9 +92,8 @@ class DataClient:
                 except grpc.RpcError as e:
                     reconnecting = self._process_rpc_error(e)
                     if not reconnecting:
-                        break
-                    else:
-                        self._reconnect_channel()
+                        return
+                    self._reconnect_channel()
         except Exception as e:
             self._last_exception = e
         finally:
@@ -112,7 +111,8 @@ class DataClient:
                     "Failed during this or a previous request. Exception that "
                     f"broke the connection: {self._last_exception}")
                 for callback in callbacks:
-                    callback(err)
+                    if callback:
+                        callback(err)
                 # Since self._in_shutdown is set to True, no new item
                 # will be added to self.asyncio_waiting_data
 
@@ -229,6 +229,7 @@ class DataClient:
             req_id = self._next_id()
             req.req_id = req_id
             self.request_queue.put(req)
+            self.outstanding_requests[req_id] = req
 
             self.cv.wait_for(
                 lambda: req_id in self.ready_data or self._in_shutdown)
