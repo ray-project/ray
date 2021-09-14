@@ -41,14 +41,6 @@ class C:
 
 
 @pytest.fixture
-def init_and_serve():
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
-    yield server_handle
-    ray_client_server.shutdown_with_server(server_handle.grpc_server)
-    time.sleep(2)
-
-
-@pytest.fixture
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)

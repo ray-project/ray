@@ -6,11 +6,13 @@ from contextlib import contextmanager
 import pytest
 import subprocess
 import json
+import time
 
 import ray
 from ray.cluster_utils import Cluster
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.test_utils import init_error_pubsub
+from ray._private.test_utils import init_error_pubsub, setup_tls, teardown_tls
+import ray.util.client.server.server as ray_client_server
 import ray._private.gcs_utils as gcs_utils
 
 
@@ -231,6 +233,14 @@ def call_ray_start_with_external_redis(request):
 
 
 @pytest.fixture
+def init_and_serve():
+    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    yield server_handle
+    ray_client_server.shutdown_with_server(server_handle.grpc_server)
+    time.sleep(2)
+
+
+@pytest.fixture
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
@@ -286,6 +296,16 @@ def log_pubsub():
     yield p
     p.close()
 
+
+@pytest.fixture
+def use_tls(request):
+    if request.param:
+        print("Setting up TLS")
+        key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield None
+    if request.param:
+        print("Tearing down TLS")
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 """
 Object spilling test fixture
