@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
+    def _execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
         Args:
@@ -178,9 +178,7 @@ class WorkerGroup:
                                "group has most likely been shut down. Please"
                                "create a new WorkerGroup or restart this one.")
 
-        return [
-            w.__execute.remote(func, *args, **kwargs) for w in self.workers
-        ]
+        return [w._execute.remote(func, *args, **kwargs) for w in self.workers]
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
@@ -212,7 +210,7 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index].__execute.remote(
+        return self.workers[worker_index]._execute.remote(
             func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,

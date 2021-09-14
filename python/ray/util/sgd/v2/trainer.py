@@ -472,7 +472,8 @@ class SGDWorkerGroup:
         futures = [w.train_epoch.remote() for w in workers]
         assert ray.get(futures) == [1, 1]
         assert ray.get(workers[0].train_epoch.remote()) == 1
-        workers.shutdown()`
+        workers.shutdown()
+
     """
 
     def __init__(self, worker_group: WorkerGroup):
