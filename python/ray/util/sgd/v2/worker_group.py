@@ -9,19 +9,6 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-def create_executable_class(executable_cls: Type) -> Type:
-    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
-
-    This function will automatically handle subclassing BaseWorker.
-    """
-
-    class _WrappedExecutable(executable_cls, BaseWorkerMixin):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-    return _WrappedExecutable
-
-
 class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
@@ -33,6 +20,23 @@ class BaseWorkerMixin:
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)
+
+
+def create_executable_class(executable_cls: Type) -> Type:
+    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
+
+    If the ``executable_cls`` already subclasses ``BaseWorkerMixin``,
+    then it is directly returned.
+    """
+    if not issubclass(executable_cls, BaseWorkerMixin):
+
+        class _WrappedExecutable(executable_cls, BaseWorkerMixin):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+        return _WrappedExecutable
+    else:
+        return executable_cls
 
 
 class WorkerGroup:
@@ -102,11 +106,7 @@ class WorkerGroup:
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
         if actor_cls:
-            if not issubclass(actor_cls, BaseWorkerMixin):
-                self._base_cls = create_executable_class(actor_cls)
-            else:
-                # The provided class already subclasses the mixin.
-                self._base_cls = actor_cls
+            self._base_cls = create_executable_class(actor_cls)
         else:
             self._base_cls = BaseWorkerMixin
 
