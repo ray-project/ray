@@ -20,9 +20,17 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/gcs/pubsub/gcs_pub_sub.h"
+#include "mock/ray/rpc/worker/core_worker_client.h"
 // clang-format on
 namespace ray {
 namespace gcs {
+struct MockCallback {
+  MOCK_METHOD(void, Call, ((std::shared_ptr<GcsActor>)));
+  void operator()(std::shared_ptr<GcsActor> a) {
+    return Call(a);
+  }
+};
+
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -31,9 +39,22 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_node_manager = std::make_unique<MockGcsNodeManager>();
     pub_sub = std::make_shared<MockGcsPubSub>();
     raylet_client = std::make_shared<MockRayletClientInterface>();
+    core_worker_client = std::make_shared<MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address&) {
           return raylet_client;
+        });
+    actor_scheduler = std::make_unique<RayletBasedActorScheduler>(
+        io_context, *actor_table, *gcs_node_manager, pub_sub,
+        [this](auto a) {
+          schedule_failure_handler(a);
+        },
+        [this](auto a) {
+          schedule_success_handler(a);
+        },
+        client_pool,
+        [this](const rpc::Address&) {
+          return core_worker_client;
         });
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
@@ -43,7 +64,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::unique_ptr<MockGcsNodeManager> gcs_node_manager;
   std::shared_ptr<MockGcsPubSub> pub_sub;
+  std::shared_ptr<MockCoreWorkerClientInterface> core_worker_client;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
+  MockCallback schedule_failure_handler;
+  MockCallback schedule_success_handler;
 };
 
 }
