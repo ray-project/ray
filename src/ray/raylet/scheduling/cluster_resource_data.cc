@@ -463,7 +463,8 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << it->first << ":(" << VectorToString(it->second.total) << ":"
+    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
+           << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;
