@@ -168,9 +168,13 @@ class DataClient:
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "
                 f"broke the connection: {self._last_exception}")
-            for callback in callbacks:
-                if callback:
-                    callback(err)
+        else:
+            err = ConnectionError(
+                "Request cannot be fulfilled because the data client has "
+                "disconnected.")
+        for callback in callbacks:
+            if callback:
+                callback(err)
             # Since self._in_shutdown is set to True, no new item
             # will be added to self.asyncio_waiting_data
 
