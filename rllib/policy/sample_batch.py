@@ -851,8 +851,7 @@ class SampleBatch(dict):
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
-                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]) - 1,
-                                        sum_ - 1))
+                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
             start_seq_len, start = self._slice_map[start]
             stop_seq_len, stop = self._slice_map[stop]
