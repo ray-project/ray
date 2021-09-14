@@ -65,7 +65,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                     "cpu": 5,  # more than what the cluster can offer.
                     "gpu": 3,
                 })
-        msg = ("If autoscaler is still scaling up, ignore this message. "
+        msg = ("Ignore this message if the cluster is autoscaling. "
                "You asked for 5.0 cpu and 3.0 gpu per trial, "
                "but the cluster only has 4.0 cpu and 2.0 gpu. "
                "Stop the tuning job and "
