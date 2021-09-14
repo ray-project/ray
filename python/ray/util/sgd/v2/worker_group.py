@@ -25,7 +25,7 @@ def create_executable_class(executable_cls: Type) -> Type:
 class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
+    def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
         Args:
@@ -92,6 +92,10 @@ class WorkerGroup:
                              f"num_cpus_per_worker={num_cpus_per_worker} and "
                              f"num_gpus_per_worker={num_gpus_per_worker}.")
 
+        if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
+            raise ValueError("`actor_cls_args` or `actor_class_kwargs` are "
+                             "passed in but no `actor_cls` is passed in.")
+
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
@@ -118,11 +122,8 @@ class WorkerGroup:
         self.start()
 
     def _create_worker(self):
-        if type(self._base_cls) == BaseWorkerMixin:
-            return self._remote_cls.remote()
-        else:
-            return self._remote_cls.remote(*self._actor_cls_args,
-                                           **self._actor_cls_kwargs)
+        return self._remote_cls.remote(*self._actor_cls_args,
+                                       **self._actor_cls_kwargs)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -182,7 +183,9 @@ class WorkerGroup:
                                "group has most likely been shut down. Please"
                                "create a new WorkerGroup or restart this one.")
 
-        return [w.execute.remote(func, *args, **kwargs) for w in self.workers]
+        return [
+            w.__execute.remote(func, *args, **kwargs) for w in self.workers
+        ]
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
@@ -214,7 +217,8 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index].execute.remote(func, *args, **kwargs)
+        return self.workers[worker_index].__execute.remote(
+            func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,
                        **kwargs) -> T:
