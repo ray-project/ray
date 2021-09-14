@@ -53,7 +53,7 @@ class GcsActorSchedulerTest : public Test {
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
     node_info->set_node_id(node_id.Binary());
-    worker_id = WorkerID::FrmRandom();
+    worker_id = WorkerID::FromRandom();
     gcs_node_manager->AddNode(node_info);
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
