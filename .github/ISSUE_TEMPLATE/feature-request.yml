@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for finding the time to propose new feature!
+        Thank you for finding the time to propose a new feature!
         We really appreciate the community efforts to improve Ray.
   - type: checkboxes
     attributes:
@@ -27,7 +27,8 @@ body:
   - type: textarea
     attributes:
       label: Use case
-      description: What do you want to happen?
+      description: Describe the use case of your feature request. It will help us understanding and
+      prioritizing the feature request.
       placeholder: >
         Rather than telling us how you might implement this feature, try to take a
         step back and describe what you are trying to achieve.
