@@ -297,6 +297,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs that were passed by reference in the task spec or that were
   /// serialized in inlined arguments.
   ///
+  /// NOTE(swang): These arguments should be pinned with an artificial local
+  /// reference during task execution, and this method unpins this reference so
+  /// that the reference deletion is atomic with removing the borrow
+  /// information.
+  ///
   /// See GetAndClearLocalBorrowersInternal for the spec of the returned table
   /// and how this mutates the local reference count.
   ///
@@ -307,8 +312,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
-                                 ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
+  void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
+                                 ReferenceTableProto *proto,
+                                 std::vector<ObjectID> *deleted) LOCKS_EXCLUDED(mutex_);
 
   /// Mark that this ObjectID contains another ObjectID(s). This should be
   /// called in two cases:
