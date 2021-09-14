@@ -163,12 +163,16 @@ class MiddlemanServer:
     """
 
     def __init__(self,
+                 listen_addr: str,
+                 real_addr,
                  on_log_response: Optional[Hook] = None,
                  on_data_response: Optional[Hook] = None,
                  on_task_request: Optional[Hook] = None,
                  on_task_response: Optional[Hook] = None):
         """
         Args:
+            listen_addr: The address the middleman server will listen on
+            real_addr: The address of the real ray server
             on_log_response: Optional hook to inject errors before sending back
                 a log response
             on_data_response: Optional hook to inject errors before sending
@@ -178,8 +182,8 @@ class MiddlemanServer:
             on_task_response: Optional hook to inject errors before sending
                 back a raylet driver response
         """
-        self.listen_addr = "localhost:10011"
-        self.real_addr = "localhost:50051"
+        self.listen_addr = listen_addr
+        self.real_addr = real_addr
         self.server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
             options=GRPC_OPTIONS)
@@ -233,10 +237,12 @@ def start_middleman_server(on_log_response=None,
     middleman = None
     try:
         middleman = MiddlemanServer(
-            on_log_response=None,
-            on_data_response=None,
-            on_task_request=None,
-            on_task_response=None)
+            listen_addr="localhost:10011",
+            real_addr="localhost:50051",
+            on_log_response=on_log_response,
+            on_data_response=on_data_response,
+            on_task_request=on_task_response,
+            on_task_response=on_task_request)
         middleman.start()
         ray.init("ray://localhost:10011")
         yield middleman, server

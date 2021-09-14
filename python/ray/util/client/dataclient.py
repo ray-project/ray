@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]],
                             None]
 
+# Send an acknowledge on every 10th response received
+ACKNOWLEDGE_BATCH_SIZE = 10
+
 
 class DataClient:
     def __init__(self, client_worker, client_id: str, metadata: list):
@@ -52,6 +55,7 @@ class DataClient:
         self._in_shutdown = False
         self._req_id = 0
         self._last_exception = None
+        self._acknowledge_counter = 0
 
         self.data_thread.start()
 
@@ -90,7 +94,7 @@ class DataClient:
                         self._process_response(response)
                     return
                 except grpc.RpcError as e:
-                    reconnecting = self._process_rpc_error(e)
+                    reconnecting = self._can_reconnect(e)
                     if not reconnecting:
                         return
                     self._reconnect_channel()
@@ -124,6 +128,7 @@ class DataClient:
                 # Update outstanding requests
                 if response.req_id in self.outstanding_requests:
                     del self.outstanding_requests[response.req_id]
+                    # Acknowledge response
                     self._acknowledge(response.req_id)
         else:
             # Blocking response. Populate ready data and wake up waiting
@@ -132,7 +137,7 @@ class DataClient:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
 
-    def _process_rpc_error(self, e: grpc.RpcError) -> bool:
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
         """
         Processes RPC errors that occur while reading from data stream.
         Returns True if the error can be recovered from, False otherwise.
@@ -142,6 +147,8 @@ class DataClient:
             logger.debug(e)
             self._last_exception = e
             return False
+        logger.debug("Recoverable error in data channel.")
+        logger.debug(e)
         return True
 
     def _shutdown(self) -> None:
@@ -167,9 +174,17 @@ class DataClient:
             # will be added to self.asyncio_waiting_data
 
     def _acknowledge(self, req_id: int):
-        self.request_queue.put(
-            ray_client_pb2.DataRequest(
-                acknowledge=ray_client_pb2.AcknowledgeRequest(req_id=req_id)))
+        """
+        Puts an acknowledge request on the request queue periodically.
+        Lock should be held before calling this.
+        """
+        assert self.lock.locked()
+        self._acknowledge_counter += 1
+        if self._acknowledge_counter % ACKNOWLEDGE_BATCH_SIZE == 0:
+            self.request_queue.put(
+                ray_client_pb2.DataRequest(
+                    acknowledge=ray_client_pb2.AcknowledgeRequest(
+                        req_id=req_id)))
 
     def _reconnect_channel(self):
         """

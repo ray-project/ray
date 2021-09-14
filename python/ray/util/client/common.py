@@ -386,6 +386,9 @@ class ClientServerHandle:
     grpc_server: grpc.Server
 
     def stop(self, grace: int) -> None:
+        # The data servicer might be sleeping while waiting for clients to
+        # reconnect. Signal that they no longer have to sleep and can exit
+        # immediately, since the RPC server is stopped.
         self.grpc_server.stop(grace)
         self.data_servicer.stopped.set()
 
