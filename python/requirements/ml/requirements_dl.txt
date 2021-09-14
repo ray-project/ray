@@ -1,3 +1,6 @@
+# These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
+# For GPU Docker images, requirements_ml_docker
+
 tensorflow==2.5.0
 tensorflow-probability==0.13.0
 
