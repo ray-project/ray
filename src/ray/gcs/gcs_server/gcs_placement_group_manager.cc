@@ -45,22 +45,22 @@ std::string GcsPlacementGroup::GetRayNamespace() const {
   return placement_group_table_data_.ray_namespace();
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
+std::vector<std::shared_ptr<const BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
+  std::vector<std::shared_ptr<const BundleSpecification>> ret_bundles;
   for (const auto &bundle : bundles) {
-    ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+    ret_bundles.push_back(std::make_shared<const BundleSpecification>(bundle));
   }
   return ret_bundles;
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
+std::vector<std::shared_ptr<const BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
     const {
   const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
+  std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
   for (const auto &bundle : bundles) {
     if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
-      unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+      unplaced_bundles.push_back(std::make_shared<const BundleSpecification>(bundle));
     }
   }
   return unplaced_bundles;
