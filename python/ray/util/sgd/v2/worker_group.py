@@ -22,21 +22,19 @@ class BaseWorkerMixin:
         return func(*args, **kwargs)
 
 
-def create_executable_class(executable_cls: Type) -> Type:
-    """Return a class that subclasses ``executable_cls`` and ``BaseWorkerMixin``.
-
-    If the ``executable_cls`` already subclasses ``BaseWorkerMixin``,
-    then it is directly returned.
-    """
-    if not issubclass(executable_cls, BaseWorkerMixin):
+def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
+    """Create the executable class to use as the Ray actors."""
+    if not executable_cls:
+        return BaseWorkerMixin
+    elif issubclass(executable_cls, BaseWorkerMixin):
+        return executable_cls
+    else:
 
         class _WrappedExecutable(executable_cls, BaseWorkerMixin):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
         return _WrappedExecutable
-    else:
-        return executable_cls
 
 
 class WorkerGroup:
@@ -105,10 +103,7 @@ class WorkerGroup:
         self.num_gpus_per_worker = num_gpus_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
-        if actor_cls:
-            self._base_cls = create_executable_class(actor_cls)
-        else:
-            self._base_cls = BaseWorkerMixin
+        self._base_cls = create_executable_class(actor_cls)
 
         self._actor_cls_args = actor_cls_args or []
         self._actor_cls_kwargs = actor_cls_kwargs or {}
