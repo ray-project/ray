@@ -1236,7 +1236,6 @@ void NodeManager::DisconnectClient(
                       << " Worker port: " << worker->Port()
                       << " Worker PID: " << worker->GetProcess().GetId();
         std::string error_message_str = error_message.str();
-        RAY_LOG(INFO) << error_message_str;
         RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
                 .WithField("worker_id", worker->WorkerId().Hex())
                 .WithField("node_id", self_node_id_.Hex())
