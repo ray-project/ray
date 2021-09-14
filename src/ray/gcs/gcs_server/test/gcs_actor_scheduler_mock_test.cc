@@ -15,6 +15,7 @@
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
@@ -23,6 +24,8 @@
 #include "mock/ray/gcs/pubsub/gcs_pub_sub.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 // clang-format on
+using namespace ::testing;
+
 namespace ray {
 namespace gcs {
 struct MockCallback {
@@ -46,6 +49,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](auto a) { schedule_failure_handler(a); },
         [this](auto a) { schedule_success_handler(a); }, client_pool,
         [this](const rpc::Address &) { return core_worker_client; });
+    gcs_node_manager->AddNode(std::make_shared<rpc::GcsNodeInfo>());
+
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   instrumented_io_context io_context;
@@ -61,6 +66,16 @@ class GcsActorSchedulerTest : public ::testing::Test {
 };
 
 TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
+  auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  rpc::ActorTableData actor_data;
+  actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
+  actor_data.set_actor_id(actor_id.Binary());
+  auto actor = std::make_shared<GcsActor>(actor_data);
+  std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
+  EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _)).
+      WillOnce(testing::SaveArg<1>(&cb));
+  actor_scheduler->Schedule(actor);
+
 
 }
 
