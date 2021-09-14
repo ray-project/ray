@@ -85,7 +85,6 @@ def start_worker_in_container(container_option, args, remaining_args):
             "failed to get tmp_dir, the args: {}".format(remaining_args))
 
     container_driver = "podman"
-    # todo add cgroup config
     # todo flag "--rm"
     container_command = [
         container_driver, "run", "-v", tmp_dir + ":" + tmp_dir,
@@ -116,15 +115,16 @@ if __name__ == "__main__":
     else:
         remaining_args.append("--serialized-runtime-env")
         remaining_args.append(args.serialized_runtime_env or "{}")
-        remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
 
-        def start_worker():
+        def start_worker(remaining_args):
             setup = import_attr(args.worker_setup_hook)
             setup(remaining_args)
 
         if args.allocated_instances_serialized_json != "{}":
             import setup_cgroup
+            remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
             setup_cgroup.start_worker_in_cgroup(
-                start_worker, args.allocated_instances_serialized_json)
+                start_worker, remaining_args,
+                args.allocated_instances_serialized_json)
         else:
-            start_worker()
+            start_worker(remaining_args)

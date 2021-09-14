@@ -50,7 +50,7 @@ def create_cgroup_for_worker(resource_json):
     return cgroup_nodes
 
 
-def start_worker_in_cgroup(worker_func, resource_json):
+def start_worker_in_cgroup(worker_func, worker_func_args, resource_json):
     try:
         cgroup_nodes = create_cgroup_for_worker(resource_json)
     except Exception:
@@ -72,4 +72,4 @@ def start_worker_in_cgroup(worker_func, resource_json):
         current_pid = os.getpid()
         for idx, node in enumerate(cgroup_nodes):
             utils.set_ray_cgroup_property(node, "cgroup.procs", current_pid)
-        worker_func()
+        worker_func(worker_func_args)
