@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for finding the time to report the problem! We really appreciate the community efforts to improve Ray.
-        Please make sure what you are reporting is indeed a bug with reproducible steps, if you want to ask questions
+        Thank you for reporting the problem!
+        Please make sure what you are reporting is a bug with reproducible steps. To ask questions
         or share ideas, pleae post on our [Discussion page](https://discuss.ray.io/) instead.
 
   - type: checkboxes
@@ -27,7 +27,7 @@ body:
       label: Ray Component
       description: |
         What component are you using? Ray has many subprojects, please make sure to choose the component that
-        you found the bug. For third party projects, please refer to their corresponding repos.
+        you found the bug.
       multiple: true
       options:
         - "Ray Core"
@@ -44,11 +44,11 @@ body:
 
   - type: textarea
     attributes:
-      label: What happened and What you expected to happen
+      label: What happened + What you expected to happen
       description: Describe 1. the bug 2. expected behavior 3. useful information (e.g., logs)
       placeholder: >
         Please provide the context in which the problem occurred and explain what happened. Further,
-        please also explain why you think the behaviour is erroneous. It is extremely helpful if you can 
+        please also explain why you think the behaviour is erroneous. It is extremely helpful if you can
         copy and paste the fragment of logs showing the exact error messages or wrong behaviour here.
 
         **NOTE**: please copy and paste texts instead of taking screenshots of them for easy future search.
@@ -57,13 +57,13 @@ body:
 
   - type: textarea
     attributes:
-      label: Repro script
+      label: Reproduction script
       description: >
-        Please provide a repro instruction. Providing a narrow reproduction (minimal / no external dependencies) will
-        help us triaging and addressing issues in the timely manner!
+        Please provide a reproducible script. Providing a narrow reproduction (minimal / no external dependencies) will
+        help us triage and address issues in the timely manner!
       placeholder: >
-        Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to 
-        reproduce the issue. The snippet should have **no external library dependencies** 
+        Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to
+        reproduce the issue. The snippet should have **no external library dependencies**
         (i.e., use fake or mock data / environments).
 
         **NOTE**: If the code snippet cannot be run by itself, the issue will be marked as "needs-repro-script"
