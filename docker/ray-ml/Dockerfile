@@ -29,5 +29,8 @@ RUN sudo apt-get update \
     && sudo rm requirements_tune.txt && sudo rm requirements_rllib.txt \
     && sudo apt-get clean
 
+# Make sure tfp is installed correctly and matches tf version.
+RUN python -c "import tensorflow_probability"
+
 # Install Atari ROMs. Previously these have been shipped with atari_py \
 RUN ./install_atari_roms.sh

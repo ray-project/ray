@@ -128,27 +128,28 @@ inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
-template <typename FuncType>
-ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func);
-
-template <typename FuncType>
-ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
-
-template <typename T>
-inline static boost::optional<ActorHandle<T>> GetActorInternal(
-    bool global, const std::string &actor_name);
-
 /// Create a placement group on remote nodes.
 ///
 /// \param[in] create_options Creation options of the placement group.
 /// \return A PlacementGroup to the created placement group.
 PlacementGroup CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options);
+    const ray::PlacementGroupCreationOptions &create_options);
 
 /// Remove a placement group by id.
 ///
 /// \param[in] placement_group_id Id of the placement group.
 void RemovePlacementGroup(const std::string &placement_group_id);
+
+std::vector<PlacementGroup> GetAllPlacementGroups();
+
+/// Get a placement group by id.
+PlacementGroup GetPlacementGroupById(const std::string &id);
+
+/// Get a placement group by name.
+PlacementGroup GetPlacementGroup(const std::string &name);
+
+/// Get a placement group by placement group name from all jobs.
+PlacementGroup GetGlobalPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
@@ -267,12 +268,28 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
 }
 
 inline PlacementGroup CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
 }
 
 inline void RemovePlacementGroup(const std::string &placement_group_id) {
   return ray::internal::GetRayRuntime()->RemovePlacementGroup(placement_group_id);
+}
+
+inline std::vector<PlacementGroup> GetAllPlacementGroups() {
+  return ray::internal::GetRayRuntime()->GetAllPlacementGroups();
+}
+
+inline PlacementGroup GetPlacementGroupById(const std::string &id) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroupById(id);
+}
+
+inline PlacementGroup GetPlacementGroup(const std::string &name) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, false);
+}
+
+inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, true);
 }
 
 inline bool WasCurrentActorRestarted() {

@@ -385,6 +385,9 @@ def run_learning_tests_from_yaml(
         yaml_files (List[str]): List of yaml file names.
         max_num_repeats (int): How many times should we repeat a failed
             experiment?
+        smoke_test (bool): Whether this is just a smoke-test. If True,
+            set time_total_s to 5min and don't early out due to rewards
+            or timesteps reached.
     """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:
@@ -416,8 +419,8 @@ def run_learning_tests_from_yaml(
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
-                # 15min hardcoded for now.
-                e["stop"]["time_total_s"] = 900
+                # 4min hardcoded for now.
+                e["stop"]["time_total_s"] = 240
                 # Don't stop smoke tests b/c of any reward received.
                 e["pass_criteria"]["episode_reward_mean"] = float("inf")
                 # Same for timesteps.
@@ -495,8 +498,15 @@ def run_learning_tests_from_yaml(
             check_eval = experiments[experiment]["config"].get(
                 "evaluation_interval", None) is not None
 
+            # Error: Increase failure count and repeat.
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
+            # Smoke-tests always succeed.
+            elif smoke_test:
+                checks[experiment]["passed"] = True
+                del experiments_to_run[experiment]
+            # Experiment finished: Check reward achieved and timesteps done
+            # (throughput).
             else:
                 reward_mean = \
                     t.last_result["evaluation"]["episode_reward_mean"] if \
