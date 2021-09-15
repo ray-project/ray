@@ -49,12 +49,12 @@ install_llvm() {
       osversion="${OSTYPE}-$(sed -n -e '/^PRETTY_NAME/ { s/^[^=]*="\(.*\)"/\1/g; s/ /-/; s/\([0-9]*\.[0-9]*\)\.[0-9]*/\1/; s/ .*//; p }' /etc/os-release | tr '[:upper:]' '[:lower:]')"
       ;;
     darwin*)
-      printError "This script does not support installing LLVM on Windows yet. Please use the system compiler, "
-      printError "insteall with Homebrew or install with LLVM's instruction."
+      printError "This script does not support installing LLVM on MacOS yet. Please use the system compiler, "
+      printError "install with Homebrew or install with LLVM's instruction."
       exit 1
       ;;
     *)
-      printError "Unknow system ${OSTYPE}"
+      printError "Unknown system ${OSTYPE}"
       exit 1
   esac
   case "${osversion}" in
@@ -67,7 +67,7 @@ install_llvm() {
       rm llvm.tar.xz
       ;;
     *)
-      printError "Unknow linux distro ${OSTYPE}"
+      printError "Unknown linux distro ${OSTYPE}"
       exit 1
       ;;
   esac

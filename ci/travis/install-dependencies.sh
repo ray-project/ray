@@ -266,6 +266,11 @@ install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
     "${ROOT_DIR}"/install-toolchains.sh
   fi
+  if [[ "${OSTYPE}" = linux* ]]; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
+  fi
 }
 
 download_mnist() {

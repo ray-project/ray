@@ -85,6 +85,8 @@ build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
+build:tsan-clang --config=tsan
+build:tsan-clang --config=llvm
 
 # Memory sanitizer configuration
 build:asan --strip=never
@@ -96,6 +98,8 @@ build:asan --linkopt -fsanitize=address
 test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 # https://github.com/google/sanitizers/issues/1017
+build:asan-clang --config=asan
+build:asan-clang --config=llvm
 build:asan-clang --copt -mllvm
 build:asan-clang --copt -asan-use-private-alias=1
 
