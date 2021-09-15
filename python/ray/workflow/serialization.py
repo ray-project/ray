@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 import cloudpickle
 from collections import ChainMap
 import io
+from weakref import ref, ReferenceType
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -186,13 +187,20 @@ async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
 
 
 @ray.remote
-def _load_ref_helper(paths: List[str], storage: storage.Storage):
+def _load_ref_helper(key: str, storage: storage.Storage):
     # TODO: Should be able to do `storage.open()` here too.
     serialized = asyncio.get_event_loop().run_until_complete(
-        storage.get(paths))
+        storage.get(key))
     return cloudpickle.loads(serialized)
 
 
+# TODO (Alex): We should use weakrefs here.
+_object_cache: Dict[str, ray.ObjectRef] = {}
 def _load_object_ref(paths: List[str], storage: storage.Storage) -> ObjectRef:
+    global _object_cache
     key = storage.make_key(*paths)
-    return _load_ref_helper.remote(key, storage)
+
+    if key not in _object_cache:
+        _object_cache[key] = _load_ref_helper.remote(key, storage)
+
+    return _object_cache[key]
