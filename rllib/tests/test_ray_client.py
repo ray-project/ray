@@ -22,7 +22,7 @@ class TestRayClient(unittest.TestCase):
 
             config = {
                 # Special flag signalling `my_train_fn` how many iters to do.
-                "training-iterations": 2,
+                "train-iterations": 2,
                 "lr": 0.01,
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
                 "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
