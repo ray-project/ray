@@ -264,6 +264,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_resource_manager_->ReleaseResources(
             actor->GetActorWorkerAssignment()->GetNodeID(),
             actor->GetActorWorkerAssignment()->GetResources());
+        main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
       }
     };
   } else {
