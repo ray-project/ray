@@ -74,7 +74,11 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
     throw RayWorkerException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
     throw RayActorException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
+    // TODO: Differentiate object errors.
     throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
     throw RayTaskException(std::move(data_str));
