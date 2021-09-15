@@ -133,25 +133,28 @@ RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainSer
 RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::SyncData);
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
-  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}, {"CPU", 1}}};
+  std::vector<std::unordered_map<std::string, double>> bundles{
+      {{"CPU", 1.0}, {"memory", 1024.0}}, {{"CPU", 1.0}, {"memory", 1024.0}}};
 
-  ray::internal::PlacementGroupCreationOptions options{
-      false, name, bundles, ray::internal::PlacementStrategy::SPREAD};
+  ray::PlacementGroupCreationOptions options{false, name, bundles,
+                                             ray::PlacementStrategy::SPREAD};
   return ray::CreatePlacementGroup(options);
 }
 
 void StartServer() {
-  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  auto placement_group = CreateSimplePlacementGroup("my_placement_group");
   assert(placement_group.Wait(10));
 
   ray::Actor(CreateMainServer)
       .SetMaxRestarts(1)
       .SetPlacementGroup(placement_group, 0)
+      .SetResource("CPU", 1.0)
       .SetName(MAIN_SERVER_NAME)
       .Remote();
   ray::Actor(CreateBackupServer)
       .SetMaxRestarts(1)
       .SetPlacementGroup(placement_group, 1)
+      .SetResource("CPU", 1.0)
       .SetName(BACKUP_SERVER_NAME)
       .Remote();
 }
