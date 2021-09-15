@@ -51,6 +51,9 @@ head_node_type: ray_head_default
 # Compute instances have python 3.7, but TPUs have 3.8 - need to update
 # Install Jax and other dependencies on the Compute head node
 head_setup_commands:
+  # Two first lines are a workaround for ssh timing out
+  - sleep 2
+  - sleep 2
   - sudo chown -R $(whoami) /opt/conda/*
   - conda create -y -n "ray" python=3.8.5
   - conda activate ray && echo 'conda activate ray' >> ~/.bashrc
