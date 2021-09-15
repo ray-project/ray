@@ -1,6 +1,57 @@
 from abc import ABCMeta, abstractmethod
+import math
 
 from ray.serve.utils import logger
+from ray.serve.config import AutoscalingConfig
+from typing import List
+
+
+def calculate_desired_num_replicas(autoscaling_config: AutoscalingConfig,
+                                   current_num_ongoing_requests: List[float]
+                                   ) -> int:  # (desired replicas):
+    """Returns the number of replicas to scale to based on the given metrics.
+
+    Args:
+        autoscaling_config: The autoscaling parameters to use for this
+            calculation.
+        current_num_ongoing_requests (List[float]): A list of the number of
+            ongoing requests for each replica.  Assumes each entry has already
+            been time-averaged over the desired lookback window.
+        current_num_replicas (int): The current number of active replicas.
+
+    Returns:
+        desired_num_replicas: The desired number of replicas to scale to, based
+            on the input metrics and the current number of replicas.
+
+    """
+    # Assume current_metrics have already been time-averaged over a window.
+    current_num_replicas = len(current_num_ongoing_requests)
+    if current_num_replicas == 0:
+        raise ValueError("Number of replicas cannot be zero")
+
+    # The number of ongoing requests per replica, averaged over all replicas.
+    num_ongoing_requests_per_replica: float = sum(
+        current_num_ongoing_requests) / len(current_num_ongoing_requests)
+
+    # Example: if error_ratio == 2.0, we have two times too many ongoing
+    # requests per replica, so we desire twice as many replicas.
+    error_ratio: float = (
+        num_ongoing_requests_per_replica /
+        autoscaling_config.target_num_ongoing_requests_per_replica)
+
+    # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
+    smoothed_error_ratio = 1 + (
+        (error_ratio - 1) * autoscaling_config.smoothing_factor)
+    desired_num_replicas = math.ceil(
+        current_num_replicas * smoothed_error_ratio)
+
+    # Ensure min_replicas <= desired_num_replicas <= max_replicas.
+    desired_num_replicas = min(autoscaling_config.max_replicas,
+                               desired_num_replicas)
+    desired_num_replicas = max(autoscaling_config.min_replicas,
+                               desired_num_replicas)
+
+    return desired_num_replicas
 
 
 class AutoscalingPolicy:
