@@ -642,8 +642,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 new_iter = chain([modified_init_req], request_iterator)
 
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-            resp_stream = stub.Datapath(
-                new_iter, metadata=[("client_id", client_id)])
+            metadata = [("client_id", client_id), ("reconnecting",
+                                                   str(reconnecting))]
+            resp_stream = stub.Datapath(new_iter, metadata=metadata)
             for resp in resp_stream:
                 resp_type = resp.WhichOneof("type")
                 if resp_type == "connection_cleanup":
