@@ -1112,7 +1112,7 @@ def validate_namespace(namespace: str):
 
 
 def load_certs_from_env():
-    if os.environ["RAY_USE_TLS"] == "1":
+    if os.environ.get("RAY_USE_TLS", "0") == "1":
         with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
             server_cert_chain = f.read()
         with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
@@ -1130,7 +1130,7 @@ def init_grpc_channel(address: str,
                       options: Optional[Sequence[Tuple[str, Any]]] = None,
                       asynchronous: bool = False):
     grpc_module = aiogrpc if asynchronous else grpc
-    if os.environ["RAY_USE_TLS"] == "1":
+    if os.environ.get("RAY_USE_TLS", "0") == "1":
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,
@@ -1145,7 +1145,7 @@ def init_grpc_channel(address: str,
 
 
 def add_port_to_grpc_server(server, address):
-    if os.environ["RAY_USE_TLS"] == "1":
+    if os.environ.get("RAY_USE_TLS", "0") == "1":
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],

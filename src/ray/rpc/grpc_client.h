@@ -55,7 +55,11 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    use_tls_ = std::strcmp(std::getenv("RAY_USE_TLS"), "0") != 0;
+    if (std::getenv("RAY_USE_TLS")) {
+      use_tls_ = std::strcmp(std::getenv("RAY_USE_TLS"), "0") != 0;
+    } else {
+      use_tls_ = false;
+    }
     std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
 
     stub_ = GrpcService::NewStub(channel);
