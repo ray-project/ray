@@ -22,8 +22,11 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
-- `Serve`_: Scalable and Programmable Serving
 - `Datasets`_: Flexible Distributed Data Loading (alpha)
+
+As well as libraries for taking ML and distributed apps to production:
+
+- `Serve`_: Scalable and Programmable Serving
 - `Workflows`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
