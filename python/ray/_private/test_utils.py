@@ -685,3 +685,10 @@ class _BatchQueueActor(_QueueActor):
                 except asyncio.TimeoutError:
                     break
         return batch
+
+
+def is_placement_group_removed(pg):
+    table = ray.util.placement_group_table(pg)
+    if "state" not in table:
+        return False
+    return table["state"] == "REMOVED"

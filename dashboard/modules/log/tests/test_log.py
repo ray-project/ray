@@ -6,7 +6,7 @@ import traceback
 import html.parser
 import urllib.parse
 
-from ray.new_dashboard.tests.conftest import *  # noqa
+from ray.dashboard.tests.conftest import *  # noqa
 import pytest
 import ray
 from ray._private.test_utils import (
