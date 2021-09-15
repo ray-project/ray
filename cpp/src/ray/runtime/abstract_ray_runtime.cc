@@ -253,7 +253,7 @@ bool AbstractRayRuntime::WasCurrentActorRestarted() {
 }
 
 ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   return task_submitter_->CreatePlacementGroup(create_options);
 }
 
@@ -274,14 +274,14 @@ PlacementGroup AbstractRayRuntime::GeneratePlacementGroup(const std::string &str
   }
 
   PlacementGroupCreationOptions options;
-  options.state = PlacementGroupState(pg_table_data.state());
   options.name = pg_table_data.name();
   auto &bundles = options.bundles;
   for (auto &bundle : bundles) {
     options.bundles.emplace_back(bundle);
   }
   options.strategy = PlacementStrategy(pg_table_data.strategy());
-  PlacementGroup group(pg_table_data.placement_group_id(), std::move(options));
+  PlacementGroup group(pg_table_data.placement_group_id(), std::move(options),
+                       PlacementGroupState(pg_table_data.state()));
   return group;
 }
 

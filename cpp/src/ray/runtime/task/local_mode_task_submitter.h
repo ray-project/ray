@@ -41,7 +41,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   ActorID GetActor(bool global, const std::string &actor_name) const;
 
   ray::PlacementGroup CreatePlacementGroup(
-      const ray::internal::PlacementGroupCreationOptions &create_options);
+      const ray::PlacementGroupCreationOptions &create_options);
   void RemovePlacementGroup(const std::string &group_id);
   std::vector<PlacementGroup> GetAllPlacementGroups();
   PlacementGroup GetPlacementGroupById(const std::string &id);
