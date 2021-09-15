@@ -1629,8 +1629,7 @@ void NodeManager::HandleCancelResourceReserve(
         << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
         << ", task id: " << worker->GetAssignedTaskId()
-        << ", actor id: " << worker->GetActorId()
-        << ", worker id: " << worker->WorkerId()
+        << ", actor id: " << worker->GetActorId() << ", worker id: " << worker->WorkerId()
         << ", worker pid: " << worker->GetProcess().GetId();
     DestroyWorker(worker, rpc::WorkerExitType::PLACEMENT_GROUP_REMOVED);
   }
