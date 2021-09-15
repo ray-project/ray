@@ -57,7 +57,7 @@ class _ClientContext:
             if self._connected_with_init:
                 return
             raise Exception(
-                "ray.connect() called, but ray client is already connected")
+                "ray.init() called, but ray client is already connected")
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
@@ -149,7 +149,7 @@ class _ClientContext:
             return lambda: False
         else:
             raise Exception("Ray Client is not connected. "
-                            "Please connect by calling `ray.connect`.")
+                            "Please connect by calling `ray.init`.")
 
     def is_connected(self) -> bool:
         if self.client_worker is None:

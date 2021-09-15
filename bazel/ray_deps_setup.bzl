@@ -278,3 +278,9 @@ def ray_deps_setup():
         build_file = "@com_github_ray_project_ray//bazel:BUILD.nlohmann_json",
     )
 
+    auto_http_archive(
+        name = "rapidjson",
+        url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
+        build_file = True,
+        sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
+    )

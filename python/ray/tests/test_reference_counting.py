@@ -415,8 +415,11 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         assert ray.get(tail_oid) is None
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -494,15 +497,21 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         return
 
     @ray.remote
-    def launch_pending_task(ref, signal):
-        return child.remote(ref[0], signal.wait.remote())
+    class Submitter:
+        def __init__(self):
+            pass
+
+        def launch_pending_task(self, ref, signal):
+            return child.remote(ref[0], signal.wait.remote())
 
     signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put_object(
         np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-    child_return_id = ray.get(launch_pending_task.remote([array_oid], signal))
+    s = Submitter.remote()
+    child_return_id = ray.get(
+        s.launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -515,7 +524,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
+    except ray.exceptions.WorkerCrashedError:
         assert failure
     del child_return_id
 

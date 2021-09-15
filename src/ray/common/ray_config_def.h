@@ -98,6 +98,9 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
+/// The fraction of resource utilization on a node after which the scheduler starts
+/// to prefer spreading tasks to other nodes. This balances between locality and
+/// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
            getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
                ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
@@ -414,9 +417,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_task_scheduling_enabled,
-           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
+           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 

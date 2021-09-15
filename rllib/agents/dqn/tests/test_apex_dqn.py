@@ -107,17 +107,17 @@ class TestApexDQN(unittest.TestCase):
             lr = _step_n_times(trainer, 5)  # 50 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.1 here.
             self.assertLessEqual(lr, 0.15)
-            self.assertGreaterEqual(lr, 0.05)
+            self.assertGreaterEqual(lr, 0.04)
 
             lr = _step_n_times(trainer, 5)  # 100 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.01 here.
             self.assertLessEqual(lr, 0.02)
-            self.assertGreaterEqual(lr, 0.005)
+            self.assertGreaterEqual(lr, 0.004)
 
             lr = _step_n_times(trainer, 5)  # 150 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.001 here.
             self.assertLessEqual(lr, 0.002)
-            self.assertGreaterEqual(lr, 0.0005)
+            self.assertGreaterEqual(lr, 0.0004)
 
             trainer.stop()
 

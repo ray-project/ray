@@ -168,8 +168,9 @@ ray_files += [
 
 # Dashboard files.
 ray_files += [
-    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
-    os.walk("ray/new_dashboard/client/build") for filename in filenames
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
 
 # If you're adding dependencies for ray extras, please
@@ -196,8 +197,11 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
         ],
-        "cpp": ["ray-cpp==" + setup_spec.version]
     }
+
+    if os.getenv("RAY_EXTRA_CPP") == "1":
+        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+
     if sys.version_info >= (3, 7, 0):
         setup_spec.extras["k8s"].append("kopf")
 

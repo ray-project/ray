@@ -121,6 +121,7 @@ class SelfPlayCallback(DefaultCallbacks):
             if r_main > r_opponent:
                 won += 1
         win_rate = won / len(main_rew)
+        result["win_rate"] = win_rate
         print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
@@ -157,6 +158,9 @@ class SelfPlayCallback(DefaultCallbacks):
             trainer.workers.sync_weights()
         else:
             print("not good enough; will keep learning ...")
+
+        # +2 = main + random
+        result["league_size"] = self.current_opponent + 2
 
 
 if __name__ == "__main__":
@@ -226,6 +230,8 @@ if __name__ == "__main__":
                     "timesteps_total": "ts",
                     "episodes_this_iter": "train_episodes",
                     "policy_reward_mean/main": "reward",
+                    "win_rate": "win_rate",
+                    "league_size": "league_size",
                 },
                 sort_by_metric=True,
             ),

@@ -58,7 +58,13 @@ def stop_process(process):
         raise RuntimeError(msg)
 
 
-@pytest.fixture(scope="session")
+# TODO(Clark): We should be able to use "session" scope here, but we've found
+# that the s3_fs fixture ends up hanging with S3 ops timing out (or the server
+# being unreachable). This appears to only be an issue when using the tmp_dir
+# fixture as the S3 dir path. We should fix this since "session" scope should
+# reduce a lot of the per-test overhead (2x faster execution for IO methods in
+# test_dataset.py).
+@pytest.fixture(scope="function")
 def s3_server():
     host = "localhost"
     port = 5002

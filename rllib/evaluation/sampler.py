@@ -812,10 +812,13 @@ def _process_observations(
 
             policy_id: PolicyID = episode.policy_for(agent_id)
 
-            prep_obs: EnvObsType = _get_or_raise(worker.preprocessors,
-                                                 policy_id).transform(raw_obs)
-            if log_once("prep_obs"):
-                logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+            preprocessor = _get_or_raise(worker.preprocessors, policy_id)
+            prep_obs: EnvObsType = raw_obs
+            if preprocessor is not None:
+                prep_obs = preprocessor.transform(raw_obs)
+                if log_once("prep_obs"):
+                    logger.info("Preprocessed obs: {}".format(
+                        summarize(prep_obs)))
             filtered_obs: EnvObsType = _get_or_raise(worker.filters,
                                                      policy_id)(prep_obs)
             if log_once("filtered_obs"):
@@ -955,10 +958,15 @@ def _process_observations(
                 # types: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = new_episode.policy_for(agent_id)
-                    prep_obs: EnvObsType = _get_or_raise(
-                        worker.preprocessors, policy_id).transform(raw_obs)
+                    preproccessor = _get_or_raise(worker.preprocessors,
+                                                  policy_id)
+
+                    prep_obs: EnvObsType = raw_obs
+                    if preproccessor is not None:
+                        prep_obs = preproccessor.transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
                         worker.filters, policy_id)(prep_obs)
+                    new_episode._set_last_raw_obs(agent_id, raw_obs)
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.

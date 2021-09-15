@@ -62,7 +62,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Spark Dataframe
      - ``ray.data.from_spark()``
-     - (todo)
+     - ✅
    * - Dask Dataframe
      - ``ray.data.from_dask()``
      - ✅
@@ -106,7 +106,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Spark Dataframe
      - ``ds.to_spark()``
-     - (todo)
+     - ✅
    * - Dask Dataframe
      - ``ds.to_dask()``
      - ✅
