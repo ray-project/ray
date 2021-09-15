@@ -1,6 +1,5 @@
 import asyncio
 import json
-from logging import exception
 import time
 from collections import defaultdict
 import os

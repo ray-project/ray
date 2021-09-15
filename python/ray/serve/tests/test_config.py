@@ -1,7 +1,6 @@
 import pytest
 from pydantic import ValidationError
 
-from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
 
