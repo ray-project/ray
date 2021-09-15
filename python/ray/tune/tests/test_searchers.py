@@ -305,6 +305,16 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.PRUNED)
 
+        dbr_searcher = OptunaSearch(
+            lambda trial: {
+                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0),
+            },
+            metric="metric",
+            mode="max",
+        )
+        with self.assertRaises(TypeError):
+            dbr_searcher.add_evaluated_point(point, 1.0)
+
     def testHEBO(self):
         from ray.tune.suggest.hebo import HEBOSearch
 
