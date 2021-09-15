@@ -17,21 +17,6 @@ from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
 
-_PYARROW_FSES_NEEDING_URL_ENCODING = None
-
-
-# We delay creation of the set of pyarrow fses that need URL encoding in order
-# to delay the pyarrow import until we're sure that the user needs pyarrow.
-def _get_pyarrow_fses_needing_url_encoding():
-    import pyarrow as pa
-
-    global _PYARROW_FSES_NEEDING_URL_ENCODING
-
-    if _PYARROW_FSES_NEEDING_URL_ENCODING is None:
-        _PYARROW_FSES_NEEDING_URL_ENCODING = (pa.fs.S3FileSystem, )
-
-    return _PYARROW_FSES_NEEDING_URL_ENCODING
-
 
 @DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
@@ -202,7 +187,9 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
-    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler
+    import pyarrow as pa
+    from pyarrow.fs import (FileSystem, PyFileSystem, FSSpecHandler,
+                            _resolve_filesystem_and_path)
     import fsspec
 
     if isinstance(paths, str):
@@ -224,92 +211,25 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
+        try:
+            resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+                path, filesystem)
+        except pa.lib.ArrowInvalid as e:
+            if "Cannot parse URI" in str(e):
+                resolved_filesystem, resolved_path = (
+                    _resolve_filesystem_and_path(
+                        _encode_url(path), filesystem))
+                resolved_path = _decode_url(resolved_path)
+            else:
+                raise
         if filesystem is None:
             filesystem = resolved_filesystem
+        else:
+            resolved_path = _unwrap_protocol(resolved_path)
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
-
-
-def _resolve_filesystem_and_path(path,
-                                 filesystem=None,
-                                 allow_legacy_filesystem=False):
-    """
-    Return filesystem/path from path which could be an URI or a plain
-    filesystem path.
-    """
-    import pyarrow as pa
-    from pyarrow.fs import (_is_path_like, _ensure_filesystem, _stringify_path,
-                            FileSystem, LocalFileSystem, FileType)
-
-    if not _is_path_like(path):
-        if filesystem is not None:
-            raise ValueError(
-                "'filesystem' passed but the specified path is file-like, so"
-                " there is nothing to open with 'filesystem'.")
-        return filesystem, path
-
-    if filesystem is not None:
-        filesystem = _ensure_filesystem(
-            filesystem, allow_legacy_filesystem=allow_legacy_filesystem)
-        if isinstance(filesystem, LocalFileSystem):
-            path = _stringify_path(path)
-        elif not isinstance(path, str):
-            raise TypeError(
-                "Expected string path; path-like objects are only allowed "
-                "with a local filesystem")
-        path = _unwrap_protocol(path)
-        return filesystem, path
-
-    path = _stringify_path(path)
-
-    # if filesystem is not given, try to automatically determine one
-    # first check if the file exists as a local (relative) file path
-    # if not then try to parse the path as an URI
-    filesystem = LocalFileSystem()
-    try:
-        file_info = filesystem.get_file_info(path)
-    except OSError:
-        file_info = None
-        exists_locally = False
-    else:
-        exists_locally = (file_info.type != FileType.NotFound)
-
-    # if the file or directory doesn't exists locally, then assume that
-    # the path is an URI describing the file system as well
-    if not exists_locally:
-        try:
-            filesystem, path = FileSystem.from_uri(path)
-        except pa.lib.ArrowInvalid as e:
-            # URI parsing will fail if the provided path isn't URL-encoded,
-            # so if we detect such a failure, we try again with an encoded
-            # URI.
-            if "Cannot parse URI" in str(e):
-                encoded_path = _encode_url(path)
-                try:
-                    filesystem, encoded_path = FileSystem.from_uri(
-                        encoded_path)
-                    # We still want the returned path to not be URL-encoded;
-                    # this is what the other pyarrow APIs expect to receive.
-                    path = _decode_url(encoded_path)
-                except ValueError as sub_e:
-                    # neither an URI nor a locally existing path, so assume
-                    # that local path was given and propagate a nicer file not
-                    # found error instead of a more confusing scheme parsing
-                    # error
-                    if "empty scheme" not in str(sub_e):
-                        raise
-        except ValueError as e:
-            # neither an URI nor a locally existing path, so assume that
-            # local path was given and propagate a nicer file not found error
-            # instead of a more confusing scheme parsing error
-            if "empty scheme" not in str(e):
-                raise
-
-    return filesystem, path
 
 
 def _expand_paths(paths: Union[str, List[str]],
