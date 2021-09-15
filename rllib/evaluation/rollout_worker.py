@@ -1511,20 +1511,22 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
                 f"The provided env creator function returned {env} "
                 f"(type={type(env)}).")
 
+    # TODO: (sven) Take this check out for now. Too many envs don't abide to
+    #  the gym API and don't define their spaces properly.
     # Do some test runs with the provided env.
-    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
-        # Make sure the gym.Env has the two space attributes properly set.
-        assert hasattr(env, "observation_space") and hasattr(
-            env, "action_space")
-        # Get a dummy observation by resetting the env.
-        dummy_obs = env.reset()
-        # Check, if observation is ok (part of the observation space). If not,
-        # error.
-        if not env.observation_space.contains(dummy_obs):
-            logger.warning(msg + " (NOT OK)")
-            raise EnvError(
-                f"Env's `observation_space` {env.observation_space} does not "
-                f"contain returned observation after a reset ({dummy_obs})!")
+    # if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
+    #    # Make sure the gym.Env has the two space attributes properly set.
+    #    assert hasattr(env, "observation_space") and hasattr(
+    #        env, "action_space")
+    #    # Get a dummy observation by resetting the env.
+    #    dummy_obs = env.reset()
+    #    # Check, if observation is ok (part of the observation space). If not,
+    #    # error.
+    #    if not env.observation_space.contains(dummy_obs):
+    #        logger.warning(msg + " (NOT OK)")
+    #        raise EnvError(
+    #            f"Env's `observation_space` {env.observation_space} does not "
+    #            f"contain returned observation after a reset ({dummy_obs})!")
 
     # Log that everything is ok.
     logger.info(msg + " (ok)")
