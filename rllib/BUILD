@@ -663,6 +663,26 @@ py_test(
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
+py_test(
+    name = "learning_stateless_cartpole_r2d2_tf_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/stateless-cartpole-r2d2-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "learning_stateless_cartpole_r2d2_torch_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/stateless-cartpole-r2d2-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+)
+
 # SAC
 py_test(
     name = "run_regression_tests_cartpole_sac_tf",
@@ -1739,7 +1759,7 @@ py_test(
 
 py_test(
     name = "tests/test_ray_client",
-    tags = ["team:serverless", "tests_dir", "tests_dir_R"],
+    tags = ["team:ml", "tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_ray_client.py"]
 )
