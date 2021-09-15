@@ -89,15 +89,17 @@ def ray_start_regular_shared(request):
 
 
 @pytest.fixture(
-    scope="module", params=[{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }])
+    scope="module", params=[
+        {"local_mode": True},
+        {"local_mode": False},
+        {"local_mode": False, "use_tls": True}
+    ])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
-        yield res
+    use_tls = param.pop("use_tls", False)
+    with manage_tls(use_tls):
+        with _ray_start(**param) as res:
+            yield res
 
 
 @pytest.fixture
@@ -297,14 +299,21 @@ def log_pubsub():
     p.close()
 
 
-@pytest.fixture
+@contextmanager
+def manage_tls(use_tls):
+    if use_tls:
+        key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield use_tls
+    if use_tls:
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
+
+
+@pytest.fixture()
 def use_tls(request):
     if request.param:
-        print("Setting up TLS")
         key_filepath, cert_filepath, temp_dir = setup_tls()
-    yield None
+    yield request.param
     if request.param:
-        print("Tearing down TLS")
         teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 """

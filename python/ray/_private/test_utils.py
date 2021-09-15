@@ -740,6 +740,7 @@ def generate_self_signed_tls_certs():
     s.close()
     altnames = x509.SubjectAlternativeName([
         x509.DNSName(socket.gethostbyname(socket.gethostname())),  # Probably 127.0.0.1
+        x509.DNSName("127.0.0.1"),
         x509.DNSName(private_ip_address),  # 192.168.*.*
         x509.DNSName("localhost"),
     ])
