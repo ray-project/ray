@@ -471,3 +471,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
+
+/// Whether to avoid scheduling cpu requests on gpu nodes
+RAY_CONFIG(bool, avoid_scheduling_cpu_requests_on_gpu_nodes, false)
