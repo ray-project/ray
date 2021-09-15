@@ -1625,13 +1625,14 @@ void NodeManager::HandleCancelResourceReserve(
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
-    RAY_LOG(DEBUG)
+    RAY_LOG(ERROR)
         << "Destroying worker since its placement group was removed. Placement group id: "
         << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
-        << ", worker id: " << worker->WorkerId();
+        << ", worker id: " << worker->WorkerId()
+        << ", worker pid: " << worker->GetProcess().GetId();
     DestroyWorker(worker, rpc::WorkerExitType::PLACEMENT_GROUP_REMOVED);
   }
 

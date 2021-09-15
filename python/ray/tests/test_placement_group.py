@@ -393,7 +393,8 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
         # Creating a placement group as soon as it is
         # created should work.
         placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
-        assert placement_group.wait(10)
+        # assert placement_group.wait(10)
+        ray.get(placement_group.ready())
 
         ray.util.remove_placement_group(placement_group)
 
