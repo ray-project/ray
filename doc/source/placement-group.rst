@@ -137,8 +137,8 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       assert(ready);
 
       // You can look at placement group states using this API.
-      std::vector<ray::PlacementGroup> all_placementGroup = ray::GetAllPlacementGroups();
-      for (const ray::PlacementGroup &group : all_placementGroup) {
+      std::vector<ray::PlacementGroup> all_placement_group = ray::GetAllPlacementGroups();
+      for (const ray::PlacementGroup &group : all_placement_group) {
         std::cout << group.GetName() << std::endl;
       }
 
@@ -302,7 +302,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         assert(is_created);
 
         // Won't be scheduled because there are no 2 cpus now.
-        ray::ObjectRef<std::string> obj = ray::Task(Counter::Ping)
+        ray::ObjectRef<std::string> obj = ray::Task(&Counter::Ping)
           .SetResource("CPU", 2.0)
           .Remote();
 
@@ -311,7 +311,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         assert(wait_result.unready.size() == 1);
 
         // Will be scheduled because 2 cpus are reserved by the placement group.
-        obj = ray::Task(Counter::Ping)
+        obj = ray::Task(&Counter::Ping)
           .SetPlacementGroup(pg, 0)
           .SetResource("CPU", 2.0)
           .Remote();
@@ -370,12 +370,10 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
         std::vector<std::unordered_map<std::string, double>> bundles{{{"GPU", 2.0}, {"extra_resource", 2.0}}};
 
-        /**
-         * Reserve bundles with strict pack strategy.
-         * It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-         * Using this placement group for scheduling actors or tasks will guarantee that they will
-         * be colocated on the same node.
-         */
+        // Reserve bundles with strict pack strategy.
+        // It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+        // Using this placement group for scheduling actors or tasks will guarantee that they will
+        // be colocated on the same node.
         ray::PlacementGroupCreationOptions options{
             false, "my_pg", bundles, ray::PlacementStrategy::STRICT_PACK};
 
