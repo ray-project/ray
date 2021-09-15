@@ -255,10 +255,10 @@ inline std::string GetThreadName() {
 
 namespace ray {
 template <typename T>
-class ThreadIdempotent {
+class ThreadPrivate {
  public:
   template <typename... Ts>
-  ThreadIdempotent(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
+  ThreadPrivate(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
     ThreadCheck();
@@ -284,13 +284,13 @@ class ThreadIdempotent {
   void ThreadCheck() const {
     if (id_ == std::thread::id()) {
       thread_name_ = GetThreadName();
-      RAY_LOG(DEBUG) << "Run in thread: " << thread_name_;
+      RAY_LOG(DEBUG) << "First accessed in thread " << thread_name_;
       id_ = std::this_thread::get_id();
     }
 
     RAY_CHECK(id_ == std::this_thread::get_id())
-        << "Thread idempotent is broken. Previously run in thread " << thread_name_
-        << ", and now run in thread " << GetThreadName();
+        << "A variable private to thread " << thread_name_
+        << "was accessed in thread " << GetThreadName();
   }
 
   T t_;

@@ -124,7 +124,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   using RegisteringActorType =
       absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>>;
-  ThreadIdempotent<RegisteringActorType> registering_actors_;
+  ThreadPrivate<RegisteringActorType> registering_actors_;
 };
 
 }  // namespace core
