@@ -1,13 +1,15 @@
 package io.ray.serve;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.util.BackendConfigUtil;
+import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
+import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Optional;
@@ -30,7 +32,7 @@ public class RayServeWrappedReplica {
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
     // Parse BackendConfig.
-    BackendConfig backendConfig = BackendConfigUtil.parseFrom(backendConfigBytes);
+    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigBytes);
 
     // Parse init args.
     Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
@@ -73,13 +75,25 @@ public class RayServeWrappedReplica {
   /**
    * The entry method to process the request.
    *
-   * @param requestMetadata request metadata
-   * @param requestArgs the input parameters of the specified method of the object defined by
-   *     backendDef.
+   * @param requestMetadata the real type is byte[] if this invocation is cross-language. Otherwise,
+   *     the real type is {@link io.ray.serve.generated.RequestMetadata}.
+   * @param requestArgs The input parameters of the specified method of the object defined by
+   *     backendDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
+   *     this invocation is cross-language. Otherwise, the real type is Object[].
    * @return the result of request being processed
+   * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
    */
-  public Object handleRequest(RequestMetadata requestMetadata, Object[] requestArgs) {
-    return backend.handleRequest(new Query(requestArgs, requestMetadata));
+  public Object handleRequest(Object requestMetadata, Object requestArgs)
+      throws InvalidProtocolBufferException {
+    boolean isCrossLanguage = requestMetadata instanceof byte[];
+    return backend.handleRequest(
+        new Query(
+            isCrossLanguage
+                ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
+                : (RequestMetadata) requestMetadata,
+            isCrossLanguage
+                ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs)
+                : requestArgs));
   }
 
   /** Check whether this replica is ready or not. */

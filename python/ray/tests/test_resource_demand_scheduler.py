@@ -2391,7 +2391,7 @@ def test_info_string():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
         usage={
-            "CPU": (530, 544),
+            "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
@@ -2439,7 +2439,7 @@ Resources
 
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU
+ 530.0/544.0 CPU
  2/2 GPU
  2.00/8.000 GiB memory
  3.14/16.000 GiB object_store_memory
@@ -2461,7 +2461,7 @@ def test_info_string_failed_node_cap():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
         usage={
-            "CPU": (530, 544),
+            "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
@@ -2532,7 +2532,7 @@ Resources
 
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU (2.0 reserved in placement groups)
+ 530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
  2.00/8.000 GiB memory
  3.14/16.000 GiB object_store_memory
@@ -2556,13 +2556,16 @@ def test_info_string_no_node_type():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
         usage={
-            "CPU": (530, 544),
+            "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2**30, 2**33),
+            "memory": (6 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
-            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0),
-            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": (2**32, 2.0)
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (1.0, 2.0),
+            "CPU_group_1_4a82a217aadd8326a3a49f02700ac5c2": (0.0, 1.0),
+            "CPU_group_2_4a82a217aadd8326a3a49f02700ac5c2": (1.0, 1.0),
+            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": (2**32, 2**32),
+            "memory_group_0_4a82a217aadd8326a3a49f02700ac5c2": (2**32, 2**32)
         },
         resource_demand=[({
             "GPU": 0.5,
@@ -2585,22 +2588,30 @@ def test_info_string_no_node_type():
             "CPU": 16
         }, 100)],
         node_types=[({
-            "CPU": 16
+            "CPU": 16,
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0,
+            "CPU_group_1_4a82a217aadd8326a3a49f02700ac5c2": 1.0,
+            "CPU_group_2_4a82a217aadd8326a3a49f02700ac5c2": 1.0,
+            "memory": 2**33,
+            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
+            "memory_group_0_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
         }, 1)])
 
     expected = """
 ======== Cluster status: 2020-12-28 01:02:03 ========
 Node status
 -----------------------------------------------------
- 1 node(s) with resources: {'CPU': 16}
+ 1 node(s) with resources:
+  CPU: 16.0 (2.0 reserved in placement groups)
+  memory: 8589934592.0 (4294967296 reserved in placement groups)
 
 Resources
 -----------------------------------------------------
 Usage:
  0/2 AcceleratorType:V100
- 530/544 CPU (2.0 reserved in placement groups)
+ 529.0/544.0 CPU (1.0 used of 2.0 reserved in placement groups)
  2/2 GPU
- 2.00/8.000 GiB memory (4.00 GiB reserved in placement groups)
+ 6.00/8.000 GiB memory (4.00 used of 4.00 GiB reserved in placement groups)
  3.14/16.000 GiB object_store_memory
 
 Demands:

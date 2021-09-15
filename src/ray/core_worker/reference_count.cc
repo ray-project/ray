@@ -120,6 +120,10 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
       outer_it->second.contains.insert(object_id);
     }
   }
+
+  if (it->second.RefCount() == 0) {
+    DeleteReferenceInternal(it, nullptr);
+  }
   return true;
 }
 
@@ -620,9 +624,9 @@ ReferenceCounter::GetAllReferenceCounts() const {
   return all_ref_counts;
 }
 
-void ReferenceCounter::GetAndClearLocalBorrowers(
+void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
-    ReferenceCounter::ReferenceTableProto *proto) {
+    ReferenceCounter::ReferenceTableProto *proto, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -638,6 +642,28 @@ void ReferenceCounter::GetAndClearLocalBorrowers(
     }
   }
   ReferenceTableToProto(borrowed_refs, proto);
+
+  for (const auto &borrowed_id : borrowed_ids) {
+    RAY_LOG(DEBUG) << "Remove local reference to borrowed object " << borrowed_id;
+    auto it = object_id_refs_.find(borrowed_id);
+    if (it == object_id_refs_.end()) {
+      RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
+                       << borrowed_id;
+      continue;
+    }
+    if (it->second.local_ref_count == 0) {
+      RAY_LOG(WARNING)
+          << "Tried to decrease ref count for object ID that has count 0 " << borrowed_id
+          << ". This should only happen if ray.internal.free was called earlier.";
+      continue;
+    }
+
+    it->second.local_ref_count--;
+    PRINT_REF_COUNT(it);
+    if (it->second.RefCount() == 0) {
+      DeleteReferenceInternal(it, deleted);
+    }
+  }
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
