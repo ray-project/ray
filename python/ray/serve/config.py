@@ -1,6 +1,7 @@
 import inspect
 from enum import Enum
 from typing import Any, List, Optional
+from click.core import Option
 
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
@@ -169,3 +170,16 @@ class HTTPOptions(pydantic.BaseModel):
         validate_assignment = True
         extra = "forbid"
         arbitrary_types_allowed = True
+
+
+class CheckpointOptions(pydantic.BaseModel):
+    namepsace: str
+    bucket: str
+    s3_path: str
+    region_name: str
+    # Not recommended to pass in from user code, only used as backup default
+    # value if the following env variables not found on headnode:
+    # "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"
+    aws_access_key_id: Optional[str]
+    aws_secret_access_key: Optional[str]
+    aws_session_token: Optional[str]

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 import click
-from ray.serve.config import DeploymentMode
+from ray.serve.config import DeploymentMode, CheckpointOptions
 
 import ray
 from ray import serve
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.constants import (
+    DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, DEFAULT_RECOVERY_PATH)
 
 
 @click.group(
@@ -50,14 +51,24 @@ def cli(address, namespace):
     required=False,
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.")
-def start(http_host, http_port, http_location):
+@click.option(
+    "--checkpoint-options",
+    default=None,
+    required=False,
+    type=CheckpointOptions,
+    help="Checkpoint and recovery configs for serve controller. "
+    "Ray cluster GCS by default."
+)
+def start(http_host, http_port, http_location, checkpoint_options):
     serve.start(
         detached=True,
         http_options=dict(
             host=http_host,
             port=http_port,
             location=http_location,
-        ))
+        ),
+        checkpoint_options=checkpoint_options
+    )
 
 
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
