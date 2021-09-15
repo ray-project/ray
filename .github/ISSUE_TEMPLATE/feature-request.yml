@@ -27,8 +27,9 @@ body:
   - type: textarea
     attributes:
       label: Use case
-      description: Describe the use case of your feature request. It will help us understanding and
-      prioritizing the feature request.
+      description: >
+        Describe the use case of your feature request. It will help us understanding and
+        prioritizing the feature request.
       placeholder: >
         Rather than telling us how you might implement this feature, try to take a
         step back and describe what you are trying to achieve.
