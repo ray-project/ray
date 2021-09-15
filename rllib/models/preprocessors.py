@@ -64,7 +64,7 @@ class Preprocessor:
                 observation = np.array(observation)
             # Ignore float32/float64 diffs.
             if isinstance(self._obs_space, gym.spaces.Box) and \
-                self._obs_space.dtype != observation.dtype:
+                    self._obs_space.dtype != observation.dtype:
                 observation = observation.astype(self._obs_space.dtype)
             try:
                 if not self._obs_space.contains(observation):
