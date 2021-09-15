@@ -2253,7 +2253,7 @@ copy_to_workspace(
 copy_to_workspace(
     name = "cp_serve_py_proto",
     srcs = [":serve_py_proto"],
-    dstdir = "python/ray/serve/generated"
+    dstdir = "python/ray/serve/generated",
 )
 
 copy_to_workspace(
