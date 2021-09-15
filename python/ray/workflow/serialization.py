@@ -1,11 +1,12 @@
 import asyncio
+import contextlib
 from dataclasses import dataclass
 import logging
 import ray
 from ray.types import ObjectRef
 from ray.workflow import common
 from ray.workflow import storage
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import cloudpickle
 from collections import ChainMap
@@ -165,8 +166,6 @@ async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
                                   cloudpickle.CloudPickler.dispatch_table)
         dispatch = dispatch_table
 
-    import sys
-    print("paths", paths, file=sys.stderr)
     # TODO Expose the key related APIs.
     key = storage.make_key(*paths)
 
@@ -192,15 +191,29 @@ def _load_ref_helper(key: str, storage: storage.Storage):
     return cloudpickle.loads(serialized)
 
 
-# TODO (Alex): We should use weakrefs here.
-_object_cache: Dict[str, ray.ObjectRef] = {}
-
-
-def _load_object_ref(paths: List[str], storage: storage.Storage) -> ObjectRef:
+# TODO (Alex): We should use weakrefs here instead of leaking...
+_object_cache: Optional[Dict[str, ray.ObjectRef]] = {}
+def _load_object_ref(paths: List[str], storage: storage.Storage) -> ray.ObjectRef:
     global _object_cache
+
     key = storage.make_key(*paths)
+
+    if _object_cache is None:
+        return _load_ref_helper.remote(key, storage)
 
     if key not in _object_cache:
         _object_cache[key] = _load_ref_helper.remote(key, storage)
 
     return _object_cache[key]
+
+# @contextlib.contextmanager
+# def objectref_cache() -> None:
+#     """ A reentrant caching context for object refs."""
+#     global _object_cache
+#     clear_cache = _object_cache is None
+#     _object_cache = {}
+#     try:
+#         yield
+#     finally:
+#         if clear_cache:
+#             _object_cache = {}
