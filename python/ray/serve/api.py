@@ -875,7 +875,7 @@ def deployment(name: Optional[str] = None,
                ray_actor_options: Optional[Dict] = None,
                user_config: Optional[Any] = None,
                max_concurrent_queries: Optional[int] = None,
-               autoscaling_config: Optional[dict] = None
+               _autoscaling_config: Optional[dict] = None
                ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -892,7 +892,7 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        autoscaling_config: Optional[dict] = None,
+        _autoscaling_config: Optional[dict] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -933,8 +933,6 @@ def deployment(
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
-        autoscaling_config (Optional[dict]): [experimental] Configuration for
-            Serve replica autoscaler.
 
     Example:
 
@@ -959,9 +957,9 @@ def deployment(
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
 
-    if autoscaling_config is not None:
+    if _autoscaling_config is not None:
         config.autoscaling_config = AutoscalingConfig.parse_obj(
-            autoscaling_config)
+            _autoscaling_config)
 
     def decorator(_func_or_class):
         return Deployment(

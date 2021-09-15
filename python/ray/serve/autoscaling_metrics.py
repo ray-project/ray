@@ -5,35 +5,53 @@ import time
 from typing import Callable, DefaultDict, Dict, List, Optional
 from dataclasses import dataclass, field
 
+import ray
+
 
 def start_metrics_pusher(interval_s: float,
                          collection_callback: Callable[[], Dict[str, float]],
                          controller_handle):
     """Start a background thread to push metrics to controller.
 
+    We use this background so it will be not blocked by user's code and ensure
+    consistently metrics delivery. Python GIL will ensure that this thread gets
+    fair timeshare to execute and run.
+
     Args:
         interval_s(float): the push interval.
         collection_callback: a callable that returns the metric data points to
-          be sent over the the controller.
+          be sent to the the controller. The collection callback should take
+          no argument and returns a dictionary of str_key -> float_value.
         controller_handle: actor handle to Serve controller.
     """
 
     def send_once():
         data = collection_callback()
         # TODO(simon): maybe wait for ack or handle controller failure?
-        controller_handle.record_autoscaling_metrics.remote(
+        return controller_handle.record_autoscaling_metrics.remote(
             data=data, send_timestamp=time.time())
 
     def send_forever():
+        last_ref: Optional[ray.ObjectRef] = None
+        last_send_succeeded: bool = True
+
         while True:
             start = time.time()
-            send_once()
+
+            if last_ref:
+                ready_refs, _ = ray.wait([last_ref], timeout=0)
+                last_send_succeeded = len(ready_refs) == 1
+            if last_send_succeeded:
+                last_ref = send_once()
+
             duration_s = time.time() - start
             remaining_time = interval_s - duration_s
             if remaining_time > 0:
                 time.sleep(remaining_time)
 
     timer = threading.Thread(target=send_forever)
+    # Making this a daemon thread so it doesn't leak upon shutdown, and it
+    # doesn't need to block the backend worker's shutdown.
     timer.setDaemon(True)
     timer.start()
 
@@ -55,7 +73,9 @@ class InMemoryMetricsStore:
         """Push new data points to the store.
 
         Args:
-            data_points(dict): dictionary containing the metrics values.
+            data_points(dict): dictionary containing the metrics values. The
+              key should be a string that uniquely identitify this time series
+              and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
               collected at.
         """
@@ -75,7 +95,7 @@ class InMemoryMetricsStore:
             window_start_timestamp_s(float): the unix epoch timestamp for the
               start of the window. The computed average will use all datapoints
               from this timestamp until now.
-            do_compat(bool): whether or not to delete the datapoints that's
+            do_compact(bool): whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
         """

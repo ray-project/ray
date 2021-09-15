@@ -228,6 +228,8 @@ class RayServeReplica:
                     f"replica={self.replica_tag}"))
 
     def _collect_autoscaling_metrics(self):
+        # TODO(simon): Instead of relying on this counter, we should get the
+        # outstanding actor calls properly from Ray's core worker.
         return {self.replica_tag: self.num_ongoing_requests}
 
     def get_runner_method(self, request_item: Query) -> Callable:

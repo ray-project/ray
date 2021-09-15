@@ -123,7 +123,6 @@ class Metric:
                 f"Unrecognized tag keys: {list(tags_copy.keys())}.")
 
         self._metric.record(value, tags=final_tags)
-        self.latest_value = value
 
     @property
     def info(self) -> Dict[str, Any]:
