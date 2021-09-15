@@ -6,7 +6,6 @@ import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
-import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
@@ -75,7 +74,6 @@ public class RayServeReplica {
       return;
     }
 
-    Metrics.init(MetricConfig.DEFAULT_CONFIG);
     requestCounter =
         Metrics.count()
             .name("serve_backend_request_counter")

@@ -36,11 +36,11 @@ public class ProxyActor {
 
   private LongPollClient longPollClient;
 
-  private Router router;
+  private ProxyRouter router;
 
   public ProxyActor(String controllerName, Map<String, String> config) {
     this.config = config;
-    this.router = new Router();
+    this.router = new ProxyRouter();
 
     // Set the controller name so that serve will connect to the controller instance this proxy is
     // running in.
@@ -160,9 +160,5 @@ public class ProxyActor {
             e);
       }
     }
-  }
-
-  private Object sendRequestToHandle(RayServeHandle rayServeHandle, Object[] parameters) {
-    return rayServeHandle.remote(parameters);
   }
 }

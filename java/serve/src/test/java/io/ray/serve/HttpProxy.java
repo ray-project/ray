@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
-import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import java.io.IOException;
@@ -41,7 +40,7 @@ public class HttpProxy implements ServeProxy {
   private HttpHandler httpHandler = new HttpProxyHandler();
 
   @Override
-  public void init(Map<String, String> config, Router router) {
+  public void init(Map<String, String> config, ProxyRouter router) {
     this.router = new HttpRouter();
     this.port =
         Integer.valueOf(
@@ -116,7 +115,7 @@ public class HttpProxy implements ServeProxy {
           parameters = MessagePackSerializer.decode(body, Object[].class);
         }
 
-        Object result = router.matchRoute(route, method).remote(parameters);
+        Object result = router.matchRoute(route, method).remote(parameters, null).get();
 
         httpExchange.sendResponseHeaders(code, 0);
         OutputStream outputStream = httpExchange.getResponseBody();
@@ -138,7 +137,6 @@ public class HttpProxy implements ServeProxy {
       return;
     }
 
-    Metrics.init(MetricConfig.DEFAULT_CONFIG);
     requestCounter =
         Metrics.count()
             .name("serve_num_http_requests")
@@ -147,10 +145,5 @@ public class HttpProxy implements ServeProxy {
             // .tags(ImmutableMap.of("route", ""))
             .register();
     // TODO set route tag dynamically.
-  }
-
-  private Object sendRequestToHandle(RayServeHandle handle, Object[] parameters) {
-
-    return handle.remote(parameters);
   }
 }

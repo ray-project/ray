@@ -70,7 +70,8 @@ public class Serve {
     Preconditions.checkState(
         optional.isPresent(),
         LogUtil.format(
-            "There is no instance {} running on this Ray cluster. Please call `serve.start(detached=True) to start one.",
+            "There is no instance {} running on this Ray cluster. "
+                + "Please call `serve.start(detached=True) to start one.",
             controllerName));
 
     return new Client(optional.get(), controllerName, true);

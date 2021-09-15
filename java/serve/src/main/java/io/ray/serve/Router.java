@@ -1,69 +1,61 @@
 package io.ray.serve;
 
-import io.ray.serve.api.Serve;
+import com.google.common.collect.ImmutableMap;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.runtime.metric.Count;
+import io.ray.runtime.metric.Metrics;
+import io.ray.serve.poll.KeyListener;
+import io.ray.serve.poll.KeyType;
+import io.ray.serve.poll.LongPollClient;
+import io.ray.serve.poll.LongPollNamespace;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+/** Router process incoming queries: choose backend, and assign replica. */
 public class Router {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Router.class);
+  private ReplicaSet replicaSet;
 
-  /** Key: route, value: endpoint. */
-  private Map<String, EndpointInfo> routeInfo = new HashMap<>();
+  private Count numRouterRequests;
 
-  /** Key: endpointName, value: handle. */
-  private Map<String, RayServeHandle> handles = new ConcurrentHashMap<>();
+  private LongPollClient longPollClient;
 
-  public void updateRoutes(Map<String, EndpointInfo> endpoints) {
-    LOGGER.debug("Got updated endpoints: {}.", endpoints);
+  public Router(BaseActorHandle controllerHandle, String backendTag) {
+    this.replicaSet = new ReplicaSet(backendTag);
 
-    Set<String> existingHandles = new HashSet<>(handles.keySet());
-    Map<String, EndpointInfo> routeInfo = new HashMap<>();
+    RayServeMetrics.execute(
+        () ->
+            this.numRouterRequests =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getName())
+                    .description(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getDescription())
+                    .unit("")
+                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, backendTag))
+                    .register());
 
-    if (endpoints != null) {
-      for (Map.Entry<String, EndpointInfo> entry : endpoints.entrySet()) {
-        String route =
-            StringUtils.isNotBlank(entry.getValue().getRoute())
-                ? entry.getValue().getRoute()
-                : entry.getKey();
-        routeInfo.put(route, entry.getValue());
-
-        if (handles.containsKey(entry.getKey())) {
-          existingHandles.remove(entry.getKey());
-        } else {
-          handles.put(entry.getKey(), Serve.getGlobalClient().getHandle(entry.getKey(), true));
-        }
-      }
-    }
-
-    this.routeInfo = routeInfo;
-    for (String endpoint : existingHandles) {
-      handles.remove(endpoint);
-    }
+    Map<KeyType, KeyListener> keyListeners = new HashMap<>();
+    keyListeners.put(
+        new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
+        backendConfig -> replicaSet.setMaxConcurrentQueries(backendConfig)); // cross language
+    keyListeners.put(
+        new KeyType(LongPollNamespace.REPLICA_HANDLES, backendTag),
+        workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
+    this.longPollClient = new LongPollClient(controllerHandle, keyListeners);
+    this.longPollClient.start();
   }
 
   /**
-   * // TODO delete it. every proxy has its own matchRoute method.
+   * Assign a query and returns an object ref represent the result.
    *
-   * @param route
-   * @return
+   * @param requestMetadata the metadata of incoming queries.
+   * @param requestArgs the request body of incoming queries.
+   * @return ray.ObjectRef
    */
-  public RayServeHandle matchRoute(String route) {
-    EndpointInfo endpointInfo = routeInfo.get(route);
-    return endpointInfo == null ? null : handles.get(endpointInfo.getEndpointTag());
-  }
-
-  public Map<String, EndpointInfo> getRouteInfo() {
-    return routeInfo;
-  }
-
-  public Map<String, RayServeHandle> getHandles() {
-    return handles;
+  public ObjectRef<Object> assignRequest(
+      io.ray.serve.generated.RequestMetadata requestMetadata, Object[] requestArgs) {
+    RayServeMetrics.execute(() -> numRouterRequests.inc(1.0));
+    return replicaSet.assignReplica(
+        new Query(requestArgs, null)); // TODO io.ray.serve.generated.RequestMetadata
   }
 }

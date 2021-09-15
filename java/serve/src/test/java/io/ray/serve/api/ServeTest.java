@@ -1,6 +1,5 @@
 package io.ray.serve.api;
 
-import io.ray.serve.RayServeException;
 import io.ray.serve.ReplicaContext;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -10,17 +9,8 @@ public class ServeTest {
   @Test
   public void replicaContextTest() {
 
-    ReplicaContext preContext = Serve.INTERNAL_REPLICA_CONTEXT;
+    ReplicaContext preContext = Serve.getReplicaContext();
     ReplicaContext replicaContext;
-
-    // Test null replica context.
-    Serve.INTERNAL_REPLICA_CONTEXT = null;
-    try {
-      replicaContext = Serve.getReplicaContext();
-      Assert.assertTrue(false, "expect RayServeException");
-    } catch (RayServeException e) {
-
-    }
 
     // Test context setting and getting.
     String backendTag = "backendTag";
@@ -35,6 +25,10 @@ public class ServeTest {
     Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
     Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
 
-    Serve.INTERNAL_REPLICA_CONTEXT = preContext;
+    Serve.setInternalReplicaContext(
+        preContext.getBackendTag(),
+        preContext.getReplicaTag(),
+        preContext.getInternalControllerName(),
+        preContext.getServableObject());
   }
 }
