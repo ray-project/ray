@@ -220,7 +220,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -267,20 +267,20 @@
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
-- label: ":python: (Worker In Container)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - pip install docker
-    # We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
-    # And we save this image to a tarball, so that we can load it to podman image storage in the
-    # nested-container which run tests. And in this nested-container, Raylet will start ray worker
-    # process in double-nested-container.
-    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-worker-container
-    - mkdir /ray-mount/containers
-    - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
-    - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
-      rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
+#- label: ":python: (Worker In Container)"
+  #conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  #commands:
+    #- LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    #- pip install docker
+     #We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
+     #And we save this image to a tarball, so that we can load it to podman image storage in the
+     #nested-container which run tests. And in this nested-container, Raylet will start ray worker
+     #process in double-nested-container.
+    #- python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-worker-container
+    #- mkdir /ray-mount/containers
+    #- docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
+    #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
+      #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]

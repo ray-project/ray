@@ -41,7 +41,7 @@ class TaskSubmitter {
   virtual ActorID GetActor(bool global, const std::string &actor_name) const = 0;
 
   virtual ray::PlacementGroup CreatePlacementGroup(
-      const ray::internal::PlacementGroupCreationOptions &create_options) = 0;
+      const ray::PlacementGroupCreationOptions &create_options) = 0;
 
   virtual void RemovePlacementGroup(const std::string &group_id) = 0;
 
@@ -49,7 +49,6 @@ class TaskSubmitter {
     return true;
   }
 
- protected:
   std::string GetFullName(bool global, const std::string &name) const {
     if (name.empty()) {
       return "";

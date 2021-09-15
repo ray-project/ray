@@ -4,7 +4,7 @@ cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/uploa
 set -exo pipefail
 
 # option metacopy doesn't work on xfs
-sed -i 's/nodev,metacopy=on/nodev/' /etc/containers/storage.conf
+#sed -i 's/nodev,metacopy=on/nodev/' /etc/containers/storage.conf
 
 podman load --input /var/lib/containers/images.tar
 
