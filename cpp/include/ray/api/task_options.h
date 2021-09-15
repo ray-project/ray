@@ -60,7 +60,6 @@ struct PlacementGroupCreationOptions {
   std::string name;
   std::vector<std::unordered_map<std::string, double>> bundles;
   PlacementStrategy strategy;
-  PlacementGroupState state;
 };
 
 class PlacementGroup {
