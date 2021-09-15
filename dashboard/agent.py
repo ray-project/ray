@@ -9,7 +9,6 @@ import socket
 import json
 import time
 import traceback
-import grpc
 
 from grpc.experimental import aio as aiogrpc
 

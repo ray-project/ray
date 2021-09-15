@@ -4,7 +4,6 @@ import yaml
 import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts

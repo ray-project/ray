@@ -714,9 +714,10 @@ def generate_self_signed_tls_certs():
 
     ray_interal = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")])
-    # This is the same logic used by the GCS server to acquire a private/interal IP
-    # address to listen on. If we just use localhost + 127.0.0.1 then we won't be able to
-    # connect to the GCS and will get an error like "No match found for server name: 192.168.X.Y"
+    # This is the same logic used by the GCS server to acquire a
+    # private/interal IP address to listen on. If we just use localhost +
+    # 127.0.0.1 then we won't be able to connect to the GCS and will get
+    # an error like "No match found for server name: 192.168.X.Y"
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
     private_ip_address = s.getsockname()[0]

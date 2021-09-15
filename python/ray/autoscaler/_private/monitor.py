@@ -12,8 +12,6 @@ import json
 from multiprocessing.synchronize import Event
 from typing import Optional
 
-import grpc
-
 try:
     import prometheus_client
 except ImportError:

@@ -4,7 +4,6 @@ import logging
 import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
