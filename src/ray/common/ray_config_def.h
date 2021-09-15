@@ -316,7 +316,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
-RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 20)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, true)

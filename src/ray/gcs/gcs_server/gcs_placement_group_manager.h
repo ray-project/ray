@@ -276,7 +276,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
  private:
   /// Try to create placement group after a short time.
-  void RetryCreatingPlacementGroup();
+  void RetryCreatingPlacementGroup(uint32_t delay_ms);
 
   /// Mark the manager that there's a placement group scheduling going on.
   void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
@@ -358,7 +358,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
     GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
-    CountType_MAX = 6,
+    SCHEDULING_PENDING_PLACEMENT_GROUP = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

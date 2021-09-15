@@ -248,7 +248,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   }
 
   MarkSchedulingDone();
-  RetryCreatingPlacementGroup();
+  RetryCreatingPlacementGroup(
+      RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
@@ -264,7 +265,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
 
-        SchedulePendingPlacementGroups();
+        RetryCreatingPlacementGroup(0);
 
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
@@ -312,6 +313,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     }
     // If the placement group is not registered == removed.
   }
+  ++counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP];
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
@@ -562,9 +564,8 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
   }
 }
 
-void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
-  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
-                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+void GcsPlacementGroupManager::RetryCreatingPlacementGroup(uint32_t delay_ms) {
+  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); }, delay_ms);
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
@@ -587,7 +588,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
     }
   }
 
-  SchedulePendingPlacementGroups();
+  RetryCreatingPlacementGroup(0);
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
@@ -639,7 +640,7 @@ void GcsPlacementGroupManager::Tick() {
   // To avoid scheduling exhaution in some race conditions.
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
-  SchedulePendingPlacementGroups();
+  RetryCreatingPlacementGroup(0);
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
@@ -690,7 +691,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   // Notify raylets to release unused bundles.
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
-  SchedulePendingPlacementGroups();
+  RetryCreatingPlacementGroup(0);
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
@@ -711,6 +712,8 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
          << ", GetNamedPlacementGroup request count: "
          << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
+         << ", Scheduling pending placement group count: "
+         << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
          << ", Named placement group count: " << num_pgs
          << ", Pending placement groups count: " << pending_placement_groups_.size()
