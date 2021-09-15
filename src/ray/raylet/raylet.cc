@@ -20,8 +20,6 @@
 #include <iostream>
 
 #include "ray/common/status.h"
-#include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -79,16 +77,6 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
-
-  // Initialize stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "raylet"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags,
-                   [this, gcs_client](const ray::GetAgentAddressCallback &callback) {
-                     GetAgentAddress(gcs_client, self_node_id_, callback);
-                   });
 }
 
 Raylet::~Raylet() {}
@@ -104,7 +92,6 @@ void Raylet::Stop() {
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
   node_manager_.Stop();
   acceptor_.close();
-  ray::stats::Shutdown();
 }
 
 ray::Status Raylet::RegisterGcs() {

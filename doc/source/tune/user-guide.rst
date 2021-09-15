@@ -284,7 +284,7 @@ Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
-Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
+Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -588,6 +588,8 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+Make sure that worker nodes have the write access to the cloud storage. Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes. Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 .. _tune-docker:
 
@@ -842,18 +844,21 @@ These are the environment variables Ray Tune currently considers:
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_RESULT_WAIT_TIME_S**: Amount of time Ray Tune will block until a result from a running trial is received.
+  Defaults to 1 (second).
 * **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
-  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
-  be disabled by setting this to lower or equal to 0.
+  trial startups. After the grace period, Tune will block for up to ``TUNE_TRIAL_RESULT_WAIT_TIME_S`` seconds
+  until a result from a running trial is received. Can be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
-  the warning message is printed repeatedly every this amount of seconds. Defaults to 1 (seconds).
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 10 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
+* **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

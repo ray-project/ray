@@ -49,6 +49,7 @@ class MockWorker {
     options.task_execution_callback =
         std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
     options.num_workers = 1;
+    options.metrics_agent_port = -1;
     CoreWorkerProcess::Initialize(options);
   }
 
@@ -59,7 +60,7 @@ class MockWorker {
                      const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<ObjectID> &arg_reference_ids,
+                     const std::vector<rpc::ObjectReference> &arg_refs,
                      const std::vector<ObjectID> &return_ids,
                      const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {

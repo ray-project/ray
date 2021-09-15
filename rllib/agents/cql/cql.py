@@ -16,7 +16,11 @@ from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.framework import try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tfp = try_import_tfp()
+replay_buffer = None
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -57,8 +61,10 @@ def validate_config(config: TrainerConfigDict):
             config["framework"] == "torch":
         config["simple_optimizer"] = True
 
-
-replay_buffer = None
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        raise ModuleNotFoundError(
+            "You need `tensorflow_probability` in order to run CQL with tf! "
+            "Install it via `pip install tensorflow_probability`.")
 
 
 def execution_plan(workers, config):
@@ -162,9 +168,8 @@ def after_init(trainer):
                     np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
-        print(
-            f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
-            f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
+        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
+              f"replay buffer, which has capacity {replay_buffer.capacity}.")
     else:
         raise ValueError(
             "Unknown offline input! config['input'] must either be list of "

@@ -240,7 +240,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/new_dashboard/client
+      cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
@@ -403,7 +403,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
     if [ -z "${BUILDKITE-}" ]; then
@@ -460,6 +460,13 @@ _lint() {
        bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
        bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
+
+    # Run clang-tidy last since it needs to rebuild.
+    if command -v clang-tidy > /dev/null; then
+      "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    else
+      { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
+    fi
   fi
 }
 

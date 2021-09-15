@@ -64,8 +64,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  bool ReplyPushTask(Status status = Status::OK(), bool exit = false,
-                     bool stolen = false) {
+  bool ReplyPushTask(Status status = Status::OK(), bool exit = false, bool stolen = false,
+                     bool is_application_level_error = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -76,6 +76,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     if (stolen) {
       reply.set_task_stolen(true);
+    }
+    if (is_application_level_error) {
+      reply.set_is_application_level_error(true);
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -101,6 +104,11 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
+  bool RetryTaskIfPossible(const TaskID &task_id) override {
+    num_task_retries_attempted++;
+    return false;
+  }
+
   bool PendingTaskFailed(
       const TaskID &task_id, rpc::ErrorType error_type, Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
@@ -115,8 +123,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
-                             rpc::ErrorType error_type,
+  void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
                              const std::shared_ptr<rpc::RayException>
                                  &creation_task_exception = nullptr) override {}
 
@@ -131,6 +138,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
   int num_contained_ids = 0;
+  int num_task_retries_attempted = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -440,6 +448,54 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          lease_policy, store, task_finisher,
+                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  TaskSpecification task = BuildEmptyTaskSpec();
+  task.GetMutableMessage().set_retry_exceptions(true);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate an application-level error.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  task.GetMutableMessage().set_retry_exceptions(false);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate an application-level error.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 2);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());

@@ -26,8 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
-#include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 
 namespace ray {
 namespace gcs {
@@ -54,33 +52,6 @@ void GcsServer::Start() {
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-  // Init stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
-      {ray::stats::NodeAddressKey, config_.node_ip_address}};
-  ray::stats::Init(
-      global_tags, [this](const ray::stats::GetAgentAddressCallback &callback) {
-        // This is the opencensus report thread, we should do the GCS operation
-        // in main_service_.
-        main_service_.post(
-            [this, callback] {
-              if (!gcs_node_manager_) {
-                callback(ray::Status::Invalid("The GcsNodeManager is not initialized."),
-                         std::string());
-                return;
-              }
-              auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
-              if (all_alive_nodes.empty()) {
-                callback(ray::Status::Invalid("No alive nodes."), std::string());
-                return;
-              }
-              auto selected_node_id = all_alive_nodes.begin()->first;
-              GetAgentAddress(redis_client_, selected_node_id, callback);
-            },
-            "GetAgentAddressCallback");
-      });
 
   // Init redis failure detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
@@ -199,9 +170,6 @@ void GcsServer::Stop() {
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
-    // Shutdown stats.
-    ray::stats::Shutdown();
-
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
@@ -259,6 +227,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
                                                      *runtime_env_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
+
   // Register service.
   job_info_service_ =
       std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
@@ -267,27 +236,35 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  auto scheduler = std::make_shared<RayletBasedActorScheduler>(
-      main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
-      /*schedule_failure_handler=*/
-      [this](std::shared_ptr<GcsActor> actor) {
-        // When there are no available nodes to schedule the actor the
-        // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-        // this case, the actor manager should schedule the actor once an
-        // eligible node is registered.
-        gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
-      },
-      /*schedule_success_handler=*/
-      [this](std::shared_ptr<GcsActor> actor) {
-        gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
-      },
-      raylet_client_pool_,
-      /*client_factory=*/
-      [this](const rpc::Address &address) {
-        return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-      });
+  std::unique_ptr<GcsActorSchedulerInterface> scheduler;
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+    // When there are no available nodes to schedule the actor the
+    // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+    // this case, the actor manager should schedule the actor once an
+    // eligible node is registered.
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+  };
+  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor) {
+    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+  };
+  auto client_factory = [this](const rpc::Address &address) {
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+  };
+
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
+    scheduler = std::make_unique<GcsBasedActorScheduler>(
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
+        schedule_success_handler, raylet_client_pool_, client_factory);
+  } else {
+    scheduler = std::make_unique<RayletBasedActorScheduler>(
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
+        client_factory);
+  }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -497,6 +474,17 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
+
+  // Install scheduling policy event listeners.
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    gcs_resource_manager_->AddResourcesChangedListener([this] {
+      main_service_.post([this] {
+        // Because resources have been changed, we need to try to schedule the pending
+        // actors.
+        gcs_actor_manager_->SchedulePendingActors();
+      });
+    });
+  }
 }
 
 void GcsServer::CollectStats() {

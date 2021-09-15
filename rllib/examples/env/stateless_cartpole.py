@@ -12,7 +12,7 @@ class StatelessCartPole(gym.Env):
     cartpole.py
 
     We delete the velocity component of the state, so that it can only be
-    solved by a LSTM policy.
+    solved by a memory enhanced model (policy).
     """
 
     metadata = {

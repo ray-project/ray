@@ -37,8 +37,15 @@ using json = nlohmann::json;
 
 namespace ray {
 
-#define RAY_EVENT(event_type, label) \
-  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
+#define RAY_EVENT(event_type, label)                                            \
+  if (ray::RayEvent::IsLevelEnabled(                                            \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type) ||           \
+      ray::RayLog::IsLevelEnabled(ray::RayEvent::EventLevelToLogLevel(          \
+          ::ray::rpc::Event_Severity::Event_Severity_##event_type)))            \
+  ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type,      \
+                  ray::RayEvent::EventLevelToLogLevel(                          \
+                      ::ray::rpc::Event_Severity::Event_Severity_##event_type), \
+                  label, __FILE__, __LINE__)
 
 // interface of event reporter
 class BaseEventReporter {
@@ -185,8 +192,15 @@ class RayEventContext final {
 // for sending
 class RayEvent {
  public:
-  RayEvent(rpc::Event_Severity severity, const std::string &label)
-      : severity_(severity), label_(label) {}
+  // We require file_name to be a string which has static storage before RayEvent
+  // deconstructed. Otherwise we might have memory issues.
+  RayEvent(rpc::Event_Severity severity, RayLogLevel log_severity,
+           const std::string &label, const char *file_name, int line_number)
+      : severity_(severity),
+        log_severity_(log_severity),
+        label_(label),
+        file_name_(file_name),
+        line_number_(line_number) {}
 
   template <typename T>
   RayEvent &operator<<(const T &t) {
@@ -204,7 +218,16 @@ class RayEvent {
   }
 
   static void ReportEvent(const std::string &severity, const std::string &label,
-                          const std::string &message);
+                          const std::string &message, const char *file_name,
+                          int line_number);
+
+  /// Return whether or not the event level is enabled in current setting.
+  ///
+  /// \param event_level The input event level.
+  /// \return True if input event level is not lower than the threshold.
+  static bool IsLevelEnabled(rpc::Event_Severity event_level);
+
+  static RayLogLevel EventLevelToLogLevel(const rpc::Event_Severity &severity);
 
   ~RayEvent();
 
@@ -217,15 +240,35 @@ class RayEvent {
 
   const RayEvent &operator=(const RayEvent &event) = delete;
 
+  // Only for test
+  static void SetLevel(const std::string &event_level);
+
+  FRIEND_TEST(EVENT_TEST, TEST_LOG_LEVEL);
+
+  FRIEND_TEST(EVENT_TEST, TEST_LOG_EVENT);
+
  private:
   rpc::Event_Severity severity_;
+  RayLogLevel log_severity_;
   std::string label_;
+  const char *file_name_;
+  int line_number_;
   json custom_fields_;
   std::ostringstream osstream_;
 };
 
+/// Ray Event initialization.
+///
+/// This function should be called when the main thread starts.
+/// Redundant calls in other thread don't take effect.
+/// \param source_type The type of current process.
+/// \param custom_fields The global custom fields.
+/// \param log_dir The log directory to generate event subdirectory.
+/// \param event_level The input event level. It should be one of "info","warning",
+/// "error" and "fatal". You can also use capital letters for the options above.
+/// \return void.
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir);
+                  const std::string &log_dir, const std::string &event_level = "warning");
 
 }  // namespace ray

@@ -539,17 +539,17 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
+absl::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
-      return boost::none;
+      return absl::nullopt;
     }
     return entry->second;
   }
-  return boost::none;
+  return absl::nullopt;
 }
 
 const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()

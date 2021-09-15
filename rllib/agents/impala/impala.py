@@ -133,7 +133,7 @@ class OverrideDefaultResourceRequest:
                 # each.
                 "CPU": cf["num_cpus_for_driver"] +
                 cf["num_aggregation_workers"],
-                "GPU": cf["num_gpus"]
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.
@@ -158,20 +158,24 @@ def make_learner_thread(local_worker, config):
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
             format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
-        if config["num_multi_gpu_tower_stacks"] < \
-                config["minibatch_buffer_size"]:
-            raise ValueError(
-                "In multi-GPU mode you must have at least as many "
-                "parallel multi-GPU towers as minibatch buffers: "
-                "{} vs {}".format(config["num_multi_gpu_tower_stacks"],
-                                  config["minibatch_buffer_size"]))
+        num_stacks = config["num_multi_gpu_tower_stacks"]
+        buffer_size = config["minibatch_buffer_size"]
+        if num_stacks < buffer_size:
+            logger.warning(
+                "In multi-GPU mode you should have at least as many "
+                "multi-GPU tower stacks (to load data into on one device) as "
+                "you have stack-index slots in the buffer! You have "
+                f"configured {num_stacks} stacks and a buffer of size "
+                f"{buffer_size}. Setting "
+                f"`minibatch_buffer_size={num_stacks}`.")
+            config["minibatch_buffer_size"] = num_stacks
+
         learner_thread = MultiGPULearnerThread(
             local_worker,
             num_gpus=config["num_gpus"],
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            minibatch_buffer_size=config["minibatch_buffer_size"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"])
@@ -214,11 +218,6 @@ def validate_config(config):
 
     if config["entropy_coeff"] < 0.0:
         raise ValueError("`entropy_coeff` must be >= 0.0!")
-
-    if config["vtrace"] and not config["in_evaluation"]:
-        if config["batch_mode"] != "truncate_episodes":
-            raise ValueError(
-                "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
 
     # Check whether worker to aggregation-worker ratio makes sense.
     if config["num_aggregation_workers"] > config["num_workers"]:

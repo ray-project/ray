@@ -90,7 +90,7 @@ class OverrideDefaultResourceRequest:
                 # replay buffer and use 1 CPU each.
                 "CPU": cf["num_cpus_for_driver"] +
                 cf["optimizer"]["num_replay_buffer_shards"],
-                "GPU": cf["num_gpus"]
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.

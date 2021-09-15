@@ -18,6 +18,20 @@ from ray._private.client_mode_hook import enable_client_mode
 from ray._private.test_utils import run_string_as_driver
 
 
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+    import ray
+    with connect_to_client_or_not(connect_to_client):
+        if connect_to_client:
+            # Client mode is on.
+            assert client_mode_should_convert()
+            # We're connected to Ray client.
+            assert ray.util.client.ray.is_connected()
+        else:
+            assert not client_mode_should_convert()
+            assert not ray.util.client.ray.is_connected()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_client_thread_safe(call_ray_stop_only):
     import ray
@@ -108,6 +122,27 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
         # Assert we can still get new items after the interrupt.
         assert ray.get(fast.remote()) == "ok"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_get_list(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f():
+            return "OK"
+
+        assert ray.get([]) == []
+        assert ray.get([f.remote()]) == ["OK"]
+
+        refs = [f.remote() for _ in range(100)]
+        with ray.worker.data_client.lock:
+            req_id_before = ray.worker.data_client._req_id
+        assert ray.get(refs) == ["OK" for _ in range(100)]
+        # Only 1 RPC should be sent.
+        with ray.worker.data_client.lock:
+            assert ray.worker.data_client._req_id == req_id_before + 1, \
+                ray.worker.data_client._req_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -387,9 +422,11 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert ray.get(x) == "Foo"
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
-        assert len(logs_with_id) >= 2
-        assert any((msg.find("get") >= 0 for msg in logs_with_id))
-        assert any((msg.find("put") >= 0 for msg in logs_with_id))
+        assert len(logs_with_id) >= 2, logs_with_id
+        assert any(
+            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any(
+            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -575,7 +612,7 @@ def test_client_gpu_ids(call_ray_stop_only):
         with pytest.raises(Exception) as e:
             ray.get_gpu_ids()
         assert str(e.value) == "Ray Client is not connected."\
-            " Please connect by calling `ray.connect`."
+            " Please connect by calling `ray.init`."
 
         with ray_start_client_server():
             # Now have a client connection.
@@ -593,20 +630,6 @@ def test_client_serialize_addon(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get(ray.put(User(name="ray"))).name == "ray"
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_client_context_manager(ray_start_regular_shared, connect_to_client):
-    import ray
-    with connect_to_client_or_not(connect_to_client):
-        if connect_to_client:
-            # Client mode is on.
-            assert client_mode_should_convert() is True
-            # We're connected to Ray client.
-            assert ray.util.client.ray.is_connected() is True
-        else:
-            assert client_mode_should_convert() is False
-            assert ray.util.client.ray.is_connected() is False
 
 
 object_ref_cleanup_script = """

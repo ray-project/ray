@@ -713,18 +713,13 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+
         if runtime_env is None:
             runtime_env = meta.runtime_env
-        if runtime_env:
-            if runtime_env.get("working_dir"):
-                raise NotImplementedError(
-                    "Overriding working_dir for actors is not supported. "
-                    "Please use ray.init(runtime_env={'working_dir': ...}) "
-                    "to configure per-job environment instead.")
-            runtime_env_dict = runtime_support.RuntimeEnvDict(
-                runtime_env).get_parsed_dict()
-        else:
-            runtime_env_dict = {}
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_runtime_env)
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
