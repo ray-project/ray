@@ -55,7 +55,7 @@ head_setup_commands:
   - conda create -y -n "ray" python=3.8.5
   - conda activate ray && echo 'conda activate ray' >> ~/.bashrc
   - python -m pip install --upgrade pip
-  - python -m pip install --upgrade "jax[cpu]==0.2.14" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+  - python -m pip install --upgrade "jax[cpu]==0.2.14"
   - python -m pip install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku google-api-python-client cryptography tensorboardX ray[default]
   - python -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
   - git clone https://github.com/Yard1/swarm-jax.git && cd swarm-jax && python -m pip install .
