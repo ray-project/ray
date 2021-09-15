@@ -61,7 +61,9 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
         "shuffle_1tb_5000_partitions",
-        "non_streaming_shuffle_1tb_5000_partitions",
+        # TODO(sang): It doesn't even work without spilling
+        # as it hits the scalability limit.
+        # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),

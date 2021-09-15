@@ -100,10 +100,12 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
+        self._secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
+        self._conn_str = conn_str
+        self._connection_retries = connection_retries
 
         # TODO tidy this up
-        secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
-        if secure and _credentials is None:
+        if self._secure and _credentials is None:
             server_cert_chain, private_key, ca_cert = ray._private.utils.load_certs_from_env()
             _credentials = grpc.ssl_channel_credentials(
                 certificate_chain=server_cert_chain,
@@ -112,11 +114,40 @@ class Worker:
             )
 
         if _credentials is not None:
+            self._credentials = _credentials
+            self._secure = True
+
+        self._connect_channel()
+
+        # Initialize the streams to finish protocol negotiation.
+        self.data_client = DataClient(self, self._client_id, self.metadata)
+        self.reference_count: Dict[bytes, int] = defaultdict(int)
+
+        self.log_client = LogstreamClient(self, self.metadata)
+        self.log_client.set_logstream_level(logging.INFO)
+
+        self.closed = False
+
+        # Track these values to raise a warning if many tasks are being
+        # scheduled
+        self.total_num_tasks_scheduled = 0
+        self.total_outbound_message_size_bytes = 0
+
+    def _connect_channel(self) -> None:
+        """
+        Attempts to connect to the server specified by conn_str.
+        """
+
+        if self._secure:
+            if self._credentials is not None:
+                credentials = self._credentials
+            else:
+                credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, _credentials, options=GRPC_OPTIONS)
+                self._conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=GRPC_OPTIONS)
+                self._conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -125,7 +156,7 @@ class Worker:
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         service_ready = False
-        while conn_attempts < max(connection_retries, 1):
+        while conn_attempts < max(self._connection_retries, 1):
             conn_attempts += 1
             try:
                 # Let gRPC wait for us to see if the channel becomes ready.
@@ -168,21 +199,6 @@ class Worker:
                     "/latest/cluster/ray-client.html#step-2-check-ports for "
                     "more information.")
             raise ConnectionError("ray client connection timeout")
-
-        # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self.channel, self._client_id,
-                                      self.metadata)
-        self.reference_count: Dict[bytes, int] = defaultdict(int)
-
-        self.log_client = LogstreamClient(self.channel, self.metadata)
-        self.log_client.set_logstream_level(logging.INFO)
-
-        self.closed = False
-
-        # Track these values to raise a warning if many tasks are being
-        # scheduled
-        self.total_num_tasks_scheduled = 0
-        self.total_outbound_message_size_bytes = 0
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
