@@ -5,8 +5,15 @@ import ray
 from ray.types import ObjectRef
 from ray.workflow import common
 from ray.workflow import storage
-from ray.workflow import workflow_storage
 from typing import Any, Dict, List, Tuple, TYPE_CHECKING
+
+import asyncio
+import cloudpickle
+from collections import ChainMap
+import ray
+from ray.workflow.common import calculate_identifiers
+from typing import Any, List
+import io
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -51,17 +58,6 @@ class Upload:
 
 
 @ray.remote(num_cpus=0)
-def _put_helper(identifier: str, obj: Any,
-                wf_storage: "workflow_storage.WorkflowStorage") -> None:
-    if isinstance(obj, ray.ObjectRef):
-        raise NotImplementedError("Workflow does not support checkpointing "
-                                  "nested object references yet.")
-    paths = wf_storage._key_obj_id(identifier)
-    asyncio.get_event_loop().run_until_complete(
-        wf_storage._put(paths, obj, update=False))
-
-
-@ray.remote(num_cpus=0)
 class Manager:
     """
     Responsible for deduping the serialization/upload of object references.
@@ -90,8 +86,6 @@ class Manager:
             A pair. The first element is the paths the ref will be uploaded to.
             The second is an object reference to the upload task.
         """
-        wf_storage = workflow_storage.WorkflowStorage(workflow_id,
-                                                      self._storage)
         ref, = ref_tuple
         # Use the hex as the key to avoid holding a reference to the object.
         key = ref.hex()
@@ -99,14 +93,112 @@ class Manager:
         if key not in self._uploads:
             # TODO(Alex): We should probably eventually free these refs.
             identifier_ref = common.calculate_identifier.remote(ref)
-            upload_task = _put_helper.remote(identifier_ref, ref, wf_storage)
+            upload_task = _put_helper.remote(identifier_ref, ref, workflow_id, self._storage)
             self._uploads[key] = Upload(identifier_ref, upload_task)
             self._num_uploads += 1
 
         info = self._uploads[key]
         identifer = await info.identifier_ref
-        paths = wf_storage._key_obj_id(identifer)
+        paths = obj_id_to_paths(workflow_id, identifer)
         return paths, info.upload_task
 
     async def export_stats(self) -> Dict[str, Any]:
         return {"num_uploads": self._num_uploads}
+
+
+OBJECTS_DIR = "objects"
+
+
+def obj_id_to_paths(workflow_id: str, object_id: str) -> List[str]:
+    return [workflow_id, OBJECTS_DIR, object_id]
+
+
+
+@ray.remote(num_cpus=0)
+def _put_helper(identifier: str, obj: Any,
+                workflow_id: str, storage: storage.Storage) -> None:
+    # TODO (Alex): This check isn't sufficient, it only works for directly
+    # nested object refs.
+    if isinstance(obj, ray.ObjectRef):
+        raise NotImplementedError("Workflow does not support checkpointing "
+                                  "nested object references yet.")
+    paths = obj_id_to_paths(workflow_id, identifier)
+    promise = dump_to_storage(paths, obj, workflow_id, storage)
+    return asyncio.get_event_loop().run_until_complete(promise)
+
+
+def _reduce_objectref(workflow_id: str, storage: storage.Storage, obj_ref: ObjectRef,
+                      tasks: List[ObjectRef]):
+
+    manager = get_or_create_manager()
+    paths, task = ray.get(
+        manager.save_objectref.remote((obj_ref, ), workflow_id))
+
+    assert task
+    tasks.append(task)
+
+    return _load_object_ref, (paths, storage)
+
+
+async def dump_to_storage(paths: List[str], obj: Any,
+                          workflow_id: str, storage: storage.Storage) -> None:
+    """Serializes and puts arbitrary object, handling references. The object will
+        be uploaded at `paths`. Any object references will be uploaded to their
+        global, remote storage.
+
+    Args:
+        paths: The location to put the object.
+        obj: The object to serialize. If it contains object references, those
+                will be serialized too.
+        workflow_id: The workflow id.
+        storage: The storage to use. If obj contains object references,
+                `storage.put` will be called on them individually.
+    """
+    tasks = []
+
+    # NOTE: Cloudpickle doesn't support private dispatch tables, so we extend
+    # the cloudpickler instead to avoid changing cloudpickle's global dispatch
+    # table which is shared with `ray.put`. See
+    # https://github.com/cloudpipe/cloudpickle/issues/437
+    class ObjectRefPickler(cloudpickle.CloudPickler):
+        _object_ref_reducer = {
+            ray.ObjectRef: lambda ref: _reduce_objectref(
+                workflow_id, storage, ref, tasks)
+        }
+        dispatch_table = ChainMap(_object_ref_reducer,
+                                  cloudpickle.CloudPickler.dispatch_table)
+        dispatch = dispatch_table
+
+    import sys
+    print("paths", paths, file=sys.stderr)
+    # TODO Expose the key related APIs.
+    key = storage.make_key(*paths)
+
+    # TODO Use open()
+    # with wf_storage.open(key, "w") as f:
+    #     pickler = ObjectRefPickler(f)
+    #     pickler.dump(obj)
+
+    with io.BytesIO() as f:
+        pickler = ObjectRefPickler(f)
+        pickler.dump(obj)
+        f.seek(0)
+        task = storage.put(key, f.read())
+        tasks.append(task)
+
+
+    await asyncio.gather(*tasks)
+
+
+@ray.remote
+def _load_ref_helper(paths: List[str], storage: storage.Storage):
+    # TODO: Should be able to do `storage.open()` here too.
+    serialized = asyncio.get_event_loop().run_until_complete(
+        storage.get(paths))
+    return cloudpickle.loads(serialized)
+
+
+def _load_object_ref(paths: List[str],
+                     storage: storage.Storage) -> ObjectRef:
+    key = storage.make_key(*paths)
+    return _load_ref_helper.remote(key, storage)

@@ -17,6 +17,7 @@ from ray.workflow import storage
 from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
                                  WorkflowStatus, WorkflowRef, StepType)
 from ray.workflow import workflow_context
+from ray.workflow import serialization
 from ray.workflow import serialization_context
 from ray.workflow.storage import (DataLoadError, DataSaveError,
                                   KeyNotFoundError)
@@ -148,7 +149,10 @@ class WorkflowStorage:
             if exception is None:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-                tasks.append(self._put(self._key_step_output(step_id), ret))
+                promise = serialization.dump_to_storage(
+                    self._key_step_output(step_id), ret, self._workflow_id, self._storage)
+                tasks.append(promise)
+                # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
 
@@ -161,8 +165,10 @@ class WorkflowStorage:
                                                     dynamic_output_id))
             else:
                 assert ret is None
-                tasks.append(
-                    self._put(self._key_step_exception(step_id), exception))
+                promise = serialization.dump_to_storage(self._key_step_exception(step_id), exception, self._workflow_id, self._storage)
+                tasks.append(promise)
+                # tasks.append(
+                #     self._put(self._key_step_exception(step_id), exception))
 
         asyncio_run(asyncio.gather(*tasks))
 
@@ -439,7 +445,7 @@ class WorkflowStorage:
 
     def _reduce_objectref(self, obj_ref: ObjectRef,
                           upload_tasks: List[ObjectRef]):
-        from ray.workflow import serialization
+        assert False
         manager = serialization.get_or_create_manager()
         paths, task = ray.get(
             manager.save_objectref.remote((obj_ref, ), self._workflow_id))

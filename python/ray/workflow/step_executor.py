@@ -10,6 +10,7 @@ from ray._private import signature
 from ray.workflow import workflow_context
 from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
+from ray.workflow import serialization
 from ray.workflow import serialization_context
 from ray.workflow import workflow_storage
 from ray.workflow.workflow_access import (get_or_create_management_actor,
@@ -196,12 +197,23 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO(suquark): in the future we should write to storage directly
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
+
+    # save_tasks = [
+    #     wf_storage._put(
+    #         wf_storage._key_step_input_metadata(step_id), metadata, True),
+    #     wf_storage._put(
+    #         wf_storage._key_step_function_body(step_id), inputs.func_body),
+    #     wf_storage._put(wf_storage._key_step_args(step_id), args_obj)
+    # ]
+    workflow_id = wf_storage._workflow_id
+    storage = wf_storage._storage
     save_tasks = [
+        # TODO (Alex): Handle the json case better?
         wf_storage._put(
             wf_storage._key_step_input_metadata(step_id), metadata, True),
-        wf_storage._put(
-            wf_storage._key_step_function_body(step_id), inputs.func_body),
-        wf_storage._put(wf_storage._key_step_args(step_id), args_obj)
+        serialization.dump_to_storage(
+            wf_storage._key_step_function_body(step_id), inputs.func_body, workflow_id, storage),
+        serialization.dump_to_storage(wf_storage._key_step_args(step_id), args_obj, workflow_id, storage)
     ]
     await asyncio.gather(*save_tasks)
 
