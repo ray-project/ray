@@ -255,8 +255,12 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
             [Protocol.GCS.value + "://" + pkg_name])
 
 
-def create_project_package(working_dir: str, py_modules: List[str],
-                           excludes: List[str], output_path: str) -> None:
+def create_project_package(
+        working_dir: str,
+        py_modules: List[str],
+        excludes: List[str],
+        output_path: str,
+        logger: Optional[logging.Logger] = default_logger) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working
@@ -274,11 +278,20 @@ def create_project_package(working_dir: str, py_modules: List[str],
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(working_path, working_path,
-                        _get_excludes(working_path, excludes), zip_handler)
+            _zip_module(
+                working_path,
+                working_path,
+                _get_excludes(working_path, excludes),
+                zip_handler,
+                logger=logger)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(module_path, module_path.parent, None, zip_handler)
+            _zip_module(
+                module_path,
+                module_path.parent,
+                None,
+                zip_handler,
+                logger=logger)
 
 
 def push_package(pkg_uri: str, pkg_path: str) -> int:
@@ -401,8 +414,12 @@ class WorkingDirManager:
                 logger.info(f"{pkg_uri} doesn't exist. Create new package with"
                             f" {working_dir} and {py_modules}")
                 if not pkg_file.exists():
-                    create_project_package(working_dir, py_modules, excludes,
-                                           file_path)
+                    create_project_package(
+                        working_dir,
+                        py_modules,
+                        excludes,
+                        file_path,
+                        logger=logger)
                 # Push the data to remote storage
                 pkg_size = push_package(pkg_uri, pkg_file)
                 logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
