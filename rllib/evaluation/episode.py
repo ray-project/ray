@@ -137,7 +137,7 @@ class MultiAgentEpisode:
 
         if agent_id not in self._agent_to_policy:
             # Try new API: pass in agent_id and episode as named args.
-            # New signature should be: (agent_id, episode, **kwargs)
+            # New signature should be: (agent_id, episode, worker, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = \
                     self.policy_mapping_fn(agent_id, self, worker=self.worker)
