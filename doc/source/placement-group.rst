@@ -92,7 +92,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       // Make a creation option with bundles and strategy.
       ray::internal::PlacementGroupCreationOptions options{
-          false, name, bundles, ray::internal::PlacementStrategy::PACK};
+          false, "my_pg", bundles, ray::internal::PlacementStrategy::PACK};
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 
@@ -284,7 +284,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
         // Factory function of Counter class.
         static Counter *CreateCounter() {
-            return new Counter();
+          return new Counter();
         };
 
         RAY_REMOTE(&Counter::Ping, CreateCounter);
@@ -293,8 +293,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 2.0}}};
 
         // Create a placement group and make sure its creation is successful.
-        ray::internal::PlacementGroupCreationOptions options{
-            false, name, bundles, ray::internal::PlacementStrategy::STRICT_SPREAD};
+        ray::PlacementGroupCreationOptions options{
+            false, name, bundles, ray::PlacementStrategy::STRICT_SPREAD};
 
 
         ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
@@ -376,8 +376,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
          * Using this placement group for scheduling actors or tasks will guarantee that they will
          * be colocated on the same node.
          */
-        ray::internal::PlacementGroupCreationOptions options{
-            false, name, bundles, ray::internal::PlacementStrategy::STRICT_PACK};
+        ray::PlacementGroupCreationOptions options{
+            false, "my_pg", bundles, ray::PlacementStrategy::STRICT_PACK};
 
         ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
         bool is_created = pg.Wait(60);
@@ -485,7 +485,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 
       // Create extra_resource actors on a extra_resource bundle.
       for (int index = 0; index < 2; index++) {
-        ray::Task(Counter::Ping)
+        ray::Task(&Counter::Ping)
           .SetPlacementGroup(pg, 1)
           .SetResource("extra_resource", 1.0)
           .Remote().Get();
@@ -577,7 +577,7 @@ You can remove a placement group at any time to free its allocated resources.
       ray::RemovePlacementGroup(placement_group.GetID());
 
       ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
-      assert(removed_placement_group.GetState(), ray::internal::PlacementGroupState::REMOVED);
+      assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
 Named Placement Groups
 ----------------------
@@ -663,8 +663,8 @@ See :ref:`placement-group-lifetimes` for more details.
       // Create a placement group with a globally unique name.
       std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
 
-      ray::internal::PlacementGroupCreationOptions options{
-          true/*global*/, "global_name", bundles, ray::internal::PlacementStrategy::STRICT_SPREAD};
+      ray::PlacementGroupCreationOptions options{
+          true/*global*/, "global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
       pg.Wait(60);
@@ -682,8 +682,8 @@ See :ref:`placement-group-lifetimes` for more details.
       // Create a placement group with a job-scope-unique name.
       std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
 
-      ray::internal::PlacementGroupCreationOptions options{
-          false/*non-global*/, "non_global_name", bundles, ray::internal::PlacementStrategy::STRICT_SPREAD};
+      ray::PlacementGroupCreationOptions options{
+          false/*non-global*/, "non_global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
 
       ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
       pg.Wait(60);
