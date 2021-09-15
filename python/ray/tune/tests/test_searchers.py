@@ -26,7 +26,6 @@ class InvalidValuesTest(unittest.TestCase):
     Implicitly tests automatic config conversion and default (anonymous)
     mode handling.
     """
-
     def setUp(self):
         self.config = {"report": tune.uniform(0.0, 5.0)}
 
@@ -48,19 +47,17 @@ class InvalidValuesTest(unittest.TestCase):
         converted_config = AxSearch.convert_search_space(self.config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
-        client.create_experiment(
-            parameters=converted_config,
-            objective_name="_metric",
-            minimize=False)
+        client.create_experiment(parameters=converted_config,
+                                 objective_name="_metric",
+                                 minimize=False)
         searcher = AxSearch(ax_client=client)
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=searcher,
-            metric="_metric",
-            mode="max",
-            num_samples=4,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=searcher,
+                       metric="_metric",
+                       mode="max",
+                       num_samples=4,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -83,14 +80,13 @@ class InvalidValuesTest(unittest.TestCase):
     def testBlendSearch(self):
         from ray.tune.suggest.flaml import BlendSearch
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=BlendSearch(),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=BlendSearch(),
+                       config=self.config,
+                       metric="_metric",
+                       mode="max",
+                       num_samples=8,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -98,13 +94,12 @@ class InvalidValuesTest(unittest.TestCase):
     def testBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=TuneBOHB(seed=1000),
-            config=self.config,
-            mode="max",
-            num_samples=8,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=TuneBOHB(seed=1000),
+                       config=self.config,
+                       mode="max",
+                       num_samples=8,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -112,14 +107,13 @@ class InvalidValuesTest(unittest.TestCase):
     def testCFO(self):
         from ray.tune.suggest.flaml import CFO
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=CFO(),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=16,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=CFO(),
+                       config=self.config,
+                       metric="_metric",
+                       mode="max",
+                       num_samples=16,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -129,13 +123,13 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
-            config=self.config,
-            mode="max",
-            num_samples=8,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=DragonflySearch(domain="euclidean",
+                                                  optimizer="random"),
+                       config=self.config,
+                       mode="max",
+                       num_samples=8,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["point"], 2.0)
@@ -209,13 +203,12 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1234)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=SkOptSearch(),
-            config=self.config,
-            mode="max",
-            num_samples=8,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=SkOptSearch(),
+                       config=self.config,
+                       mode="max",
+                       num_samples=8,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -228,13 +221,12 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=ZOOptSearch(budget=100, parallel_num=4),
-            config=self.config,
-            mode="max",
-            num_samples=8,
-            reuse_actors=False)
+        out = tune.run(_invalid_objective,
+                       search_alg=ZOOptSearch(budget=100, parallel_num=4),
+                       config=self.config,
+                       mode="max",
+                       num_samples=8,
+                       reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -244,7 +236,6 @@ class AddEvaluatedPointTest(unittest.TestCase):
     """
     Test add_evaluated_point method in searchers that support it.
     """
-
     def setUp(self):
         self.param_name = "report"
         self.valid_value = 1.0
@@ -265,14 +256,13 @@ class AddEvaluatedPointTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch
         from optuna.trial import TrialState
 
-        searcher = OptunaSearch(
-            space=self.space,
-            metric="metric",
-            mode="max",
-            points_to_evaluate=[{
-                self.param_name: self.valid_value
-            }],
-            evaluated_rewards=[1.0])
+        searcher = OptunaSearch(space=self.space,
+                                metric="metric",
+                                mode="max",
+                                points_to_evaluate=[{
+                                    self.param_name: self.valid_value
+                                }],
+                                evaluated_rewards=[1.0])
 
         self.assertGreater(len(searcher._ot_study.trials), 0)
 
@@ -288,26 +278,32 @@ class AddEvaluatedPointTest(unittest.TestCase):
 
         self.assertEqual(len(searcher._ot_study.trials), 0)
 
-        searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9])
+        searcher.add_evaluated_point(point,
+                                     1.0,
+                                     intermediate_values=[0.8, 0.9])
         self.assertEqual(len(searcher._ot_study.trials), 1)
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.COMPLETE)
 
-        searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9], error=True)
+        searcher.add_evaluated_point(point,
+                                     1.0,
+                                     intermediate_values=[0.8, 0.9],
+                                     error=True)
         self.assertEqual(len(searcher._ot_study.trials), 2)
         self.assertTrue(searcher._ot_study.trials[-1].state == TrialState.FAIL)
 
-        searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9], pruned=True)
+        searcher.add_evaluated_point(point,
+                                     1.0,
+                                     intermediate_values=[0.8, 0.9],
+                                     pruned=True)
         self.assertEqual(len(searcher._ot_study.trials), 3)
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.PRUNED)
 
         dbr_searcher = OptunaSearch(
             lambda trial: {
-                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0),
+                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0
+                                                     ),
             },
             metric="metric",
             mode="max",

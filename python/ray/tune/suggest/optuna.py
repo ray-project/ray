@@ -182,10 +182,10 @@ class OptunaSearch(Searcher):
             mode="min")
 
         tune.run(trainable, search_alg=optuna_search)
-    
+
     You can pass configs that will be evaluated first using
     `points_to_evaluate`:
-    
+
     .. code-block:: python
 
         from ray.tune.suggest.optuna import OptunaSearch
@@ -230,9 +230,11 @@ class OptunaSearch(Searcher):
 
     """
     def __init__(self,
-                 space: Optional[Union[Dict[str, "OptunaDistribution"], List[
-                     Tuple], Callable[["OptunaTrial"], Optional[Dict[
-                         str, Any]]]]] = None,
+                 space: Optional[Union[Dict[str,
+                                            "OptunaDistribution"], List[Tuple],
+                                       Callable[["OptunaTrial"],
+                                                Optional[Dict[str,
+                                                              Any]]]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
@@ -241,18 +243,17 @@ class OptunaSearch(Searcher):
                  evaluated_rewards: Optional[List] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
-        super(OptunaSearch, self).__init__(
-            metric=metric,
-            mode=mode,
-            max_concurrent=None,
-            use_early_stopped_trials=None)
+        super(OptunaSearch, self).__init__(metric=metric,
+                                           mode=mode,
+                                           max_concurrent=None,
+                                           use_early_stopped_trials=None)
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self).__name__))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space",
+                                                   cls=type(self).__name__))
                 space = self.convert_search_space(space)
             else:
                 # Flatten to support nested dicts
@@ -334,9 +335,11 @@ class OptunaSearch(Searcher):
         self._setup_study(mode)
         return True
 
-    def _suggest_from_define_by_run_func(
-            self, func: Callable[["OptunaTrial"], Optional[Dict[str, Any]]],
-            ot_trial: "OptunaTrial") -> Dict:
+    def _suggest_from_define_by_run_func(self,
+                                         func: Callable[["OptunaTrial"],
+                                                        Optional[Dict[str,
+                                                                      Any]]],
+                                         ot_trial: "OptunaTrial") -> Dict:
         captor = _OptunaTrialSuggestCaptor(ot_trial)
         time_start = time.time()
         ret = func(captor)
@@ -368,14 +371,13 @@ class OptunaSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
 
         if isinstance(self._space, list):
             # Keep for backwards compatibility
@@ -387,8 +389,8 @@ class OptunaSearch(Searcher):
 
             # getattr will fetch the trial.suggest_ function on Optuna trials
             params = {
-                args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                    ot_trial, fn)(*args, **kwargs)
+                args[0] if len(args) > 0 else kwargs["name"]:
+                getattr(ot_trial, fn)(*args, **kwargs)
                 for (fn, args, kwargs) in self._space
             }
         elif callable(self._space):
@@ -441,20 +443,19 @@ class OptunaSearch(Searcher):
                             intermediate_values: Optional[List[float]] = None):
         if not self._space:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
         if callable(self._space):
             raise TypeError(
                 "Define-by-run function passed in `space` argument is not"
                 "yet supported when using `evaluated_rewards`. Please provide"
                 "a 'OptunaDistribution' dict.")
-        
+
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
             ot_trial_state = OptunaTrialState.FAIL
