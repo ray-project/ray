@@ -5,7 +5,7 @@ import requests
 import time
 import ray
 import pytest
-from ray.new_dashboard.tests.conftest import *  # noqa
+from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
