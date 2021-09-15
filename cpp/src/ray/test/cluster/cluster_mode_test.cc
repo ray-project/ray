@@ -225,8 +225,7 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
                     .SetResources({{"CPU", 10000.0}})
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
-  std::vector<ray::ObjectRef<int>> objects{r2};
-  auto result = ray::Wait(objects, 1, 1000);
+  auto result = ray::Wait(r2, 1000);
   EXPECT_EQ(result.ready.size(), 0);
   EXPECT_EQ(result.unready.size(), 1);
 
@@ -346,8 +345,7 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .SetPlacementGroup(placement_group, 0)
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
-  std::vector<ray::ObjectRef<int>> objects2{r2};
-  auto result2 = ray::Wait(objects2, 1, 1000);
+  auto result2 = ray::Wait(r2, 1000);
   EXPECT_EQ(result2.ready.size(), 0);
   EXPECT_EQ(result2.unready.size(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());

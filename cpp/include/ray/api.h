@@ -85,6 +85,16 @@ template <typename T>
 WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
                    int timeout_ms);
 
+/// Wait for single object to be locally available,
+/// until the object is ready, or specified timeout has passed.
+///
+/// \param[in] object The object which should be waited.
+/// \param[in] timeout_ms The maximum wait time in milliseconds.
+/// \return Two arrays, one containing locally available objects, one containing the
+/// rest.
+template <typename T>
+WaitResult<T> Wait(const ray::ObjectRef<T> &object, int timeout_ms);
+
 /// Create a `TaskCaller` for calling remote function.
 /// It is used for normal task, such as ray::Task(Plus1, 1), ray::Task(Plus, 1, 2).
 /// \param[in] func The function to be remote executed.
@@ -214,6 +224,12 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
     }
   }
   return WaitResult<T>(std::move(readys), std::move(unreadys));
+}
+
+template <typename T>
+inline WaitResult<T> Wait(const ray::ObjectRef<T> &object, int timeout_ms) {
+  std::vector<ray::ObjectRef<T>> objects{object};
+  return Wait(objects, objects.size(), timeout_ms);
 }
 
 template <typename FuncType>
