@@ -5,8 +5,8 @@ from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
-    fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
+    as fashion_mnist_train_func
 from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 
 
