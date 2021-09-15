@@ -296,8 +296,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
-        std::make_pair(nullptr, TaskID::Nil());
+    absl::flat_hash_map<NodeID, std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID>>
+        raylet_to_pending_lease_request;
     TaskSpecification resource_spec = TaskSpecification();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
@@ -312,7 +312,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     inline bool CanDelete() const {
-      if (!pending_lease_request.first && task_queue.empty() &&
+      if (raylet_to_pending_lease_request.empty() && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
