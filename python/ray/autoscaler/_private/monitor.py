@@ -176,7 +176,6 @@ class Monitor:
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
             request, timeout=4)
-        print(type(response), response, [i for i in dir(response) if not i.startswith("__")])
         resources_batch_data = response.resource_usage_data
 
         for resource_message in resources_batch_data.batch:

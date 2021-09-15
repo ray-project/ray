@@ -308,7 +308,7 @@ def manage_tls(use_tls):
         teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
-@pytest.fixture()
+@pytest.fixture
 def use_tls(request):
     if request.param:
         key_filepath, cert_filepath, temp_dir = setup_tls()
