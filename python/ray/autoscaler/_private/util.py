@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import struct
 from typing import Any, Dict, Optional, Tuple, List, Union
 
 import ray
@@ -338,9 +339,9 @@ def hash_runtime_conf(file_mounts,
 
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
-            with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b""):
-                    contents_hasher.update(chunk)
+            si = os.stat(fpath)
+            content_id = struct.pack("<dq", si.st_mtime, si.st_size)
+            contents_hasher.update(content_id)
 
         path = os.path.expanduser(path)
         if allow_non_existing_paths and not os.path.exists(path):
