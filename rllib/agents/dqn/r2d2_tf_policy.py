@@ -44,8 +44,12 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     # Create the policy's models.
     model = build_q_model(policy, obs_space, action_space, config)
 
-    # Assert correct model type.
-    assert model.get_initial_state() != [], \
+    # Assert correct model type by checking the init state to be present.
+    # For attention nets: These don't necessarily publish their init state via
+    # Model.get_initial_state, but may only use the trajectory view API
+    # (view_requirements).
+    assert (model.get_initial_state() != [] or
+            model.view_requirements.get("state_in_0") is not None), \
         "R2D2 requires its model to be a recurrent one! Try using " \
         "`model.use_lstm` or `model.use_attention` in your config " \
         "to auto-wrap your model with an LSTM- or attention net."

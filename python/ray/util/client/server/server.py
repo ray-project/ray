@@ -95,7 +95,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config and \
-           set(job_config.runtime_env.uris) != set(
+                set(job_config.runtime_env.uris) != set(
                 current_job_config.runtime_env.uris) and \
                 len(job_config.runtime_env.uris) > 0:
             return ray_client_pb2.InitResponse(
@@ -256,7 +256,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if req.WhichOneof("terminate_type") == "task_object":
             try:
                 object_ref = \
-                        self.object_refs[req.client_id][req.task_object.id]
+                    self.object_refs[req.client_id][req.task_object.id]
                 with disable_client_hook():
                     ray.cancel(
                         object_ref,
@@ -288,15 +288,19 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         main loop when the desired object is ready. If there is some failure
         in scheduling, a GetResponse will be immediately returned.
         """
-        refs = []
-        for rid in request.ids:
-            ref = self.object_refs[client_id].get(rid, None)
-            if ref:
-                refs.append(ref)
-            else:
-                return ray_client_pb2.GetResponse(valid=False)
+        if len(request.ids) != 1:
+            raise ValueError("Async get() must have exactly 1 Object ID. "
+                             f"Actual: {request}")
+        rid = request.ids[0]
+        ref = self.object_refs[client_id].get(rid, None)
+        if not ref:
+            return ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(f"ClientObjectRef with id {rid} not found for "
+                               f"client {client_id}")))
         try:
-            logger.debug("async get: %s" % refs)
+            logger.debug("async get: %s" % ref)
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
@@ -307,36 +311,44 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         serialized = dumps_from_server(result, client_id, self)
                         get_resp = ray_client_pb2.GetResponse(
                             valid=True, data=serialized)
-                    except Exception as e:
+                    except Exception as exc:
                         get_resp = ray_client_pb2.GetResponse(
-                            valid=False, error=cloudpickle.dumps(e))
+                            valid=False, error=cloudpickle.dumps(exc))
                     resp = ray_client_pb2.DataResponse(
                         get=get_resp, req_id=req_id)
-                    resp.req_id = req_id
                     result_queue.put(resp)
 
-                for ref in refs:
-                    ref._on_completed(send_get_response)
+                ref._on_completed(send_get_response)
                 return None
 
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
 
-    def GetObject(self, request: ray_client_pb2.GetRequest, context=None):
-        return self._get_object(request, "", context)
+    def GetObject(self, request: ray_client_pb2.GetRequest, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata.get("client_id")
+        if client_id is None:
+            return ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(
+                        "client_id is not specified in request metadata")))
+        return self._get_object(request, client_id)
 
-    def _get_object(self,
-                    request: ray_client_pb2.GetRequest,
-                    client_id: str,
-                    context=None):
+    def _get_object(self, request: ray_client_pb2.GetRequest, client_id: str):
         objectrefs = []
         for rid in request.ids:
             ref = self.object_refs[client_id].get(rid, None)
             if ref:
                 objectrefs.append(ref)
             else:
-                return ray_client_pb2.GetResponse(valid=False)
+                return ray_client_pb2.GetResponse(
+                    valid=False,
+                    error=cloudpickle.dumps(
+                        ValueError(
+                            f"ClientObjectRef {rid} is not found for client "
+                            f"{client_id}")))
         try:
             logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
@@ -344,8 +356,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        items_ser = dumps_from_server(items, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=items_ser)
+        serialized = dumps_from_server(items, client_id, self)
+        return ray_client_pb2.GetResponse(valid=True, data=serialized)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
@@ -383,12 +395,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
-        for id in request.object_ids:
-            if id not in self.object_refs[request.client_id]:
+        for rid in request.object_ids:
+            if rid not in self.object_refs[request.client_id]:
                 raise Exception(
                     "Asking for a ref not associated with this client: %s" %
-                    str(id))
-            object_refs.append(self.object_refs[request.client_id][id])
+                    str(rid))
+            object_refs.append(self.object_refs[request.client_id][rid])
         num_returns = request.num_returns
         timeout = request.timeout
         try:
@@ -416,7 +428,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+    def Schedule(self, task: ray_client_pb2.ClientTask,
+                 context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s" % (task.name,
                                  ray_client_pb2.ClientTask.RemoteExecType.Name(
@@ -598,7 +611,9 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+        futures.ThreadPoolExecutor(
+            max_workers=CLIENT_SERVER_MAX_THREADS,
+            thread_name_prefix="ray_client_server"),
         options=GRPC_OPTIONS)
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)

@@ -4,7 +4,7 @@ import ray
 from ray import tune
 from ray.util.sgd.v2 import Trainer
 
-from train_linear import train_func
+from train_linear_example import train_func
 
 
 def tune_linear(num_workers, num_samples):
