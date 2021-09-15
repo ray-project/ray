@@ -24,7 +24,7 @@ def increase(x):
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):

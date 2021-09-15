@@ -111,7 +111,7 @@ class ParquetDatasource(FileBasedDatasource):
                 inferred_schema = inferred_schema.with_metadata(
                     schema.metadata)
             except Exception:
-                logger.info(
+                logger.debug(
                     "Failed to infer schema of dataset by passing dummy table "
                     "through UDF due to the following exception:",
                     exc_info=True)

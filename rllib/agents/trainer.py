@@ -29,6 +29,7 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
@@ -698,8 +699,16 @@ class Trainer(Trainable):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             # A class specifier.
             elif "." in env:
-                self.env_creator = \
-                    lambda env_context: from_config(env, env_context)
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
+                    return env_obj
+
+                self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(

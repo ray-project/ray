@@ -155,7 +155,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                     << " has been marked dead because the detector"
                     << " has missed too many heartbeats from it. This can happen when a "
                        "raylet crashes unexpectedly or has lagging heartbeats.";
-      RAY_LOG(INFO) << "Publish RemoveNode, msg=" << error_message.str();
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
       RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
