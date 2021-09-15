@@ -706,8 +706,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
       task_manager_, reference_counter_, memory_store_,
-      [this](const ObjectID &object_id, bool pin_object) {
-        RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+      [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
+        RAY_LOG(DEBUG) << "Failed to recover object " << object_id << " due to "
+                       << rpc::ErrorType_Name(reason);
+        RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
       },
@@ -1458,8 +1460,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                 object_id));
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
@@ -2206,19 +2207,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_spec.GetDebuggerBreakpoint(), return_objects, creation_task_exception_pb_bytes,
       is_application_level_error);
 
-  // Get the reference counts for any IDs that we borrowed during this task and
-  // return them to the caller. This will notify the caller of any IDs that we
-  // (or a nested task) are still borrowing. It will also notify the caller of
-  // any new IDs that were contained in a borrowed ID that we (or a nested
-  // task) are now borrowing.
-  if (!borrowed_ids.empty()) {
-    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
-  }
-  // Unpin the borrowed IDs.
+  // Get the reference counts for any IDs that we borrowed during this task,
+  // remove the local reference for these IDs, and return the ref count info to
+  // the caller. This will notify the caller of any IDs that we (or a nested
+  // task) are still borrowing. It will also notify the caller of any new IDs
+  // that were contained in a borrowed ID that we (or a nested task) are now
+  // borrowing.
   std::vector<ObjectID> deleted;
-  for (const auto &borrowed_id : borrowed_ids) {
-    RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
+  if (!borrowed_ids.empty()) {
+    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
   memory_store_->Delete(deleted);
 
@@ -2443,7 +2440,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
                                   rpc::StealTasksReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Entering CoreWorker::HandleStealWork!";
   direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
 }
 
