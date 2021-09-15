@@ -37,8 +37,9 @@ class ActorCreatorInterface {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const gcs::StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) = 0;
 };
 
 class DefaultActorCreator : public ActorCreatorInterface {
@@ -62,8 +63,9 @@ class DefaultActorCreator : public ActorCreatorInterface {
     return status;
   }
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
+  Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
     return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
   }
 
