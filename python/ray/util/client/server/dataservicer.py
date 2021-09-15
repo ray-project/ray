@@ -184,12 +184,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if _should_cache(req):
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
-        except Exception as e:
-            # Unhandled error while processing requests -- set status, store
-            # error message, and skip cleanup.
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(e))
-            cleanup_requested = True
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
