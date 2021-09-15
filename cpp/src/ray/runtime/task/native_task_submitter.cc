@@ -122,7 +122,7 @@ ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name
 }
 
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   auto full_name = GetFullName(create_options.global, create_options.name);
   auto options = ray::core::PlacementGroupCreationOptions(
       std::move(full_name), (ray::core::PlacementStrategy)create_options.strategy,

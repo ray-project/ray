@@ -17,7 +17,10 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.framework import try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +192,11 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
+
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        raise ModuleNotFoundError(
+            "You need `tensorflow_probability` in order to run SAC! "
+            "Install it via `pip install tensorflow_probability`.")
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

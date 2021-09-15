@@ -73,14 +73,17 @@ async def trial(result_json, intermediate_handles, num_replicas,
     if intermediate_handles:
         deployment_name = "downstream"
 
-        @serve.deployment("api", max_concurrent_queries=1000)
+        @serve.deployment(name="api", max_concurrent_queries=1000)
         class ForwardActor:
             def __init__(self):
-                self.handle = serve.get_deployment(deployment_name).get_handle(
-                    sync=False)
+                self.handle = None
 
-            async def __call__(self, _):
-                return await self.handle.remote()
+            async def __call__(self, req):
+                if self.handle is None:
+                    self.handle = serve.get_deployment(
+                        deployment_name).get_handle(sync=False)
+                obj_ref = await self.handle.remote(req)
+                return await obj_ref
 
         ForwardActor.deploy()
         routes = requests.get("http://localhost:8000/-/routes").json()
@@ -156,7 +159,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    ray.init(log_to_driver=False)
+    ray.init()
     serve.start()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
