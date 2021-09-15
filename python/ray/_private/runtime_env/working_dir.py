@@ -17,7 +17,7 @@ from ray.job_config import JobConfig
 from ray._private.thirdparty.pathspec import PathSpec
 from ray._private.runtime_env import RuntimeEnvContext
 
-default_logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
@@ -50,7 +50,6 @@ def _dir_travel(
         path: Path,
         excludes: List[Callable],
         handler: Callable,
-        logger: Optional[logging.Logger] = default_logger,
 ):
     e = _get_gitignore(path)
     if e is not None:
@@ -60,20 +59,17 @@ def _dir_travel(
         try:
             handler(path)
         except Exception as e:
-            logger.error(f"Issue with path: {path}")
+            _logger.error(f"Issue with path: {path}")
             raise e
         if path.is_dir():
             for sub_path in path.iterdir():
-                _dir_travel(sub_path, excludes, handler, logger=logger)
+                _dir_travel(sub_path, excludes, handler)
     if e is not None:
         excludes.pop()
 
 
-def _zip_module(root: Path,
-                relative_path: Path,
-                excludes: Optional[Callable],
-                zip_handler: ZipFile,
-                logger: Optional[logging.Logger] = default_logger) -> None:
+def _zip_module(root: Path, relative_path: Path, excludes: Optional[Callable],
+                zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
 
     def handler(path: Path):
@@ -82,21 +78,20 @@ def _zip_module(root: Path,
                                   None) is None or path.is_file():
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
-                logger.warning(
+                _logger.warning(
                     f"File {path} is very large ({file_size} bytes). "
                     "Consider excluding this file from the working directory.")
             to_path = path.relative_to(relative_path)
             zip_handler.write(path, to_path)
 
     excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    _dir_travel(root, excludes, handler)
 
 
 def _hash_modules(
         root: Path,
         relative_path: Path,
         excludes: Optional[Callable],
-        logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -119,7 +114,7 @@ def _hash_modules(
         hash_val = _xor_bytes(hash_val, md5.digest())
 
     excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    _dir_travel(root, excludes, handler)
     return hash_val
 
 
@@ -171,11 +166,8 @@ def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
 
 
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(
-        working_dir: str,
-        py_modules: List[str],
-        excludes: List[str],
-        logger: Optional[logging.Logger] = default_logger) -> str:
+def get_project_package_name(working_dir: str, py_modules: List[str],
+                             excludes: List[str]) -> str:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
@@ -212,11 +204,8 @@ def get_project_package_name(
                              " directory")
         hash_val = _xor_bytes(
             hash_val,
-            _hash_modules(
-                working_dir,
-                working_dir,
-                _get_excludes(working_dir, excludes),
-                logger=logger))
+            _hash_modules(working_dir, working_dir,
+                          _get_excludes(working_dir, excludes)))
     for py_module in py_modules or []:
         if not isinstance(py_module, str):
             raise TypeError("`py_module` must be a string.")
@@ -225,8 +214,7 @@ def get_project_package_name(
             raise ValueError(f"py_module {py_module} must be an existing"
                              " directory")
         hash_val = _xor_bytes(
-            hash_val,
-            _hash_modules(module_dir, module_dir.parent, None, logger=logger))
+            hash_val, _hash_modules(module_dir, module_dir.parent, None))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
@@ -255,12 +243,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
             [Protocol.GCS.value + "://" + pkg_name])
 
 
-def create_project_package(
-        working_dir: str,
-        py_modules: List[str],
-        excludes: List[str],
-        output_path: str,
-        logger: Optional[logging.Logger] = default_logger) -> None:
+def create_project_package(working_dir: str, py_modules: List[str],
+                           excludes: List[str], output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working
@@ -278,20 +262,11 @@ def create_project_package(
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(
-                working_path,
-                working_path,
-                _get_excludes(working_path, excludes),
-                zip_handler,
-                logger=logger)
+            _zip_module(working_path, working_path,
+                        _get_excludes(working_path, excludes), zip_handler)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(
-                module_path,
-                module_path.parent,
-                None,
-                zip_handler,
-                logger=logger)
+            _zip_module(module_path, module_path.parent, None, zip_handler)
 
 
 def push_package(pkg_uri: str, pkg_path: str) -> int:
@@ -340,10 +315,7 @@ class WorkingDirManager:
         _, pkg_name = _parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
 
-    def fetch_package(self,
-                      pkg_uri: str,
-                      logger: Optional[logging.Logger] = default_logger
-                      ) -> int:
+    def fetch_package(self, pkg_uri: str) -> int:
         """Fetch a package from a given uri if not exists locally.
 
         This function is used to fetch a pacakge from the given uri and unpack
@@ -355,18 +327,13 @@ class WorkingDirManager:
         Returns:
             The directory containing this package
         """
-        if logger is None:
-            logger = default_logger
-
-        logger.debug(f"Fetching package for uri: {pkg_uri}")
-
         pkg_file = Path(self._get_local_path(pkg_uri))
         local_dir = pkg_file.with_suffix("")
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
             return local_dir
-
+        _logger.debug("Fetch packge")
         protocol, pkg_name = _parse_uri(pkg_uri)
         if protocol in (Protocol.GCS, Protocol.PIN_GCS):
             code = _internal_kv_get(pkg_uri)
@@ -377,17 +344,13 @@ class WorkingDirManager:
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
-        logger.debug(f"Unpacking {pkg_file} to {local_dir}")
+        _logger.debug(f"Unpack {pkg_file} to {local_dir}")
         with ZipFile(str(pkg_file), "r") as zip_ref:
             zip_ref.extractall(local_dir)
         pkg_file.unlink()
-
         return local_dir
 
-    def upload_runtime_env_package_if_needed(
-            self,
-            job_config: JobConfig,
-            logger: Optional[logging.Logger] = default_logger):
+    def upload_runtime_env_package_if_needed(self, job_config: JobConfig):
         """Upload runtime env if it's not there.
 
         It'll check whether the runtime environment exists in the cluster or
@@ -398,9 +361,6 @@ class WorkingDirManager:
         Args:
             job_config (JobConfig): The job config of driver.
         """
-        if logger is None:
-            logger = default_logger
-
         pkg_uris = job_config.get_runtime_env_uris()
         if len(pkg_uris) == 0:
             return  # Return early to avoid internal kv check in this case.
@@ -411,24 +371,18 @@ class WorkingDirManager:
                 working_dir = job_config.runtime_env.get("working_dir")
                 py_modules = job_config.runtime_env.get("py_modules")
                 excludes = job_config.runtime_env.get("excludes") or []
-                logger.info(f"{pkg_uri} doesn't exist. Create new package with"
-                            f" {working_dir} and {py_modules}")
+                _logger.info(
+                    f"{pkg_uri} doesn't exist. Create new package with"
+                    f" {working_dir} and {py_modules}")
                 if not pkg_file.exists():
-                    create_project_package(
-                        working_dir,
-                        py_modules,
-                        excludes,
-                        file_path,
-                        logger=logger)
+                    create_project_package(working_dir, py_modules, excludes,
+                                           file_path)
                 # Push the data to remote storage
                 pkg_size = push_package(pkg_uri, pkg_file)
-                logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+                _logger.info(
+                    f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
-    def ensure_runtime_env_setup(
-            self,
-            pkg_uris: List[str],
-            logger: Optional[logging.Logger] = default_logger,
-    ) -> Optional[str]:
+    def ensure_runtime_env_setup(self, pkg_uris: List[str]) -> Optional[str]:
         """Make sure all required packages are downloaded it local.
 
         Necessary packages required to run the job will be downloaded
@@ -447,16 +401,14 @@ class WorkingDirManager:
             # Locking to avoid multiple process download concurrently
             pkg_file = Path(self._get_local_path(pkg_uri))
             with FileLock(str(pkg_file) + ".lock"):
-                pkg_dir = self.fetch_package(pkg_uri, logger=logger)
+                pkg_dir = self.fetch_package(pkg_uri)
             sys.path.insert(0, str(pkg_dir))
 
         # Right now, multiple pkg_uris are not supported correctly.
         # We return the last one as working directory
         return str(pkg_dir) if pkg_dir else None
 
-    def delete_uri(self,
-                   uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+    def delete_uri(self, uri: str) -> bool:
         """Deletes a specific URI from the local filesystem.
 
         Args:
@@ -465,9 +417,6 @@ class WorkingDirManager:
         Returns:
             True if the URI was successfully deleted, else False.
         """
-        if logger is None:
-            logger = default_logger
-
         deleted = False
         path = Path(self._get_local_path(uri))
         with FileLock(str(path) + ".lock"):
@@ -480,19 +429,26 @@ class WorkingDirManager:
                 deleted = True
 
         if not deleted:
-            logger.warning(f"Tried to delete nonexistent path: {path}")
+            _logger.warning(f"Tried to delete nonexistent path: {path}")
 
         return deleted
 
     def setup(self,
               runtime_env: dict,
               context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
+              logger: Optional[logging.Logger] = None):
         if not runtime_env.get("uris"):
             return
 
-        working_dir = self.ensure_runtime_env_setup(
-            runtime_env["uris"], logger=logger)
+        # Overwrite the module-wide logger temporarily.
+        # TODO(edoakes): we should be able to remove this by refactoring the
+        # working_dir setup code into a class instead of using global vars.
+        global _logger
+        if logger:
+            prev_logger = _logger
+            _logger = logger
+
+        working_dir = self.ensure_runtime_env_setup(runtime_env["uris"])
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
@@ -501,3 +457,6 @@ class WorkingDirManager:
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]
         context.env_vars["PYTHONPATH"] = python_path
+
+        if logger:
+            _logger = prev_logger
