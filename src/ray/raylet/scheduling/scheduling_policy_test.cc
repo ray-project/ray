@@ -244,11 +244,7 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
 }
 
 TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
-  // The local node is better, but it has GPUs, the request is
-  // CPU-only, and the remote node does not have GPUs, thus
-  // we should schedule on remote node.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -256,9 +252,31 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 1, 1));
   nodes.emplace(remote_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
 
-  const int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes,
-                                                                 0.51, false, true, true);
-  ASSERT_EQ(to_schedule, remote_node);
+  {
+    // The local node is better, but it has GPUs, the request is
+    // non GPU, and the remote node does not have GPUs, thus
+    // we should schedule on remote node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        ResourceMapToResourceRequest(map, {{"CPU", 1}}, false), local_node, nodes, 0.51,
+        false, true, true);
+    ASSERT_EQ(to_schedule, remote_node);
+  }
+  {
+    // A GPU request should be scheduled on a GPU node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"GPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, local_node);
+  }
+  {
+    // A mixed CPU/GPU request should be scheduled on a GPU node.
+    const ResourceRequest req =
+        ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, local_node);
+  }
 }
 
 TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {

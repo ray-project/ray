@@ -50,7 +50,7 @@ namespace raylet_scheduling_policy {
 /// \param nodes: The summary view of all the nodes that can be scheduled on.
 /// \param spread_threshold: Below this threshold, critical resource utilization will be
 /// truncated to 0.
-/// \param avoid_scheduling_cpu_requests_on_gpu_nodes: if set, we would try scheduling
+/// \param scheduler_avoid_gpu_nodes: if set, we would try scheduling
 /// CPU-only requests on CPU-only nodes, and will fallback to scheduling on GPU nodes if
 /// needed.
 ///
@@ -60,8 +60,7 @@ int64_t HybridPolicy(
     const ResourceRequest &resource_request, const int64_t local_node_id,
     const absl::flat_hash_map<int64_t, Node> &nodes, float spread_threshold,
     bool force_spillback, bool require_available,
-    bool avoid_scheduling_cpu_requests_on_gpu_nodes =
-        RayConfig::instance().avoid_scheduling_cpu_requests_on_gpu_nodes());
+    bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
 //
 enum class NodeFilter { kAny, kGPU, kCPUOnly };
