@@ -90,8 +90,7 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i]._BaseWorkerMixin__execute.remote(
-            f, *args, **kwargs)
+        return self.workers[i].execute.remote(f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -638,7 +637,6 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_workers = 2
     num_epochs = 2
     trainer = Trainer("horovod", num_workers)
-    trainer.start()
     workers = trainer.to_worker_group(
         HorovodTrainClass, config={
             "num_epochs": num_epochs,
@@ -1025,7 +1023,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer.shutdown()
 
 
-def test_to_worker_group(ray_start_2_cpus):
+def test_to_workers(ray_start_2_cpus):
     config = TestConfig()
     trainer = Trainer(config, num_workers=2)
 
