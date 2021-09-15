@@ -41,6 +41,7 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::vector<std::string> &runtime_env_uris,
     const std::unordered_map<std::string, std::string> &override_environment_variables,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
@@ -48,8 +49,8 @@ void BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, override_environment_variables,
-      concurrency_group_name);
+      debugger_breakpoint, serialized_runtime_env, runtime_env_uris,
+      override_environment_variables, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1658,12 +1659,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(
-      builder, worker_context_.GetCurrentJobID(), task_id, task_name,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, constrained_resources, required_resources,
-      placement_options, placement_group_capture_child_tasks, debugger_breakpoint,
-      task_options.serialized_runtime_env, override_environment_variables);
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      constrained_resources, required_resources, placement_options,
+                      placement_group_capture_child_tasks, debugger_breakpoint,
+                      task_options.serialized_runtime_env, task_options.runtime_env_uris,
+                      override_environment_variables);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1725,6 +1727,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
                       actor_creation_options.serialized_runtime_env,
+                      actor_creation_options.runtime_env_uris,
                       override_environment_variables);
 
   auto actor_handle = std::make_unique<ActorHandle>(
@@ -1885,6 +1888,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
                       "{}", /* serialized_runtime_env */
+                      {},   /* runtime_env_uris */
                       override_environment_variables,
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will

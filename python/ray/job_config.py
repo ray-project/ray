@@ -3,7 +3,6 @@ import uuid
 import json
 
 import ray._private.gcs_utils as gcs_utils
-from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
 
 
 class JobConfig:
@@ -90,9 +89,9 @@ class JobConfig:
                 self.num_java_workers_per_process)
             self._cached_pb.jvm_options.extend(self.jvm_options)
             self._cached_pb.code_search_path.extend(self.code_search_path)
-            self._cached_pb.runtime_env.CopyFrom(self._get_proto_runtime())
-            self._cached_pb.serialized_runtime_env = \
-                self.get_serialized_runtime_env()
+            self._cached_pb.runtime_env.uris[:] = self.get_runtime_env_uris()
+            self._cached_pb.runtime_env.serialized_runtime_env = json.dumps(
+                self.runtime_env)
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
         return self._cached_pb
@@ -106,13 +105,3 @@ class JobConfig:
     def set_runtime_env_uris(self, uris):
         self.runtime_env["uris"] = uris
         self._parsed_runtime_env.set_uris(uris)
-
-    def get_serialized_runtime_env(self) -> str:
-        """Return the JSON-serialized parsed runtime env dict"""
-        return self._parsed_runtime_env.serialize()
-
-    def _get_proto_runtime(self) -> RuntimeEnvPB:
-        runtime_env = RuntimeEnvPB()
-        runtime_env.uris[:] = self.get_runtime_env_uris()
-        runtime_env.raw_json = json.dumps(self.runtime_env)
-        return runtime_env
