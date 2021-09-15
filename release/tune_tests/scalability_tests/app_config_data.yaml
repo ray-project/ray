@@ -7,7 +7,7 @@ python:
   pip_packages:
     - pytest
     - awscli
-    - xgboost_ray
+    - xgboost_ray[default]
   conda_packages: []
 
 post_build_cmds:
@@ -15,7 +15,7 @@ post_build_cmds:
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip3 install -U xgboost_ray awscli # Install latest releases
+  - pip3 install -U "xgboost_ray[default]" awscli # Install latest releases
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true
