@@ -200,7 +200,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr,
-      std::function<bool(std::shared_ptr<GcsActor>)> release_resources = nullptr);
+      std::function<void(std::shared_ptr<GcsActor>)> release_resources = nullptr);
 
   ~GcsActorManager() = default;
 
@@ -507,7 +507,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
 
-  std::function<bool(std::shared_ptr<GcsActor>)> release_resources_;
+  std::function<void(std::shared_ptr<GcsActor>)> release_resources_;
 
   // Debug info.
   enum CountType {

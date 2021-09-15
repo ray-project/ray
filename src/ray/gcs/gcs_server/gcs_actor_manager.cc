@@ -115,7 +115,7 @@ GcsActorManager::GcsActorManager(
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory,
-    std::function<bool(std::shared_ptr<GcsActor>)> release_resources)
+    std::function<void(std::shared_ptr<GcsActor>)> release_resources)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
@@ -570,7 +570,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     return;
   }
 
-  if (release_resources_) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     release_resources_(it->second);
   }
 
