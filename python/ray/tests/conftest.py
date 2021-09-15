@@ -89,11 +89,15 @@ def ray_start_regular_shared(request):
 
 
 @pytest.fixture(
-    scope="module", params=[
-        {"local_mode": True},
-        {"local_mode": False},
-        {"local_mode": False, "use_tls": True}
-    ])
+    scope="module",
+    params=[{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }, {
+        "local_mode": False,
+        "use_tls": True
+    }])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
     use_tls = param.pop("use_tls", False)
@@ -315,6 +319,7 @@ def use_tls(request):
     yield request.param
     if request.param:
         teardown_tls(key_filepath, cert_filepath, temp_dir)
+
 
 """
 Object spilling test fixture

@@ -52,7 +52,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         ip = DataSource.node_id_to_ip[node_id]
         address = f"{ip}:{ports[1]}"
         options = (("grpc.enable_http_proxy", 0), )
-        channel = ray._private.utils.init_grpc_channel(address, options, asynchronous=True)
+        channel = ray._private.utils.init_grpc_channel(
+            address, options, asynchronous=True)
 
         stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
         request = job_agent_pb2.InitializeJobEnvRequest(

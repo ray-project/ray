@@ -106,12 +106,12 @@ class Worker:
 
         # TODO tidy this up
         if self._secure and _credentials is None:
-            server_cert_chain, private_key, ca_cert = ray._private.utils.load_certs_from_env()
+            server_cert_chain, private_key, ca_cert = ray._private.utils.load_certs_from_env(
+            )
             _credentials = grpc.ssl_channel_credentials(
                 certificate_chain=server_cert_chain,
                 private_key=private_key,
-                root_certificates=ca_cert
-            )
+                root_certificates=ca_cert)
 
         if _credentials is not None:
             self._credentials = _credentials

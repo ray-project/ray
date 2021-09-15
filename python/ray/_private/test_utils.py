@@ -703,11 +703,9 @@ def generate_self_signed_tls_certs():
     except ImportError:
         raise ImportError(
             "Using `Security.temporary` requires `cryptography`, please "
-            "install it using either pip or conda"
-        )
+            "install it using either pip or conda")
     key = rsa.generate_private_key(
-        public_exponent=65537, key_size=2048, backend=default_backend()
-    )
+        public_exponent=65537, key_size=2048, backend=default_backend())
     key_contents = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
@@ -715,8 +713,7 @@ def generate_self_signed_tls_certs():
     ).decode()
 
     ray_interal = x509.Name(
-        [x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")]
-    )
+        [x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")])
     # This is the same logic used by the GCS server to acquire a private/interal IP
     # address to listen on. If we just use localhost + 127.0.0.1 then we won't be able to
     # connect to the GCS and will get an error like "No match found for server name: 192.168.X.Y"
@@ -725,23 +722,19 @@ def generate_self_signed_tls_certs():
     private_ip_address = s.getsockname()[0]
     s.close()
     altnames = x509.SubjectAlternativeName([
-        x509.DNSName(socket.gethostbyname(socket.gethostname())),  # Probably 127.0.0.1
+        x509.DNSName(socket.gethostbyname(
+            socket.gethostname())),  # Probably 127.0.0.1
         x509.DNSName("127.0.0.1"),
         x509.DNSName(private_ip_address),  # 192.168.*.*
         x509.DNSName("localhost"),
     ])
     now = datetime.datetime.utcnow()
-    cert = (
-        x509.CertificateBuilder()
-            .subject_name(ray_interal)
-            .issuer_name(ray_interal)
-            .add_extension(altnames, critical=False)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now)
-            .not_valid_after(now + datetime.timedelta(days=365))
-            .sign(key, hashes.SHA256(), default_backend())
-    )
+    cert = (x509.CertificateBuilder()
+            .subject_name(ray_interal).issuer_name(ray_interal).add_extension(
+                altnames, critical=False).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=365)).sign(
+                key, hashes.SHA256(), default_backend()))
 
     cert_contents = cert.public_bytes(serialization.Encoding.PEM).decode()
 

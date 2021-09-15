@@ -121,7 +121,8 @@ class DashboardHead:
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = ray._private.utils.add_port_to_grpc_server(self.server, "[::]:0")
+        self.grpc_port = ray._private.utils.add_port_to_grpc_server(
+            self.server, "[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
 

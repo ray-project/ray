@@ -1126,16 +1126,18 @@ def load_certs_from_env():
     return server_cert_chain, private_key, ca_cert
 
 
-def init_grpc_channel(address: str, options: Optional[Sequence[Tuple[str, Any]]] = None, asynchronous: bool = False):
+def init_grpc_channel(address: str,
+                      options: Optional[Sequence[Tuple[str, Any]]] = None,
+                      asynchronous: bool = False):
     grpc_module = aiogrpc if asynchronous else grpc
     if os.environ["RAY_USE_TLS"] == "1":
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,
             private_key=private_key,
-            root_certificates=ca_cert
-        )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
+            root_certificates=ca_cert)
+        channel = grpc_module.secure_channel(
+            address, credentials, options=options)
     else:
         channel = grpc_module.insecure_channel(address, options=options)
 
@@ -1148,8 +1150,7 @@ def add_port_to_grpc_server(server, address):
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],
             root_certificates=ca_cert,
-            require_client_auth=ca_cert is not None
-        )
+            require_client_auth=ca_cert is not None)
         return server.add_secure_port(address, credentials)
     else:
         return server.add_insecure_port(address)

@@ -17,4 +17,3 @@ def test_client_connect_to_tls_server(use_tls, init_and_serve):
 
     os.environ["RAY_USE_TLS"] = "1"
     ray.connect("localhost:50051")
-
