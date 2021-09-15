@@ -13,6 +13,7 @@ import time
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (CLIENT_SERVER_MAX_THREADS,
+                                    _propogate_error_in_context,
                                     OrderedResponseCache)
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
@@ -121,6 +122,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 assert isinstance(req, ray_client_pb2.DataRequest)
                 if _should_cache(req):
                     cached_resp = response_cache.check_cache(req.req_id)
+                    if isinstance(cached_resp, Exception):
+                        # Cache state is invalid, raise exception
+                        raise cached_resp
                     if cached_resp is not None:
                         yield cached_resp
                         continue
@@ -180,21 +184,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-
                 if _should_cache(req):
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
-        except grpc.RpcError as e:
-            logger.debug(f"gRPC error in data channel: {e}")
         except Exception as e:
-            # Unexpected exception while processing requests. This should be
-            # treated as fatal -- set context to signal to client that the
-            # connection can't be recovered.
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(e))
-            # Clean up connection, since we don't want the client to reconnect
-            cleanup_requested = True
-            logger.exception("Fatal error in data channel:")
+            logger.exception("Error in data channel:")
+            recoverable = _propogate_error_in_context(e, context)
+            invalid_cache = response_cache.invalidate(e)
+            if not recoverable or invalid_cache:
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                # Connection isn't recoverable, skip cleanup
+                cleanup_requested = True
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)

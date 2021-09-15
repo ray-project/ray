@@ -65,10 +65,23 @@ def _use_response_cache(func):
         response_cache = self.response_caches[client_id]
         cached_entry = response_cache.check_cache(thread_id, req_id)
         if cached_entry is not None:
+            if isinstance(cached_entry, Exception):
+                # Original call errored, propogate error
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details(str(cached_entry))
+                raise cached_entry
             return cached_entry
 
-        # Response wasn't cached, call underlying stub and cache result
-        resp = func(self, request, context)
+        try:
+            # Response wasn't cached, call underlying stub and cache result
+            resp = func(self, request, context)
+        except Exception as e:
+            # Unexpected error in underlying stub -- update cache and
+            # propagate to user through context
+            response_cache.update_cache(thread_id, req_id, e)
+            context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+            context.set_details(str(e))
+            raise
         response_cache.update_cache(thread_id, req_id, resp)
         return resp
 

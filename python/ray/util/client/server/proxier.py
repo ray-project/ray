@@ -21,9 +21,9 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
-from ray.util.client.common import (_get_client_id_from_context,
-                                    ClientServerHandle,
-                                    CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
+from ray.util.client.common import (
+    _get_client_id_from_context, ClientServerHandle, CLIENT_SERVER_MAX_THREADS,
+    GRPC_OPTIONS, _propogate_error_in_context)
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
@@ -389,8 +389,10 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             if context:
                 metadata = context.invocation_metadata()
             return getattr(stub, method)(request, metadata=metadata)
-        except Exception:
+        except Exception as e:
+            # Error while proxying -- propagate the error's context to user
             logger.exception(f"Proxying call to {method} failed!")
+            _propogate_error_in_context(e, context)
 
     def _has_channel_for_request(self, context):
         client_id = _get_client_id_from_context(context)
@@ -648,8 +650,13 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     # Specific server is skipping cleanup, proxier should too
                     cleanup_requested = True
                 yield self.modify_connection_info_resp(resp)
-        except Exception:
+        except Exception as e:
             logger.exception("Proxying Datapath failed!")
+            # Propogate error through context
+            recoverable = _propogate_error_in_context(e, context)
+            if not recoverable:
+                # Client shouldn't attempt to recover, clean up connection
+                cleanup_requested = True
         finally:
             cleanup_delay = self.reconnect_grace_periods.get(client_id)
             if not cleanup_requested and cleanup_delay is not None:

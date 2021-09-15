@@ -45,11 +45,15 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
 
     def Datapath(self, request_iterator, context):
-        for response in self.stub.Datapath(
-                request_iterator, metadata=context.invocation_metadata()):
-            if self.on_response:
-                self.on_response(response)
-            yield response
+        try:
+            for response in self.stub.Datapath(
+                    request_iterator, metadata=context.invocation_metadata()):
+                if self.on_response:
+                    self.on_response(response)
+                yield response
+        except grpc.RpcError as e:
+            context.set_code(e.code())
+            context.set_details(e.details())
 
 
 class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
@@ -70,11 +74,15 @@ class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
         self.stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
 
     def Logstream(self, request_iterator, context):
-        for response in self.stub.Logstream(
-                request_iterator, metadata=context.invocation_metadata()):
-            if self.on_response:
-                self.on_response(response)
-            yield response
+        try:
+            for response in self.stub.Logstream(
+                    request_iterator, metadata=context.invocation_metadata()):
+                if self.on_response:
+                    self.on_response(response)
+                yield response
+        except grpc.RpcError as e:
+            context.set_code(e.code())
+            context.set_details(e.details())
 
 
 class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -104,8 +112,13 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             method: str) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
         if self.on_request:
             self.on_request(request)
-        response = getattr(self.stub, method)(
-            request, metadata=context.invocation_metadata())
+        try:
+            response = getattr(self.stub, method)(
+                request, metadata=context.invocation_metadata())
+        except grpc.RpcError as e:
+            context.set_code(e.code())
+            context.set_details(e.details())
+            raise
         if self.on_response:
             self.on_response(response)
         return response

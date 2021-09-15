@@ -26,9 +26,10 @@ from ray.exceptions import GetTimeoutError
 from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
-from ray.util.client.common import (
-    ClientActorClass, ClientActorHandle, ClientActorRef, ClientObjectRef,
-    ClientRemoteFunc, ClientStub, GRPC_OPTIONS, INT32_MAX)
+from ray.util.client.common import (ClientActorClass, ClientActorHandle,
+                                    ClientActorRef, ClientObjectRef,
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS,
+                                    GRPC_UNRECOVERABLE_ERRORS, INT32_MAX)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -108,6 +109,8 @@ class Worker:
         if _credentials is not None:
             self._credentials = _credentials
             self._secure = True
+        else:
+            self._credentials = None
 
         self._reconnect_grace_period = DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
         if "RAY_CLIENT_RECONNECT_GRACE_PERIOD" in os.environ:
@@ -237,10 +240,7 @@ class Worker:
         if self._in_shutdown:
             # Channel is being shutdown, don't try to reconnect
             return False
-        if e.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED,
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        grpc.StatusCode.NOT_FOUND,
-                        grpc.StatusCode.FAILED_PRECONDITION):
+        if e.code() in GRPC_UNRECOVERABLE_ERRORS:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False

@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 # number of simultaneous in-flight requests.
 INT32_MAX = (2**31) - 1
 
+# gRPC status codes that the client shouldn't attempt to recover from
+GRPC_UNRECOVERABLE_ERRORS = (grpc.StatusCode.RESOURCE_EXHAUSTED,
+                             grpc.StatusCode.INVALID_ARGUMENT,
+                             grpc.StatusCode.NOT_FOUND,
+                             grpc.StatusCode.FAILED_PRECONDITION,
+                             grpc.StatusCode.ABORTED)
+
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
 # messages and reconstruct them on either end. That said, since clients are
@@ -413,6 +420,26 @@ def _get_client_id_from_context(context: Any) -> str:
     return client_id
 
 
+def _propogate_error_in_context(e: Exception, context: Any) -> bool:
+    """
+    Encode an error into the context of an RPC response. Returns True
+    if the error can be recovered from, false otherwise
+    """
+    try:
+        if isinstance(e, grpc.RpcError):
+            # RPC error, propagate directly by copying details into context
+            context.set_code(e.code())
+            context.set_details(e.details())
+            return e.code() not in GRPC_UNRECOVERABLE_ERRORS
+    except Exception:
+        # Extra precaution -- if encoding the RPC directly fails fallback
+        # to treating it as a regular error
+        pass
+    context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+    context.set_details(str(e))
+    return False
+
+
 def _id_is_newer(id1: int, id2: int) -> bool:
     """
     We should only replace cache entries with the responses for newer IDs.
@@ -592,6 +619,24 @@ class OrderedResponseCache:
                     "missing. This might happen on a redundant call to "
                     f"update_cache. ({req_id})")
             self.cache[req_id] = resp
+
+    def invalidate(self, e: Exception) -> bool:
+        """
+        Invalidate any partially populated cache entries, replacing their
+        placeholders with the passed in exception. Useful to prevent a thread
+        from waiting indefinitely on a failed call.
+
+        Returns True if the cache contains an error, False otherwise
+        """
+        with self.cv:
+            invalid = True
+            for req_id in self.cache:
+                if self.cache[req_id] is None:
+                    self.cache[req_id] = e
+                if isinstance(self.cache[req_id], Exception):
+                    invalid = True
+            self.cv.notify_all()
+        return invalid
 
     def cleanup(self, last_received: int) -> None:
         """
