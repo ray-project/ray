@@ -94,12 +94,22 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
   std::string str;
+  const auto &group_id_hex = group_id.Hex();
   if (bundle_index >= 0) {
-    str = original_resource_name + "_group_" + std::to_string(bundle_index) + "_" +
-          group_id.Hex();
+    const auto &bundle_index_str = std::to_string(bundle_index);
+    str.reserve(original_resource_name.size() + kGroupKeywordSize +
+                bundle_index_str.size() + 1 + group_id_hex.size());
+    str += original_resource_name;
+    str += kGroupKeyword;
+    str += bundle_index_str;
+    str += "_";
+    str += group_id_hex;
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    str = original_resource_name + "_group_" + group_id.Hex();
+    str.reserve(original_resource_name.size() + kGroupKeywordSize + group_id_hex.size());
+    str += original_resource_name;
+    str += kGroupKeyword;
+    str += group_id_hex;
   }
   RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
   return str;
@@ -113,12 +123,12 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 
 bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
                    const int bundle_index) {
-  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
-         std::string::npos;
+  return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
+                       group_id.Hex()) != std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
-  auto idx = resource.find("_group_");
+  auto idx = resource.find(kGroupKeyword);
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);
 }
