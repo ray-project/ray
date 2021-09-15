@@ -62,6 +62,10 @@ class Preprocessor:
                     self._obs_space, gym.spaces.Box):
                 observation = np.array(observation)
             try:
+                # Ignore float32/float64 diffs.
+                if isinstance(self._obs_space, gym.spaces.Box) and \
+                        self._obs_space.dtype != observation.dtype:
+                    observation = observation.astype(self._obs_space.dtype)
                 if not self._obs_space.contains(observation):
                     raise ValueError(
                         "Observation ({}) outside given space ({})!",
