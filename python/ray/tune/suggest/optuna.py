@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 DEFINE_BY_RUN_WARN_THRESHOLD_S = 1  # 1 is arbitrary
 
 
+# Deprecate: 1.5
+class _Param:
+    def __getattr__(self, item):
+        def _inner(*args, **kwargs):
+            return (item, args, kwargs)
+
+        return _inner
+
+
+param = _Param()
+
+
 class _OptunaTrialSuggestCaptor:
     """Utility to capture returned values from Optuna's suggest_ methods.
 
@@ -199,6 +211,14 @@ class OptunaSearch(Searcher):
                 # Flatten to support nested dicts
                 space = flatten_dict(space, "/")
 
+        # Deprecate: 1.5
+        if isinstance(space, list):
+            logger.warning(
+                "Passing lists of `param.suggest_*()` calls to OptunaSearch "
+                "as a search space is deprecated and will be removed in "
+                "a future release of Ray. Please pass a dict mapping "
+                "to `optuna.distributions` objects instead.")
+
         self._space = space
 
         self._points_to_evaluate = points_to_evaluate or []
@@ -309,7 +329,22 @@ class OptunaSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
-        if callable(self._space):
+
+        if isinstance(self._space, list):
+            # Keep for backwards compatibility
+            # Deprecate: 1.5
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask()
+
+            ot_trial = self._ot_trials[trial_id]
+
+            # getattr will fetch the trial.suggest_ function on Optuna trials
+            params = {
+                args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                    ot_trial, fn)(*args, **kwargs)
+                for (fn, args, kwargs) in self._space
+            }
+        elif callable(self._space):
             if trial_id not in self._ot_trials:
                 self._ot_trials[trial_id] = self._ot_study.ask()
 

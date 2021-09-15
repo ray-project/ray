@@ -15,14 +15,14 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper, run)
+from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
+                      EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.callback import Callback
 from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
-from ray.tune.stopper import (MaximumIterationStopper, TrialPlateauStopper,
-                              ExperimentPlateauStopper)
+from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
@@ -514,19 +514,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         top = 3
 
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", top=0)
+            EarlyStopping("test", top=0)
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", top="0")
+            EarlyStopping("test", top="0")
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", std=0)
+            EarlyStopping("test", std=0)
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", patience=-1)
+            EarlyStopping("test", patience=-1)
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", std="0")
+            EarlyStopping("test", std="0")
         with self.assertRaises(ValueError):
-            ExperimentPlateauStopper("test", mode="0")
+            EarlyStopping("test", mode="0")
 
-        stopper = ExperimentPlateauStopper("test", top=top, mode="min")
+        stopper = EarlyStopping("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
@@ -535,8 +535,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             len(analysis.dataframe(metric="test", mode="max")) <= top)
 
         patience = 5
-        stopper = ExperimentPlateauStopper(
-            "test", top=top, mode="min", patience=patience)
+        stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
 
         analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
@@ -544,7 +543,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(
             len(analysis.dataframe(metric="test", mode="max")) <= patience)
 
-        stopper = ExperimentPlateauStopper("test", top=top, mode="min")
+        stopper = EarlyStopping("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(

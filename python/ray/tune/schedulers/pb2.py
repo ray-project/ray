@@ -266,6 +266,7 @@ class PB2(PopulationBasedTraining):
 
     def __init__(self,
                  time_attr: str = "time_total_s",
+                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  perturbation_interval: float = 60.0,
@@ -295,6 +296,7 @@ class PB2(PopulationBasedTraining):
 
         super(PB2, self).__init__(
             time_attr=time_attr,
+            reward_attr=reward_attr,
             metric=metric,
             mode=mode,
             perturbation_interval=perturbation_interval,

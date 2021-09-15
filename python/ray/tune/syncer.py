@@ -49,9 +49,8 @@ def set_sync_periods(sync_config):
     global CLOUD_SYNC_PERIOD
     global NODE_SYNC_PERIOD
     if os.environ.get("TUNE_CLOUD_SYNC_S"):
-        raise DeprecationWarning(
-            "'TUNE_CLOUD_SYNC_S' is deprecated. Set "
-            "`cloud_sync_period` via tune.SyncConfig instead.")
+        logger.warning("'TUNE_CLOUD_SYNC_S' is deprecated. Set "
+                       "`cloud_sync_period` via tune.SyncConfig instead.")
         CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
     NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
     CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
