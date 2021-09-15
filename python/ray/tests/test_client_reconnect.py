@@ -29,7 +29,8 @@ Hook = Callable[[Any], None]
 
 class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     """
-    Forwards all requests to the real data servicer
+    Forwards all requests to the real data servicer. Useful for injecting
+    errors between a client and server pair.
     """
 
     def __init__(self, on_response: Optional[Hook] = None):
@@ -58,7 +59,8 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
 class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
     """
-    Forwards all requests to the real log servicer
+    Forwards all requests to the real log servicer. Useful for injecting
+    errors between a client and server pair.
     """
 
     def __init__(self, on_response: Optional[Hook] = None):
@@ -87,7 +89,8 @@ class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     """
-    Forwards all requests to the raylet driver servicer
+    Forwards all requests to the raylet driver servicer. Useful for injecting
+    errors between a client and server pair.
     """
 
     def __init__(self,
@@ -172,7 +175,8 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 class MiddlemanServer:
     """
     Helper class that wraps the RPC server that middlemans the connection
-    between the client and the real ray server.
+    between the client and the real ray server. Useful for injecting
+    errors between a client and server pair.
     """
 
     def __init__(self,

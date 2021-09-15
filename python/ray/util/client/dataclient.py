@@ -183,7 +183,8 @@ class DataClient:
     def _acknowledge(self, req_id: int) -> None:
         """
         Puts an acknowledge request on the request queue periodically.
-        Lock should be held before calling this.
+        Lock should be held before calling this. Used when an async or
+        blocking response is received.
         """
         assert self.lock.locked()
         self._acknowledge_counter += 1

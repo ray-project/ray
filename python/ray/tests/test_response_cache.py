@@ -7,6 +7,15 @@ import pytest
 
 
 def test_id_is_newer():
+    """
+    Sanity checks the logic for ID is newer. In general, we would expect
+    that higher IDs are newer than lower IDs, for example 25 can be assumed
+    to be newer than 24.
+    Since IDs roll over at INT32_MAX (~2**31), we should check for weird
+    behavior there. In particular, we would expect an ID like `11` to be
+    newer than the ID `2**31` since it's likely that the counter rolled
+    over.
+    """
     # Common cases -- higher IDs normally considered newer
     assert _id_is_newer(30, 29)
     assert _id_is_newer(12345, 12344)
@@ -25,6 +34,9 @@ def test_id_is_newer():
 
 
 def test_response_cache_complete_response():
+    """
+    Test basic check/update logic of cache, and that nothing blocks
+    """
     cache = ResponseCache()
     cache.check_cache(123, 15)  # shouldn't block
     cache.update_cache(123, 15, "abcdef")
@@ -32,6 +44,9 @@ def test_response_cache_complete_response():
 
 
 def test_ordered_response_cache_complete_response():
+    """
+    Test basic check/update logic of ordered cache, and that nothing blocks
+    """
     cache = OrderedResponseCache()
     cache.check_cache(15)  # shouldn't block
     cache.update_cache(15, "vwxyz")
@@ -39,6 +54,11 @@ def test_ordered_response_cache_complete_response():
 
 
 def test_response_cache_incomplete_response():
+    """
+    Tests case where a cache entry is populated after a long time. Any new
+    threads attempting to access that entry should sleep until the response
+    is ready.
+    """
     cache = ResponseCache()
 
     def populate_cache():
@@ -54,6 +74,11 @@ def test_response_cache_incomplete_response():
 
 
 def test_ordered_response_cache_incomplete_response():
+    """
+    Tests case where an ordered cache entry is populated after a long time. Any
+    new threads attempting to access that entry should sleep until the response
+    is ready.
+    """
     cache = OrderedResponseCache()
 
     def populate_cache():
@@ -69,6 +94,10 @@ def test_ordered_response_cache_incomplete_response():
 
 
 def test_ordered_response_cache_cleanup():
+    """
+    Tests that the cleanup method of ordered cache works as expected, in
+    particular that all entries <= the passed ID are cleared from the cache.
+    """
     cache = OrderedResponseCache()
 
     for i in range(1, 21):
@@ -105,6 +134,11 @@ def test_ordered_response_cache_cleanup():
 
 
 def test_response_cache_update_while_waiting():
+    """
+    Tests that an error is thrown when a cache entry is updated with the
+    response for a different request than what was originally being
+    checked for.
+    """
     # Error when awaiting cache to update, but entry is cleaned up
     cache = ResponseCache()
     assert cache.check_cache(16, 123) is None
@@ -123,6 +157,11 @@ def test_response_cache_update_while_waiting():
 
 
 def test_ordered_response_cache_cleanup_while_waiting():
+    """
+    Tests that an error is thrown when an ordered cache entry is updated with
+    the response for a different request than what was originally being
+    checked for.
+    """
     # Error when awaiting cache to update, but entry is cleaned up
     cache = OrderedResponseCache()
     assert cache.check_cache(123) is None
@@ -140,6 +179,11 @@ def test_ordered_response_cache_cleanup_while_waiting():
 
 
 def test_response_cache_cleanup():
+    """
+    Checks that the response cache replaces old entries for a given thread
+    with new entries as they come in, instead of creating new entries
+    (possibly wasting memory on unneeded entries)
+    """
     # Check that the response cache cleans up previous entries for a given
     # thread properly.
     cache = ResponseCache()
