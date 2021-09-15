@@ -347,6 +347,8 @@ install_dependencies() {
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch version.
+    pip install mlagents==0.27
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
 
