@@ -92,7 +92,8 @@ class StandardAutoscaler:
             update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
             prefix_cluster_info: bool = False,
             event_summarizer: Optional[EventSummarizer] = None,
-            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None,
+            readonly: bool = False):
         """Create a StandardAutoscaler.
 
         Args:
@@ -111,12 +112,21 @@ class StandardAutoscaler:
         prom_metrics: Prometheus metrics for autoscaler-related operations.
         """
 
-        self.config_path = config_path
+        if isinstance(config_path, str):
+            def config_reader():
+                with open(self.config_path) as f:
+                    new_config = yaml.safe_load(f.read())
+                return new_config
+        else:
+            config_reader = config_path
+
+        self.config_reader = config_reader
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
+        self.readonly = readonly
         # Keep this before self.reset (if an exception occurs in reset
         # then prom_metrics must be instantitiated to increment the
         # exception counter)
@@ -240,6 +250,8 @@ class StandardAutoscaler:
 
         def schedule_node_termination(node_id: NodeID,
                                       reason_opt: Optional[str]) -> None:
+            if self.readonly:
+                return
             if reason_opt is None:
                 raise Exception("reason should be not None.")
             reason: str = reason_opt
@@ -284,7 +296,7 @@ class StandardAutoscaler:
         num_extra_nodes_to_terminate = (
             len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
 
-        if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
+        if not self.readonly and num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
             logger.warning(
                 "StandardAutoscaler: trying to terminate "
                 f"{num_extra_nodes_to_terminate} nodes, while only "
@@ -416,6 +428,8 @@ class StandardAutoscaler:
 
     def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
         """Terminate specified nodes and clean associated autoscaler state."""
+        if self.readonly:
+            return
         self.provider.terminate_nodes(nodes_to_terminate)
         for node in nodes_to_terminate:
             self.node_tracker.untrack(node)
@@ -584,8 +598,7 @@ class StandardAutoscaler:
             sync_continuously = self.config.get(
                 "file_mounts_sync_continuously", False)
         try:
-            with open(self.config_path) as f:
-                new_config = yaml.safe_load(f.read())
+            new_config = self.config_reader()
             if new_config != getattr(self, "config", None):
                 try:
                     validate_config(new_config)
@@ -898,6 +911,8 @@ class StandardAutoscaler:
         return True
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
+        if self.readonly:
+            return
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.event_summarizer.add(
@@ -928,6 +943,8 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def kill_workers(self):
+        if self.readonly:
+            return
         logger.error("StandardAutoscaler: kill_workers triggered")
         nodes = self.workers()
         if nodes:
@@ -966,9 +983,11 @@ class StandardAutoscaler:
                                 TAG_RAY_NODE_STATUS)):
                 # In some node providers, creation of a node and tags is not
                 # atomic, so just skip it.
+                print("skip1")
                 continue
 
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
+                print("skip2")
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
 
@@ -976,9 +995,11 @@ class StandardAutoscaler:
             # as active.
             is_active = self.load_metrics.is_active(ip)
             if is_active:
+                print("skip3")
                 active_nodes[node_type] += 1
                 non_failed.add(node_id)
             else:
+                print("skip4")
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
                 is_pending = status not in completed_states
