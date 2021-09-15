@@ -14,7 +14,10 @@ class StatelessPendulum(PendulumEnv):
     can only be solved by a memory enhanced model (policy).
     """
 
-    def __init__(self, g=10.0):
+    def __init__(self, config=None):
+        config = config or {}
+        g = config.get("g", 10.0)
+
         super().__init__(g=g)
 
         # Fix our observation-space (remove angular velocity component).

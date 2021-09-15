@@ -14,7 +14,7 @@ class StatelessCartPole(CartPoleEnv):
     can only be solved by a memory enhanced model (policy).
     """
 
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
 
         # Fix our observation-space (remove 2 velocity components).
