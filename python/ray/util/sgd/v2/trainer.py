@@ -409,7 +409,7 @@ class Trainer:
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
 
-    def to_workers(self, train_cls: Type, *args, **kwargs) -> "SGDWorkerGroup":
+    def to_worker_group(self, train_cls: Type, *args, **kwargs) -> "SGDWorkerGroup":
         """Returns Ray actors with the provided class and the backend started.
 
         This is useful if you want to provide your own class for training
