@@ -150,7 +150,8 @@ class WorkflowStorage:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
                 promise = serialization.dump_to_storage(
-                    self._key_step_output(step_id), ret, self._workflow_id, self._storage)
+                    self._key_step_output(step_id), ret, self._workflow_id,
+                    self._storage)
                 tasks.append(promise)
                 # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
@@ -165,7 +166,9 @@ class WorkflowStorage:
                                                     dynamic_output_id))
             else:
                 assert ret is None
-                promise = serialization.dump_to_storage(self._key_step_exception(step_id), exception, self._workflow_id, self._storage)
+                promise = serialization.dump_to_storage(
+                    self._key_step_exception(step_id), exception,
+                    self._workflow_id, self._storage)
                 tasks.append(promise)
                 # tasks.append(
                 #     self._put(self._key_step_exception(step_id), exception))

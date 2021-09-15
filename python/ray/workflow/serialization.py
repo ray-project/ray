@@ -7,12 +7,8 @@ from ray.workflow import common
 from ray.workflow import storage
 from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
-import asyncio
 import cloudpickle
 from collections import ChainMap
-import ray
-from ray.workflow.common import calculate_identifiers
-from typing import Any, List
 import io
 
 if TYPE_CHECKING:
@@ -93,7 +89,8 @@ class Manager:
         if key not in self._uploads:
             # TODO(Alex): We should probably eventually free these refs.
             identifier_ref = common.calculate_identifier.remote(ref)
-            upload_task = _put_helper.remote(identifier_ref, ref, workflow_id, self._storage)
+            upload_task = _put_helper.remote(identifier_ref, ref, workflow_id,
+                                             self._storage)
             self._uploads[key] = Upload(identifier_ref, upload_task)
             self._num_uploads += 1
 
@@ -113,10 +110,9 @@ def obj_id_to_paths(workflow_id: str, object_id: str) -> List[str]:
     return [workflow_id, OBJECTS_DIR, object_id]
 
 
-
 @ray.remote(num_cpus=0)
-def _put_helper(identifier: str, obj: Any,
-                workflow_id: str, storage: storage.Storage) -> None:
+def _put_helper(identifier: str, obj: Any, workflow_id: str,
+                storage: storage.Storage) -> None:
     # TODO (Alex): This check isn't sufficient, it only works for directly
     # nested object refs.
     if isinstance(obj, ray.ObjectRef):
@@ -127,8 +123,8 @@ def _put_helper(identifier: str, obj: Any,
     return asyncio.get_event_loop().run_until_complete(promise)
 
 
-def _reduce_objectref(workflow_id: str, storage: storage.Storage, obj_ref: ObjectRef,
-                      tasks: List[ObjectRef]):
+def _reduce_objectref(workflow_id: str, storage: storage.Storage,
+                      obj_ref: ObjectRef, tasks: List[ObjectRef]):
 
     manager = get_or_create_manager()
     paths, task = ray.get(
@@ -140,8 +136,8 @@ def _reduce_objectref(workflow_id: str, storage: storage.Storage, obj_ref: Objec
     return _load_object_ref, (paths, storage)
 
 
-async def dump_to_storage(paths: List[str], obj: Any,
-                          workflow_id: str, storage: storage.Storage) -> None:
+async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
+                          storage: storage.Storage) -> None:
     """Serializes and puts arbitrary object, handling references. The object will
         be uploaded at `paths`. Any object references will be uploaded to their
         global, remote storage.
@@ -186,7 +182,6 @@ async def dump_to_storage(paths: List[str], obj: Any,
         task = storage.put(key, f.read())
         tasks.append(task)
 
-
     await asyncio.gather(*tasks)
 
 
@@ -198,7 +193,6 @@ def _load_ref_helper(paths: List[str], storage: storage.Storage):
     return cloudpickle.loads(serialized)
 
 
-def _load_object_ref(paths: List[str],
-                     storage: storage.Storage) -> ObjectRef:
+def _load_object_ref(paths: List[str], storage: storage.Storage) -> ObjectRef:
     key = storage.make_key(*paths)
     return _load_ref_helper.remote(key, storage)
