@@ -175,6 +175,9 @@ test_python() {
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
+      -python/ray/tests:test_placement_group_2
+      -python/ray/tests:test_placement_group_3
+      -python/ray/tests:test_placement_group_mini_integration
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
@@ -240,7 +243,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/new_dashboard/client
+      cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
@@ -403,7 +406,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
     if [ -z "${BUILDKITE-}" ]; then

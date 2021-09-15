@@ -59,7 +59,7 @@ class Trainer:
         backend (Union[str, BackendConfig]): The backend used for
             distributed communication. If configurations are needed,
             a subclass of ``BackendConfig`` can be passed in.
-            Supported ``str`` values: {"torch"}.
+            Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
         num_workers (int): The number of workers (Ray actors) to launch.
             Defaults to 1. Each worker will reserve 1 CPU by default. The
             number of CPUs reserved by each worker can be overridden with the

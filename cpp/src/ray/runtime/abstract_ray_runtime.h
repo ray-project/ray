@@ -81,7 +81,7 @@ class AbstractRayRuntime : public RayRuntime {
   void ExitActor();
 
   ray::PlacementGroup CreatePlacementGroup(
-      const ray::internal::PlacementGroupCreationOptions &create_options);
+      const ray::PlacementGroupCreationOptions &create_options);
   void RemovePlacementGroup(const std::string &group_id);
   bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
 
@@ -102,6 +102,10 @@ class AbstractRayRuntime : public RayRuntime {
 
   virtual ActorID GetCurrentActorID() { return ActorID::Nil(); }
 
+  virtual std::vector<PlacementGroup> GetAllPlacementGroups();
+  virtual PlacementGroup GetPlacementGroupById(const std::string &id);
+  virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global);
+
  protected:
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
@@ -112,6 +116,7 @@ class AbstractRayRuntime : public RayRuntime {
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
   void Execute(const TaskSpecification &task_spec);
+  PlacementGroup GeneratePlacementGroup(const std::string &str);
 };
 }  // namespace internal
 }  // namespace ray

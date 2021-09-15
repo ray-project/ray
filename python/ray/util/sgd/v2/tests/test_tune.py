@@ -15,8 +15,8 @@ from ray.util.sgd.v2.constants import TUNE_CHECKPOINT_FILE_NAME
 from ray.util.sgd.v2.backends.backend import Backend, BackendConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
-    fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
+    as fashion_mnist_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
