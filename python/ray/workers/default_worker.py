@@ -181,7 +181,6 @@ if __name__ == "__main__":
     ray.worker.connect(
         node,
         mode=mode,
-        runtime_env_json=args.serialized_runtime_env,
         worker_shim_pid=args.worker_shim_pid,
         ray_debugger_external=args.ray_debugger_external)
 
