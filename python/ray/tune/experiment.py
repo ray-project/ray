@@ -19,23 +19,6 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _raise_deprecation_note(deprecated, replacement, soft=False):
-    """User notification for deprecated parameter.
-
-    Arguments:
-        deprecated (str): Deprecated parameter.
-        replacement (str): Replacement parameter to use instead.
-        soft (bool): Fatal if True.
-    """
-    error_msg = ("`{deprecated}` is deprecated. Please use `{replacement}`. "
-                 "`{deprecated}` will be removed in future versions of "
-                 "Ray.".format(deprecated=deprecated, replacement=replacement))
-    if soft:
-        logger.warning(error_msg)
-    else:
-        raise DeprecationWarning(error_msg)
-
-
 def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
     trainable_cls = get_trainable_cls(trainable_name)
     from ray.tune.durable_trainable import DurableTrainable
@@ -136,7 +119,7 @@ class Experiment:
             # Most users won't run into this as `tune.run()` does not pass
             # the argument anymore. However, we will want to inform users
             # if they instantiate their `Experiment` objects themselves.
-            raise ValueError(
+            raise DeprecationWarning(
                 "Passing `loggers` to an `Experiment` is deprecated. Use "
                 "an `LoggerCallback` callback instead, e.g. by passing the "
                 "`Logger` classes to `tune.logger.LegacyLoggerCallback` and "
