@@ -7,8 +7,10 @@
 #include <chrono>
 #include <thread>
 
-std::string MAIN_SERVER_NAME = "main_actor";
-std::string BACKUP_SERVER_NAME = "backup_actor";
+const std::string MAIN_SERVER_NAME = "main_actor";
+const std::string BACKUP_SERVER_NAME = "backup_actor";
+const std::unordered_map<std::string, double> RESOUECES{{"CPU", 1.0},
+                                                        {"memory", 1024.0 * 1024.0}};
 
 namespace common {
 inline std::pair<bool, std::string> Get(
@@ -133,8 +135,7 @@ RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainSer
 RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::SyncData);
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
-  std::vector<std::unordered_map<std::string, double>> bundles{
-      {{"CPU", 1.0}, {"memory", 1024.0}}, {{"CPU", 1.0}, {"memory", 1024.0}}};
+  std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
 
   ray::PlacementGroupCreationOptions options{false, name, bundles,
                                              ray::PlacementStrategy::SPREAD};
@@ -146,16 +147,17 @@ void StartServer() {
   assert(placement_group.Wait(10));
 
   ray::Actor(CreateMainServer)
-      .SetMaxRestarts(1)
+      .SetName("main_actor")
+      .SetResources(RESOUECES)
       .SetPlacementGroup(placement_group, 0)
-      .SetResource("CPU", 1.0)
-      .SetName(MAIN_SERVER_NAME)
-      .Remote();
-  ray::Actor(CreateBackupServer)
       .SetMaxRestarts(1)
+      .Remote();
+
+  ray::Actor(CreateBackupServer)
+      .SetName("backup_actor")
+      .SetResources(RESOUECES)
       .SetPlacementGroup(placement_group, 1)
-      .SetResource("CPU", 1.0)
-      .SetName(BACKUP_SERVER_NAME)
+      .SetMaxRestarts(1)
       .Remote();
 }
 
