@@ -269,8 +269,9 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(), sinks.begin(),
                                                  sinks.end());
   logger->set_level(level);
-  spdlog::set_pattern(log_format_pattern_);
+  logger->set_pattern(log_format_pattern_);
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
+  spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
 }
 
