@@ -20,12 +20,14 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 namespace {
+
 bool IsGPURequest(const ResourceRequest &resource_request) {
   if (resource_request.predefined_resources.size() <= GPU) {
-    return true;
+    return false;
   }
-  return resource_request.predefined_resources[GPU] == 0;
+  return resource_request.predefined_resources[GPU] > 0;
 }
+
 bool DoesNodeHaveGPUs(const NodeResources &resources) {
   if (resources.predefined_resources.size() <= GPU) {
     return false;
@@ -142,7 +144,7 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback, bool require_available,
                      bool scheduler_avoid_gpu_nodes) {
-  if (!scheduler_avoid_gpu_nodes || !IsGPURequest(resource_request)) {
+  if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, local_node_id, nodes,
                                   spread_threshold, force_spillback, require_available);
   }
