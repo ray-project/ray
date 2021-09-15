@@ -20,8 +20,7 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, CheckpointOptions, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
-    CONTROL_LOOP_PERIOD_S, DEFAULT_RECOVERY_PATH, SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore, RayS3KVStore
@@ -70,18 +69,24 @@ class ServeController:
         controller_namespace = ray.get_runtime_context().namespace
         if checkpoint_options is None:
             logger.info(
-                "Using RayInternalKVStore for controller checkpoint and recovery.")
+                "Using RayInternalKVStore for controller checkpoint and recovery."
+            )
             self.kv_store = RayInternalKVStore(
                 namespace=f"{controller_name}-{controller_namespace}")
         else:
-            logger.info("Using Ray S3 KVStore for controller checkpoint and recovery.")
+            logger.info(
+                "Using Ray S3 KVStore for controller checkpoint and recovery.")
             self.kv_store = RayS3KVStore(
                 f"{controller_name}-{controller_namespace}",
                 bucket=checkpoint_options.bucket,
                 s3_path=checkpoint_options.s3_path,
-                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", checkpoint_options.aws_access_key_id),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", checkpoint_options.aws_secret_access_key),
-                aws_session_token=os.environ.get("AWS_SESSION_TOKEN", checkpoint_options.aws_session_token),
+                aws_access_key_id=os.environ.get(
+                    "AWS_ACCESS_KEY_ID", checkpoint_options.aws_access_key_id),
+                aws_secret_access_key=os.environ.get(
+                    "AWS_SECRET_ACCESS_KEY",
+                    checkpoint_options.aws_secret_access_key),
+                aws_session_token=os.environ.get(
+                    "AWS_SESSION_TOKEN", checkpoint_options.aws_session_token),
             )
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
@@ -100,8 +105,8 @@ class ServeController:
         # replica state for controller failure recovery
         all_current_actor_names = ray.util.list_named_actors()
         self.backend_state_manager = BackendStateManager(
-            controller_name, detached, self.kv_store,
-            self.long_poll_host, self.goal_manager, all_current_actor_names)
+            controller_name, detached, self.kv_store, self.long_poll_host,
+            self.goal_manager, all_current_actor_names)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 

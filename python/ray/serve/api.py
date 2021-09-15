@@ -21,10 +21,9 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (
-    BackendConfig, CheckpointOptions, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (
-    DEFAULT_RECOVERY_PATH, HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.config import (BackendConfig, CheckpointOptions, HTTPOptions,
+                              ReplicaConfig)
+from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
