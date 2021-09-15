@@ -145,6 +145,11 @@ class ArrowBlockAccessor(BlockAccessor):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._table = table
 
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        reader = pyarrow.ipc.open_stream(data)
+        return cls(reader.read_all())
+
     def iter_rows(self) -> Iterator[ArrowRow]:
         outer = self
 

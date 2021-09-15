@@ -66,6 +66,12 @@ class ActorCreator {
     return *this;
   }
 
+  ActorCreator &SetPlacementGroup(PlacementGroup group, int bundle_index) {
+    create_options_.group = group;
+    create_options_.bundle_index = bundle_index;
+    return *this;
+  }
+
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_;

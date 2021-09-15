@@ -213,7 +213,7 @@ class HEBOSearch(Searcher):
                 self._initial_points = self._points_to_evaluate
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)

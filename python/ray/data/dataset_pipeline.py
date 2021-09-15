@@ -216,9 +216,10 @@ class DatasetPipeline(Generic[T]):
                         time.sleep(self.wait_delay_s)
                         tries += 1
                     if tries > self.warn_threshold:
-                        print("Warning: shard {} of the pipeline has been "
-                              "stalled more than {}s waiting for other shards "
-                              "to catch up.".format(
+                        print("Warning: reader on shard {} of the pipeline "
+                              "has been blocked more than {}s waiting for "
+                              "other readers to catch up. All pipeline shards "
+                              "must be read from concurrently.".format(
                                   self.split_index,
                                   self.wait_delay_s * self.warn_threshold))
                         self.warn_threshold *= 2

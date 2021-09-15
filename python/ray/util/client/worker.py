@@ -29,6 +29,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.runtime_env.working_dir as working_dir_pkg
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -97,16 +98,45 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-
-        if secure and _credentials is None:
-            _credentials = grpc.ssl_channel_credentials()
+        self._secure = secure
+        self._conn_str = conn_str
+        self._connection_retries = connection_retries
 
         if _credentials is not None:
+            self._credentials = _credentials
+            self._secure = True
+
+        self._connect_channel()
+
+        # Initialize the streams to finish protocol negotiation.
+        self.data_client = DataClient(self, self._client_id, self.metadata)
+        self.reference_count: Dict[bytes, int] = defaultdict(int)
+
+        self.log_client = LogstreamClient(self, self.metadata)
+        self.log_client.set_logstream_level(logging.INFO)
+
+        self.closed = False
+
+        # Track these values to raise a warning if many tasks are being
+        # scheduled
+        self.total_num_tasks_scheduled = 0
+        self.total_outbound_message_size_bytes = 0
+
+    def _connect_channel(self) -> None:
+        """
+        Attempts to connect to the server specified by conn_str.
+        """
+
+        if self._secure:
+            if self._credentials is not None:
+                credentials = self._credentials
+            else:
+                credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, _credentials, options=GRPC_OPTIONS)
+                self._conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=GRPC_OPTIONS)
+                self._conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -115,7 +145,7 @@ class Worker:
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         service_ready = False
-        while conn_attempts < max(connection_retries, 1):
+        while conn_attempts < max(self._connection_retries, 1):
             conn_attempts += 1
             try:
                 # Let gRPC wait for us to see if the channel becomes ready.
@@ -159,21 +189,6 @@ class Worker:
                     "more information.")
             raise ConnectionError("ray client connection timeout")
 
-        # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self.channel, self._client_id,
-                                      self.metadata)
-        self.reference_count: Dict[bytes, int] = defaultdict(int)
-
-        self.log_client = LogstreamClient(self.channel, self.metadata)
-        self.log_client.set_logstream_level(logging.INFO)
-
-        self.closed = False
-
-        # Track these values to raise a warning if many tasks are being
-        # scheduled
-        self.total_num_tasks_scheduled = 0
-        self.total_outbound_message_size_bytes = 0
-
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
         self._conn_state = conn_state
@@ -182,7 +197,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -240,7 +255,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -336,7 +351,7 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
         if not ticket.valid:
             try:
@@ -426,7 +441,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -443,7 +458,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
@@ -522,15 +537,10 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env.working_dir as working_dir_pkg
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir,
-                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
-                                                 tmp_dir)
                     working_dir_pkg.rewrite_runtime_env_uris(job_config)
-                    working_dir_pkg.upload_runtime_env_package_if_needed(
-                        job_config)
-                    working_dir_pkg.PKG_DIR = old_dir
+                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
+                    manager.upload_runtime_env_package_if_needed(job_config)
 
                 serialized_job_config = pickle.dumps(job_config)
 
@@ -543,7 +553,7 @@ class Worker:
                     f"Initialization failure from server:\n{response.msg}")
 
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -596,6 +606,13 @@ def make_client_id() -> str:
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then raise the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        raise
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)

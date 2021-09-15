@@ -7,3 +7,4 @@ s3fs
 modin>=0.8.3;  python_version < '3.7'
 modin>=0.10.0; python_version >= '3.7'
 pytest-repeat
+raydp-nightly

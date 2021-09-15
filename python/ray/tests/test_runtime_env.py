@@ -876,20 +876,27 @@ def test_no_spurious_worker_startup(shutdown_only):
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() > 0)
+    wait_for_condition(
+        lambda: get_num_workers() is not None and get_num_workers() > 0)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
     # If any workers were unnecessarily started during the initial env
-    # installation, they will bypass the runtime env setup hook because the
-    # created env will have been cached and should be added to num_workers
+    # installation, they will bypass the runtime env setup hook (because the
+    # created env will have been cached) and should be added to num_workers
     # within a few seconds.  Adjusting the default update period for
     # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
     # so just check it for the next 10 seconds (the default period).
-    for i in range(100):
+    start = time.time()
+    got_num_workers = False
+    while time.time() - start < 10:
         # Check that no more workers were started.
-        assert get_num_workers() <= 1
+        num_workers = get_num_workers()
+        if num_workers is not None:
+            got_num_workers = True
+            assert num_workers <= 1
         time.sleep(0.1)
+    assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

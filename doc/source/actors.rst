@@ -558,6 +558,18 @@ exist. See :ref:`actor-lifetimes` for more details.
       // Retrieve the actor later somewhere
       boost::optional<ray::ActorHandle<Counter>> counter = ray::GetGlobalActor("some_name");
 
+    We also support non-global named actors in C++, which means that the actor name is only valid within the job and the actor cannot be accessed from another job
+
+    .. code-block:: c++
+
+      // Create an actor with a job-scope-unique name
+      ActorHandle<Counter> counter = ray::Actor(CreateCounter).SetName("some_name").Remote();
+
+      ...
+
+      // Retrieve the actor later somewhere in the same job
+      boost::optional<ray::ActorHandle<Counter>> counter = ray::GetActor("some_name");
+
 .. note::
 
      Named actors are only accessible in the same namespace. 

@@ -20,7 +20,9 @@ from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    _unwrap_protocol, _is_url, _encode_url,
+    _get_pyarrow_fses_needing_url_encoding)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -926,17 +928,28 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "fs,data_path", [(None, lazy_fixture("local_path")),
-                     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-                     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"))])
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),  # Path contains space.
+            lazy_fixture("s3_path_with_space"))
+    ])
 def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    path1 = os.path.join(_unwrap_protocol(data_path), "test1.parquet")
+    if _is_url(data_path) and isinstance(
+            fs, _get_pyarrow_fses_needing_url_encoding()):
+        setup_data_path = _encode_url(_unwrap_protocol(data_path))
+    else:
+        setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(_unwrap_protocol(data_path), "test2.parquet")
+    path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -1061,7 +1074,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     pq.write_to_dataset(
         table,
         root_path=str(tmp_path),
-        partition_cols=["one"],
+        partition_cols=["two"],
         use_legacy_dataset=False)
 
     def _block_udf(block: pa.Table):
@@ -1128,6 +1141,68 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         pd.read_parquet(path2, storage_options=storage_options)
     ])
     assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write_create_dir(ray_start_regular_shared, fs, data_path,
+                                  endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    path = os.path.join(data_path, "test_parquet_dir")
+    ds._set_uuid("data")
+    ds.write_parquet(path, filesystem=fs)
+
+    # Ensure that directory was created.
+    if fs is None:
+        assert os.path.isdir(path)
+    else:
+        assert fs.get_file_info(
+            _unwrap_protocol(path)).type == pa.fs.FileType.Directory
+
+    # Check that data was properly written to the directory.
+    path1 = os.path.join(path, "data_000000.parquet")
+    path2 = os.path.join(path, "data_000001.parquet")
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
+    assert df.equals(dfds)
+
+    # Ensure that directories that already exist are left alone and that the
+    # attempted creation still succeeds.
+    path3 = os.path.join(path, "data_0000002.parquet")
+    path4 = os.path.join(path, "data_0000003.parquet")
+    if fs is None:
+        os.rename(path1, path3)
+        os.rename(path2, path4)
+    else:
+        fs.move(_unwrap_protocol(path1), _unwrap_protocol(path3))
+        fs.move(_unwrap_protocol(path2), _unwrap_protocol(path4))
+    ds.write_parquet(path, filesystem=fs)
+
+    # Check that the original Parquet files were left untouched and that the
+    # new ones were added.
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options),
+        pd.read_parquet(path3, storage_options=storage_options),
+        pd.read_parquet(path4, storage_options=storage_options)
+    ])
+    assert pd.concat([df, df]).equals(dfds)
     if fs is None:
         shutil.rmtree(path)
     else:
@@ -1324,6 +1399,16 @@ def test_iter_batches_basic(ray_start_regular_shared):
             ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
+
+    batch_size = 2
+    batches = list(
+        ds.iter_batches(
+            prefetch_blocks=2, batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == batch_size for batch in batches)
+    assert (len(batches) == math.ceil(
+        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
@@ -2042,6 +2127,11 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+    if fs is None:
+        os.remove(file_path)
+    else:
+        fs.delete_file(_unwrap_protocol(file_path))
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})

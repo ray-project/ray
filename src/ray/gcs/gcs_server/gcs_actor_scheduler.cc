@@ -47,9 +47,10 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  const auto &node = SelectNode(actor);
+  auto node_id = SelectNode(actor);
 
-  if (node == nullptr) {
+  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
     schedule_failure_handler_(std::move(actor));
@@ -58,7 +59,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 
   // Update the address of the actor as it is tied to a node.
   rpc::Address address;
-  address.set_raylet_id(node->node_id());
+  address.set_raylet_id(node.value()->node_id());
   actor->UpdateAddress(address);
 
   RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
@@ -66,7 +67,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
                 .second);
 
   // Lease worker directly from the node.
-  LeaseWorkerFromNode(actor, node);
+  LeaseWorkerFromNode(actor, node.value());
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
@@ -424,8 +425,7 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   return true;
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
-    std::shared_ptr<GcsActor> actor) {
+NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
@@ -439,7 +439,7 @@ std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
     node = SelectNodeRandomly();
   }
 
-  return node;
+  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly() const {

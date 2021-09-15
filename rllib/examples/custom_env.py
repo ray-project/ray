@@ -31,7 +31,6 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune import grid_search
 from ray.tune.logger import pretty_print
 
 tf1, tf, tfv = try_import_tf()
@@ -173,7 +172,6 @@ if __name__ == "__main__":
             "custom_model": "my_model",
             "vf_share_layers": True,
         },
-        "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
         "num_workers": 1,  # parallelism
         "framework": args.framework,
     }

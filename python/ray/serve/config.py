@@ -1,5 +1,4 @@
 import inspect
-import os
 import pickle
 from enum import Enum
 from typing import Any, List, Optional
@@ -7,8 +6,7 @@ from typing import Any, List, Optional
 import pydantic
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
 from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.generated.serve_pb2 import BackendLanguage
 
@@ -187,15 +185,6 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
-        return v
-
-    @validator("root_url", always=True)
-    def fill_default_root_url(cls, v, values):
-        if v == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                return f"http://{values['host']}:{values['port']}"
         return v
 
     class Config:
