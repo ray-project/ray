@@ -20,9 +20,7 @@ from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (
-    _unwrap_protocol, _is_url, _encode_url,
-    _get_pyarrow_fses_needing_url_encoding)
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -933,18 +931,13 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),  # Path contains space.
-            lazy_fixture("s3_path_with_space"))
+        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")
+         )  # Path contains space.
     ])
 def test_parquet_read(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
-    if _is_url(data_path) and isinstance(
-            fs, _get_pyarrow_fses_needing_url_encoding()):
-        setup_data_path = _encode_url(_unwrap_protocol(data_path))
-    else:
-        setup_data_path = _unwrap_protocol(data_path)
+    setup_data_path = _unwrap_protocol(data_path)
     path1 = os.path.join(setup_data_path, "test1.parquet")
     pq.write_table(table, path1, filesystem=fs)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -2146,11 +2139,14 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
-@pytest.mark.parametrize("fs,data_path,endpoint_url", [
-    (None, lazy_fixture("local_path"), None),
-    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
-])
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [(None, lazy_fixture("local_path"), None),
+     (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+     (lazy_fixture("s3_fs"), lazy_fixture("s3_path"),
+      lazy_fixture("s3_server")),
+     (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space"),
+      lazy_fixture("s3_server"))])
 def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     if endpoint_url is None:
         storage_options = {}
