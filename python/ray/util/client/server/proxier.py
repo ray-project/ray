@@ -591,24 +591,23 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 self.clients_last_seen[client_id] = start_time
             server = self.proxy_manager._get_server_for_client(client_id)
             channel = self.proxy_manager.get_channel(client_id)
+            # iterator doesn't need modification on reconnect
+            new_iter = request_iterator
+        else:
+            # Create Placeholder *before* reading the first request.
+            server = self.proxy_manager.create_specific_server(client_id)
+            with self.clients_lock:
+                self.clients_last_seen[client_id] = start_time
+                self.num_clients += 1
 
         try:
             if not reconnecting:
-                # Create Placeholder *before* reading the first request.
-                server = self.proxy_manager.create_specific_server(client_id)
-                with self.clients_lock:
-                    self.clients_last_seen[client_id] = start_time
-                    self.num_clients += 1
                 logger.info(f"New data connection from client {client_id}: ")
                 init_req = next(request_iterator)
                 with self.clients_lock:
                     self.reconnect_grace_periods[client_id] = \
                         init_req.init.reconnect_grace_period
                 try:
-                    modified_init_req, job_config = prepare_runtime_init_req(
-                        init_req)
-                    request_iterator = chain([modified_init_req],
-                                             request_iterator)
                     modified_init_req, job_config = prepare_runtime_init_req(
                         init_req)
                     if not self.proxy_manager.start_specific_server(
@@ -638,9 +637,11 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     yield init_resp
                     return None
 
+                new_iter = chain([modified_init_req], request_iterator)
+
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
             resp_stream = stub.Datapath(
-                request_iterator, metadata=[("client_id", client_id)])
+                new_iter, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 resp_type = resp.WhichOneof("type")
                 if resp_type == "connection_cleanup":

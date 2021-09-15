@@ -104,7 +104,10 @@ class Worker:
         self._secure = secure
         self._conn_str = conn_str
         self._connection_retries = connection_retries
-        self._credentials = _credentials
+
+        if _credentials is not None:
+            self._credentials = _credentials
+            self._secure = True
 
         self._reconnect_grace_period = DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
         if "RAY_CLIENT_RECONNECT_GRACE_PERIOD" in os.environ:
@@ -149,13 +152,13 @@ class Worker:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
-        if self._secure and self._credentials is None:
-            self._credentials = grpc.ssl_channel_credentials()
-
-        if self._credentials is not None:
+        if self._secure:
+            if self._credentials is not None:
+                credentials = self._credentials
+            else:
+                credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                self._conn_str, self._credentials, options=GRPC_OPTIONS)
-
+                self._conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
                 self._conn_str, options=GRPC_OPTIONS)
@@ -169,10 +172,10 @@ class Worker:
         timeout = INITIAL_TIMEOUT_SEC
         service_ready = False
         while conn_attempts < max(self._connection_retries, 1) or reconnecting:
+            conn_attempts += 1
             if self._in_shutdown:
                 # User manually closed the worker before connection finished
                 break
-            conn_attempts += 1
             elapsed_time = time.time() - start_time
             if reconnecting and elapsed_time > self._reconnect_grace_period:
                 self._in_shutdown = True

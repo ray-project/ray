@@ -137,11 +137,22 @@ class DataClient:
                     # Acknowledge response
                     self._acknowledge(response.req_id)
         else:
-            # Blocking response. Populate ready data and wake up waiting
-            # threads.
-            with self.cv:
+            with self.lock:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
+
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
+        """
+        Processes RPC errors that occur while reading from data stream.
+        Returns True if the error can be recovered from, False otherwise.
+        """
+        if not self.client_worker._can_reconnect(e):
+            logger.info("Unrecoverable error in data channel.")
+            logger.debug(e)
+            return False
+        logger.debug("Recoverable error in data channel.")
+        logger.debug(e)
+        return True
 
     def _shutdown(self) -> None:
         """
@@ -168,19 +179,6 @@ class DataClient:
                 callback(err)
             # Since self._in_shutdown is set to True, no new item
             # will be added to self.asyncio_waiting_data
-
-    def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Processes RPC errors that occur while reading from data stream.
-        Returns True if the error can be recovered from, False otherwise.
-        """
-        if not self.client_worker._can_reconnect(e):
-            logger.info("Unrecoverable error in data channel.")
-            logger.debug(e)
-            return False
-        logger.debug("Recoverable error in data channel.")
-        logger.debug(e)
-        return True
 
     def _acknowledge(self, req_id: int):
         """
@@ -279,8 +277,8 @@ class DataClient:
             req_id = self._next_id()
             req.req_id = req_id
             self.asyncio_waiting_data[req_id] = callback
-            self.request_queue.put(req)
             self.outstanding_requests[req_id] = req
+            self.request_queue.put(req)
 
     # Must hold self.lock when calling this function.
     def _check_shutdown(self):

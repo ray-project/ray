@@ -12,8 +12,8 @@ import time
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
-from ray.util.client.common import OrderedResponseCache
+from ray.util.client.common import (CLIENT_SERVER_MAX_THREADS,
+                                    OrderedResponseCache)
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
@@ -119,8 +119,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
-                should_cache = _should_cache(req)
-                if should_cache:
+                if _should_cache(req):
                     cached_resp = response_cache.check_cache(req.req_id)
                     if cached_resp is not None:
                         yield cached_resp
@@ -182,7 +181,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
 
-                if should_cache:
+                if _should_cache(req):
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
         finally:
