@@ -1321,7 +1321,6 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  setup_worker_path,
-                 worker_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1363,8 +1362,6 @@ def start_raylet(redis_address,
             processes will execute.
         setup_worker_path (str): The path of the Python file that will run
             worker_setup_hook to set up the environment for the worker process.
-        worker_setup_hook (str): The module path to a Python function that will
-            be imported and run to set up the environment for the worker.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1458,7 +1455,6 @@ def start_raylet(redis_address,
     start_worker_command = [
         sys.executable,
         setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1910,17 +1906,10 @@ def start_ray_client_server(
     root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
-    conda_shim_flag = (
-        "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
     command = [
-        sys.executable,
-        setup_worker_path,
-        conda_shim_flag,  # These two args are to use the shim process.
-        "-m",
-        "ray.util.client.server",
-        f"--redis-address={redis_address}",
-        f"--port={ray_client_server_port}",
+        sys.executable, setup_worker_path, "-m", "ray.util.client.server",
+        f"--redis-address={redis_address}", f"--port={ray_client_server_port}",
         f"--mode={server_type}"
     ]
     if redis_password:
