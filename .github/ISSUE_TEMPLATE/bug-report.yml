@@ -1,0 +1,93 @@
+name: Bug report
+title: "[Bug] "
+description: Problems and issues with code of Ray
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting the problem!
+        Please make sure what you are reporting is a bug with reproducible steps. To ask questions
+        or share ideas, pleae post on our [Discussion page](https://discuss.ray.io/) instead.
+
+  - type: checkboxes
+    attributes:
+      label: Search before asking
+      description: >
+        Please make sure to search in the [issues](https://github.com/ray-project/ray/issues) first to see
+        whether the same issue was reported already.
+      options:
+        - label: >
+            I searched the [issues](https://github.com/ray-project/ray/issues) and found no similar
+            issues.
+          required: true
+
+  - type: dropdown
+    attributes:
+      label: Ray Component
+      description: |
+        What component are you using? Ray has many subprojects, please make sure to choose the component that
+        you found the bug.
+      multiple: true
+      options:
+        - "Ray Core"
+        - "Ray Tune"
+        - "Ray Serve"
+        - "RLlib"
+        - "Ray Clusters"
+        - "Monitoring & Debugging"
+        - "Dashboard"
+        - "RaySGD"
+        - "Others"
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: What happened + What you expected to happen
+      description: Describe 1. the bug 2. expected behavior 3. useful information (e.g., logs)
+      placeholder: >
+        Please provide the context in which the problem occurred and explain what happened. Further,
+        please also explain why you think the behaviour is erroneous. It is extremely helpful if you can
+        copy and paste the fragment of logs showing the exact error messages or wrong behaviour here.
+
+        **NOTE**: please copy and paste texts instead of taking screenshots of them for easy future search.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Reproduction script
+      description: >
+        Please provide a reproducible script. Providing a narrow reproduction (minimal / no external dependencies) will
+        help us triage and address issues in the timely manner!
+      placeholder: >
+        Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to
+        reproduce the issue. The snippet should have **no external library dependencies**
+        (i.e., use fake or mock data / environments).
+
+        **NOTE**: If the code snippet cannot be run by itself, the issue will be marked as "needs-repro-script"
+        until the repro instruction is updated.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Anything else
+      description: Anything else we need to know?
+      placeholder: >
+        How often does this problem occur? (Once? Every time? Only when certain conditions are met?)
+        Any relevant logs to include? Are there other relevant issues?
+
+  - type: checkboxes
+    attributes:
+      label: Are you willing to submit a PR?
+      description: >
+        This is absolutely not required, but we are happy to guide you in the contribution process
+        especially if you already have a good understanding of how to implement the fix.
+      options:
+        - label: Yes I am willing to submit a PR!
+
+  - type: markdown
+    attributes:
+      value: "Thanks for completing our form!"
