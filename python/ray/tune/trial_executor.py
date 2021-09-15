@@ -197,7 +197,7 @@ class TrialExecutor(metaclass=ABCMeta):
                    trial: Trial,
                    error: bool = False,
                    error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   destroy_pg_if_cannot_replace: bool = False) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.

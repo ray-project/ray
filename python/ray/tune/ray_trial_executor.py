@@ -502,7 +502,7 @@ class RayTrialExecutor(TrialExecutor):
                     trial: Trial,
                     error=False,
                     error_msg=None,
-                    destroy_pg_if_cannot_replace=True):
+                    destroy_pg_if_cannot_replace=False):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -613,7 +613,7 @@ class RayTrialExecutor(TrialExecutor):
                    trial: Trial,
                    error: bool = False,
                    error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   destroy_pg_if_cannot_replace: bool = False) -> None:
         """Only returns resources if resources allocated.
 
         If destroy_pg_if_cannot_replace is False, the Trial placement group

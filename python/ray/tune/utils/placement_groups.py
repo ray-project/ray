@@ -360,7 +360,8 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return len(self._staging_futures) < self._max_staging
+        return (len(self._staging_futures) + len(
+            self._pgs_for_removal)) < self._max_staging
 
     def update_status(self):
         """Update placement group status.
@@ -537,7 +538,7 @@ class PlacementGroupManager:
 
     def return_pg(self,
                   trial: "Trial",
-                  destroy_pg_if_cannot_replace: bool = True):
+                  destroy_pg_if_cannot_replace: bool = False):
         """Return pg, making it available for other trials to use.
 
         If destroy_pg_if_cannot_replace is True, this will only return
