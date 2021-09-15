@@ -8,10 +8,15 @@ import threading
 import time
 import grpc
 
+from typing import TYPE_CHECKING
+
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.util.client.worker import Worker
 
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
@@ -21,7 +26,7 @@ logger.propagate = False
 
 
 class LogstreamClient:
-    def __init__(self, client_worker, metadata: list):
+    def __init__(self, client_worker: "Worker", metadata: list):
         """Initializes a thread-safe log stream over a Ray Client gRPC channel.
 
         Args:

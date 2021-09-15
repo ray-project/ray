@@ -21,10 +21,10 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
-from ray.util.client.common import (ClientServerHandle,
+from ray.util.client.common import (_get_client_id_from_context,
+                                    ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
-from ray.util.client.common import _get_client_id_from_context
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env import RuntimeEnvContext
@@ -376,7 +376,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
     def _call_inner_function(
             self, request, context,
             method: str) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
-        client_id = _get_client_id_from_context(context, logger)
+        client_id = _get_client_id_from_context(context)
         chan = self.proxy_manager.get_channel(client_id)
         if not chan:
             logger.error(f"Channel for Client: {client_id} not found!")
@@ -393,7 +393,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             logger.exception(f"Proxying call to {method} failed!")
 
     def _has_channel_for_request(self, context):
-        client_id = _get_client_id_from_context(context, logger)
+        client_id = _get_client_id_from_context(context)
         return self.proxy_manager.has_channel(client_id)
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
@@ -570,7 +570,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def Datapath(self, request_iterator, context):
         cleanup_requested = False
         start_time = time.time()
-        client_id = _get_client_id_from_context(context, logger)
+        client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
         reconnecting = _get_reconnecting_from_context(context)
@@ -683,7 +683,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         self.proxy_manager = proxy_manager
 
     def Logstream(self, request_iterator, context):
-        client_id = _get_client_id_from_context(context, logger)
+        client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
         logger.debug(f"New logstream connection from client {client_id}: ")

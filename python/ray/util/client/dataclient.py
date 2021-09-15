@@ -7,11 +7,14 @@ import threading
 import grpc
 
 from collections import OrderedDict
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import INT32_MAX
+
+if TYPE_CHECKING:
+    from ray.util.client.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,8 @@ ACKNOWLEDGE_BATCH_SIZE = 10
 
 
 class DataClient:
-    def __init__(self, client_worker, client_id: str, metadata: list):
+    def __init__(self, client_worker: "Worker", client_id: str,
+                 metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
@@ -139,19 +143,6 @@ class DataClient:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
 
-    def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Processes RPC errors that occur while reading from data stream.
-        Returns True if the error can be recovered from, False otherwise.
-        """
-        if not self.client_worker._can_reconnect(e):
-            logger.info("Unrecoverable error in data channel.")
-            logger.debug(e)
-            return False
-        logger.debug("Recoverable error in data channel.")
-        logger.debug(e)
-        return True
-
     def _shutdown(self) -> None:
         """
         Shutdown the data channel
@@ -177,6 +168,19 @@ class DataClient:
                 callback(err)
             # Since self._in_shutdown is set to True, no new item
             # will be added to self.asyncio_waiting_data
+
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
+        """
+        Processes RPC errors that occur while reading from data stream.
+        Returns True if the error can be recovered from, False otherwise.
+        """
+        if not self.client_worker._can_reconnect(e):
+            logger.info("Unrecoverable error in data channel.")
+            logger.debug(e)
+            return False
+        logger.debug("Recoverable error in data channel.")
+        logger.debug(e)
+        return True
 
     def _acknowledge(self, req_id: int):
         """

@@ -1,4 +1,3 @@
-import logging
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -12,6 +11,7 @@ import uuid
 import inspect
 from ray.util.inspect import is_cython, is_function_or_method
 import json
+import logging
 import threading
 from collections import OrderedDict
 from typing import Any
@@ -20,6 +20,8 @@ from typing import Dict
 from typing import Optional
 from typing import Tuple
 from typing import Union
+
+logger = logging.getLogger(__name__)
 
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
@@ -398,7 +400,7 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
-def _get_client_id_from_context(context: Any, logger: logging.Logger) -> str:
+def _get_client_id_from_context(context: Any) -> str:
     """
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
