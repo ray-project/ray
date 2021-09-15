@@ -184,6 +184,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if _should_cache(req):
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
+        except grpc.RpcError as e:
+            logger.debug(f"gRPC error in data channel: {e}")
+        except Exception as e:
+            # Unexpected exception while processing requests. This should be
+            # treated as fatal -- set context to signal to client that the
+            # connection can't be recovered.
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(str(e))
+            # Clean up connection, since we don't want the client to reconnect
+            cleanup_requested = True
+            logger.exception("Fatal error in data channel:")
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
