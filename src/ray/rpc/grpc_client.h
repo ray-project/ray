@@ -17,13 +17,12 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
-#include <fstream>
-#include <sstream>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/common.h"
 
 namespace ray {
 namespace rpc {
@@ -108,13 +107,6 @@ class GrpcClient {
   /// Whether to use TLS.
   bool use_tls_;
 
-  std::string ReadFile(std::string filename) {  
-    std::ifstream t(filename);
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    return buffer.str();
-  };
-
   std::shared_ptr<grpc::Channel> BuildChannel(
       grpc::ChannelArguments argument,
       std::string address,
@@ -124,9 +116,9 @@ class GrpcClient {
       std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
       std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
       std::string root_cert_file = std::string(std::getenv("RAY_TLS_CA_CERT"));
-      std::string server_cert_chain = ReadFile(server_cert_file);
-      std::string private_key = ReadFile(server_key_file);
-      std::string cacert = ReadFile(root_cert_file);
+      std::string server_cert_chain = ReadCert(server_cert_file);
+      std::string private_key = ReadCert(server_key_file);
+      std::string cacert = ReadCert(root_cert_file);
 
       grpc::SslCredentialsOptions ssl_opts;
       ssl_opts.pem_root_certs=cacert;
