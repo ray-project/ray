@@ -244,9 +244,6 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
-# The default module path to a Python function that sets up the worker env.
-DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
-
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 

@@ -240,7 +240,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/new_dashboard/client
+      cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
@@ -403,7 +403,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
     if [ -z "${BUILDKITE-}" ]; then
