@@ -1,5 +1,5 @@
 import asyncio
-import contextlib
+# import contextlib
 from dataclasses import dataclass
 import logging
 import ray
@@ -193,7 +193,10 @@ def _load_ref_helper(key: str, storage: storage.Storage):
 
 # TODO (Alex): We should use weakrefs here instead of leaking...
 _object_cache: Optional[Dict[str, ray.ObjectRef]] = {}
-def _load_object_ref(paths: List[str], storage: storage.Storage) -> ray.ObjectRef:
+
+
+def _load_object_ref(paths: List[str],
+                     storage: storage.Storage) -> ray.ObjectRef:
     global _object_cache
 
     key = storage.make_key(*paths)
@@ -205,6 +208,7 @@ def _load_object_ref(paths: List[str], storage: storage.Storage) -> ray.ObjectRe
         _object_cache[key] = _load_ref_helper.remote(key, storage)
 
     return _object_cache[key]
+
 
 # @contextlib.contextmanager
 # def objectref_cache() -> None:
