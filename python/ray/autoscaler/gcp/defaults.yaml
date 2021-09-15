@@ -136,6 +136,9 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
     # Install ray if not present
+    - >-
+        (stat /opt/conda/bin/ &> /dev/null &&
+        echo 'export PATH="/opt/conda/bin:$PATH"' >> ~/.bashrc) || true
     - which ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 
