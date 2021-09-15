@@ -1518,6 +1518,10 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
             env, "action_space")
         # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
+        # Ignore float32/float64 diffs.
+        if isinstance(env.observation_space, gym.spaces.Box) and \
+                env.observation_space.dtype != dummy_obs.dtype:
+            dummy_obs = dummy_obs.astype(env.observation_space.dtype)
         # Check, if observation is ok (part of the observation space). If not,
         # error.
         if not env.observation_space.contains(dummy_obs):

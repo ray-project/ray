@@ -68,8 +68,10 @@ class Preprocessor:
                     observation = observation.astype(self._obs_space.dtype)
                 if not self._obs_space.contains(observation):
                     raise ValueError(
-                        "Observation ({}) outside given space ({})!",
-                        observation, self._obs_space)
+                        "Observation ({} dtype={}) outside given space ({})!",
+                        observation, observation.dtype if isinstance(
+                            self._obs_space,
+                            gym.spaces.Box) else None, self._obs_space)
             except AttributeError:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "
