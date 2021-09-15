@@ -250,24 +250,32 @@ def appo_surrogate_loss(
         mean_entropy = reduce_mean_valid(
             make_time_major(action_dist.multi_entropy()))
 
-    # The summed weighted loss
-    total_loss = mean_policy_loss + \
-        mean_vf_loss * policy.config["vf_loss_coeff"] - \
+    # The summed weighted loss.
+    total_loss = mean_policy_loss - \
         mean_entropy * policy.config["entropy_coeff"]
-
-    # Optional additional KL Loss
+    # Optional KL loss.
     if policy.config["use_kl_loss"]:
         total_loss += policy.kl_coeff * mean_kl
+    # Optional vf loss (or in a separate term due to separate
+    # optimizers/networks).
+    loss_wo_vf = total_loss
+    if not policy.config["separate_vf_optimizer"]:
+        total_loss += mean_vf_loss * policy.config["vf_loss_coeff"]
 
+    # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
+    policy._loss_wo_vf = loss_wo_vf
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_kl = mean_kl
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._value_targets = value_targets
 
-    # Store stats in policy for stats_fn.
-    return total_loss
+    # Return one total loss or two losses: vf vs rest (policy + kl).
+    if policy.config["separate_vf_optimizer"]:
+        return loss_wo_vf, mean_vf_loss
+    else:
+        return total_loss
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -288,6 +296,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "entropy": policy._mean_entropy,
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),

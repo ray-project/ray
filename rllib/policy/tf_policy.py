@@ -245,7 +245,7 @@ class TFPolicy(Policy):
             tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
 
-        self._optimizer = None
+        self._optimizers = None
         self._grads_and_vars = None
         self._grads = None
         # Policy tf-variables (weights), whose values to get/set via
@@ -335,10 +335,10 @@ class TFPolicy(Policy):
         else:
             self._loss = loss
 
-        if self._optimizer is None:
-            self._optimizer = self.optimizer()
+        if self._optimizers is None:
+            self._optimizers = self.optimizer()
         self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            (g, v) for (g, v) in self.gradients(self._optimizers, self._losses)
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
