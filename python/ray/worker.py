@@ -224,7 +224,7 @@ class Worker:
         """
         if not self.connected:
             if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
+                ray.client(_disable_deprecation_warn=True).connect()
                 return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
@@ -753,7 +753,7 @@ def init(
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
-        builder = ray.client(address)
+        builder = ray.client(address, _disable_deprecation_warn=True)
 
         # Forward any keyword arguments that were changed from their default
         # values to the builder

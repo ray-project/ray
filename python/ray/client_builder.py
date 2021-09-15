@@ -3,6 +3,7 @@ import importlib
 import inspect
 import json
 import logging
+import warnings
 from dataclasses import dataclass
 import sys
 
@@ -17,6 +18,8 @@ from ray.worker import init as ray_driver_init
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
+
+CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
 
 
 @dataclass
@@ -83,12 +86,13 @@ class ClientBuilder:
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self._job_config = JobConfig()
-        self._fill_defaults_from_env()
         self._remote_init_kwargs = {}
         # Whether to allow connections to multiple clusters"
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
+        # Set to True if ClientBuilder is being constructed by internal methods
+        self._disable_deprecation_warn = False
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -119,6 +123,13 @@ class ClientBuilder:
                 includes the server's version of Python & Ray as well as the
                 dashboard_url.
         """
+        if not self._disable_deprecation_warn:
+            self._client_deprecation_warn()
+        # Fill runtime env/namespace from environment if not already set.
+        # Should be done *after* the deprecation warning, since warning will
+        # check if those values are already set.
+        self._fill_defaults_from_env()
+
         # If it has already connected to the cluster with allow_multiple=True,
         # connect to the default one is not allowed.
         # But if it has connected to the default one, connect to other clients
@@ -202,12 +213,52 @@ class ClientBuilder:
                         f"on the server: {unknown}")
         return self
 
+    def _client_deprecation_warn(self) -> None:
+        """
+        Generates a warning for user's if this ClientBuilder instance was
+        created directly or through ray.client, instead of relying on
+        internal methods (ray.init, or auto init)
+        """
+        namespace = self._job_config.ray_namespace
+        runtime_env = self._job_config.runtime_env
+        replacement_args = []
+        if self.address:
+            replacement_args.append(f'"ray://{self.address}"')
+        if namespace:
+            replacement_args.append(f'namespace="{namespace}"')
+        if runtime_env:
+            # Use a placeholder here, since the real runtime_env would be
+            # difficult to read if formatted in directly
+            replacement_args.append("runtime_env=<your_runtime_env>")
+        args_str = ", ".join(replacement_args)
+        replacement_call = f"ray.init({args_str})"
+
+        # Note: stack level is set to 3 since we want the warning to reach the
+        # call to ray.client(...).connect(). The intervening frames are
+        # connect() -> client_deprecation_warn() -> warnings.warn()
+        # https://docs.python.org/3/library/warnings.html#available-functions
+        warnings.warn(
+            "Starting a connection through `ray.client` is deprecated "
+            "in favor of `ray.init`. See the docs for more details: "
+            f"{CLIENT_DOCS_URL}. You can replace your call to `ray.client` "
+            "with the following:\n"
+            f"      {replacement_call}\n",
+            DeprecationWarning,
+            stacklevel=3)
+
 
 class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...)
         """
+        if not self._disable_deprecation_warn:
+            self._client_deprecation_warn()
+        # Fill runtime env/namespace from environment if not already set.
+        # Should be done *after* the deprecation warning, since warning will
+        # check if those values are already set.
+        self._fill_defaults_from_env()
+
         connection_dict = ray.init(
             address=self.address, job_config=self._job_config)
         return ClientContext(
@@ -262,7 +313,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
 
 
 @Deprecated
-def client(address: Optional[str] = None) -> ClientBuilder:
+def client(address: Optional[str] = None,
+           _disable_deprecation_warn: bool = False) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be
     of the following forms:
@@ -272,6 +324,9 @@ def client(address: Optional[str] = None) -> ClientBuilder:
         * ``"IP:Port"``: Connects to a Ray Client Server at the given address.
         * ``"module://inner_address"``: load module.ClientBuilder & pass
             inner_address
+
+    The _disable_deprecation_warn flag suppresses deprecation warnings, and is
+    for internal use only.
     """
     env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if env_address and address is None:
@@ -280,4 +335,7 @@ def client(address: Optional[str] = None) -> ClientBuilder:
             f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
         address = env_address
 
-    return _get_builder_from_address(address)
+    builder = _get_builder_from_address(address)
+    # Disable client deprecation warn when ray.client is used internally
+    builder._disable_deprecation_warn = _disable_deprecation_warn
+    return builder

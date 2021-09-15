@@ -51,7 +51,7 @@ class GlobalState:
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
             if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
+                ray.client(_disable_deprecation_warn=True).connect()
                 # Retry connect!
                 return self._check_connected()
             raise ray.exceptions.RaySystemError(
