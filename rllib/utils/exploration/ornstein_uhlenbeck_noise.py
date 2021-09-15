@@ -8,6 +8,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
+from ray.rllib.utils.tf_ops import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -134,7 +135,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             true_fn=lambda: exploration_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
+        logp = zero_logps_from_actions(deterministic_actions)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:

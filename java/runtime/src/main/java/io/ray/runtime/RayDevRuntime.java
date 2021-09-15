@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.JobId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -68,11 +67,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
       taskSubmitter = null;
     }
     taskExecutor = null;
-  }
-
-  @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
   }
 
   @Override

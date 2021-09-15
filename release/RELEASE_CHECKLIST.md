@@ -16,97 +16,55 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 - [ ] Call for release notes made in Slack
 
 ## Release Testing
-- [ ] Microbenchmark
-	- [ ] Test passing
-	- [ ] Results added to `release/release_logs`
-- [ ] Long Running Tests (mark complete when run 24 hrs no issues)
-	- [ ] actor_deaths
-	- [ ] apex
-	- [ ] impala
-	- [ ] many_actor_tasks
-	- [ ] many_drivers
-	- [ ] many_ppo
-	- [ ] many_tasks_serialized_ids
-	- [ ] many_tasks
-	- [ ] node_failures
-	- [ ] pbt
-	- [ ] serve_failure
-	- [ ] serve
-- [ ] Long Running Distributed Tests
-	- [ ] pytorch_pbt_failure
-- [ ] horovod_test
-- [ ] Stress Tests
-	- [ ] test_dead_actors
-		- [ ] succeeds
-		- [ ] Results added to `release/release_logs`
-	- [ ] test_many_tasks
-		- [ ] succeeds
-		- [ ] Results added to `release/release_logs`
-	- [ ] test_placement_group
-		- [ ] succeeds
-		- [ ] Results added to `release/release_logs`
-- [ ] RLlib Tests
-	- [ ] regression_tests
-		- [ ] compact-regression-tests-tf
-			- [ ] 	succeeds
-			- [ ] Results added to `release/release_logs`
-		- [ ] compact-regression-tests-torch
-			- [ ] 	succeeds
-			- [ ] Results added to `release/release_logs`
-	- [ ] stress_tests
-	- [ ] unit_gpu_tests
-- [ ] Scalability Envelope Tests
-- [ ] ASAN Test
-- [ ] K8s Test
-	- [ ] K8s operator and helm tests
-- [ ] Data processing tests
-    - [ ] streaming_shuffle
-	- [ ] dask on ray test
-- [ ] Tune tests
-    - [ ] test_bookkeeping_overhead
-    - [ ] test_result_throughput_cluster
-    - [ ] test_result_throughput_single_node
-    - [ ] test_network_overhead
-    - [ ] test_long_running_large_checkpoints
-    - [ ] test_xgboost_sweep
-    - [ ] test_durable_trainable
-- [ ] XGBoost Tests
-    - [ ] distributed_api_test
-    - [ ] train_small
-    - [ ] train_moderate
-    - [ ] train_gpu
-    - [ ] tune_small
-    - [ ] tune_4x32
-    - [ ] tune_32x4
-    - [ ] ft_small_non_elastic
-    - [ ] ft_small_elastic
+- [ ] ``core-nightly`` release test suite
+    - [ ] Test passing
+    - [ ] Results added to `release/release_logs`
+        - [ ] many_actors
+        - [ ] many_nodes
+        - [ ] many_pgs
+        - [ ] object_store
+        - [ ] single_node
+        - [ ] stress_test_dead_actors
+        - [ ] stress_test_many_tasks
+        - [ ] stress_test_placement_group
+- [ ] ``nightly`` release test suite
+    - [ ] Test passing
+    - [ ] Results added to `release/release_logs`
+        - [ ] microbenchmark
+
+- [ ] ``weekly`` release test suite
+    - [ ] Test passing
 
 ## Final Steps
+- [ ] Check version strings once more
 - [ ] Anyscale Docker images built and deployed
 - [ ] ML Docker Image Updated
 - [ ] Wheels uploaded to Test PyPI
 - [ ] Wheel sanity checks with Test PyPI
-	- [ ] Windows
-		- [ ] Python 3.6
-		- [ ] Python 3.7
-		- [ ] Python 3.8
-	- [ ] OSX
-		- [ ] Python 3.6
-		- [ ] Python 3.7
-		- [ ] Python 3.8
-	- [ ] Linux
-		- [ ] Python 3.6
-		- [ ] Python 3.7
-		- [ ] Python 3.8
+    - [ ] Windows
+        - [ ] Python 3.6
+        - [ ] Python 3.7
+        - [ ] Python 3.8
+        - [ ] Python 3.9
+    - [ ] OSX
+        - [ ] Python 3.6
+        - [ ] Python 3.7
+        - [ ] Python 3.8
+        - [ ] Python 3.9
+    - [ ] Linux
+        - [ ] Python 3.6
+        - [ ] Python 3.7
+        - [ ] Python 3.8
+        - [ ] Python 3.9
 - [ ] Release is created on Github with release notes
-	- [ ] Release includes contributors
-	- [ ] Release notes sent for review to team leads
-	- [ ] Release is published
+    - [ ] Release includes contributors
+    - [ ] Release notes sent for review to team leads
+    - [ ] Release is published
 - [ ] Wheels uploaded to production PyPI
-	- [ ] Installing latest with `pip install -U ray` reveals correct version number and commit hash
-- [ ] “Latest” docs point to new release version
+    - [ ] Installing latest with `pip install -U ray` reveals correct version number and commit hash
+- [ ] "Latest" docs point to new release version
 - [ ] Docker image latest is updated on dockerhub
-- [ ] PR to bump master version is merged
+- [ ] Java release is published on Maven
 - [ ] Release is announced internally
 - [ ] Release is announced externally
 - [ ] Any code/doc changes made during the release process contributed back to master branch

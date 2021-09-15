@@ -148,6 +148,11 @@ class ImportThread:
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
             self.worker.function_actor_manager.imported_actor_classes.add(key)
+            with self.worker.function_actor_manager.cv:
+                # Function manager may be waiting on actor class to be
+                # loaded for deserialization, notify it to wake up and
+                # check if the actor class it was looking for is loaded
+                self.worker.function_actor_manager.cv.notify_all()
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:

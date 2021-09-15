@@ -65,13 +65,32 @@ class SampleBatch(dict):
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
-        """Constructs a sample batch (same params as dict constructor)."""
+        """Constructs a sample batch (same params as dict constructor).
+
+        Note: All *args and those **kwargs not listed below will be passed
+        as-is to the parent dict constructor.
+
+        Keyword Args:
+            _time_major (Optinal[bool]): Whether data in this sample batch
+                is time-major. This is False by default and only relevant
+                if the data contains sequences.
+            _max_seq_len (Optional[bool]): The max sequence chunk length
+                if the data contains sequences.
+            _zero_padded (Optional[bool]): Whether the data in this batch
+                contains sequences AND these sequences are right-zero-padded
+                according to the `_max_seq_len` setting.
+            _is_training (Optional[bool]): Whether this batch is used for
+                training. If False, batch may be used for e.g. action
+                computations (inference).
+        """
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
-
+        # Maximum seq len value.
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        # Is alredy right-zero-padded?
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        # Whether this batch is used for training (vs inference).
         self.is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible
@@ -181,7 +200,7 @@ class SampleBatch(dict):
                 if s.get(SampleBatch.SEQ_LENS) is not None:
                     concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
 
-        # If we don't have any samples (no or only empty SampleBatches),
+        # If we don't have any samples (0 or only empty SampleBatches),
         # return an empty SampleBatch here.
         if len(concat_samples) == 0:
             return SampleBatch()
@@ -483,10 +502,10 @@ class SampleBatch(dict):
             )
         else:
             return SampleBatch(
-                {k: v[start:end]
-                 for k, v in self.items()},
+                tree.map_structure(lambda value: value[start:end], self),
                 _is_training=self.is_training,
-                _time_major=self.time_major)
+                _time_major=self.time_major,
+            )
 
     @PublicAPI
     def timeslices(self,
@@ -813,6 +832,11 @@ class SampleBatch(dict):
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
         if self.get(SampleBatch.SEQ_LENS) is not None and \
@@ -824,6 +848,9 @@ class SampleBatch(dict):
                     for _ in range(l):
                         self._slice_map.append((i, sum_))
                     sum_ += l
+                # In case `stop` points to the very end (lengths of this
+                # batch), return the last sequence (the -1 here makes sure we
+                # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
             start_seq_len, start = self._slice_map[start]
@@ -943,24 +970,33 @@ class SampleBatch(dict):
                 # Range needed.
                 if view_req.shift_from is not None:
                     data = self[view_col][-1]
-                    traj_len = len(self[data_col])
-                    missing_at_end = traj_len % view_req.batch_repeat_value
-                    obs_shift = -1 if data_col in [
-                        SampleBatch.OBS, SampleBatch.NEXT_OBS
-                    ] else 0
-                    from_ = view_req.shift_from + obs_shift
-                    to_ = view_req.shift_to + obs_shift + 1
-                    if to_ == 0:
-                        to_ = None
-                    input_dict[view_col] = np.array([
-                        np.concatenate(
-                            [data,
-                             self[data_col][-missing_at_end:]])[from_:to_]
-                    ])
+                    # Batch repeat value > 1: We have single frames in the
+                    # batch at each timestep.
+                    if view_req.batch_repeat_value > 1:
+                        traj_len = len(self[data_col])
+                        missing_at_end = traj_len % view_req.batch_repeat_value
+                        obs_shift = -1 if data_col in [
+                            SampleBatch.OBS, SampleBatch.NEXT_OBS
+                        ] else 0
+                        from_ = view_req.shift_from + obs_shift
+                        to_ = view_req.shift_to + obs_shift + 1
+                        if to_ == 0:
+                            to_ = None
+                        input_dict[view_col] = np.array([
+                            np.concatenate(
+                                [self[data_col][-missing_at_end:],
+                                 data])[from_:to_]
+                        ])
+                    # Batch repeat value = 1: We already have framestacks
+                    # at each timestep.
+                    else:
+                        input_dict[view_col] = data[None]
                 # Single index.
                 else:
-                    data = self[data_col][-1]
-                    input_dict[view_col] = np.array([data])
+                    input_dict[view_col] = tree.map_structure(
+                        lambda v: v[-1:],  # keep as array (w/ 1 element)
+                        self[data_col],
+                    )
             else:
                 # Index range.
                 if isinstance(index, tuple):

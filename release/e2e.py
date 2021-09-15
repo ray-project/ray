@@ -385,11 +385,21 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        raise RuntimeError(f"Could not populate wheels sanity check command: "
+                           f"Commit hash missing. Got: {commit}")
+
+    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -521,6 +531,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         schema=schema,
         sql=sql,
     )
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -1695,6 +1727,8 @@ def run_test_config(
 
     logger.info(f"Final results: {result}")
 
+    log_results_and_artifacts(result)
+
     shutil.rmtree(temp_dir)
 
     return result
@@ -1876,6 +1910,9 @@ if __name__ == "__main__":
             raise RuntimeError(f"Could not find wheels for "
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
+
+        # RAY_COMMIT is set by find_ray_wheels
+        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 

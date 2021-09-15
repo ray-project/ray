@@ -37,8 +37,8 @@ def define_by_run_func(trial) -> Optional[Dict[str, Any]]:
     """Define-by-run function to create the search space.
 
     Ensure no actual computation takes place here. That should go into
-    the trainable passed to ``tune.run`` (in tis example, that's
-    ``easy_objective``.
+    the trainable passed to ``tune.run`` (in this example, that's
+    ``easy_objective``).
 
     For more information, see https://optuna.readthedocs.io/en/stable\
 /tutorial/10_key_features/002_configurations.html

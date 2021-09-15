@@ -269,14 +269,21 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       RAY_CHECK(pub_message.has_worker_object_locations_message());
       const auto &location_info = pub_message.worker_object_locations_message();
-      ObjectLocationSubscriptionCallback(location_info, object_id,
-                                         /*location_lookup_failed*/ false);
+      ObjectLocationSubscriptionCallback(
+          location_info, object_id,
+          /*location_lookup_failed*/ !location_info.ref_removed());
+      if (location_info.ref_removed()) {
+        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+      }
     };
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
-      mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
+      mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
       rpc::WorkerObjectLocationsPubMessage location_info;
+      // Location lookup can fail if the owner is reachable but no longer has a
+      // record of this ObjectRef, most likely due to an issue with the
+      // distributed reference counting protocol.
       ObjectLocationSubscriptionCallback(location_info, object_id,
                                          /*location_lookup_failed*/ true);
     };
@@ -399,7 +406,13 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
                            << object_id << status.ToString();
-            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
+            mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+          } else if (reply.object_location_info().ref_removed()) {
+            RAY_LOG(ERROR)
+                << "Worker " << worker_id << " failed to get the location for "
+                << object_id
+                << ", object already released by distributed reference counting protocol";
+            mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
           } else {
             UpdateObjectLocations(reply.object_location_info(), gcs_client_, &node_ids,
                                   &spilled_url, &spilled_node_id, &object_size);

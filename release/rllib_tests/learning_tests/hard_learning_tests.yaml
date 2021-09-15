@@ -19,6 +19,42 @@ a2c-breakoutnoframeskip-v4:
             [20000000, 0.000000000001],
         ]
 
+a3c-pongdeterministic-v4:
+    env: PongDeterministic-v4
+    run: A3C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    config:
+        ignore_worker_failures: true
+        num_gpus: 0
+        num_workers: 16
+        rollout_fragment_length: 20
+        vf_loss_coeff: 0.5
+        entropy_coeff: 0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        preprocessor_pref: rllib
+        model:
+            use_lstm: true
+            conv_activation: elu
+            dim: 42
+            grayscale: true
+            zero_mean: false
+            # Reduced channel depth and kernel size from default.
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]
+
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
@@ -39,8 +75,8 @@ apex-breakoutnoframeskip-v4:
         hiddens: [512]
         buffer_size: 1000000
         exploration_config:
-          epsilon_timesteps: 200000
-          final_epsilon: 0.01
+            epsilon_timesteps: 200000
+            final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
         final_prioritized_replay_beta: 1.0
         prioritized_replay_beta_annealing_timesteps: 2000000
@@ -51,6 +87,131 @@ apex-breakoutnoframeskip-v4:
         train_batch_size: 512
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
+
+appo-pongnoframeskip-v4:
+    env: PongNoFrameskip-v4
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 2000
+    config:
+        vtrace: True
+        use_kl_loss: False
+        rollout_fragment_length: 50
+        train_batch_size: 750
+        num_workers: 31
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_multi_gpu_tower_stacks: 1
+        num_envs_per_worker: 8
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+        num_gpus: 1
+        grad_clip: 10
+        model:
+            dim: 42
+
+ars-hopperbulletenv-v0:
+    env: HopperBulletEnv-v0
+    run: ARS
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 100.0
+        timesteps_total: 2000000
+    stop:
+        time_total_s: 2000
+    config:
+        noise_stdev: 0.01
+        num_rollouts: 1
+        rollouts_used: 1
+        num_workers: 1
+        sgd_stepsize: 0.02
+        noise_size: 250000000
+        eval_prob: 0.2
+        offset: 0
+        observation_filter: NoFilter
+        report_length: 3
+
+# TODO: (sven) Fix all BC-dependent learning tests for cont. actions.
+#  These seem quite hard to learn from the SAC-recorded HalfCheetahBulletEnv.
+# bc-halfcheetahbulletenv-v0:
+#    env: HalfCheetahBulletEnv-v0
+#    run: BC
+#    pass_criteria:
+#        episode_reward_mean: 400.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # Use input produced by expert SAC algo.
+#        input: ["~/halfcheetah_expert_sac.zip"]
+#        actions_in_input_normalized: true
+
+#        num_gpus: 1
+
+#        model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
+
+#        evaluation_num_workers: 1
+#        evaluation_interval: 3
+#        evaluation_config:
+#            input: sampler
+
+# cql-halfcheetahbulletenv-v0:
+#    env: HalfCheetahBulletEnv-v0
+#    run: CQL
+#    pass_criteria:
+#        episode_reward_mean: 400.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # Use input produced by expert SAC algo.
+#        input: ["~/halfcheetah_expert_sac.zip"]
+#        actions_in_input_normalized: true
+#
+#        soft_horizon: False
+#        horizon: 1000
+#        Q_model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
+#        policy_model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
+#        tau: 0.005
+#        target_entropy: auto
+#        no_done_at_end: false
+#        n_step: 3
+#        rollout_fragment_length: 1
+#        prioritized_replay: false
+#        train_batch_size: 256
+#        target_network_update_freq: 0
+#        timesteps_per_iteration: 1000
+#        learning_starts: 256
+#        optimization:
+#            actor_learning_rate: 0.0001
+#            critic_learning_rate: 0.0003
+#            entropy_learning_rate: 0.0001
+#        num_workers: 0
+#        num_gpus: 1
+#        metrics_smoothing_episodes: 5
+#
+#        # CQL Configs
+#        min_q_weight: 5.0
+#        bc_iters: 20000
+#        temperature: 1.0
+#        num_actions: 10
+#        lagrangian: False
+#
+#        # Switch on online evaluation.
+#        evaluation_interval: 3
+#        evaluation_config:
+#            input: sampler
 
 ddpg-hopperbulletenv-v0:
     env: HopperBulletEnv-v0
@@ -97,6 +258,44 @@ ddpg-hopperbulletenv-v0:
         num_gpus_per_worker: 0
         worker_side_prioritization: false
 
+# Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
+# isn't actually any more efficient on Atari, since the network size is
+# relatively small and the env doesn't require a GPU.
+ddppo-breakoutnoframeskip-v4:
+    env: BreakoutNoFrameskip-v4
+    run: DDPPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 50.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        # DDPPO only supports PyTorch so far.
+        framework: torch
+        # Worker config: 10 workers, each of which requires a GPU.
+        num_workers: 16
+        # Workers require GPUs, but share 1 GPU amongst 2 workers.
+        num_gpus_per_worker: 0.25
+        # Each worker will sample 100 * 5 envs per worker steps = 500 steps
+        # per optimization round. This is 5000 steps summed across workers.
+        rollout_fragment_length: 100
+        num_envs_per_worker: 5
+        # Each worker will take a minibatch of 50. There are 10 workers total,
+        # so the effective minibatch size will be 500.
+        sgd_minibatch_size: 50
+        num_sgd_iter: 30
+        # Params from standard PPO Atari config:
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: true
+        clip_param: 0.1
+        vf_loss_coeff: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+
 dqn-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: DQN
@@ -122,13 +321,25 @@ dqn-breakoutnoframeskip-v4:
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
-          epsilon_timesteps: 200000
-          final_epsilon: 0.01
+            epsilon_timesteps: 200000
+            final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
         final_prioritized_replay_beta: 1.0
         prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 0.5
         timesteps_per_iteration: 10000
+
+es-humanoidbulletenv-v0:
+    env: HumanoidBulletEnv-v0
+    run: ES
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 100.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    config:
+        num_workers: 50
 
 impala-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
@@ -150,6 +361,32 @@ impala-breakoutnoframeskip-v4:
             [20000000, 0.000000000001],
         ]
         num_gpus: 1
+
+# marwil-halfcheetahbulletenv-v0:
+#    env: HalfCheetahBulletEnv-v0
+#    run: MARWIL
+#    pass_criteria:
+#        episode_reward_mean: 400.0
+#        timesteps_total: 10000000
+#    stop:
+#        time_total_s: 3600
+#    config:
+#        # Use input produced by expert SAC algo.
+#        input: ["~/halfcheetah_expert_sac.zip"]
+#        actions_in_input_normalized: true
+#        # Switch off input evaluation (data does not contain action probs).
+#        input_evaluation: []
+
+#        num_gpus: 1
+
+#        model:
+#            fcnet_activation: relu
+#            fcnet_hiddens: [256, 256, 256]
+
+#        evaluation_num_workers: 1
+#        evaluation_interval: 1
+#        evaluation_config:
+#            input: sampler
 
 ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
@@ -185,23 +422,23 @@ sac-halfcheetahbulletenv-v0:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 80000
+        episode_reward_mean: 600.0
+        timesteps_total: 100000
     stop:
         time_total_s: 7200
     config:
         horizon: 1000
         soft_horizon: false
         Q_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256]
         policy_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: true
-        n_step: 1
+        no_done_at_end: false
+        n_step: 3
         rollout_fragment_length: 1
         prioritized_replay: true
         train_batch_size: 256
@@ -209,12 +446,24 @@ sac-halfcheetahbulletenv-v0:
         timesteps_per_iteration: 1000
         learning_starts: 10000
         optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
+            actor_learning_rate: 0.0003
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 1
-        clip_actions: false
-        normalize_actions: true
-        evaluation_interval: 1
         metrics_smoothing_episodes: 5
+
+td3-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: TD3
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 400.0
+        timesteps_total: 1000000
+    stop:
+        time_total_s: 7200
+    config:
+        num_gpus: 1
+        learning_starts: 10000
+        exploration_config:
+            random_timesteps: 10000
