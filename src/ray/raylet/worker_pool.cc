@@ -331,10 +331,10 @@ Process WorkerPool::StartWorkerProcess(
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
-      if (worker_command_args.size() >= 3 &&
+      if (worker_command_args.size() >= 2 &&
           worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
         worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 3);
+                                  worker_command_args.begin() + 2);
       }
     }
 

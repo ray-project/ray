@@ -11,12 +11,19 @@ import uuid
 import inspect
 from ray.util.inspect import is_cython, is_function_or_method
 import json
+import logging
 import threading
 from typing import Any
 from typing import List
 from typing import Dict
 from typing import Optional
 from typing import Union
+
+logger = logging.getLogger(__name__)
+
+# The maximum field value for int32 id's -- which is also the maximum
+# number of simultaneous in-flight requests.
+INT32_MAX = (2**31) - 1
 
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
@@ -382,3 +389,16 @@ class ClientServerHandle:
     # expected simply a gRPC server
     def __getattr__(self, attr):
         return getattr(self.grpc_server, attr)
+
+
+def _get_client_id_from_context(context: Any) -> str:
+    """
+    Get `client_id` from gRPC metadata. If the `client_id` is not present,
+    this function logs an error and sets the status_code.
+    """
+    metadata = {k: v for k, v in context.invocation_metadata()}
+    client_id = metadata.get("client_id") or ""
+    if client_id == "":
+        logger.error("Client connecting with no client_id")
+        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+    return client_id

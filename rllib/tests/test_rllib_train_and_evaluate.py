@@ -10,7 +10,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
+def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
         extra_config = ",\"train_batch_size\": 10, \"noise_size\": 250000"
@@ -46,27 +46,27 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
         print("Checkpoint path {} (exists)".format(checkpoint_path))
 
         # Test rolling out n steps.
-        os.popen("python {}/rollout.py --run={} \"{}\" --steps=10 "
+        os.popen("python {}/evaluate.py --run={} \"{}\" --steps=10 "
                  "--out=\"{}/rollouts_10steps.pkl\" --no-render".format(
                      rllib_dir, algo, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
             sys.exit(1)
-        print("rollout output (10 steps) exists!")
+        print("evaluate output (10 steps) exists!")
 
         # Test rolling out 1 episode.
         if test_episode_rollout:
-            os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
+            os.popen("python {}/evaluate.py --run={} \"{}\" --episodes=1 "
                      "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
                          rllib_dir, algo, checkpoint_path, tmp_dir)).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
                 sys.exit(1)
-            print("rollout output (1 ep) exists!")
+            print("evaluate output (1 ep) exists!")
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-def learn_test_plus_rollout(algo, env="CartPole-v0"):
+def learn_test_plus_evaluate(algo, env="CartPole-v0"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ", \\\"framework\\\": \\\"{}\\\"".format(fw)
 
@@ -108,7 +108,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/rollout.py --run={} "
+            "python {}/evaluate.py --run={} "
             "--steps=400 "
             "--out=\"{}/rollouts_n_steps.pkl\" --no-render \"{}\"".format(
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
@@ -131,7 +131,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-def learn_test_multi_agent_plus_rollout(algo):
+def learn_test_multi_agent_plus_evaluate(algo):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
@@ -217,41 +217,41 @@ def learn_test_multi_agent_plus_rollout(algo):
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-class TestRolloutSimple1(unittest.TestCase):
+class TestEvaluate1(unittest.TestCase):
     def test_a3c(self):
-        rollout_test("A3C")
+        evaluate_test("A3C")
 
     def test_ddpg(self):
-        rollout_test("DDPG", env="Pendulum-v0")
+        evaluate_test("DDPG", env="Pendulum-v0")
 
 
-class TestRolloutSimple2(unittest.TestCase):
+class TestEvaluate2(unittest.TestCase):
     def test_dqn(self):
-        rollout_test("DQN")
+        evaluate_test("DQN")
 
     def test_es(self):
-        rollout_test("ES")
+        evaluate_test("ES")
 
 
-class TestRolloutSimple3(unittest.TestCase):
+class TestEvaluate3(unittest.TestCase):
     def test_impala(self):
-        rollout_test("IMPALA", env="CartPole-v0")
+        evaluate_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
-        rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
+        evaluate_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
 
-class TestRolloutSimple4(unittest.TestCase):
+class TestEvaluate4(unittest.TestCase):
     def test_sac(self):
-        rollout_test("SAC", env="Pendulum-v0")
+        evaluate_test("SAC", env="Pendulum-v0")
 
 
-class TestRolloutLearntPolicy(unittest.TestCase):
+class TestTrainAndEvaluate(unittest.TestCase):
     def test_ppo_train_then_rollout(self):
-        learn_test_plus_rollout("PPO")
+        learn_test_plus_evaluate("PPO")
 
     def test_ppo_multi_agent_train_then_rollout(self):
-        learn_test_multi_agent_plus_rollout("PPO")
+        learn_test_multi_agent_plus_evaluate("PPO")
 
 
 if __name__ == "__main__":
