@@ -175,10 +175,10 @@ class DataClient:
         for callback in callbacks:
             if callback:
                 callback(err)
-            # Since self._in_shutdown is set to True, no new item
-            # will be added to self.asyncio_waiting_data
+        # Since self._in_shutdown is set to True, no new item
+        # will be added to self.asyncio_waiting_data
 
-    def _acknowledge(self, req_id: int):
+    def _acknowledge(self, req_id: int) -> None:
         """
         Puts an acknowledge request on the request queue periodically.
         Lock should be held before calling this.
@@ -191,7 +191,7 @@ class DataClient:
                     acknowledge=ray_client_pb2.AcknowledgeRequest(
                         req_id=req_id)))
 
-    def _reconnect_channel(self):
+    def _reconnect_channel(self) -> None:
         """
         Attempts to reconnect the gRPC channel and resend outstanding
         requests. First, the server is pinged to see if the current channel
