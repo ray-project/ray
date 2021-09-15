@@ -23,16 +23,9 @@ inline std::pair<bool, std::string> Get(
 }  // namespace common
 
 class MainServer;
-
 class BackupServer {
  public:
-  BackupServer() {
-    // Handle failover when the actor restarted.
-    if (ray::WasCurrentActorRestarted()) {
-      HanldeFailover();
-    }
-    RAYLOG(INFO) << "BackupServer created";
-  }
+  BackupServer();
 
   // The main server will get all BackupServer's data when it restarted.
   std::unordered_map<std::string, std::string> GetAllData();
@@ -48,6 +41,14 @@ class BackupServer {
   std::mutex mtx_;
 };
 
+BackupServer::BackupServer() {
+  // Handle failover when the actor restarted.
+  if (ray::WasCurrentActorRestarted()) {
+    HanldeFailover();
+  }
+  RAYLOG(INFO) << "BackupServer created";
+}
+
 std::unordered_map<std::string, std::string> BackupServer::GetAllData() {
   std::unique_lock<std::mutex> lock(mtx_);
   return data_;
@@ -60,20 +61,13 @@ void BackupServer::SyncData(const std::string &key, const std::string &val) {
 
 class MainServer {
  public:
-  MainServer() {
-    if (ray::WasCurrentActorRestarted()) {
-      HanldeFailover();
-    }
+  MainServer();
 
-    dest_actor_ = ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
-    RAYLOG(INFO) << "MainServer created";
-  }
-
-  std::unordered_map<std::string, std::string> GetAllData();
+  void Put(const std::string &key, const std::string &val);
 
   std::pair<bool, std::string> Get(const std::string &key);
 
-  void Put(const std::string &key, const std::string &val);
+  std::unordered_map<std::string, std::string> GetAllData();
 
  private:
   void HanldeFailover();
@@ -81,8 +75,35 @@ class MainServer {
   std::unordered_map<std::string, std::string> data_;
   std::mutex mtx_;
 
-  boost::optional<ray::ActorHandle<BackupServer>> dest_actor_;
+  ray::ActorHandle<BackupServer> backup_actor_;
 };
+
+MainServer::MainServer() {
+  if (ray::WasCurrentActorRestarted()) {
+    HanldeFailover();
+  }
+
+  backup_actor_ = *ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
+  RAYLOG(INFO) << "MainServer created";
+}
+
+void MainServer::Put(const std::string &key, const std::string &val) {
+  // SyncData before put data.
+  auto r = backup_actor_.Task(&BackupServer::SyncData).Remote(key, val);
+  std::vector<ray::ObjectRef<void>> objects{r};
+  auto result = ray::Wait(objects, 1, 2000);
+  if (result.ready.empty()) {
+    RAYLOG(WARNING) << "MainServer SyncData failed.";
+  }
+
+  std::unique_lock<std::mutex> lock(mtx_);
+  data_[key] = val;
+}
+
+std::pair<bool, std::string> MainServer::Get(const std::string &key) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  return common::Get(key, data_);
+}
 
 std::unordered_map<std::string, std::string> MainServer::GetAllData() {
   std::unique_lock<std::mutex> lock(mtx_);
@@ -96,28 +117,10 @@ void BackupServer::HanldeFailover() {
   RAYLOG(INFO) << "BackupServer get all data from MainServer";
 }
 
-std::pair<bool, std::string> MainServer::Get(const std::string &key) {
-  std::unique_lock<std::mutex> lock(mtx_);
-  return common::Get(key, data_);
-}
-
-void MainServer::Put(const std::string &key, const std::string &val) {
-  // SyncData before put data.
-  auto r = (*dest_actor_).Task(&BackupServer::SyncData).Remote(key, val);
-  std::vector<ray::ObjectRef<void>> objects{r};
-  auto result = ray::Wait(objects, 1, 2000);
-  if (result.ready.empty()) {
-    RAYLOG(WARNING) << "MainServer SyncData failed.";
-  }
-
-  std::unique_lock<std::mutex> lock(mtx_);
-  data_[key] = val;
-}
-
 void MainServer::HanldeFailover() {
   // Get all data from BackupServer.
-  dest_actor_ = ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
-  data_ = *dest_actor_.get().Task(&BackupServer::GetAllData).Remote().Get();
+  backup_actor_ = *ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
+  data_ = *backup_actor_.Task(&BackupServer::GetAllData).Remote().Get();
   RAYLOG(INFO) << "MainServer get all data from BackupServer";
 }
 
