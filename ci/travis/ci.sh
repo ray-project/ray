@@ -466,7 +466,10 @@ _lint() {
 
     # Run clang-tidy last since it needs to rebuild.
     if command -v clang-tidy > /dev/null; then
-      "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+      pushd "${WORKSPACE_DIR}"
+        "${ROOT_DIR}"/install-llvm-binaries.sh
+        "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+      popd
     else
       { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
     fi
