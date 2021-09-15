@@ -58,14 +58,21 @@ class Preprocessor:
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
         if self._i % OBS_VALIDATION_INTERVAL == 0:
+            # Convert lists to np.ndarrays.
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
                 observation = np.array(observation)
+            # Ignore float32/float64 diffs.
+            if isinstance(self._obs_space, gym.spaces.Box) and \
+                    self._obs_space.dtype != observation.dtype:
+                observation = observation.astype(self._obs_space.dtype)
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
-                        "Observation ({}) outside given space ({})!",
-                        observation, self._obs_space)
+                        "Observation ({} dtype={}) outside given space ({})!",
+                        observation, observation.dtype if isinstance(
+                            self._obs_space,
+                            gym.spaces.Box) else None, self._obs_space)
             except AttributeError:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "
