@@ -32,9 +32,9 @@ available_node_types:
             # Support for TPU pods will be added in the future.
             acceleratorType: v2-8
             runtimeVersion: v2-alpha
-            # Uncomment to use preemptible TPUs
-            # schedulingConfig:
-            #     preemptible: true
+            schedulingConfig:
+                # Set to false to use non-preemptible TPUs
+                preemptible: true
 
 provider:
     type: gcp
