@@ -72,7 +72,7 @@ def _get_insufficient_resources_warning_msg() -> str:
         f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
         f"and/or add more resources to your Ray runtime.")
     if is_ray_cluster():
-        return "If autoscaler is still scaling up, ignore this message. " + msg
+        return "Ignore this message if the cluster is autoscaling. " + msg
     else:
         return msg
 
@@ -81,6 +81,7 @@ def _get_insufficient_resources_warning_msg() -> str:
 def _get_insufficient_resources_error_msg(trial: Trial) -> str:
     trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
     return (
+        f"Ignore this message if the cluster is autoscaling. "
         f"You asked for {trial_cpu_gpu['CPU']} cpu and "
         f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
         f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
@@ -298,11 +299,13 @@ class TrialExecutor(metaclass=ABCMeta):
                     for trial in all_trials:
                         if (trial.status is Trial.PENDING
                                 and not _can_fulfill_no_autoscaler(trial)):
-                            raise TuneError(
+                            # TODO(xwjiang):
+                            #  Raise an Error once #18608 is resolved.
+                            logger.warning(
                                 _get_insufficient_resources_error_msg(trial))
                 else:
-                    # TODO(xwjiang): Output a more helpful msg for autoscaler.
-                    # https://github.com/ray-project/ray/issues/17799
+                    # TODO(xwjiang): #17799.
+                    #  Output a more helpful msg for autoscaler.
                     logger.warning(_get_insufficient_resources_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
@@ -315,7 +318,6 @@ class TrialExecutor(metaclass=ABCMeta):
             trials (List[Trial]): The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
-
         if self._queue_trials:
             return
         self._may_warn_insufficient_resources(trials)

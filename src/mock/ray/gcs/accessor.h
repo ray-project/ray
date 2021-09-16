@@ -41,7 +41,8 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status, AsyncCreateActor,
-              (const TaskSpecification &task_spec, const StatusCallback &callback),
+              (const TaskSpecification &task_spec,
+               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
   MOCK_METHOD(Status, AsyncSubscribeAll,
               ((const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
