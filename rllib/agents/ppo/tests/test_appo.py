@@ -9,7 +9,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestAPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)  #TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -40,7 +40,7 @@ class TestAPPO(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
-    def test_appo_two_optimizers(self):
+    def test_appo_two_tf_optimizers(self):
         config = ppo.appo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["_tf_policy_handles_more_than_one_loss"] = True
@@ -48,7 +48,7 @@ class TestAPPO(unittest.TestCase):
         config["model"]["vf_share_layers"] = False
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config, frameworks="tf"):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())

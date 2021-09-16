@@ -56,7 +56,6 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         # If separate_vf_optimizer is True, define separate learning rate
         # (and possibly schedule) for the value network.
         "lr_vf": 0.0005,
-        #"lr_vf_schedule": None,
 
         # == IMPALA optimizer params (see documentation in impala.py) ==
         "rollout_fragment_length": 50,

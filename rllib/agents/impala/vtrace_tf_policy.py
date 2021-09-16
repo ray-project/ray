@@ -289,18 +289,23 @@ def clip_gradients(policy, optimizer, loss):
             clipped_g_and_v = []
             for g, v in grads_and_vars:
                 if g is not None:
-                    clipped_g, _ = tf.clip_by_global_norm([g], policy.config["grad_clip"])
+                    clipped_g, _ = tf.clip_by_global_norm(
+                        [g], policy.config["grad_clip"])
                     clipped_g_and_v.append((clipped_g[0], v))
             clipped_grads_and_vars.append(clipped_g_and_v)
 
-        policy.grads = [g for g_and_v in clipped_grads_and_vars for (g, v) in g_and_v]
+        policy.grads = [
+            g for g_and_v in clipped_grads_and_vars for (g, v) in g_and_v
+        ]
     # Only one optimizer and and loss term.
     else:
         grads_and_vars = optimizer.compute_gradients(
             loss, policy.model.trainable_variables())
         grads = [g for (g, v) in grads_and_vars]
-        policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-        clipped_grads_and_vars = list(zip(policy.grads, policy.model.trainable_variables()))
+        policy.grads, _ = tf.clip_by_global_norm(grads,
+                                                 policy.config["grad_clip"])
+        clipped_grads_and_vars = list(
+            zip(policy.grads, policy.model.trainable_variables()))
 
     return clipped_grads_and_vars
 

@@ -263,9 +263,9 @@ class TFPolicy(Policy):
         self._losses = []
         # A batch dict passed into loss function as input.
         self._loss_input_dict = {}
-        loss = force_list(loss)
-        if len(loss) > 0:
-            self._initialize_loss(loss, loss_inputs)
+        losses = force_list(loss)
+        if len(losses) > 0:
+            self._initialize_loss(losses, loss_inputs)
 
         # The log-likelihood calculator op.
         self._log_likelihood = log_likelihood
@@ -336,7 +336,8 @@ class TFPolicy(Policy):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
         if self.model and not isinstance(self.model, tf.keras.Model):
-            self._losses = self.model.custom_loss(losses, self._loss_input_dict)
+            self._losses = self.model.custom_loss(losses,
+                                                  self._loss_input_dict)
             self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._losses = losses
@@ -355,9 +356,11 @@ class TFPolicy(Policy):
         # Only one optimizer and and loss term.
         else:
             self._grads_and_vars = [
-                (g, v) for (g, v) in
-                self.gradients(self._optimizers[0], self._losses[0])
-                if g is not None]
+                (g, v)
+                for (g,
+                     v) in self.gradients(self._optimizers[0], self._losses[0])
+                if g is not None
+            ]
             self._grads = [g for (g, v) in self._grads_and_vars]
 
         if self.model:
@@ -375,15 +378,14 @@ class TFPolicy(Policy):
                     self._update_ops))
             with tf1.control_dependencies(self._update_ops):
                 self._apply_op = self.build_apply_op(
-                    optimizer=self._optimizers if \
-                        self.config["_tf_policy_handles_more_than_one_loss"] \
-                        else self._optimizers[0],
+                    optimizer=self._optimizers
+                    if self.config["_tf_policy_handles_more_than_one_loss"]
+                    else self._optimizers[0],
                     grads_and_vars=self._grads_and_vars)
 
         if log_once("loss_used"):
-            logger.debug(
-                "These tensors were used in the loss functions:"
-                f"\n{summarize(self._loss_input_dict)}\n")
+            logger.debug("These tensors were used in the loss functions:"
+                         f"\n{summarize(self._loss_input_dict)}\n")
 
         self.get_session().run(tf1.global_variables_initializer())
 
@@ -767,10 +769,11 @@ class TFPolicy(Policy):
             return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self,
-                  optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
-                  loss: Union[TensorType, List[TensorType]],
-                  ) -> List[Tuple[TensorType, TensorType]]:
+    def gradients(
+            self,
+            optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
+            loss: Union[TensorType, List[TensorType]],
+    ) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
 
         Args:
@@ -818,9 +821,10 @@ class TFPolicy(Policy):
             for i, optim in enumerate(optimizers):
                 # Specify global_step (e.g. for TD3 which needs to count the
                 # num updates that have happened).
-                ops.append(optim.apply_gradients(
-                    grads_and_vars[i],
-                    global_step=tf1.train.get_or_create_global_step()))
+                ops.append(
+                    optim.apply_gradients(
+                        grads_and_vars[i],
+                        global_step=tf1.train.get_or_create_global_step()))
             return tf.group(ops)
         # We have only one optimizer and one loss term.
         else:

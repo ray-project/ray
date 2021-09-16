@@ -322,7 +322,10 @@ def build_eager_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
-            self._optimizers: List[LocalOptimizer] = optimizers
+            # TODO: (sven) Allow tf policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            self._optimizer: LocalOptimizer = \
+                optimizers[0] if optimizers else None
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -647,9 +650,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = super().get_state()
-            if self._optimizers:
-                optimizer_vars = [o.variables() for o in self._optimizers]
-                state["_optimizer_variables"] = optimizer_vars
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             # Add exploration state.
             state["_exploration_state"] = self.exploration.get_state()
             return state
@@ -659,15 +663,15 @@ def build_eager_tf_policy(
             state = state.copy()  # shallow copy
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
-            if optimizer_vars:
+            if optimizer_vars and self._optimizer.variables():
                 logger.warning(
                     "Cannot restore an optimizer's state for tf eager! Keras "
                     "is not able to save the v1.x optimizers (from "
                     "tf.compat.v1.train) since they aren't compatible with "
                     "checkpoints.")
-                for opt, vars in zip(self._optimizers, optimizer_vars):
-                    for opt_var, value in zip(opt.variables(), vars):
-                        opt_var.assign(value)
+                for opt_var, value in zip(self._optimizer.variables(),
+                                          optimizer_vars):
+                    opt_var.assign(value)
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])

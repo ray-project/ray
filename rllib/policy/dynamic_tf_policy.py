@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -427,13 +428,13 @@ class DynamicTFPolicy(TFPolicy):
             ])
 
         instance._loss_input_dict = input_dict
-        loss = instance._do_loss_init(SampleBatch(input_dict))
+        losses = instance._do_loss_init(SampleBatch(input_dict))
         loss_inputs = [
             (k, existing_inputs[i])
             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
         ]
 
-        TFPolicy._initialize_loss(instance, loss, loss_inputs)
+        TFPolicy._initialize_loss(instance, losses, loss_inputs)
         if instance._grad_stats_fn:
             instance._stats_fetches.update(
                 instance._grad_stats_fn(instance, input_dict, instance._grads))
@@ -627,14 +628,14 @@ class DynamicTFPolicy(TFPolicy):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        loss = self._do_loss_init(train_batch)
+        losses = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
             train_batch.accessed_keys | dummy_batch.accessed_keys | \
             dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
-        TFPolicy._initialize_loss(self, loss, [
+        TFPolicy._initialize_loss(self, losses, [
             (k, v) for k, v in train_batch.items() if k in all_accessed_keys
         ] + ([(SampleBatch.SEQ_LENS, train_batch[SampleBatch.SEQ_LENS])]
              if SampleBatch.SEQ_LENS in train_batch else []))
@@ -706,14 +707,15 @@ class DynamicTFPolicy(TFPolicy):
         }
 
     def _do_loss_init(self, train_batch: SampleBatch):
-        loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
+        losses = self._loss_fn(self, self.model, self.dist_class, train_batch)
+        losses = force_list(losses)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, train_batch))
         # Override the update ops to be those of the model.
         self._update_ops = []
         if not isinstance(self.model, tf.keras.Model):
             self._update_ops = self.model.update_ops()
-        return loss
+        return losses
 
 
 class TFMultiGPUTowerStack:
