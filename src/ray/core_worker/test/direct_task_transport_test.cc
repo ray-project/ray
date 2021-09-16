@@ -239,8 +239,9 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   }
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
+  Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
     return Status::OK();
   }
 
