@@ -165,26 +165,64 @@ void KillMainServer() {
 
 class Client {
  public:
-  Client() { main_actor_ = ray::GetActor<MainServer>(MAIN_SERVER_NAME); }
+  Client() {
+    main_actor_ = ray::GetActor<MainServer>(MAIN_SERVER_NAME);
+    // Always retry if main server not exist.
+    if (!main_actor_) {
+      RetryGetActor();
+    }
+  }
 
   bool Put(const std::string &key, const std::string &val) {
-    // Maybe the main server not exsit, need to check it.
-    if (!main_actor_) {
-      return false;
-    }
+    // Always retry if Put failed.
+    AlwaysRetry([this, &key, &val] {
+      (*main_actor_).Task(&MainServer::Put).Remote(key, val).Get();
+      return true;
+    });
 
-    (*main_actor_).Task(&MainServer::Put).Remote(key, val).Get();
     return true;
   }
 
   std::pair<bool, std::string> Get(const std::string &key) {
-    if (!main_actor_) {
-      return {};
-    }
-    return *(*main_actor_).Task(&MainServer::Get).Remote(key).Get();
+    // Always retry if Gut failed.
+    return AlwaysRetry([this, &key] {
+      return *(*main_actor_).Task(&MainServer::Get).Remote(key).Get();
+    });
   }
 
  private:
+  void RetryGetActor() {
+    AlwaysRetry([this] {
+      main_actor_ = ray::GetActor<MainServer>(MAIN_SERVER_NAME);
+      return std::make_pair(bool(main_actor_), "");
+    });
+  }
+
+  template <typename F>
+  std::result_of_t<F()> AlwaysRetry(const F &f) {
+    using R = std::result_of_t<F()>;
+    R r{};
+    while (true) {
+      try {
+        r = f();
+        if (IsValid(r)) {
+          break;
+        }
+      } catch (const std::exception &) {
+      }
+
+      std::cout << "Retry 2 seconds\n";
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      continue;
+    }
+
+    return r;
+  }
+
+  bool IsValid(bool r) { return r; }
+
+  bool IsValid(const std::pair<bool, std::string> r) { return r.first; }
+
   boost::optional<ray::ActorHandle<MainServer>> main_actor_;
 };
 
@@ -196,11 +234,6 @@ int main(int argc, char **argv) {
 
   Client client;
   bool r = client.Put("hello", "ray");
-  if (!r) {
-    // If the main server not exist, wait for some time and try again.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    r = client.Put("hello", "ray");
-  }
   assert(r);
 
   auto get_result = [&client](const std::string &key) {
