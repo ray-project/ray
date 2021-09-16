@@ -440,14 +440,19 @@ class StandardAutoscaler:
             else:
                 infeasible.append(bundle)
         if pending:
-            self.event_summarizer.add_once(
-                "Resources were pending and the cluster is NOT autoscaling: {}".format(
-                    pending),
-                key="pending")
+            if self.readonly:
+                self.event_summarizer.add_once(
+                    "The following resource requests are pending: {}. They will be "
+                    "scheduled after existing tasks and actors.".format(
+                        ", ".join(set(str(x) for x in pending))),
+                    key="pending")
         if infeasible:
-            self.event_summarizer.add_once(
-                "Resources are infeasible: {}".format(infeasible),
-                key="infeasible")
+            for ix in infeasible:
+                self.event_summarizer.add_once(
+                    "ERROR: No available node types can fulfill resource "
+                    "request {}. Add suitable nodes to this cluster to "
+                    "resolve this issue.".format(ix),
+                    key="infeasible_{}".format(sorted(ix.items())))
 
     def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
         """Terminate specified nodes and clean associated autoscaler state."""

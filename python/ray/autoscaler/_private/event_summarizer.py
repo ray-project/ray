@@ -31,7 +31,7 @@ class EventSummarizer:
 
     def add_once(self, message, key):
         if key not in self.keys:
-#            self.keys.add(key)
+            self.keys.add(key)
             self.messages.append(message)
 
     def summary(self) -> List[str]:

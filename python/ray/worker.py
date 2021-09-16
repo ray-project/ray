@@ -1087,8 +1087,8 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
         if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
-                       "autoscaling status. To disable autoscaler event "
-                       "messages, you can set AUTOSCALER_EVENTS=0.")
+                       "cluster status. To disable these "
+                       "messages, set AUTOSCALER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
@@ -1138,12 +1138,15 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 res = data["task_name"] + " " + res
             return res
 
-    def color_for(data: Dict[str, str]) -> str:
+    def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
         elif data["pid"] == "autoscaler":
-            return colorama.Style.BRIGHT + colorama.Fore.CYAN
+            if "ERROR" in line:
+                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+            else:
+                return colorama.Style.BRIGHT + colorama.Fore.CYAN
         else:
             return colorama.Fore.CYAN
 
@@ -1157,7 +1160,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
     if data["ip"] == data["localhost"]:
         for line in lines:
             print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data, line),
                                          prefix_for(data), pid,
                                          colorama.Style.RESET_ALL, line),
                 file=print_file)

@@ -137,6 +137,7 @@ class Monitor:
         self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
+        self.readonly = False
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -165,21 +166,21 @@ class Monitor:
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
             autoscaling_config = autoscaling_config
-            readonly = False
+            self.readonly = False
         else:
             def config_reader():
                 config = {'cluster_name': 'default', 'max_workers': 0, 'upscaling_speed': 1.0, 'docker': {}, 'idle_timeout_minutes': 0, 'provider': {'type': 'single_node'}, 'auth': {}, 'available_node_types': {'ray.head.default': {'resources': {}, 'node_config': {}, 'max_workers': 1}}, 'head_node_type': 'ray.head.default', 'file_mounts': {}, 'cluster_synced_files': [], 'file_mounts_sync_continuously': False, 'rsync_exclude': [], 'rsync_filter': [], 'initialization_commands': [], 'setup_commands': [], 'head_setup_commands': [], 'worker_setup_commands': [], 'head_start_ray_commands': [], 'worker_start_ray_commands': [], 'head_node': {}, 'worker_nodes': {}}
                 config["available_node_types"].update(self.extra_node_types)
                 return config
             autoscaling_config = config_reader
-            readonly = True
+            self.readonly = True
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
             prom_metrics=self.prom_metrics,
-            readonly=readonly)
+            readonly=self.readonly)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
@@ -282,7 +283,7 @@ class Monitor:
         only the latest cluster size per batch.
         """
         avail_resources = self.load_metrics.resources_avail_summary()
-        if avail_resources != self.last_avail_resources:
+        if not self.readonly and avail_resources != self.last_avail_resources:
             self.event_summarizer.add(
                 "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
                 quantity=avail_resources,
