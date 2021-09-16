@@ -40,4 +40,4 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
-    print("PASSED.")
+    print("Ok.")

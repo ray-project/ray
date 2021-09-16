@@ -424,8 +424,6 @@ def run_learning_tests_from_yaml(
                 # in a test (e.g. rllib_learning_test), each one can at least
                 # create its trainer and run a first iteration.
                 e["stop"]["time_total_s"] = 0
-                e["pass_criteria"]["episode_reward_mean"] = 0.0
-                e["pass_criteria"]["timesteps_total"] = 0
             else:
                 # We also stop early, once we reach the desired reward.
                 e["stop"]["episode_reward_mean"] = \
@@ -460,7 +458,7 @@ def run_learning_tests_from_yaml(
                     "passed": False,
                 }
                 # This key would break tune.
-                del e["pass_criteria"]
+                e.pop("pass_criteria", None)
 
     # Print out the actual config.
     print("== Test config ==")
