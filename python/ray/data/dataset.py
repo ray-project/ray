@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
@@ -349,12 +350,26 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
+        # Check for spread resource labels in environment variable, and use
+        # the given labels for round-robin node-based scheduling.
+        shuffle_spread_custom_resource_labels = os.getenv(
+            "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS", None)
+        if shuffle_spread_custom_resource_labels is not None:
+            shuffle_spread_custom_resource_labels = (
+                shuffle_spread_custom_resource_labels.split(","))
+            round_robin_resource_provider = itertools.cycle(
+                map(lambda resource: {resource: 0.001},
+                    shuffle_spread_custom_resource_labels))
+        else:
+            round_robin_resource_provider = None
+
         num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
             self.move_blocks(),
             num_blocks or num_blocks,
             random_shuffle=True,
-            random_seed=seed)
+            random_seed=seed,
+            _round_robin_resource_provider=round_robin_resource_provider)
         return Dataset(new_blocks)
 
     def move_blocks(self):

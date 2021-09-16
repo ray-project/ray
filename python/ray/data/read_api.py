@@ -1,4 +1,6 @@
+import itertools
 import logging
+import os
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
 
@@ -163,13 +165,28 @@ def read_datasource(datasource: Datasource[T],
         ray_remote_args["num_cpus"] = 0.5
     remote_read = cached_remote_fn(remote_read)
 
+    read_spread_custom_resource_labels = os.getenv(
+        "RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS", None)
+    if read_spread_custom_resource_labels is not None:
+        read_spread_custom_resource_labels = (
+            read_spread_custom_resource_labels.split(","))
+        round_robin_resource_provider = itertools.cycle(
+            map(lambda resource: {resource: 0.001},
+                read_spread_custom_resource_labels))
+    else:
+        round_robin_resource_provider = itertools.repeat({})
+
+    resource_iter = iter(round_robin_resource_provider)
+
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
 
     for task in read_tasks:
         calls.append(
-            lambda task=task: remote_read.options(
-                **ray_remote_args).remote(task))
+            lambda task=task,
+            resources=next(resource_iter): remote_read.options(
+                **ray_remote_args,
+                resources=resources).remote(task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)

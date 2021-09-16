@@ -1,5 +1,6 @@
+import itertools
 import math
-from typing import TypeVar, List, Optional
+from typing import TypeVar, List, Optional, Dict, Any, Iterable
 
 import numpy as np
 
@@ -13,22 +14,39 @@ from ray.data.impl.remote_fn import cached_remote_fn
 T = TypeVar("T")
 
 
-def simple_shuffle(input_blocks: BlockList[T],
-                   output_num_blocks: int,
-                   *,
-                   random_shuffle: bool = False,
-                   random_seed: Optional[int] = None) -> BlockList[T]:
+def simple_shuffle(
+        input_blocks: BlockList[T],
+        output_num_blocks: int,
+        *,
+        random_shuffle: bool = False,
+        random_seed: Optional[int] = None,
+        map_ray_remote_args: Dict[str, Any] = None,
+        reduce_ray_remote_args: Dict[str, Any] = None,
+        _round_robin_resource_provider: Iterable[Dict[str, float]] = None
+) -> BlockList[T]:
+    if _round_robin_resource_provider is None:
+        # If no round-robin resource provider given, yield an empty
+        # dictionary.
+        _round_robin_resource_provider = itertools.repeat({})
+    # Create separate resource iterators for the map and reduce stages.
+    map_resource_iter, reduce_resource_iter = itertools.tee(
+        _round_robin_resource_provider, 2)
+    if map_ray_remote_args is None:
+        map_ray_remote_args = {}
+    if reduce_ray_remote_args is None:
+        reduce_ray_remote_args = {}
     input_num_blocks = len(input_blocks)
 
-    shuffle_map = cached_remote_fn(_shuffle_map).options(
-        num_returns=output_num_blocks)
+    shuffle_map = cached_remote_fn(_shuffle_map, num_returns=output_num_blocks)
     shuffle_reduce = cached_remote_fn(_shuffle_reduce, num_returns=2)
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
     shuffle_map_out = [
-        shuffle_map.remote(block, i, output_num_blocks, random_shuffle,
-                           random_seed) for i, block in enumerate(input_blocks)
+        shuffle_map.options(
+            **map_ray_remote_args, resources=next(map_resource_iter)).remote(
+                block, i, output_num_blocks, random_shuffle, random_seed)
+        for i, block in enumerate(input_blocks)
     ]
     del input_blocks
     if output_num_blocks == 1:
@@ -45,8 +63,10 @@ def simple_shuffle(input_blocks: BlockList[T],
     reduce_bar = ProgressBar(
         "Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
-        shuffle_reduce.remote(
-            *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
+        shuffle_reduce.options(
+            **reduce_ray_remote_args,
+            resources=next(reduce_resource_iter)).remote(
+                *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
     del shuffle_map_out

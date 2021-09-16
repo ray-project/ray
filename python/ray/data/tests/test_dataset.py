@@ -2375,6 +2375,79 @@ def test_random_shuffle(ray_start_regular_shared, pipelined):
     assert r1 != r0, (r1, r0)
 
 
+def test_random_shuffle_spread(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(resources={"foo": 100})
+    cluster.add_node(resources={"bar": 100})
+    cluster.add_node(resources={"baz": 100})
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+
+    os.environ[
+        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
+
+    ds = ray.data.range_arrow(1000000, parallelism=2).random_shuffle()
+    blocks = ds.get_blocks()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id, baz_node_id}
+
+
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(resources={"foo": 100})
+    cluster.add_node(resources={"bar": 100})
+    cluster.add_node(resources={"baz": 100})
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({
+        "one": list(range(100000)),
+        "two": list(range(100000, 200000))
+    })
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({
+        "one": list(range(300000, 400000)),
+        "two": list(range(400000, 500000))
+    })
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
+
+    ds = ray.data.read_parquet(data_path)
+
+    # Force reads.
+    blocks = ds.get_blocks()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id, baz_node_id}
+
+
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     a = list(reversed(range(num_items)))
