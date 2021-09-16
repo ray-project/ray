@@ -77,7 +77,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": dict(job_table_entry.config.metadata),
                 "runtime_env": json.loads(
-                    job_table_entry.config.serialized_runtime_env),
+                    job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             entry = {
                 "is_dead": job_table_entry.is_dead,
@@ -98,7 +98,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
-            runtime_env = json.loads(actor_table_entry.serialized_runtime_env)
+            task_spec = actor_table_entry.task_spec
+            runtime_env = json.loads(
+                task_spec.runtime_env.serialized_runtime_env)
             entry = {
                 "job_id": actor_table_entry.job_id.hex(),
                 "state": gcs_pb2.ActorTableData.ActorState.Name(
@@ -109,8 +111,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
-                "resources": dict(
-                    actor_table_entry.task_spec.required_resources),
+                "resources": dict(task_spec.required_resources),
                 "actor_class": actor_table_entry.class_name,
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
