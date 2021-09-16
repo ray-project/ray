@@ -24,7 +24,6 @@ def calculate_desired_num_replicas(autoscaling_config: AutoscalingConfig,
             on the input metrics and the current number of replicas.
 
     """
-    # Assume current_metrics have already been time-averaged over a window.
     current_num_replicas = len(current_num_ongoing_requests)
     if current_num_replicas == 0:
         raise ValueError("Number of replicas cannot be zero")
