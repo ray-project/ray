@@ -32,8 +32,8 @@ class BackupServer {
   // The main server will get all BackupServer's data when it restarts.
   std::unordered_map<std::string, std::string> GetAllData();
 
-  // The main server will sync data at first before puting data.
-  void SyncData(const std::string &key, const std::string &val);
+  // This is used for the main server to backup data before putting data.
+  void BackupData(const std::string &key, const std::string &val);
 
  private:
   // Get all data from MainServer.
@@ -52,7 +52,7 @@ BackupServer::BackupServer() {
 
 std::unordered_map<std::string, std::string> BackupServer::GetAllData() { return data_; }
 
-void BackupServer::SyncData(const std::string &key, const std::string &val) {
+void BackupServer::BackupData(const std::string &key, const std::string &val) {
   data_[key] = val;
 }
 
@@ -84,12 +84,12 @@ MainServer::MainServer() {
 }
 
 void MainServer::Put(const std::string &key, const std::string &val) {
-  // SyncData before put data.
-  auto r = backup_actor_.Task(&BackupServer::SyncData).Remote(key, val);
+  // BackupData before put data.
+  auto r = backup_actor_.Task(&BackupServer::BackupData).Remote(key, val);
   std::vector<ray::ObjectRef<void>> objects{r};
   auto result = ray::Wait(objects, 1, 2000);
   if (result.ready.empty()) {
-    RAYLOG(WARNING) << "MainServer SyncData failed.";
+    RAYLOG(WARNING) << "MainServer BackupData failed.";
   }
 
   data_[key] = val;
@@ -121,7 +121,7 @@ static BackupServer *CreateBackupServer() { return new BackupServer(); }
 
 RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainServer::Put);
 
-RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::SyncData);
+RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::BackupData);
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
