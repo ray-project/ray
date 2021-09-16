@@ -67,11 +67,11 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetCreatingTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(task_spec.TaskId(), _, _));
-  std::function<void(Status)> create_cb;
+  rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
   ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
-  create_cb(Status::OK());
+  create_cb(Status::OK(), rpc::CreateActorReply());
 }
 
 TEST_F(DirectTaskTransportTest, ActorCreationFail) {
@@ -81,11 +81,11 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   EXPECT_CALL(*task_finisher,
               PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED,
                                 _, _, true));
-  std::function<void(Status)> create_cb;
+  rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
   ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
-  create_cb(Status::IOError(""));
+  create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
 
 }  // namespace core
