@@ -1,4 +1,3 @@
-import asyncio
 import time
 
 import ray
@@ -67,7 +66,7 @@ def test_e2e(serve_instance):
 
     A.deploy()
     handle = A.get_handle()
-    _refs = [handle.remote() for _ in range(100)]
+    [handle.remote() for _ in range(100)]
 
     # Wait for metrics to propogate
     def get_data():
