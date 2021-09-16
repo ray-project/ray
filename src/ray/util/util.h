@@ -289,7 +289,7 @@ class ThreadPrivate {
     }
 
     RAY_CHECK(id_ == std::this_thread::get_id())
-        << "A variable private to thread " << thread_name_ << "was accessed in thread "
+        << "A variable private to thread " << thread_name_ << " was accessed in thread "
         << GetThreadName();
   }
 
