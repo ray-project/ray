@@ -90,7 +90,8 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].execute.remote(f, *args, **kwargs)
+        return self.workers[i]._BaseWorkerMixin__execute.remote(
+            f, *args, **kwargs)
 
     return execute_single_async_special
 
