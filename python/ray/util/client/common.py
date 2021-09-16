@@ -420,7 +420,7 @@ def _get_client_id_from_context(context: Any) -> str:
     return client_id
 
 
-def _propogate_error_in_context(e: Exception, context: Any) -> bool:
+def _propagate_error_in_context(e: Exception, context: Any) -> bool:
     """
     Encode an error into the context of an RPC response. Returns True
     if the error can be recovered from, false otherwise

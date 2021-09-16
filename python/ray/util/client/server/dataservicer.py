@@ -6,14 +6,14 @@ import grpc
 from queue import Queue
 import sys
 
-from typing import Any, Dict, Iterator, TYPE_CHECKING, Union
+from typing import Any, Dict, Iterator, Optional, TYPE_CHECKING, Union
 from threading import Lock, Thread
 import time
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (CLIENT_SERVER_MAX_THREADS,
-                                    _propogate_error_in_context,
+                                    _propagate_error_in_context,
                                     OrderedResponseCache)
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 QUEUE_JOIN_SECONDS = 10
 
 
-def _get_reconnecting_from_context(context: Any) -> bool:
+def _get_reconnecting_from_context(context: Any) -> Optional[bool]:
     """
-    Get `reconnecting` from gRPC metadata, or False if not present
+    Get `reconnecting` from gRPC metadata, or None if missing.
     """
     metadata = {k: v for k, v in context.invocation_metadata()}
     val = metadata.get("reconnecting")
@@ -193,7 +193,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 yield resp
         except Exception as e:
             logger.exception("Error in data channel:")
-            recoverable = _propogate_error_in_context(e, context)
+            recoverable = _propagate_error_in_context(e, context)
             invalid_cache = response_cache.invalidate(e)
             if not recoverable or invalid_cache:
                 context.set_code(grpc.StatusCode.FAILED_PRECONDITION)

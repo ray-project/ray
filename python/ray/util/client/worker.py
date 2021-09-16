@@ -284,7 +284,7 @@ class Worker:
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
-            request - A gRPC message to add the thread and request IDs to
+            metadata - the gRPC metadata to append the IDs to
         """
         thread_id = str(threading.get_ident())
         with self._req_id_lock:
