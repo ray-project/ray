@@ -17,9 +17,10 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.framework import try_import_tfp
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
 
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
@@ -196,8 +197,9 @@ def validate_config(config: TrainerConfigDict) -> None:
     if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
         logger.warning(
             "You need `tensorflow_probability` in order to run SAC! "
-            "Install it via `pip install tensorflow_probability`. "
-            "Trying to import it results in the following error:")
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
         try_import_tfp(error=True)
 
 
