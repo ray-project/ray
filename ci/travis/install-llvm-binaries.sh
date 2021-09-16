@@ -54,7 +54,7 @@ install_llvm() {
       exit 1
       ;;
     *)
-      printError "Unknown system ${OSTYPE}"
+      printError "Unsupported system ${OSTYPE}"
       exit 1
   esac
   case "${osversion}" in
@@ -67,7 +67,7 @@ install_llvm() {
       rm llvm.tar.xz
       ;;
     *)
-      printError "Unknown linux distro ${OSTYPE}"
+      printError "Unsupported Linux distro ${OSTYPE}"
       exit 1
       ;;
   esac
