@@ -194,9 +194,11 @@ def validate_config(config: TrainerConfigDict) -> None:
         raise ValueError("`grad_clip` value must be > 0.0!")
 
     if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
-        raise ModuleNotFoundError(
+        logger.warning(
             "You need `tensorflow_probability` in order to run SAC! "
-            "Install it via `pip install tensorflow_probability`.")
+            "Install it via `pip install tensorflow_probability`. "
+            "Trying to import it results in the following error:")
+        try_import_tfp(error=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
