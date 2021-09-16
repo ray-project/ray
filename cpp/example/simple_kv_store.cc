@@ -124,16 +124,12 @@ RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainSer
 
 RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::BackupData);
 
-ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
+void StartServer() {
   std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
 
-  ray::PlacementGroupCreationOptions options{false, name, bundles,
+  ray::PlacementGroupCreationOptions options{false, "my_placement_group", bundles,
                                              ray::PlacementStrategy::SPREAD};
-  return ray::CreatePlacementGroup(options);
-}
-
-void StartServer() {
-  auto placement_group = CreateSimplePlacementGroup("my_placement_group");
+  auto placement_group = ray::CreatePlacementGroup(options);
   assert(placement_group.Wait(10));
 
   ray::Actor(CreateMainServer)
