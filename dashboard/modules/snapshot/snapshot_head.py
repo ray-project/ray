@@ -8,9 +8,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
-
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import rest_response
+import ray.dashboard.utils as dashboard_utils
 
 import json
 import aiohttp.web
@@ -35,7 +33,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         force_kill = req.query.get("force_kill", False) in ("true", "True")
         no_restart = req.query.get("no_restart", False) in ("true", "True")
         if not actor_id:
-            return rest_response(
+            return dashboard_utils.rest_response(
                 success=False, message="actor_id is required.")
 
         request = gcs_service_pb2.KillActorViaGcsRequest()
@@ -48,7 +46,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                    f"Requested actor with id {actor_id} to terminate. " +
                    "It will exit once running tasks complete")
 
-        return rest_response(success=True, message=message)
+        return dashboard_utils.rest_response(success=True, message=message)
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):

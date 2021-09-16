@@ -9,9 +9,9 @@ import os
 import platform
 import traceback
 
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.head as dashboard_head
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.head as dashboard_head
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
@@ -21,7 +21,7 @@ from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.new_dashboard.optional_deps import aiohttp
+from ray.dashboard.optional_deps import aiohttp
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
