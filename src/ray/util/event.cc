@@ -315,7 +315,7 @@ void RayEventInit(rpc::Event_SourceType source_type,
                   const std::string &log_dir, const std::string &event_level) {
   absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
     RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-    auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+    auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("events");
     ray::EventManager::Instance().AddReporter(
         std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
     SetEventLevel(event_level);
