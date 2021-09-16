@@ -90,6 +90,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
+    "test_tls_auth.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
