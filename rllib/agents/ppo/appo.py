@@ -50,12 +50,6 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         "use_kl_loss": False,
         "kl_coeff": 1.0,
         "kl_target": 0.01,
-        # Set this to true to have two separate optimizers optimize the policy-
-        # and value networks.
-        "separate_vf_optimizer": False,
-        # If separate_vf_optimizer is True, define separate learning rate
-        # (and possibly schedule) for the value network.
-        "lr_vf": 0.0005,
 
         # == IMPALA optimizer params (see documentation in impala.py) ==
         "rollout_fragment_length": 50,

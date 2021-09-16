@@ -100,6 +100,12 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+    # Set this to true to have two separate optimizers optimize the policy-
+    # and value networks.
+    "separate_vf_optimizer": False,
+    # If separate_vf_optimizer is True, define separate learning rate
+    # (and possibly schedule) for the value network.
+    "lr_vf": 0.0005,
 
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
