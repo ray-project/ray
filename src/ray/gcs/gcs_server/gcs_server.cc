@@ -236,7 +236,6 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
@@ -251,30 +250,20 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
 
-  std::function<void(std::shared_ptr<GcsActor>)> release_resources;
-
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
-    scheduler = std::make_unique<GcsBasedActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
         schedule_success_handler, raylet_client_pool_, client_factory);
-    release_resources = [this](std::shared_ptr<GcsActor> actor) {
-      if (actor != nullptr && actor->GetActorWorkerAssignment() != nullptr) {
-        gcs_resource_manager_->ReleaseResources(
-            actor->GetActorWorkerAssignment()->GetNodeID(),
-            actor->GetActorWorkerAssignment()->GetResources());
-        main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
-      }
-    };
   } else {
-    scheduler = std::make_unique<RayletBasedActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
         client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      gcs_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -295,8 +284,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-      },
-      release_resources);
+      });
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
@@ -494,6 +482,12 @@ void GcsServer::InstallEventListeners() {
         // actors.
         gcs_actor_manager_->SchedulePendingActors();
       });
+    });
+
+    auto gcs_actor_scheduler =
+        std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
+    gcs_actor_scheduler->AddClusterResourcesChangedListener([this] {
+      main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
     });
   }
 }

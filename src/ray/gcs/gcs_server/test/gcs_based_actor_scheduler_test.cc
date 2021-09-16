@@ -191,9 +191,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
           cluster_resources_after_scheduling[node_id].GetAvailableResources()));
 
   // When destroying an actor, its acquired resources have to be returned.
-  gcs_resource_manager_->ReleaseResources(
-      actor->GetActorWorkerAssignment()->GetNodeID(),
-      actor->GetActorWorkerAssignment()->GetResources());
+  gcs_actor_scheduler_->OnActorDestruction(actor);
   auto cluster_resources_after_destruction = gcs_resource_manager_->GetClusterResources();
   ASSERT_TRUE(cluster_resources_after_destruction.contains(node_id));
   ASSERT_TRUE(

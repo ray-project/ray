@@ -175,6 +175,8 @@ class GcsServer {
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
+  /// The gcs actor scheduler.
+  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group manager.
