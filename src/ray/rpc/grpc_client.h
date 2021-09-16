@@ -46,8 +46,7 @@ class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
              bool use_tls = true)
-      : client_call_manager_(call_manager),
-        use_tls_(use_tls) {
+      : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
@@ -63,8 +62,7 @@ class GrpcClient {
 
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
              int num_threads, bool use_tls = false)
-      : client_call_manager_(call_manager),
-        use_tls_(use_tls) {
+      : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
     grpc::ChannelArguments argument;
@@ -107,10 +105,8 @@ class GrpcClient {
   /// Whether to use TLS.
   bool use_tls_;
 
-  std::shared_ptr<grpc::Channel> BuildChannel(
-      grpc::ChannelArguments argument,
-      std::string address,
-      int port) {
+  std::shared_ptr<grpc::Channel> BuildChannel(grpc::ChannelArguments argument,
+                                              std::string address, int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (use_tls_) {
       std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
@@ -121,17 +117,15 @@ class GrpcClient {
       std::string cacert = ReadCert(root_cert_file);
 
       grpc::SslCredentialsOptions ssl_opts;
-      ssl_opts.pem_root_certs=cacert;
-      ssl_opts.pem_private_key=private_key;
-      ssl_opts.pem_cert_chain=server_cert_chain;
+      ssl_opts.pem_root_certs = cacert;
+      ssl_opts.pem_private_key = private_key;
+      ssl_opts.pem_cert_chain = server_cert_chain;
       auto ssl_creds = grpc::SslCredentials(ssl_opts);
-      channel =
-          grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                    ssl_creds, argument);
+      channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port), ssl_creds,
+                                          argument);
     } else {
-      channel =
-          grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                    grpc::InsecureChannelCredentials(), argument);
+      channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                          grpc::InsecureChannelCredentials(), argument);
     }
     return channel;
   };
@@ -143,7 +137,6 @@ class GrpcClient {
       use_tls_ = false;
     };
   }
-
 };
 
 }  // namespace rpc

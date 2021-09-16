@@ -61,7 +61,8 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port, int num_threads = 1, bool use_tls = false,
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1,
+             bool use_tls = false,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
 
   /// Destruct this gRPC server.
@@ -91,7 +92,7 @@ class GrpcServer {
   /// Read a file
   std::string ReadFile(std::string filename);
 
-      /// Get the port of this gRPC server.
+  /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
 
   /// Register a grpc service. Multiple services can be registered to the same server.

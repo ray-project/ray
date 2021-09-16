@@ -19,8 +19,8 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
-#include "ray/rpc/grpc_server.h"
 #include "ray/rpc/common.h"
+#include "ray/rpc/grpc_server.h"
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
@@ -36,8 +36,8 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads, bool use_tls,
-                       int64_t keepalive_time_ms)
+GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+                       bool use_tls, int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
       use_tls_(use_tls),
@@ -80,7 +80,8 @@ void GrpcServer::Run() {
     std::string serverkey = ReadCert(server_key_file);
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey.c_str(),
                                                               servercert.c_str()};
-    grpc::SslServerCredentialsOptions ssl_opts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
+    grpc::SslServerCredentialsOptions ssl_opts(
+        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
     ssl_opts.pem_root_certs = rootcert;
     ssl_opts.pem_key_cert_pairs.push_back(pkcp);
 
