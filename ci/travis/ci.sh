@@ -207,6 +207,7 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
+  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   cd cpp/example && sh run.sh
 }
 
