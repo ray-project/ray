@@ -1,6 +1,5 @@
 /// This is an example of Ray C++ application. Please visit
 /// `https://docs.ray.io/en/master/index.html` for more details.
-
 #include <ray/api.h>
 
 const std::string MAIN_SERVER_NAME = "main_actor";
@@ -157,7 +156,7 @@ void KillMainServer() {
 
 class Client {
  public:
-  Client() : main_actor_(*ray::GetActor<MainServer>(MAIN_SERVER_NAME)) {}
+  Client() { main_actor_ = *ray::GetActor<MainServer>(MAIN_SERVER_NAME); }
 
   void Put(const std::string &key, const std::string &val) {
     main_actor_.Task(&MainServer::Put).Remote(key, val).Get();
