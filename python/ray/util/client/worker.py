@@ -23,10 +23,9 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
 from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
-from ray.util.client.common import (ClientActorClass, ClientActorHandle,
-                                    ClientActorRef, ClientObjectRef,
-                                    ClientRemoteFunc, ClientRemoteMethod,
-                                    ClientStub, GRPC_OPTIONS)
+from ray.util.client.common import (
+    ClientActorClass, ClientActorHandle, ClientActorRef, ClientObjectRef,
+    ClientRemoteFunc, ClientRemoteMethod, ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
