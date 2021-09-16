@@ -11,7 +11,6 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
-from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -419,12 +418,11 @@ def run_learning_tests_from_yaml(
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
-                # 4min hardcoded for now.
-                e["stop"]["time_total_s"] = 240
-                # Don't stop smoke tests b/c of any reward received.
-                e["pass_criteria"]["episode_reward_mean"] = float("inf")
-                # Same for timesteps.
-                e["pass_criteria"]["timesteps_total"] = LARGE_INTEGER
+                # 0sec for each(!) experiment/trial.
+                # This is such that if there are many experiments/trials
+                # in a test (e.g. rllib_learning_test), each one can at least
+                # create its trainer and run a first iteration.
+                e["stop"]["time_total_s"] = 0
             else:
                 # We also stop early, once we reach the desired reward.
                 e["stop"]["episode_reward_mean"] = \
@@ -459,7 +457,7 @@ def run_learning_tests_from_yaml(
                     "passed": False,
                 }
                 # This key would break tune.
-                del e["pass_criteria"]
+                e.pop("pass_criteria", None)
 
     # Print out the actual config.
     print("== Test config ==")

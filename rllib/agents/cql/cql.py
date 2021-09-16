@@ -1,5 +1,6 @@
 """CQL (derived from SAC).
 """
+import logging
 import numpy as np
 from typing import Optional, Type
 
@@ -16,10 +17,12 @@ from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.framework import try_import_tfp
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
 
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
+logger = logging.getLogger(__name__)
 replay_buffer = None
 
 # yapf: disable
@@ -62,9 +65,12 @@ def validate_config(config: TrainerConfigDict):
         config["simple_optimizer"] = True
 
     if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
-        raise ModuleNotFoundError(
-            "You need `tensorflow_probability` in order to run CQL with tf! "
-            "Install it via `pip install tensorflow_probability`.")
+        logger.warning(
+            "You need `tensorflow_probability` in order to run CQL! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def execution_plan(workers, config):
