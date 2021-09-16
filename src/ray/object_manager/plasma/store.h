@@ -63,6 +63,7 @@ class PlasmaStore {
 
   ~PlasmaStore();
 
+
   /// Start this store.
   void Start();
 
@@ -104,6 +105,23 @@ class PlasmaStore {
     callback(available);
   }
 
+  void CreateObject(const ray::ObjectInfo &object_info, PlasmaObject *object);
+
+  void CreateObjectRetry(const ObjectID &object_id);
+
+  void AbortObject(const ObjectID &object_id);
+
+  void GetObjects(const std::vector<ObjectID> &object_ids, int64_t timeout_ms, bool is_from_worker);
+
+  void ReleaseObject(const ObjectID &object_id);
+
+  void DeleteObject(const ObjectID &object_id);
+
+  bool ContainsObject(const ObjectID &object_id);
+
+  void SealObject(const ObjectID &object_id);
+
+  void EvictObject(const ObjectID &object_id);
  private:
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
@@ -190,7 +208,16 @@ class PlasmaStore {
 
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
+<<<<<<< HEAD
                         const std::vector<uint8_t> &message) LOCKS_EXCLUDED(mutex_);
+=======
+                        const std::vector<uint8_t> &message);
+
+  /// Process queued requests to create an object.
+  void ProcessCreateRequests();
+
+  void PrintDebugDump() const;
+>>>>>>> 69f18b16cb... tmp interface
 
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
