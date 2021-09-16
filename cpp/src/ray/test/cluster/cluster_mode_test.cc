@@ -279,8 +279,8 @@ TEST(RayClusterModeTest, GetActorTest) {
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
 
-  ray::internal::PlacementGroupCreationOptions options{
-      false, name, bundles, ray::internal::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options{false, name, bundles,
+                                             ray::PlacementStrategy::PACK};
   return ray::CreatePlacementGroup(options);
 }
 
@@ -289,17 +289,39 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   EXPECT_TRUE(first_placement_group.Wait(10));
   EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
                ray::internal::RayException);
+
+  auto groups = ray::GetAllPlacementGroups();
+  EXPECT_EQ(groups.size(), 1);
+
+  auto placement_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(placement_group.GetID(), first_placement_group.GetID());
+
+  auto placement_group1 = ray::GetPlacementGroup("first_placement_group");
+  EXPECT_EQ(placement_group1.GetID(), first_placement_group.GetID());
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+  auto deleted_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(deleted_group.GetState(), ray::PlacementGroupState::REMOVED);
+
+  auto not_exist_group = ray::GetPlacementGroup("not_exist_placement_group");
+  EXPECT_TRUE(not_exist_group.GetID().empty());
+
   ray::RemovePlacementGroup(first_placement_group.GetID());
 }
 
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
-  ray::internal::PlacementGroupCreationOptions options{
-      false, "first_placement_group", bundles, ray::internal::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options{false, "first_placement_group", bundles,
+                                             ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options);
   EXPECT_FALSE(first_placement_group.Wait(3));
   ray::RemovePlacementGroup(first_placement_group.GetID());
+  auto deleted_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(deleted_group.GetState(), ray::PlacementGroupState::REMOVED);
+
+  auto not_exist_group = ray::GetPlacementGroup("not_exist_placement_group");
+  EXPECT_TRUE(not_exist_group.GetID().empty());
 }
 
 TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
