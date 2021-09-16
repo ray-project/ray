@@ -324,10 +324,10 @@ class SingleNodeProvider(NodeProvider):
         return tags
 
     def external_ip(self, node_id):
-        return self.nodes[node_id]["ip"]
+        return node_id
 
     def internal_ip(self, node_id):
-        return self.nodes[node_id]["ip"]
+        return node_id
 
     def set_node_tags(self, node_id, tags):
         assert False

@@ -216,10 +216,11 @@ class Monitor:
             use_node_id_as_ip = (self.autoscaler is not None
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
-            if use_node_id_as_ip:
-                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
-            else:
-                ip = resource_message.node_manager_address
+            ip = resource_message.node_id.hex()
+#            if use_node_id_as_ip:
+#                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
+#            else:
+#                ip = resource_message.node_manager_address
             self.load_metrics.update(
                 ip, total_resources, available_resources, resource_load,
                 waiting_bundles, infeasible_bundles, pending_placement_groups)
