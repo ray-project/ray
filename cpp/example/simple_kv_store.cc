@@ -1,16 +1,12 @@
 /// This is an example of Ray C++ application. Please visit
 /// `https://docs.ray.io/en/master/index.html` for more details.
 
-/// including the `<ray/api.h>` header
 #include <ray/api.h>
-
-#include <chrono>
-#include <thread>
 
 const std::string MAIN_SERVER_NAME = "main_actor";
 const std::string BACKUP_SERVER_NAME = "backup_actor";
-const std::unordered_map<std::string, double> RESOUECES{{"CPU", 1.0},
-                                                        {"memory", 1024.0 * 1024.0}};
+const std::unordered_map<std::string, double> RESOUECES{
+    {"CPU", 1.0}, {"memory", 1024.0 * 1024.0 * 1024.0}};
 
 namespace common {
 inline std::pair<bool, std::string> Get(
@@ -150,7 +146,6 @@ void StartServer() {
 void KillMainServer() {
   auto main_server = *ray::GetActor<MainServer>(MAIN_SERVER_NAME);
   main_server.Kill(false);
-  std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 class Client {
