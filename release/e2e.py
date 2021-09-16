@@ -251,6 +251,8 @@ GLOBAL_CONFIG = {
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
+    "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
+                                          "/tmp/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
@@ -1089,6 +1091,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        keep_results_dir: bool = False,
         app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
@@ -1735,7 +1738,12 @@ def run_test_config(
 
     log_results_and_artifacts(result)
 
-    shutil.rmtree(temp_dir)
+    if not keep_results_dir:
+        shutil.rmtree(temp_dir)
+    else:
+        out_dir = GLOBAL_CONFIG["RELEASE_RESULTS_DIR"]
+        shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.move(temp_dir, out_dir)
 
     return result
 
@@ -1748,9 +1756,10 @@ def run_test(test_config_file: str,
              smoke_test: bool = False,
              no_terminate: bool = False,
              kick_off_only: bool = False,
-             check_progress=False,
-             report=True,
-             session_name=None,
+             check_progress: bool = False,
+             report: bool = True,
+             keep_results_dir: bool = False,
+             session_name: Optional[str] = None,
              app_config_id_override=None):
     with open(test_config_file, "rt") as f:
         test_configs = yaml.load(f, Loader=yaml.FullLoader)
@@ -1799,6 +1808,7 @@ def run_test(test_config_file: str,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
         upload_artifacts=report,
+        keep_results_dir=keep_results_dir,
         app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
@@ -1878,6 +1888,12 @@ if __name__ == "__main__":
         default=False,
         help="Check (long running) status")
     parser.add_argument(
+        "--keep-results-dir",
+        action="store_true",
+        default=False,
+        help="Keep results in directory (named RELEASE_RESULTS_DIR), e.g. "
+        "for Buildkite artifact upload.")
+    parser.add_argument(
         "--category",
         type=str,
         default="unspecified",
@@ -1934,5 +1950,6 @@ if __name__ == "__main__":
         check_progress=args.check,
         report=not args.no_report,
         session_name=args.session_name,
+        keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )

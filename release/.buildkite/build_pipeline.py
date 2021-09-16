@@ -234,7 +234,8 @@ DEFAULT_STEP_TEMPLATE = {
             "propagate-environment": True
         }
     }],
-    "commands": []
+    "commands": [],
+    "artifact_paths": ["/tmp/ray_release_test_artifacts/*"],
 }
 
 
@@ -409,7 +410,8 @@ def build_pipeline(steps):
                       f"python release/e2e.py "
                       f"--category {RAY_BRANCH} "
                       f"--test-config {test_file} "
-                      f"--test-name {test_name}")
+                      f"--test-name {test_name} "
+                      f"--keep-results-dir")
 
             if test_name.smoke_test:
                 logging.info("This test will run as a smoke test.")
