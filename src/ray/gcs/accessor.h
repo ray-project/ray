@@ -20,7 +20,9 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 
@@ -96,8 +98,9 @@ class ActorInfoAccessor {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) = 0;
 
   /// Subscribe to any register or update operations of actors.
   ///
