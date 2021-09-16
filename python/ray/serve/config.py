@@ -28,17 +28,20 @@ class AutoscalingConfig(BaseModel):
 
     # Internal autoscaling configuration options
 
-    # How long to wait before scaling down replicas
-    downscale_delay_s: float = 600.0
-    # How long to wait before scaling up replicas
-    upscale_delay_s: float = 30.0
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: float = 1.0
+
+    # TODO(architkulkarni): implement below
+    # How long to wait before scaling down replicas
+    # downscale_delay_s: float = 600.0
+    # How long to wait before scaling up replicas
+    # upscale_delay_s: float = 30.0
+
     # The number of replicas to start with when creating the deployment
-    initial_replicas: int = 1
+    # initial_replicas: int = 1
     # The num_ongoing_requests_per_replica error ratio (desired / current)
     # threshold for overriding `upscale_delay_s`
-    panic_mode_threshold: float = 2.0
+    # panic_mode_threshold: float = 2.0
 
     # TODO(architkulkarni): Add reasonable defaults
     # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
