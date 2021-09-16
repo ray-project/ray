@@ -22,8 +22,8 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
+    TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
@@ -248,7 +248,7 @@ class TFPolicy(Policy):
             tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
 
-        self._optimizers = None
+        self._optimizers: List[LocalOptimizer] = []
         self._grads_and_vars = None
         self._grads = None
         # Policy tf-variables (weights), whose values to get/set via
@@ -340,8 +340,9 @@ class TFPolicy(Policy):
         else:
             self._losses = losses
 
-        if self._optimizers is None:
+        if not self._optimizers:
             self._optimizers = self.optimizer()
+
         self._grads_and_vars = [
             (g, v) for (g, v) in self.gradients(self._optimizers, self._losses)
             if g is not None
@@ -362,7 +363,7 @@ class TFPolicy(Policy):
                 logger.info("Update ops to run on apply gradient: {}".format(
                     self._update_ops))
             with tf1.control_dependencies(self._update_ops):
-                self._apply_op = self.build_apply_op(self._optimizer,
+                self._apply_op = self.build_apply_op(self._optimizers,
                                                      self._grads_and_vars)
 
         if log_once("loss_used"):
@@ -372,10 +373,11 @@ class TFPolicy(Policy):
 
         self.get_session().run(tf1.global_variables_initializer())
         self._optimizer_variables = None
-        if self._optimizer:
+        if self._optimizers:
             self._optimizer_variables = \
                 ray.experimental.tf_utils.TensorFlowVariables(
-                    self._optimizer.variables(), self.get_session())
+                    [v for o in self._optimizers for v in o.variables()],
+                    self.get_session())
 
     @override(Policy)
     def compute_actions(
@@ -745,7 +747,7 @@ class TFPolicy(Policy):
             tf.keras.optimizers.Optimizer: The local optimizer to use for this
                 Policy's Model.
         """
-        if hasattr(self, "config"):
+        if hasattr(self, "config") and "lr" in self.config:
             return tf1.train.AdamOptimizer(learning_rate=self.config["lr"])
         else:
             return tf1.train.AdamOptimizer()
@@ -1076,7 +1078,7 @@ class LearningRateSchedule:
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
-                self._optimizer.learning_rate.assign(self.cur_lr)
+                self._optimizers[0].learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)
     def optimizer(self):

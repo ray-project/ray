@@ -20,7 +20,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -322,9 +322,7 @@ def build_eager_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
-            # TODO: (sven) Allow tf policy to have more than 1 optimizer.
-            #  Just like torch Policy does.
-            self._optimizer = optimizers[0] if optimizers else None
+            self._optimizers: List[LocalOptimizer] = optimizers
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -649,10 +647,9 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = super().get_state()
-            if self._optimizer and \
-                    len(self._optimizer.variables()) > 0:
-                state["_optimizer_variables"] = \
-                    self._optimizer.variables()
+            if self._optimizers:
+                optimizer_vars = [o.variables() for o in self._optimizers]
+                state["_optimizer_variables"] = optimizer_vars
             # Add exploration state.
             state["_exploration_state"] = self.exploration.get_state()
             return state
@@ -662,15 +659,15 @@ def build_eager_tf_policy(
             state = state.copy()  # shallow copy
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
-            if optimizer_vars and self._optimizer.variables():
+            if optimizer_vars:
                 logger.warning(
                     "Cannot restore an optimizer's state for tf eager! Keras "
                     "is not able to save the v1.x optimizers (from "
                     "tf.compat.v1.train) since they aren't compatible with "
                     "checkpoints.")
-                for opt_var, value in zip(self._optimizer.variables(),
-                                          optimizer_vars):
-                    opt_var.assign(value)
+                for opt, vars in zip(self._optimizers, optimizer_vars):
+                    for opt_var, value in zip(opt.variables(), vars):
+                        opt_var.assign(value)
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])

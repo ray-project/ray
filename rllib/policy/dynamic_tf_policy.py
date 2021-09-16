@@ -569,7 +569,8 @@ class DynamicTFPolicy(TFPolicy):
 
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
-        self._optimizer = self.optimizer()
+        if not self._optimizers:
+            self._optimizers = self.optimizer()
 
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
