@@ -18,6 +18,10 @@ class RuntimeEnvContext:
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
+        # TODO(edoakes): this should not be in the context but just passed to
+        # the per-resource manager constructor. However, it's currently used in
+        # the legacy Ray client codepath to pass the resources dir to the shim
+        # process. We should remove it once Ray client uses the agent.
         self.resources_dir: str = resources_dir
 
     def serialize(self) -> str:
