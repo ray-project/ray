@@ -36,8 +36,9 @@ class BackupServer {
   void BackupData(const std::string &key, const std::string &val);
 
  private:
-  // Get all data from MainServer.
-  void HanldeFailover();
+  // When the backup server restarts from a failure. It will get all data from the main
+  // server.
+  void HandleFailover();
 
   std::unordered_map<std::string, std::string> data_;
 };
@@ -45,7 +46,7 @@ class BackupServer {
 BackupServer::BackupServer() {
   // Handle failover when the actor restarted.
   if (ray::WasCurrentActorRestarted()) {
-    HanldeFailover();
+    HandleFailover();
   }
   RAYLOG(INFO) << "BackupServer created";
 }
@@ -67,7 +68,7 @@ class MainServer {
   std::unordered_map<std::string, std::string> GetAllData();
 
  private:
-  void HanldeFailover();
+  void HandleFailover();
 
   std::unordered_map<std::string, std::string> data_;
 
@@ -76,7 +77,7 @@ class MainServer {
 
 MainServer::MainServer() {
   if (ray::WasCurrentActorRestarted()) {
-    HanldeFailover();
+    HandleFailover();
   }
 
   backup_actor_ = *ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
@@ -101,14 +102,14 @@ std::pair<bool, std::string> MainServer::Get(const std::string &key) {
 
 std::unordered_map<std::string, std::string> MainServer::GetAllData() { return data_; }
 
-void BackupServer::HanldeFailover() {
+void BackupServer::HandleFailover() {
   // Get all data from MainServer.
   auto dest_actor = *ray::GetActor<MainServer>(MAIN_SERVER_NAME);
   data_ = *dest_actor.Task(&MainServer::GetAllData).Remote().Get();
   RAYLOG(INFO) << "BackupServer get all data from MainServer";
 }
 
-void MainServer::HanldeFailover() {
+void MainServer::HandleFailover() {
   // Get all data from BackupServer.
   backup_actor_ = *ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
   data_ = *backup_actor_.Task(&BackupServer::GetAllData).Remote().Get();
