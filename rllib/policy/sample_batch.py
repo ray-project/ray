@@ -832,6 +832,11 @@ class SampleBatch(dict):
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
         if self.get(SampleBatch.SEQ_LENS) is not None and \
@@ -843,6 +848,9 @@ class SampleBatch(dict):
                     for _ in range(l):
                         self._slice_map.append((i, sum_))
                     sum_ += l
+                # In case `stop` points to the very end (lengths of this
+                # batch), return the last sequence (the -1 here makes sure we
+                # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
             start_seq_len, start = self._slice_map[start]

@@ -4,12 +4,12 @@ import logging
 from typing import Union
 from grpc.experimental import aio as aiogrpc
 
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
-from ray.new_dashboard.utils import async_loop_forever, create_task
-from ray.new_dashboard.modules.event import event_consts
-from ray.new_dashboard.modules.event.event_utils import monitor_events
+from ray.dashboard.utils import async_loop_forever, create_task
+from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
 

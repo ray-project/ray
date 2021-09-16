@@ -383,7 +383,7 @@ bool TaskManager::PendingTaskFailed(
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (immediately_mark_object_fail) {
-      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+      MarkPendingTaskFailed(spec, error_type, creation_task_exception);
     }
   }
 
@@ -492,8 +492,9 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 }
 
 void TaskManager::MarkPendingTaskFailed(
-    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const TaskSpecification &spec, rpc::ErrorType error_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+  const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
