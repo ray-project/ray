@@ -199,6 +199,7 @@ test_python() {
 }
 
 test_cpp() {
+  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
@@ -207,7 +208,6 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
-  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   cd cpp/example && sh run.sh
 }
 
