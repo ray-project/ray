@@ -240,9 +240,9 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
 
     msgs = []
     handle_pub_messages(p, msgs, timeout, 2)
-
+    print(msgs)
     # Assert we received published actor messages with state
-    # DEPENDENCIES_UNREADY and ALIVE.
+    # DEPENDENCIES_UNREADY and PENDING_CREATION.
     assert len(msgs) == 2
 
     # Kill actor.
@@ -262,15 +262,17 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             including_default_value_fields=False)
 
     non_state_keys = ("actorId", "jobId", "taskSpec")
+
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
-        # DEPENDENCIES_UNREADY is 0, which would not be keeped in dict. We
-        # need check its original value.
-        if msg.state == 0:
+        # DEPENDENCIES_UNREADY is 0, PENDING_CREATION is 1, which would not be
+        # keeped in dict. We need check its original value.
+
+        if msg.state == 0 or msg.state == 1:
             assert len(actor_data_dict) > 5
             for k in non_state_keys:
                 assert k in actor_data_dict
-        # For status that is not DEPENDENCIES_UNREADY, only states fields will
+        # For status that is not PENDING_CREATION, only states fields will
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
