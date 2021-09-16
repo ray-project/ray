@@ -27,5 +27,13 @@ def test_start_shutdown_in_namespace(ray_start_stop):
     subprocess.check_output(["serve", "-n", "test", "shutdown"])
 
 
+def test_start_invalid_checkpoint_path(ray_start_stop):
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(["serve", "start", "--checkpoint-path=s4://"])
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(["serve", "start", "--checkpoint-path=/tmp/a"])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
