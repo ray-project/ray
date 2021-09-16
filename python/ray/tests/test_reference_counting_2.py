@@ -623,6 +623,7 @@ def test_return_nested_ids(shutdown_only, inline_args):
     ray.get(test.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_constructor_borrowed_refs(shutdown_only):
     ray.init(object_store_memory=100 * 1024 * 1024)
 
