@@ -5,4 +5,4 @@ tensorflow-probability==0.13.0
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.9.0+cu111
 -f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.10.0+c111
+torchvision==0.10.0+cu111
