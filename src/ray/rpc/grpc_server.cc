@@ -80,7 +80,6 @@ void GrpcServer::Run() {
     std::string serverkey = ReadCert(server_key_file);
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey.c_str(),
                                                               servercert.c_str()};
-//    grpc::SslServerCredentialsOptions ssl_opts;
     grpc::SslServerCredentialsOptions ssl_opts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
     ssl_opts.pem_root_certs = rootcert;
     ssl_opts.pem_key_cert_pairs.push_back(pkcp);
