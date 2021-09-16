@@ -1739,11 +1739,17 @@ def run_test_config(
     log_results_and_artifacts(result)
 
     if not keep_results_dir:
+        logger.info(f"Removing results dir {temp_dir}")
         shutil.rmtree(temp_dir)
     else:
         out_dir = GLOBAL_CONFIG["RELEASE_RESULTS_DIR"]
+
+        logger.info(f"Moving results dir {temp_dir} to persistent location "
+                    f"{out_dir}")
+
         shutil.rmtree(out_dir, ignore_errors=True)
         shutil.move(temp_dir, out_dir)
+        logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
 
