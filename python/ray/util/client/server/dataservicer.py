@@ -1,5 +1,3 @@
-from collections import defaultdict
-import threading
 import ray
 import logging
 import grpc
@@ -206,7 +204,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 # Connection isn't recoverable, skip cleanup
                 cleanup_requested = True
         finally:
-            logger.debug(f"Lost data connection from client {client_id}")
+            logger.debug(f"Stream is broken with client {client_id}")
+            self.basic_service.release_all(client_id)
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(
@@ -245,10 +244,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if client_id in self.response_caches:
                     del self.response_caches[client_id]
                 self.num_clients -= 1
-                logger.debug(f"Removed clients. {self.num_clients}")
+                logger.debug(f"Removed client {client_id}, "
+                             f"remaining={self.num_clients}")
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
+                # NOTE: it is strange to start ray in server.py but shut it
+                # down here. Consider consolidating ray lifetime management.
                 with disable_client_hook():
                     if self.num_clients == 0:
                         logger.debug("Shutting down ray.")
