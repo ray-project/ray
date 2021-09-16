@@ -13,6 +13,10 @@ from ray.serve.generated.serve_pb2 import BackendLanguage
 from ray import cloudpickle as cloudpickle
 
 
+class AutoscalingConfig(BaseModel):
+    metrics_interval_s: float
+
+
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
@@ -41,6 +45,8 @@ class BackendConfig(BaseModel):
 
     experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
     experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
+
+    autoscaling_config: Optional[AutoscalingConfig] = None
 
     class Config:
         validate_assignment = True
