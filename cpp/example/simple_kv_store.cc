@@ -57,17 +57,21 @@ class MainServer {
  public:
   MainServer();
 
+  // Set key-value
   void Put(const std::string &key, const std::string &val);
 
+  // Get value from a key,
   std::pair<bool, std::string> Get(const std::string &key);
 
+  // This is used for the backup server to recover data when it restarts.
   std::unordered_map<std::string, std::string> GetAllData();
 
  private:
+  // When the main server restarts from a failure. It will get all data from the backup
+  // server.
   void HandleFailover();
 
   std::unordered_map<std::string, std::string> data_;
-
   ray::ActorHandle<BackupServer> backup_actor_;
 };
 
@@ -84,7 +88,7 @@ void MainServer::Put(const std::string &key, const std::string &val) {
   // BackupData before put data.
   auto r = backup_actor_.Task(&BackupServer::BackupData).Remote(key, val);
   std::vector<ray::ObjectRef<void>> objects{r};
-  auto result = ray::Wait(objects, 1, 2000);
+  auto result = ray::Wait(objects, objects.size(), 2000);
   if (result.ready.empty()) {
     RAYLOG(WARNING) << "MainServer BackupData failed.";
   }
@@ -121,6 +125,8 @@ RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainSer
 RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::BackupData);
 
 void StartServer() {
+  // We use Ray's placement group to make sure that the 2 actors can be scheduled to 2
+  // nodes if possible. Assuming that each of them needs 1 cpu core and 1 GB memory.
   std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
 
   ray::PlacementGroupCreationOptions options{false, "my_placement_group", bundles,
@@ -128,15 +134,16 @@ void StartServer() {
   auto placement_group = ray::CreatePlacementGroup(options);
   assert(placement_group.Wait(10));
 
+  // Create the main server actor and backup server actor and schedule them to 2 nodes.
   ray::Actor(CreateMainServer)
-      .SetName("main_actor")
+      .SetName(MAIN_SERVER_NAME)
       .SetResources(RESOUECES)
       .SetPlacementGroup(placement_group, 0)
       .SetMaxRestarts(1)
       .Remote();
 
   ray::Actor(CreateBackupServer)
-      .SetName("backup_actor")
+      .SetName(BACKUP_SERVER_NAME)
       .SetResources(RESOUECES)
       .SetPlacementGroup(placement_group, 1)
       .SetMaxRestarts(1)
