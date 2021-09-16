@@ -240,7 +240,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
 
     msgs = []
     handle_pub_messages(p, msgs, timeout, 2)
-    print(msgs)
     # Assert we received published actor messages with state
     # DEPENDENCIES_UNREADY and PENDING_CREATION.
     assert len(msgs) == 2
@@ -267,7 +266,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         actor_data_dict = actor_table_data_to_dict(msg)
         # DEPENDENCIES_UNREADY is 0, PENDING_CREATION is 1, which would not be
         # keeped in dict. We need check its original value.
-
         if msg.state == 0 or msg.state == 1:
             assert len(actor_data_dict) > 5
             for k in non_state_keys:
