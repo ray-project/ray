@@ -1,5 +1,3 @@
-import random
-
 from ray.serve.config import AutoscalingConfig
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 
@@ -14,29 +12,21 @@ class TestCalculateDesiredNumReplicas:
             min_replicas=min_replicas,
             target_num_ongoing_requests_per_replica=100)
 
-        for i in range(100):
-            in_flight_requests_per_replica = random.uniform(0, 200)
-            in_flight_requests = [
-                in_flight_requests_per_replica for i in range(num_replicas)
-            ]
-            desired_num_replicas = calculate_desired_num_replicas(
-                config, in_flight_requests)
-            print(
-                int(sum(in_flight_requests) / len(in_flight_requests)),
-                desired_num_replicas)
-            assert min_replicas <= desired_num_replicas <= max_replicas
-
-        # Check that our random testing hits the bounds with high probability.
-        # (It falls between the bounds, and therefore spuriously passes, with
-        # probability (0.9)^100 = 0.003%.)
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config,
-            current_num_ongoing_requests=[110] * num_replicas)
+            current_num_ongoing_requests=[150] * num_replicas)
         assert desired_num_replicas == max_replicas
+
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config,
-            current_num_ongoing_requests=[90] * num_replicas)
+            current_num_ongoing_requests=[50] * num_replicas)
         assert desired_num_replicas == min_replicas
+
+        for i in range(50, 150):
+            desired_num_replicas = calculate_desired_num_replicas(
+                autoscaling_config=config,
+                current_num_ongoing_requests=[i] * num_replicas)
+            assert min_replicas <= desired_num_replicas <= max_replicas
 
     def test_scale_up(self):
         config = AutoscalingConfig(
