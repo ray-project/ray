@@ -1024,7 +1024,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer.shutdown()
 
 
-def test_to_workers(ray_start_2_cpus):
+def test_to_worker_group(ray_start_2_cpus):
     config = TestConfig()
     trainer = Trainer(config, num_workers=2)
 
