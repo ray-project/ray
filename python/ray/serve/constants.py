@@ -13,6 +13,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Controller checkpoint path
+DEFAULT_CHECKPOINT_PATH = "RAY_CLUSTER_GCS"
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 

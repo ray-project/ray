@@ -19,8 +19,9 @@ from ray.serve.common import (
     NodeId,
     ReplicaTag,
 )
-from ray.serve.config import BackendConfig, CheckpointOptions, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import (
+    CONTROL_LOOP_PERIOD_S, DEFAULT_CHECKPOINT_PATH, SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore, RayS3KVStore
@@ -63,30 +64,33 @@ class ServeController:
     async def __init__(self,
                        controller_name: str,
                        http_config: HTTPOptions,
-                       checkpoint_options: Optional[CheckpointOptions] = None,
+                       checkpoint_path: str,
                        detached: bool = False):
         # Used to read/write checkpoints.
         controller_namespace = ray.get_runtime_context().namespace
-        if checkpoint_options is None:
-            logger.info(
-                "Using RayInternalKVStore for controller checkpoint and recovery."
-            )
+        if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
+            logger.info("Using RayInternalKVStore for controller "
+                        "checkpoint and recovery.")
             self.kv_store = RayInternalKVStore(
                 namespace=f"{controller_name}-{controller_namespace}")
         else:
+            assert checkpoint_path.startswith("s3://"), (
+                "Only support S3 path as external controller checkpoint path.")
             logger.info(
                 "Using Ray S3 KVStore for controller checkpoint and recovery.")
+
+            path_parts = checkpoint_path.replace("s3://", "").split("/")
+            bucket = path_parts.pop(0)
+
             self.kv_store = RayS3KVStore(
                 f"{controller_name}-{controller_namespace}",
-                bucket=checkpoint_options.bucket,
-                s3_path=checkpoint_options.s3_path,
-                aws_access_key_id=os.environ.get(
-                    "AWS_ACCESS_KEY_ID", checkpoint_options.aws_access_key_id),
-                aws_secret_access_key=os.environ.get(
-                    "AWS_SECRET_ACCESS_KEY",
-                    checkpoint_options.aws_secret_access_key),
-                aws_session_token=os.environ.get(
-                    "AWS_SESSION_TOKEN", checkpoint_options.aws_session_token),
+                bucket=bucket,
+                s3_path=checkpoint_path,
+                region_name=os.environ.get("AWS_REGION", None),
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY",
+                                                     None),
+                aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
             )
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.

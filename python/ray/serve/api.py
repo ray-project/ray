@@ -21,8 +21,7 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, CheckpointOptions, HTTPOptions,
-                              ReplicaConfig)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
@@ -349,7 +348,7 @@ class Client:
 def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
-        checkpoint_options: Optional[CheckpointOptions] = None,
+        checkpoint_path: Optional[str] = None,
         dedicated_cpu: bool = False,
         **kwargs,
 ) -> Client:
@@ -434,7 +433,7 @@ def start(
     ).remote(
         controller_name,
         http_options,
-        checkpoint_options,
+        checkpoint_path,
         detached=detached,
     )
 
