@@ -449,7 +449,7 @@ TEST(EVENT_TEST, TEST_RAY_EVENT_INIT) {
   RAY_EVENT(FATAL, "label") << "test error event";
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  ReadContentFromFile(vc, log_dir + "/events/event_RAYLET.log");
   EXPECT_EQ((int)vc.size(), 1);
   json out_custom_fields;
   rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
