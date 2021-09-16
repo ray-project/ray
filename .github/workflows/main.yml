@@ -111,6 +111,7 @@ jobs:
         TRAVIS_COMMIT: ${{ github.sha }}
         TRAVIS_JOB_ID: ${{ github.run_id }}
       run: |
+        # Multi thread in windowns for grpc not working now
         export RAY_gcs_server_rpc_server_thread_num=1
         function clean_up() {
           echo "Performing cleanup"
