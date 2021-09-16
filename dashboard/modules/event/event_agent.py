@@ -4,8 +4,8 @@ import logging
 from typing import Union
 
 import ray._private.utils as utils
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
