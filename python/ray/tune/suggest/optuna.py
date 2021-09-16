@@ -127,11 +127,11 @@ class OptunaSearch(Searcher):
             points_to_evaluate.
 
             ..warning::
-                When using ``evaluated_rewards``, the search space ``space`` must
-                be provided as a :class:`dict` with parameter names as keys and
-                ``optuna.distributions`` instances as values. The define-by-run
-                 search space definition is not yet supported with this
-                 functionality.
+                When using ``evaluated_rewards``, the search space ``space``
+                must be provided as a :class:`dict` with parameter names as
+                keys and ``optuna.distributions`` instances as values. The
+                define-by-run search space definition is not yet supported with
+                this functionality.
 
     Tune automatically converts search spaces to Optuna's format:
 
@@ -184,7 +184,7 @@ class OptunaSearch(Searcher):
             mode="min")
 
         tune.run(trainable, search_alg=optuna_search)
-    
+
     You can pass configs that will be evaluated first using
     ``points_to_evaluate``:
 
@@ -231,6 +231,7 @@ class OptunaSearch(Searcher):
     .. versionadded:: 0.8.8
 
     """
+
     def __init__(self,
                  space: Optional[Union[Dict[str, "OptunaDistribution"], List[
                      Tuple], Callable[["OptunaTrial"], Optional[Dict[

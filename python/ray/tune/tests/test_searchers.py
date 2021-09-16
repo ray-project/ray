@@ -305,10 +305,13 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.PRUNED)
 
+        def dbr_space(trial):
+            return {
+                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0)
+            }
+
         dbr_searcher = OptunaSearch(
-            lambda trial: {
-                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0),
-            },
+            space=dbr_space,
             metric="metric",
             mode="max",
         )
