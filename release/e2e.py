@@ -159,7 +159,7 @@ Release test yaml example
 
   run:
     timeout: 600  # in seconds
-    prepare: python ../wait_cluster.py 4 600  # prepare cmd to run before test
+    prepare: python wait_cluster.py 4 600  # prepare cmd to run before test
     script: python workloads/train.py  # actual release test command
 
     # Only needed for long running test
