@@ -65,6 +65,7 @@ class DatasetPipeline(Generic[T]):
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
+        # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
 
