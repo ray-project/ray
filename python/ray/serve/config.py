@@ -67,9 +67,9 @@ class BackendConfig(BaseModel):
 
     def to_proto_bytes(self):
         data = self.dict()
-        if "user_config" in data:
+        if data.get("user_config"):
             data["user_config"] = pickle.dumps(data["user_config"])
-        if "autoscaling_config" in data:
+        if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"])
         return BackendConfigProto(
