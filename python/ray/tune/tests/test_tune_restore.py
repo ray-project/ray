@@ -574,8 +574,8 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min",
             random_state_seed=5,
             n_initial_points=1,
-            max_concurrent=1000  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -627,13 +627,12 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer,
-            ["width", "height"],
+            optimizer, ["width", "height"],
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
             points_to_evaluate=previously_run_params,
             evaluated_rewards=known_rewards)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -651,8 +650,8 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             parameter_names,
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -703,8 +702,8 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             optimizer,
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
     @unittest.skip("Skip because this doesn't seem to work.")
@@ -790,10 +789,10 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
-            max_concurrent=1,
             metric="loss",
             mode="min",
             points_to_evaluate=points)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
         return search_alg, cost
 
     def testWarmStart(self):
