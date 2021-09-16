@@ -86,5 +86,6 @@ def test_e2e(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys, pytest
+    import sys
+    import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))
