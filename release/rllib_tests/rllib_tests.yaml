@@ -5,12 +5,12 @@
     compute_template: 8gpus_64cpus.yaml
 
   run:
-    timeout: 14400
+    timeout: 21600
     script: python learning_tests/run.py
 
   smoke_test:
       run:
-        timeout: 900
+        timeout: 7200
       cluster:
         compute_template: 4gpus_64cpus.yaml
 
@@ -69,4 +69,4 @@
 
   smoke_test:
       run:
-        timeout: 900
+        timeout: 1800

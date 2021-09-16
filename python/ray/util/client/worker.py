@@ -116,6 +116,8 @@ class Worker:
         if _credentials is not None:
             self._credentials = _credentials
             self._secure = True
+        else:
+            self._credentials = None
 
         self._connect_channel()
 
