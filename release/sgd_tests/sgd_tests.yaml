@@ -6,5 +6,5 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 2 600
+    prepare: python ../wait_cluster.py 2 600
     script: python sgd_gpu/sgd_gpu_test.py --num-workers=2 --use-gpu --address=auto

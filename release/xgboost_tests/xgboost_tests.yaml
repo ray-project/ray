@@ -7,7 +7,7 @@
     # use_connect: True
     # autosuspend_mins: 10
     timeout: 600
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python workloads/train_small.py
 
 - name: train_moderate
@@ -17,7 +17,7 @@
 
   run:
     timeout: 600
-    prepare: python wait_cluster.py 32 600
+    prepare: python ../wait_cluster.py 32 600
     script: python workloads/train_moderate.py
 
 - name: train_gpu
@@ -27,7 +27,7 @@
 
   run:
     timeout: 600
-    prepare: python wait_cluster.py 5 600
+    prepare: python ../wait_cluster.py 5 600
     script: python workloads/train_gpu.py
 
 - name: distributed_api_test
@@ -38,7 +38,7 @@
 
   run:
     timeout: 600
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python workloads/distributed_api_test.py
     results: ""
 
@@ -49,7 +49,7 @@
 
   run:
     timeout: 900
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python workloads/ft_small_elastic.py
     results: ""
 
@@ -60,7 +60,7 @@
 
   run:
     timeout: 900
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python workloads/ft_small_non_elastic.py
     results: ""
 
@@ -71,7 +71,7 @@
 
   run:
     timeout: 600
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python workloads/tune_small.py
 
 - name: tune_32x4
@@ -81,7 +81,7 @@
 
   run:
     timeout: 900
-    prepare: python wait_cluster.py 32 600
+    prepare: python ../wait_cluster.py 32 600
     script: python workloads/tune_32x4.py
 
 - name: tune_4x32
@@ -91,5 +91,5 @@
 
   run:
     timeout: 900
-    prepare: python wait_cluster.py 32 600
+    prepare: python ../wait_cluster.py 32 600
     script: python workloads/tune_4x32.py

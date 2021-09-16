@@ -20,7 +20,7 @@
 
   run:
     timeout: 86400
-    prepare: python wait_cluster.py 3 600
+    prepare: python ../wait_cluster.py 3 600
     script: python workloads/apex.py
     long_running: True
 
@@ -82,7 +82,7 @@
 
   run:
     timeout: 86400
-    prepare: python wait_cluster.py 3 600
+    prepare: python ../wait_cluster.py 3 600
     script: python workloads/many_ppo.py
     long_running: True
 

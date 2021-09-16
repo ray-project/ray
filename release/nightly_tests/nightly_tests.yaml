@@ -83,7 +83,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
 
 # Test non streaming multi nodes 100GB shuffle with a small number of partitions.
@@ -94,7 +94,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6 --no-streaming
 
 # Test autoscaling 1TB streaming shuffle with a large number of partitions.
@@ -115,7 +115,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 900
+    prepare: python ../wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
 
 # Test multi nodes 1TB non streaming shuffle with a large number of partitions.
@@ -126,7 +126,7 @@
 
   run:
     timeout: 3000
-    prepare: python wait_cluster.py 20 900
+    prepare: python ../wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
 
 # Stress test for 1TB multi node streaming shuffle.
@@ -137,7 +137,7 @@
 
   run:
     timeout: 9000
-    prepare: python wait_cluster.py 20 900
+    prepare: python ../wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
 # Stress test for 1TB multi node non-streaming shuffle.
@@ -149,7 +149,7 @@
 
 #   run:
 #     timeout: 7200
-#     prepare: python wait_cluster.py 20 900
+#     prepare: python ../wait_cluster.py 20 900
 #     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 # Test large scale dask on ray test without spilling.
@@ -160,7 +160,7 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 21 600
+    prepare: python ../wait_cluster.py 21 600
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
 
   smoke_test:
@@ -170,7 +170,7 @@
 
     run:
       timeout: 7200
-      prepare: python wait_cluster.py 5 600
+      prepare: python ../wait_cluster.py 5 600
       script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
 
 # Test large scale dask on ray test with spilling.
@@ -181,7 +181,7 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 21 600
+    prepare: python ../wait_cluster.py 21 600
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
 
   smoke_test:
@@ -191,7 +191,7 @@
 
     run:
       timeout: 7200
-      prepare: python wait_cluster.py 5 600
+      prepare: python ../wait_cluster.py 5 600
       script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
 
 # Stress tests with many tasks
@@ -292,7 +292,7 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 4 600
+    prepare: python ../wait_cluster.py 4 600
     script: >
       python shuffle_data_loader/benchmark.py
       --num-rows 400_000_000
@@ -314,7 +314,7 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 32 1000
+    prepare: python ../wait_cluster.py 32 1000
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
 
 - name: many_nodes_actor_test
@@ -324,5 +324,5 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 500 5400
+    prepare: python ../wait_cluster.py 500 5400
     script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
