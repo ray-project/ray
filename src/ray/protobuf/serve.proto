@@ -56,3 +56,15 @@ enum BackendLanguage {
   PYTHON = 0;
   JAVA = 1;
 }
+
+message RequestMetadata {
+  string request_id = 1;
+
+  string endpoint = 2;
+
+  string call_method = 3;
+}
+
+message RequestWrapper {
+  bytes body = 1;
+}
