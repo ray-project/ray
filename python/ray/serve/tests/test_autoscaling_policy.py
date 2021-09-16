@@ -15,8 +15,9 @@ class TestCalculateDesiredNumReplicas:
             target_num_ongoing_requests_per_replica=100)
 
         for i in range(100):
+            in_flight_requests_per_replica = random.uniform(0, 200)
             in_flight_requests = [
-                random.uniform(0, 200) for i in range(num_replicas)
+                in_flight_requests_per_replica for i in range(num_replicas)
             ]
             desired_num_replicas = calculate_desired_num_replicas(
                 config, in_flight_requests)
@@ -72,13 +73,11 @@ class TestCalculateDesiredNumReplicas:
         num_ongoing_requests = [4.0] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config,
-            current_num_ongoing_requests=num_ongoing_requests,
-            current_num_replicas=num_replicas)
+            current_num_ongoing_requests=num_ongoing_requests)
         assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
 
         num_ongoing_requests = [0.25] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config,
-            current_num_ongoing_requests=num_ongoing_requests,
-            current_num_replicas=num_replicas)
+            current_num_ongoing_requests=num_ongoing_requests)
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
