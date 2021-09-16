@@ -38,7 +38,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             ip = DataSource.node_id_to_ip[node_id]
             options = (("grpc.enable_http_proxy", 0), )
             channel = ray._private.utils.init_grpc_channel(
-                f"{ip}:{ports[1]}", options=options)
+                f"{ip}:{ports[1]}", options=options, asynchronous=True)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 

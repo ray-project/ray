@@ -47,7 +47,9 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = (("grpc.enable_http_proxy", 0), )
                     channel = utils.init_grpc_channel(
-                        dashboard_rpc_address, options=options)
+                        dashboard_rpc_address,
+                        options=options,
+                        asynchronous=True)
                     return event_pb2_grpc.ReportEventServiceStub(channel)
             except Exception:
                 logger.exception("Connect to dashboard failed.")
