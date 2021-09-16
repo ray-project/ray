@@ -100,18 +100,9 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-        self._secure = secure or (os.environ.get("RAY_USE_TLS") == "1")
+        self._secure = secure
         self._conn_str = conn_str
         self._connection_retries = connection_retries
-
-        # TODO tidy this up
-        if self._secure and _credentials is None:
-            server_cert_chain, private_key, ca_cert = ray._private.utils\
-                .load_certs_from_env()
-            _credentials = grpc.ssl_channel_credentials(
-                certificate_chain=server_cert_chain,
-                private_key=private_key,
-                root_certificates=ca_cert)
 
         if _credentials is not None:
             self._credentials = _credentials
@@ -143,6 +134,13 @@ class Worker:
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
+            elif os.environ.get("RAY_USE_TLS", "0") == "1":
+                server_cert_chain, private_key, ca_cert = ray._private.utils \
+                    .load_certs_from_env()
+                credentials = grpc.ssl_channel_credentials(
+                    certificate_chain=server_cert_chain,
+                    private_key=private_key,
+                    root_certificates=ca_cert)
             else:
                 credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
