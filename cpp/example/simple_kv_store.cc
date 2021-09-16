@@ -106,14 +106,14 @@ void BackupServer::HandleFailover() {
   // Get all data from MainServer.
   auto dest_actor = *ray::GetActor<MainServer>(MAIN_SERVER_NAME);
   data_ = *dest_actor.Task(&MainServer::GetAllData).Remote().Get();
-  RAYLOG(INFO) << "BackupServer get all data from MainServer";
+  RAYLOG(INFO) << "BackupServer recovered all data from MainServer";
 }
 
 void MainServer::HandleFailover() {
   // Get all data from BackupServer.
   backup_actor_ = *ray::GetActor<BackupServer>(BACKUP_SERVER_NAME);
   data_ = *backup_actor_.Task(&BackupServer::GetAllData).Remote().Get();
-  RAYLOG(INFO) << "MainServer get all data from BackupServer";
+  RAYLOG(INFO) << "MainServer recovered all data from BackupServer";
 }
 
 static MainServer *CreateMainServer() { return new MainServer(); }
@@ -174,7 +174,7 @@ class Client {
 };
 
 int main(int argc, char **argv) {
-  /// Start ray cluster and ray runtime.
+  // Start ray cluster and ray runtime.
   ray::Init();
 
   StartServer();
@@ -192,11 +192,12 @@ int main(int argc, char **argv) {
 
   get_result("hello");
 
-  // Kill main server and then get result.
+  // Kill main server. It should restart automatically and recover data from the backup
+  // server.
   KillMainServer();
   get_result("hello");
 
-  /// Stop ray cluster and ray runtime.
+  // Stop ray cluster and ray runtime.
   ray::Shutdown();
   return 0;
 }
