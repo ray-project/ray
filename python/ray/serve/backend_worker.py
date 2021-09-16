@@ -13,7 +13,6 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
-from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import BackendTag, ReplicaTag
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
@@ -214,13 +213,6 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
-        if backend_config.autoscaling_config:
-            config = backend_config.autoscaling_config
-            start_metrics_pusher(
-                interval_s=config.metrics_interval_s,
-                collection_callback=self._collect_autoscaling_metrics,
-                controller_handle=controller_handle)
-
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
             handler.setFormatter(
@@ -228,11 +220,6 @@ class RayServeReplica:
                     handler.formatter._fmt +
                     f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
-
-    def _collect_autoscaling_metrics(self):
-        # TODO(simon): Instead of relying on this counter, we should get the
-        # outstanding actor calls properly from Ray's core worker.
-        return {self.replica_tag: self.num_ongoing_requests}
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
@@ -316,13 +303,6 @@ class RayServeReplica:
 
         self.num_ongoing_requests += 1
         self.num_processing_items.set(self.num_ongoing_requests)
-
-        # Trigger a context switch so we can enqueue more requests in the
-        # meantime. Without this line and if the function is synchronous,
-        # other requests won't even get enqueued as await self.invoke_single
-        # doesn't context switch.
-        await asyncio.sleep(0)
-
         result = await self.invoke_single(request)
         self.num_ongoing_requests -= 1
         request_time_ms = (time.time() - request.tick_enter_replica) * 1000
