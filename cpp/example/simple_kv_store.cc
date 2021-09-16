@@ -1,12 +1,14 @@
 /// This is an example of Ray C++ application. Please visit
 /// `https://docs.ray.io/en/master/index.html` for more details.
 #include <ray/api.h>
+#include <chrono>
+#include <thread>
 
 // Name of the main server actor.
 const std::string MAIN_SERVER_NAME = "main_actor";
 // Name of the backup server actor.
 const std::string BACKUP_SERVER_NAME = "backup_actor";
-// Resources that each actor needs: 1 CPU core and 1 GB memory. 
+// Resources that each actor needs: 1 CPU core and 1 GB memory.
 const std::unordered_map<std::string, double> RESOUECES{
     {"CPU", 1.0}, {"memory", 1024.0 * 1024.0 * 1024.0}};
 
@@ -128,7 +130,7 @@ RAY_REMOTE(CreateMainServer, &MainServer::GetAllData, &MainServer::Get, &MainSer
 RAY_REMOTE(CreateBackupServer, &BackupServer::GetAllData, &BackupServer::BackupData);
 
 void StartServer() {
-  // Start the main server and the backup server. 
+  // Start the main server and the backup server.
   // Each of them needs 1 cpu core and 1 GB memory.
   // We use Ray's placement group to make sure that the 2 actors will be scheduled to 2
   // different nodes if possible.
@@ -142,8 +144,8 @@ void StartServer() {
 
   // Create the main server actor and backup server actor.
   ray::Actor(CreateMainServer)
-      .SetName(MAIN_SERVER_NAME)  // Set name of this actor.
-      .SetResources(RESOUECES)  // Set the resources that this actor needs.
+      .SetName(MAIN_SERVER_NAME)              // Set name of this actor.
+      .SetResources(RESOUECES)                // Set the resources that this actor needs.
       .SetPlacementGroup(placement_group, 0)  // Set the corresponding placement group.
       .SetMaxRestarts(-1)  // Tell Ray to restart this actor automatically upon failures.
       .Remote();
@@ -163,18 +165,27 @@ void KillMainServer() {
 
 class Client {
  public:
-  Client() { main_actor_ = *ray::GetActor<MainServer>(MAIN_SERVER_NAME); }
+  Client() { main_actor_ = ray::GetActor<MainServer>(MAIN_SERVER_NAME); }
 
-  void Put(const std::string &key, const std::string &val) {
-    main_actor_.Task(&MainServer::Put).Remote(key, val).Get();
+  bool Put(const std::string &key, const std::string &val) {
+    // Maybe the main server not exsit, need to check it.
+    if (!main_actor_) {
+      return false;
+    }
+
+    (*main_actor_).Task(&MainServer::Put).Remote(key, val).Get();
+    return true;
   }
 
   std::pair<bool, std::string> Get(const std::string &key) {
-    return *main_actor_.Task(&MainServer::Get).Remote(key).Get();
+    if (!main_actor_) {
+      return {};
+    }
+    return *(*main_actor_).Task(&MainServer::Get).Remote(key).Get();
   }
 
  private:
-  ray::ActorHandle<MainServer> main_actor_;
+  boost::optional<ray::ActorHandle<MainServer>> main_actor_;
 };
 
 int main(int argc, char **argv) {
@@ -184,7 +195,13 @@ int main(int argc, char **argv) {
   StartServer();
 
   Client client;
-  client.Put("hello", "ray");
+  bool r = client.Put("hello", "ray");
+  if (!r) {
+    // If the main server not exist, wait for some time and try again.
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    r = client.Put("hello", "ray");
+  }
+  assert(r);
 
   auto get_result = [&client](const std::string &key) {
     bool ok;
