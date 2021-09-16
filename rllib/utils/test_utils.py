@@ -419,11 +419,11 @@ def run_learning_tests_from_yaml(
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
-                # 30sec for each(!) experiment/trial.
+                # 10sec for each(!) experiment/trial.
                 # This is such that if there are many experiments/trials
                 # in a test (e.g. rllib_learning_test), each one can at least
                 # create its trainer and maybe run a first iteration.
-                e["stop"]["time_total_s"] = 30
+                e["stop"]["time_total_s"] = 10
                 # Don't stop smoke tests b/c of any reward received.
                 e["pass_criteria"]["episode_reward_mean"] = float("inf")
                 # Same for timesteps.
