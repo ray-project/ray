@@ -3,7 +3,6 @@ import os
 import sys
 import time
 
-import grpc
 import pytest
 import numpy as np
 

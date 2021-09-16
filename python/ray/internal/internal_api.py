@@ -1,5 +1,3 @@
-import os
-
 import ray
 import ray._private.services as services
 import ray.worker
@@ -44,7 +42,6 @@ def memory_summary(address=None,
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
-    import grpc
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
@@ -84,7 +81,6 @@ def node_stats(node_manager_address=None,
                include_memory_info=True):
     """Returns NodeStats object describing memory usage in the cluster."""
 
-    import grpc
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 

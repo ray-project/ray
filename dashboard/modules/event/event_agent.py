@@ -6,8 +6,6 @@ from typing import Union
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
 from ray.dashboard.utils import async_loop_forever, create_task
 from ray.dashboard.modules.event import event_consts

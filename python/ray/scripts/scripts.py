@@ -16,7 +16,6 @@ from socket import socket
 
 import ray
 import psutil
-import grpc
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
