@@ -1,7 +1,8 @@
 # Deep learning.
 # --------------
-tensorflow==2.4.3
-tensorflow-probability==0.12.2
+tensorflow==2.5.0
+tensorflow-probability==0.13.0
+
 torch==1.8.1;sys_platform=="darwin"
 torchvision==0.9.1;sys_platform=="darwin"
 

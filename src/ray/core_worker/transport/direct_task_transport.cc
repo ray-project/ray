@@ -48,11 +48,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec, [this, actor_id, task_id](Status status) {
+          task_spec,
+          [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok()) {
               RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                  rpc::Address());
+              // Copy the actor's reply to the GCS for ref counting purposes.
+              rpc::PushTaskReply push_task_reply;
+              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              task_finisher_->CompletePendingTask(task_id, push_task_reply,
+                                                  reply.actor_address());
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
