@@ -27,7 +27,7 @@
 #/java/ @ray-project/ray-core-java
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
 # ==== Libraries and frameworks ====
 

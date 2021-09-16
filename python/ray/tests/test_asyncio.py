@@ -1,5 +1,6 @@
 # coding: utf-8
 import asyncio
+import os
 import sys
 import threading
 import time
@@ -7,8 +8,9 @@ import time
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    SignalActor, kill_actor_and_wait_for_failure, wait_for_condition)
+from ray._private.test_utils import (SignalActor,
+                                     kill_actor_and_wait_for_failure,
+                                     wait_for_condition, wait_for_pid_to_exit)
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -240,6 +242,22 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         wait_for_condition(cond)
 
     ray.get(check_actor_gone_now.remote())
+
+
+def test_asyncio_exit_actor_no_process_leak(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        async def exit(self):
+            ray.actor.exit_actor()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+    wait_for_pid_to_exit(pid)
 
 
 def test_async_callback(ray_start_regular_shared):
