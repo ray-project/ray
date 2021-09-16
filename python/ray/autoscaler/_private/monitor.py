@@ -1,6 +1,7 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
+import copy
 import logging
 import logging.handlers
 import os
@@ -197,9 +198,8 @@ class Monitor:
             for k in list(resources.keys()):
                 if k.startswith("node:"):
                     del resources[k]
-            print("resources total", resources)
             node_types[node_type] = {
-                "resources": resources,
+                "resources": copy.deepcopy(resources),
                 "node_config": {},
                 "max_workers": 1,
             }

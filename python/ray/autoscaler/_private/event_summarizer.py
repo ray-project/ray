@@ -6,6 +6,8 @@ class EventSummarizer:
 
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}
+        self.messages = []
+        self.keys = set()
 
     def add(self, template: str, *, quantity: Any,
             aggregate: Callable[[Any, Any], Any]) -> None:
@@ -27,13 +29,20 @@ class EventSummarizer:
         else:
             self.events_by_key[template] = quantity
 
+    def add_once(self, message, key):
+        if key not in self.keys:
+#            self.keys.add(key)
+            self.messages.append(message)
+
     def summary(self) -> List[str]:
         """Generate the aggregated log summary of all added events."""
         out = []
         for template, quantity in self.events_by_key.items():
             out.append(template.format(quantity))
+        out.extend(self.messages)
         return out
 
     def clear(self) -> None:
         """Clear the events added."""
         self.events_by_key.clear()
+        self.messages.clear()

@@ -317,14 +317,16 @@ class StandardAutoscaler:
             self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
-        to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
+        to_launch, unfulfilled = (
+            self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
             self.pending_launches.breakdown(),
             self.load_metrics.get_resource_demand_vector(),
             self.load_metrics.get_resource_utilization(),
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
+            ensure_min_cluster_size=self.load_metrics.get_resource_requests()))
+        self._report_pending_infeasible(unfulfilled)
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
@@ -425,6 +427,27 @@ class StandardAutoscaler:
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def _report_pending_infeasible(self, resources: List[ResourceDict]):
+        pending = []
+        infeasible = []
+        for bundle in resources:
+            placement_group = any("_group_" in k for k in bundle)
+            if placement_group:
+                continue
+            if self.resource_demand_scheduler.is_feasible(bundle):
+                pending.append(bundle)
+            else:
+                infeasible.append(bundle)
+        if pending:
+            self.event_summarizer.add_once(
+                "Resources were pending and the cluster is NOT autoscaling: {}".format(
+                    pending),
+                key="pending")
+        if infeasible:
+            self.event_summarizer.add_once(
+                "Resources are infeasible: {}".format(infeasible),
+                key="infeasible")
 
     def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
         """Terminate specified nodes and clean associated autoscaler state."""
@@ -634,6 +657,7 @@ class StandardAutoscaler:
                 record_local_head_state_if_needed(self.provider)
 
             self.available_node_types = self.config["available_node_types"]
+            print("NEW ANT", self.available_node_types)
             upscaling_speed = self.config.get("upscaling_speed")
             aggressive = self.config.get("autoscaling_mode") == "aggressive"
             target_utilization_fraction = self.config.get(

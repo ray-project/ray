@@ -551,7 +551,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // error.
           RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
                             "raylet. This is most "
-                            "likely because the local raylet has crahsed.";
+                            "likely because the local raylet has crashed.";
           RAY_LOG(FATAL) << status.ToString();
         }
       },
