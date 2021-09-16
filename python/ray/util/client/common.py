@@ -629,7 +629,7 @@ class OrderedResponseCache:
         Returns True if the cache contains an error, False otherwise
         """
         with self.cv:
-            invalid = True
+            invalid = False
             for req_id in self.cache:
                 if self.cache[req_id] is None:
                     self.cache[req_id] = e

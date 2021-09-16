@@ -197,6 +197,22 @@ def test_response_cache_cleanup():
     assert cache.check_cache(16, 124) == "Second response"
 
 
+def test_response_cache_invalidate():
+    """
+    Check that ordered response cache invalidate works as expected
+    """
+    cache = OrderedResponseCache()
+    e = RuntimeError("SomeError")
+    # No pending entries, cache should be valid
+    assert not cache.invalidate(e)
+    # No entry for 123 yet
+    assert cache.check_cache(123) is None
+    # this should invalidate the entry for 123
+    assert cache.invalidate(e)
+    assert cache.check_cache(123) == e
+    assert cache.invalidate(e)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
