@@ -29,7 +29,7 @@ class BackupServer {
  public:
   BackupServer();
 
-  // The main server will get all BackupServer's data when it restarted.
+  // The main server will get all BackupServer's data when it restarts.
   std::unordered_map<std::string, std::string> GetAllData();
 
   // The main server will sync data at first before puting data.
@@ -40,7 +40,6 @@ class BackupServer {
   void HanldeFailover();
 
   std::unordered_map<std::string, std::string> data_;
-  std::mutex mtx_;
 };
 
 BackupServer::BackupServer() {
@@ -51,13 +50,9 @@ BackupServer::BackupServer() {
   RAYLOG(INFO) << "BackupServer created";
 }
 
-std::unordered_map<std::string, std::string> BackupServer::GetAllData() {
-  std::unique_lock<std::mutex> lock(mtx_);
-  return data_;
-}
+std::unordered_map<std::string, std::string> BackupServer::GetAllData() { return data_; }
 
 void BackupServer::SyncData(const std::string &key, const std::string &val) {
-  std::unique_lock<std::mutex> lock(mtx_);
   data_[key] = val;
 }
 
@@ -75,7 +70,6 @@ class MainServer {
   void HanldeFailover();
 
   std::unordered_map<std::string, std::string> data_;
-  std::mutex mtx_;
 
   ray::ActorHandle<BackupServer> backup_actor_;
 };
@@ -98,19 +92,14 @@ void MainServer::Put(const std::string &key, const std::string &val) {
     RAYLOG(WARNING) << "MainServer SyncData failed.";
   }
 
-  std::unique_lock<std::mutex> lock(mtx_);
   data_[key] = val;
 }
 
 std::pair<bool, std::string> MainServer::Get(const std::string &key) {
-  std::unique_lock<std::mutex> lock(mtx_);
   return common::Get(key, data_);
 }
 
-std::unordered_map<std::string, std::string> MainServer::GetAllData() {
-  std::unique_lock<std::mutex> lock(mtx_);
-  return data_;
-}
+std::unordered_map<std::string, std::string> MainServer::GetAllData() { return data_; }
 
 void BackupServer::HanldeFailover() {
   // Get all data from MainServer.
