@@ -623,6 +623,28 @@ def test_return_nested_ids(shutdown_only, inline_args):
     ray.get(test.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_actor_constructor_borrowed_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Borrower:
+        def __init__(self, borrowed_refs):
+            self.borrowed_refs = borrowed_refs
+
+        def test(self):
+            ray.get(self.borrowed_refs)
+
+    # Actor is the only one with a ref.
+    ref = ray.put(np.random.random(1024 * 1024))
+    b = Borrower.remote([ref])
+    del ref
+    # Check that the actor's ref is usable.
+    for _ in range(3):
+        ray.get(b.test.remote())
+        time.sleep(1)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
