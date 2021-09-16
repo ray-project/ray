@@ -22,7 +22,8 @@ from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
+from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
+                                 SERVE_CONTROLLER_NAME)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -348,7 +349,7 @@ class Client:
 def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
-        checkpoint_path: Optional[str] = None,
+        checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
         dedicated_cpu: bool = False,
         **kwargs,
 ) -> Client:

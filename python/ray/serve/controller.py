@@ -68,8 +68,7 @@ class ServeController:
                        detached: bool = False):
         # Used to read/write checkpoints.
         controller_namespace = ray.get_runtime_context().namespace
-        if (checkpoint_path is None
-                or checkpoint_path == DEFAULT_CHECKPOINT_PATH):
+        if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
             logger.info("Using RayInternalKVStore for controller "
                         "checkpoint and recovery.")
             self.kv_store = RayInternalKVStore(
@@ -77,11 +76,13 @@ class ServeController:
         else:
             assert checkpoint_path.startswith("s3://"), (
                 "Only support S3 path as external controller checkpoint path.")
-            logger.info(
-                "Using Ray S3 KVStore for controller checkpoint and recovery.")
 
             path_parts = checkpoint_path.replace("s3://", "").split("/")
             bucket = path_parts.pop(0)
+
+            logger.info(
+                "Using Ray S3 KVStore for controller checkpoint and recovery. "
+                f"Bucket: {bucket}, checkpoint path: {checkpoint_path}")
 
             self.kv_store = RayS3KVStore(
                 f"{controller_name}-{controller_namespace}",
