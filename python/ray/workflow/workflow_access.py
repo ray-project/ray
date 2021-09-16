@@ -115,7 +115,7 @@ class LatestWorkflowOutput:
 
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
-@ray.remote
+@ray.remote(num_cpus=0)
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
@@ -165,6 +165,7 @@ class WorkflowManagementActor:
         Returns:
             Workflow execution result that contains the state and output.
         """
+        logger.info("Manager running or resuming...")
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")

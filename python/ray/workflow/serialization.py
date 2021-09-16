@@ -3,12 +3,12 @@ import asyncio
 from dataclasses import dataclass
 import logging
 import ray
+from ray import cloudpickle
 from ray.types import ObjectRef
 from ray.workflow import common
 from ray.workflow import storage
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-import cloudpickle
 from collections import ChainMap
 import io
 

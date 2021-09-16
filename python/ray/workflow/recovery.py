@@ -46,13 +46,13 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
         The output of the recovered step.
     """
     reader = workflow_storage.get_workflow_storage()
-    for index, _step_id in instant_workflow_inputs.items():
-        # override input workflows with instant workflows
-        input_workflows[index] = reader.load_step_output(_step_id)
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
-    # args, kwargs = reader.load_step_args(step_id, input_workflows,
-    #                                      input_workflow_refs)
+    # for index, _step_id in instant_workflow_inputs.items():
+    #     # override input workflows with instant workflows
+    #     input_workflows[index] = reader.load_step_output(_step_id)
+    args, kwargs = reader.load_step_args(step_id, input_workflows,
+                                         input_workflow_refs)
     return func(*args, **kwargs)
 
 
@@ -88,8 +88,9 @@ def _construct_resume_workflow_from_step(
         if isinstance(r, Workflow):
             input_workflows.append(r)
         else:
-            input_workflows.append(None)
-            instant_workflow_outputs[i] = r
+            assert isinstance(r, StepID)
+            # TODO (Alex): We should consider caching these outputs too.
+            input_workflows.append(reader.load_step_output(r))
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
 
     args, kwargs = reader.load_step_args(step_id, input_workflows,
