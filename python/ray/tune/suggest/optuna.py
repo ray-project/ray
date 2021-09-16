@@ -454,9 +454,9 @@ class OptunaSearch(Searcher):
                     mode=self._mode))
         if callable(self._space):
             raise TypeError(
-                "Define-by-run function passed in `space` argument is not"
-                "yet supported when using `evaluated_rewards`. Please provide"
-                "a 'OptunaDistribution' dict.")
+                "Define-by-run function passed in `space` argument is not "
+                "yet supported when using `evaluated_rewards`. Please provide "
+                "an 'OptunaDistribution' dict.")
 
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
