@@ -68,7 +68,8 @@ class ServeController:
                        detached: bool = False):
         # Used to read/write checkpoints.
         controller_namespace = ray.get_runtime_context().namespace
-        if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
+        if (checkpoint_path is None or
+                checkpoint_path == DEFAULT_CHECKPOINT_PATH):
             logger.info("Using RayInternalKVStore for controller "
                         "checkpoint and recovery.")
             self.kv_store = RayInternalKVStore(
