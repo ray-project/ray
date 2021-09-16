@@ -31,9 +31,7 @@ Counter::Counter(int init, bool with_exception) {
 
 Counter *Counter::FactoryCreate() { return new Counter(0); }
 
-Counter *Counter::FactoryCreateException() {
-  return new Counter(0, true);
-}
+Counter *Counter::FactoryCreateException() { return new Counter(0, true); }
 
 Counter *Counter::FactoryCreate(int init) { return new Counter(init); }
 
