@@ -367,6 +367,7 @@ def test_valid_actor_state_2():
         assert ray.get(ref) == 100
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_noisy_puts():
     """
     Randomly kills the data channel with 10% when receiving response
