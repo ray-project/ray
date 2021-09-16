@@ -43,11 +43,12 @@ class TestAPPO(unittest.TestCase):
     def test_appo_two_optimizers(self):
         config = ppo.appo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
+        config["_tf_policy_handles_more_than_one_loss"] = True
         config["separate_vf_optimizer"] = True
         config["model"]["vf_share_layers"] = False
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())

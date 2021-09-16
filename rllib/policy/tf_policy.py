@@ -249,17 +249,18 @@ class TFPolicy(Policy):
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
 
         self._optimizers: List[LocalOptimizer] = []
-        self._grads_and_vars = None
-        self._grads = None
+        self._grads_and_vars: Union[ModelGradients, List[ModelGradients]] = []
+        self._grads: Union[ModelGradients, List[ModelGradients]] = []
         # Policy tf-variables (weights), whose values to get/set via
         # get_weights/set_weights.
         self._variables = None
-        # Local optimizer's tf-variables (e.g. state vars for Adam).
+        # Local optimizer(s)' tf-variables (e.g. state vars for Adam).
         # Will be stored alongside `self._variables` when checkpointing.
-        self._optimizer_variables = None
+        self._optimizer_variables: \
+            Optional[ray.experimental.tf_utils.TensorFlowVariables] = None
 
         # The loss tf-op(s).
-        self._losses = None
+        self._losses = []
         # A batch dict passed into loss function as input.
         self._loss_input_dict = {}
         loss = force_list(loss)
@@ -312,8 +313,8 @@ class TFPolicy(Policy):
         return self._sess
 
     def loss_initialized(self) -> bool:
-        """Returns whether the loss function has been initialized."""
-        return self._loss is not None
+        """Returns whether the loss term(s) have been initialized."""
+        return len(self._losses) > 0
 
     def _initialize_loss(self, losses: List[TensorType],
                          loss_inputs: List[Tuple[str, TensorType]]) -> None:
@@ -341,13 +342,23 @@ class TFPolicy(Policy):
             self._losses = losses
 
         if not self._optimizers:
-            self._optimizers = self.optimizer()
+            self._optimizers = force_list(self.optimizer())
 
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizers, self._losses)
-            if g is not None
-        ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
+        # Supporting more than one loss/optimizer.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            self._grads_and_vars = []
+            self._grads = []
+            for group in self.gradients(self._optimizers, self._losses):
+                g_and_v = [(g, v) for (g, v) in group if g is not None]
+                self._grads_and_vars.append(g_and_v)
+                self._grads.append([g for (g, v) in g_and_v])
+        # Only one optimizer and and loss term.
+        else:
+            self._grads_and_vars = [
+                (g, v) for (g, v) in
+                self.gradients(self._optimizers[0], self._losses[0])
+                if g is not None]
+            self._grads = [g for (g, v) in self._grads_and_vars]
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
@@ -363,8 +374,11 @@ class TFPolicy(Policy):
                 logger.info("Update ops to run on apply gradient: {}".format(
                     self._update_ops))
             with tf1.control_dependencies(self._update_ops):
-                self._apply_op = self.build_apply_op(self._optimizers,
-                                                     self._grads_and_vars)
+                self._apply_op = self.build_apply_op(
+                    optimizer=self._optimizers if \
+                        self.config["_tf_policy_handles_more_than_one_loss"] \
+                        else self._optimizers[0],
+                    grads_and_vars=self._grads_and_vars)
 
         if log_once("loss_used"):
             logger.debug(
@@ -372,12 +386,13 @@ class TFPolicy(Policy):
                 f"\n{summarize(self._loss_input_dict)}\n")
 
         self.get_session().run(tf1.global_variables_initializer())
-        self._optimizer_variables = None
-        if self._optimizers:
-            self._optimizer_variables = \
-                ray.experimental.tf_utils.TensorFlowVariables(
-                    [v for o in self._optimizers for v in o.variables()],
-                    self.get_session())
+
+        # TensorFlowVariables holing a flat list of all our optimizers'
+        # variables.
+        self._optimizer_variables = \
+            ray.experimental.tf_utils.TensorFlowVariables(
+                [v for o in self._optimizers for v in o.variables()],
+                self.get_session())
 
     @override(Policy)
     def compute_actions(
@@ -556,8 +571,7 @@ class TFPolicy(Policy):
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
-        if self._optimizer_variables and \
-                len(self._optimizer_variables.variables) > 0:
+        if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self.get_session().run(self._optimizer_variables.variables)
         # Add exploration state.
@@ -570,7 +584,7 @@ class TFPolicy(Policy):
     def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
-        if optimizer_vars:
+        if optimizer_vars is not None:
             self._optimizer_variables.set_weights(optimizer_vars)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -753,35 +767,66 @@ class TFPolicy(Policy):
             return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self, optimizer: "tf.keras.optimizers.Optimizer",
-                  loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
+    def gradients(self,
+                  optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
+                  loss: Union[TensorType, List[TensorType]],
+                  ) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
+
+        Args:
+            optimizer ():
+            loss ():
 
         Returns:
             List[Tuple[TensorType, TensorType]]: List of tuples with grad
                 values and the grad-value's corresponding tf.variable in it.
         """
-        return optimizer.compute_gradients(loss)
+        # We have more than one optimizers and loss terms.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            optimizers = force_list(optimizer)
+            losses = force_list(loss)
+            grads = []
+            for optim, loss_ in zip(optimizers, losses):
+                grads.append(optim.compute_gradients(loss_))
+        # We have only one optimizer and one loss term.
+        else:
+            return optimizer.compute_gradients(loss)
 
     @DeveloperAPI
     def build_apply_op(
             self,
-            optimizer: "tf.keras.optimizers.Optimizer",
-            grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
-            "tf.Operation":
+            optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
+            grads_and_vars: Union[ModelGradients, List[ModelGradients]],
+    ) -> "tf.Operation":
         """Override this for a custom gradient apply computation behavior.
 
         Args:
-            optimizer (tf.keras.optimizers.Optimizer): The local tf optimizer
-                to use for applying the grads and vars.
-            grads_and_vars (List[Tuple[TensorType, TensorType]]): List of
-                tuples with grad values and the grad-value's corresponding
+            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): The local
+                tf optimizer to use for applying the grads and vars.
+            grads_and_vars (Union[ModelGradients, List[ModelGradients]]): List
+                of tuples with grad values and the grad-value's corresponding
                 tf.variable in it.
+
+        Returns:
+            tf.Operation: The tf op that applies all computed gradients
+                (`grads_and_vars`) to the model(s) via the given optimizer(s).
         """
-        # Specify global_step for TD3 which needs to count the num updates.
-        return optimizer.apply_gradients(
-            self._grads_and_vars,
-            global_step=tf1.train.get_or_create_global_step())
+        # We have more than one optimizers and loss terms.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            optimizers = force_list(optimizer)
+            ops = []
+            for i, optim in enumerate(optimizers):
+                # Specify global_step (e.g. for TD3 which needs to count the
+                # num updates that have happened).
+                ops.append(optim.apply_gradients(
+                    grads_and_vars[i],
+                    global_step=tf1.train.get_or_create_global_step()))
+            return tf.group(ops)
+        # We have only one optimizer and one loss term.
+        else:
+            return optimizer.apply_gradients(
+                grads_and_vars,
+                global_step=tf1.train.get_or_create_global_step())
 
     def _get_is_training_placeholder(self):
         """Get the placeholder for _is_training, i.e., for batch norm layers.
@@ -795,8 +840,13 @@ class TFPolicy(Policy):
 
     def _debug_vars(self):
         if log_once("grad_vars"):
-            for _, v in self._grads_and_vars:
-                logger.info("Optimizing variable {}".format(v))
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
+                for group in self._grads_and_vars:
+                    for _, v in group:
+                        logger.info("Optimizing variable {}".format(v))
+            else:
+                for _, v in self._grads_and_vars:
+                    logger.info("Optimizing variable {}".format(v))
 
     def _extra_input_signature_def(self):
         """Extra input signatures to add when exporting tf model.
