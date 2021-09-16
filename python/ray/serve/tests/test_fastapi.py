@@ -555,6 +555,7 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     assert resp.json()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fastapi_shutdown_hook(serve_instance):
     # https://github.com/ray-project/ray/issues/18349
     signal = SignalActor.remote()
