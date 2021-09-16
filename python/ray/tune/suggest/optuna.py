@@ -54,6 +54,7 @@ class _OptunaTrialSuggestCaptor:
     `suggest_` callables with a function capturing the returned value,
     which will be saved in the ``captured_values`` dict.
     """
+
     def __init__(self, ot_trial: OptunaTrial) -> None:
         self.ot_trial = ot_trial
         self.captured_values: Dict[str, Any] = {}
@@ -126,10 +127,11 @@ class OptunaSearch(Searcher):
             points_to_evaluate.
 
             ..warning::
-                When using evaluated_rewards, the search space `space` must
+                When using ``evaluated_rewards``, the search space ``space`` must
                 be provided as a :class:`dict` with parameter names as keys and
-                ``optuna.distributions``. The define-by-run definition is not
-                yet supported.
+                ``optuna.distributions`` instances as values. The define-by-run
+                 search space definition is not yet supported with this
+                 functionality.
 
     Tune automatically converts search spaces to Optuna's format:
 
@@ -184,8 +186,8 @@ class OptunaSearch(Searcher):
         tune.run(trainable, search_alg=optuna_search)
     
     You can pass configs that will be evaluated first using
-    `points_to_evaluate`:
-    
+    ``points_to_evaluate``:
+
     .. code-block:: python
 
         from ray.tune.suggest.optuna import OptunaSearch
@@ -454,7 +456,7 @@ class OptunaSearch(Searcher):
                 "Define-by-run function passed in `space` argument is not"
                 "yet supported when using `evaluated_rewards`. Please provide"
                 "a 'OptunaDistribution' dict.")
-        
+
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
             ot_trial_state = OptunaTrialState.FAIL
