@@ -9,19 +9,19 @@ import threading
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.services
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataOrganizer
-from ray.new_dashboard.utils import async_loop_forever
+from ray.dashboard.datacenter import DataOrganizer
+from ray.dashboard.utils import async_loop_forever
 from ray._raylet import connect_to_gcs
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.new_dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.optional_deps import aiohttp, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
