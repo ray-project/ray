@@ -189,6 +189,21 @@ the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
 .. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 .. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
 
+`AccessViolationException` with Ray on Windows
+----------------------------------------------
+
+The [AccessViolationException](https://docs.microsoft.com/en-us/dotnet/api/system.accessviolationexception?view=net-5.0)
+ while using Ray on Windows is observed in a few instances such as [gh-13511](https://github.com/ray-project/ray/issues/13511)
+ and [gh-15073](https://github.com/ray-project/ray/issues/15073). Upon investigation we
+ observed that this exception is thrown while execution of user code by a worker process. Since, the user
+ provided method/function is called inside C++ code (specifically
+ [here](https://github.com/ray-project/ray/blob/be7cb70c304588467ed5391591ace9fad4b54ce3/python/ray/_raylet.pyx#L572)),
+ the stack trace associated with the above exception is seen on the command prompt alongside log files. It is noteworthy
+ that this exception so far appears to be harmless. For example, in [gh-13511](https://github.com/ray-project/ray/issues/13511),
+ `jpype.startJVM()` successfully starts the JVM while the above exception is thrown. An attempt to catch the access violation
+ exception using Windows specific C++ constructs like Structured Exception Handling (SEH) is available in
+ [this commit](https://github.com/czgdp1807/ray/commit/68176915f9a63782b48b7d58df94a98436ce0460). The code compiles
+ successfully however the desired behaviour of the exception not being thrown is not yet observed.
 
 Installing Ray on Arch Linux
 ----------------------------
