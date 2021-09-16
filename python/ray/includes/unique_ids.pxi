@@ -312,6 +312,7 @@ cdef class ClientActorRef(ActorID):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
         client.ray.call_retain(id)
+        self._client_id = client.ray.worker._client_id
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -326,6 +327,10 @@ cdef class ClientActorRef(ActorID):
     @property
     def id(self):
         return self.binary()
+
+    @property
+    def client_id(self) -> str:
+        return self._client_id
 
 
 cdef class FunctionID(UniqueID):

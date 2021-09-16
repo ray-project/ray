@@ -86,12 +86,22 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
+cdef class ClientObjectRef(ObjectRef):
+    cdef:
+        # ID of the Ray client that owns this reference.
+        str _client_id
+
 cdef class ActorID(BaseID):
     cdef CActorID data
 
     cdef CActorID native(self)
 
     cdef size_t hash(self)
+
+cdef class ClientActorRef(ActorID):
+    cdef:
+        # ID of the Ray client that owns this reference.
+        str _client_id
 
 cdef class CoreWorker:
     cdef:

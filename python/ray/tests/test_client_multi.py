@@ -20,15 +20,18 @@ def test_multi_cli_basic(call_ray_start):
     with cli2:
         b = ray.put(20)
 
-    # TODO better error message.
-    # Right now, it's EOFError actually
-    with pytest.raises(Exception):
+    with pytest.raises(
+            ValueError, match="ClientObjectRef is not from this Ray client"):
         ray.get(a)
 
-    with pytest.raises(Exception), cli2:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli2:
         ray.get(a)
 
-    with pytest.raises(Exception), cli1:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli1:
         ray.get(b)
 
     c = ray.put(30)
@@ -39,10 +42,14 @@ def test_multi_cli_basic(call_ray_start):
     with cli2:
         assert 20 == ray.get(b)
 
-    with pytest.raises(Exception), cli1:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli1:
         ray.get(c)
 
-    with pytest.raises(Exception), cli2:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli2:
         ray.get(c)
 
 
@@ -85,9 +92,7 @@ def test_multi_cli_func(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
 
-    # TODO better error message.
-    # Right now, it's EOFError actually
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Ray Client is not connected"):
         ray.get(hello.remote())
 
     with cli1:
@@ -98,10 +103,14 @@ def test_multi_cli_func(call_ray_start):
         o2 = hello.remote()
         assert "world" == ray.get(o2)
 
-    with pytest.raises(Exception), cli1:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli1:
         ray.get(o2)
 
-    with pytest.raises(Exception), cli2:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli2:
         ray.get(o1)
 
 
@@ -124,9 +133,7 @@ def test_multi_cli_actor(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
 
-    # TODO better error message.
-    # Right now, it's EOFError actually
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Ray Client is not connected"):
         a = Actor.remote(10)
         ray.get(a.double.remote())
 
@@ -140,16 +147,29 @@ def test_multi_cli_actor(call_ray_start):
         o2 = a2.double.remote()
         assert 40 == ray.get(o2)
 
-    with pytest.raises(Exception), cli1:
-        ray.get(a2.double.remote())
+    with pytest.raises(
+            ValueError,
+            match="ClientActorHandle is not from this Ray client"), cli1:
+        a2.double.remote()
 
-    with pytest.raises(Exception), cli1:
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli1:
         ray.get(o2)
 
-    with pytest.raises(Exception), cli2:
-        ray.get(a1.double.remote())
+    with pytest.raises(
+            ValueError,
+            match="ClientActorHandle is not from this Ray client"), cli2:
+        a1.double.remote()
 
-    with pytest.raises(Exception), cli2:
+    with pytest.raises(
+            ValueError,
+            match="ClientActorHandle is not from this Ray client"), cli2:
+        ray.kill(a1)
+
+    with pytest.raises(
+            ValueError,
+            match="ClientObjectRef is not from this Ray client"), cli2:
         ray.get(o1)
 
 

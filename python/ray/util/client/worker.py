@@ -25,7 +25,8 @@ from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
 from ray.util.client.common import (ClientActorClass, ClientActorHandle,
                                     ClientActorRef, ClientObjectRef,
-                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
+                                    ClientRemoteFunc, ClientRemoteMethod,
+                                    ClientStub, GRPC_OPTIONS)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
@@ -91,7 +92,7 @@ class Worker:
             _credentials: gprc channel credentials. Default ones will be used
               if None.
         """
-        self._client_id = make_client_id()
+        self._client_id: str = make_client_id()
         self.metadata = [("client_id", self._client_id)] + (metadata if
                                                             metadata else [])
         self.channel = None
@@ -219,11 +220,23 @@ class Worker:
             if not vals:
                 return []
             to_get = vals
-        elif isinstance(vals, ClientObjectRef):
-            to_get = [vals]
         else:
-            raise Exception("Can't get something that's not a "
-                            "list of IDs or just an ID: %s" % type(vals))
+            if isinstance(vals, ClientObjectRef):
+                to_get = [vals]
+            else:
+                raise TypeError(
+                    "Can't get something that's not a ClientObjectRef or "
+                    "a list of ClientObjectRefs: %s" % type(vals))
+        for ref in to_get:
+            if not isinstance(ref, ClientObjectRef):
+                raise TypeError(
+                    "Input list has an element that is not a ClientObjectRef: "
+                    f"{ref}")
+            if ref.client_id != self._client_id:
+                raise ValueError(
+                    f"ClientObjectRef is not from this Ray client: {ref}, "
+                    f"ref client_id={ref.client_id}, "
+                    f"Ray client_id={self._client_id}")
 
         if timeout is None:
             deadline = None
@@ -316,7 +329,12 @@ class Worker:
         for ref in object_refs:
             if not isinstance(ref, ClientObjectRef):
                 raise TypeError("wait() expected a list of ClientObjectRef, "
-                                f"got list containing {type(ref)}")
+                                f"got list containing {ref}")
+            if ref.client_id != self._client_id:
+                raise ValueError(
+                    f"ClientObjectRef is not from this Ray client: {ref}, "
+                    f"ref client_id={ref.client_id}, "
+                    f"Ray client_id={self._client_id}")
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
@@ -338,6 +356,14 @@ class Worker:
         return (client_ready_object_ids, client_remaining_object_ids)
 
     def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
+        if isinstance(
+                instance, ClientRemoteMethod
+        ) and instance._actor_handle.actor_ref.client_id != self._client_id:
+            raise ValueError(
+                f"ClientActorHandle is not from this Ray client. Actor ref: "
+                f"{instance._actor_handle.actor_ref}, ref "
+                f"client_id={instance._actor_handle.actor_ref.client_id}"
+                f", Ray client_id={self._client_id}")
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
@@ -435,6 +461,11 @@ class Worker:
         if not isinstance(actor, ClientActorHandle):
             raise ValueError("ray.kill() only supported for actors. "
                              "Got: {}.".format(type(actor)))
+        if actor.actor_ref.client_id != self._client_id:
+            raise ValueError(
+                f"ClientActorHandle is not from this Ray client. Actor ref: "
+                f"{actor.actor_ref}, ref client_id={actor.actor_ref.client_id}"
+                f", Ray client_id={self._client_id}")
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart

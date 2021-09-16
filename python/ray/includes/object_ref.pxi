@@ -152,6 +152,7 @@ cdef class ClientObjectRef(ObjectRef):
         self.data = CObjectID.FromBinary(<c_string>id)
         client.ray.call_retain(id)
         self.in_core_worker = False
+        self._client_id = client.ray.worker._client_id
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -167,6 +168,10 @@ cdef class ClientObjectRef(ObjectRef):
     @property
     def id(self):
         return self.binary()
+
+    @property
+    def client_id(self) -> str:
+        return self._client_id
 
     def future(self) -> concurrent.futures.Future:
         fut = concurrent.futures.Future()
