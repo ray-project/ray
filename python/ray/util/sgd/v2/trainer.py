@@ -438,7 +438,7 @@ class Trainer:
         Args:
             train_cls (Type): The class definition to use for the Ray
                 actors/workers.
-            *args, **kwargs: Arguments to pass into the ``__init__`` of the
+            args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
         """
         if self._executor.is_started:
