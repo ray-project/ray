@@ -16,8 +16,7 @@ class EndpointState:
     called with a lock held.
     """
 
-    def __init__(self, kv_store: KVStoreBase,
-                 long_poll_host: LongPollHost):
+    def __init__(self, kv_store: KVStoreBase, long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._endpoints: Dict[EndpointTag, EndpointInfo] = dict()
