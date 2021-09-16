@@ -851,6 +851,9 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
         session_operation_response = sdk.get_session_operation(
             sop_id, _request_timeout=30)
         session_operation = session_operation_response.result
@@ -862,8 +865,6 @@ def create_and_wait_for_session(
             logger.info(f"... still waiting for session {session_name} "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        time.sleep(1)
 
     return session_id
 
@@ -899,6 +900,9 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
         result = sdk.get_session_command(session_command_id=scd_id)
         completed = result.result.finished_at
 
@@ -912,8 +916,6 @@ def wait_for_session_command_to_complete(create_session_command_result,
             logger.info(f"... still waiting for command to finish "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        time.sleep(1)
 
     status_code = result.result.status_code
     runtime = time.time() - start_wait
