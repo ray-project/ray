@@ -48,16 +48,14 @@ class RayConfig {
   // A mapping the names of custom resources to the quantities for them available.
   std::unordered_map<std::string, int> resources;
 
-  // Boolean flag indicating whether or not to start the
-  // Ray dashboard, which displays the status of the Ray
-  // cluster. If this argument is None, then the UI will be started if
+  // Boolean flag indicating whether or not to start the Ray dashboard, which displays the
+  // status of the Ray cluster. If this argument is None, then the UI will be started if
   // the relevant dependencies are present.
   bool include_dashboard = false;
 
-  // The host to bind the dashboard server to. Can either be
-  // localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-  // By default, this is set to localhost to prevent access from
-  // external machines.
+  // The host to bind the dashboard server to. Can either be localhost (127.0.0.1) or
+  // 0.0.0.0 (available from all interfaces). By default, this is set to localhost to
+  // prevent access from external machines.
   std::string dashboard_host = "127.0.0.1";
 
   // The port to bind the dashboard server to.
