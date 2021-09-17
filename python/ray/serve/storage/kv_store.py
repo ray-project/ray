@@ -199,7 +199,7 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token)
 
     def get_storage_key(self, key: str) -> str:
-        return f"{self._prefix}{self._namespace}-{self.key}"
+        return f"{self._prefix}{self._namespace}-{key}"
 
     def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.

@@ -36,7 +36,7 @@ def make_kv_store(checkpoint_path, namespace):
             prefix = parsed_url.path
             logger.info(
                 "Using Ray S3 KVStore for controller checkpoint and recovery: "
-                f"bucket: {bucket}, checkpoint path: {checkpoint_path}")
+                f"bucket={bucket} checkpoint_path={checkpoint_path}")
             return RayS3KVStore(
                 namespace,
                 bucket=bucket,
