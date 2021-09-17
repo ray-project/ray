@@ -327,7 +327,7 @@ class Dataset(Generic[T]):
                        *,
                        seed: Optional[int] = None,
                        num_blocks: Optional[int] = None,
-                       move: Optional[bool] = False) -> "Dataset[T]":
+                       _move: Optional[bool] = False) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -346,10 +346,6 @@ class Dataset(Generic[T]):
                 based on system randomness.
             num_blocks: The number of output blocks after the shuffle, or None
                 to retain the number of blocks.
-            move: Whether the blocks for the source dataset should be moved
-                into the new, shuffled dataset, which should reduce memory
-                utilization during shuffle. This will make the source dataset
-                unusable.
 
         Returns:
             The shuffled dataset.
@@ -357,7 +353,7 @@ class Dataset(Generic[T]):
         if num_blocks is None:
             num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
-            self._move_blocks() if move else self._blocks,
+            self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
             random_seed=seed)
