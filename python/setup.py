@@ -148,6 +148,7 @@ if setup_spec.type == SetupType.RAY_CPP:
 generated_python_directories = [
     "ray/core/generated",
     "ray/streaming/generated",
+    "ray/serve/generated",
 ]
 
 ray_files.append("ray/nightly-wheels.yaml")
