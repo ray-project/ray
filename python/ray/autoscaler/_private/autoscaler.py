@@ -443,19 +443,22 @@ class StandardAutoscaler:
             else:
                 infeasible.append(bundle)
         if pending:
-            if self.readonly:
-                self.event_summarizer.add_once(
-                    "The following resource requests are pending: {}. They will be "
-                    "scheduled after existing tasks and actors finish.".
-                    format(", ".join(set(str(x) for x in pending))),
-                    key="pending")
+            if self.load_metrics.deadlock:
+                for ix in pending:
+                    self.event_summarizer.add_once(
+                        "Warning: The following resource request cannot be "
+                        "scheduled right now: {}. This is likely due to all "
+                        "cluster resources being claimed by actors. Consider "
+                        "creating fewer actors or adding more nodes "
+                        "to this Ray cluster.".format(ix),
+                        key="pending_{}".format(sorted(ix.items())), ttl=30)
         if infeasible:
             for ix in infeasible:
                 self.event_summarizer.add_once(
-                    "ERROR: No available node types can fulfill resource "
-                    "request {}. Add suitable nodes to this cluster to "
+                    "Error: No available node types can fulfill resource "
+                    "request {}. Add suitable node types to this cluster to "
                     "resolve this issue.".format(ix),
-                    key="infeasible_{}".format(sorted(ix.items())))
+                    key="infeasible_{}".format(sorted(ix.items())), ttl=30)
 
     def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
         """Terminate specified nodes and clean associated autoscaler state."""

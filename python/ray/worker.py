@@ -1088,7 +1088,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
                        "cluster status. To disable these "
-                       "messages, set AUTOSCALER_EVENTS=0.")
+                       "messages, set RAY_SCHEDULER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
@@ -1143,7 +1143,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
         elif data["pid"] == "autoscaler":
-            if "ERROR" in line:
+            if "Error:" in line or "Warning:" in line:
                 return colorama.Style.BRIGHT + colorama.Fore.YELLOW
             else:
                 return colorama.Style.BRIGHT + colorama.Fore.CYAN
@@ -1151,7 +1151,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.CYAN
 
     if data["pid"] == "autoscaler":
-        pid = "{} +{}".format(data["pid"], time_string())
+        pid = "scheduler +{}".format(time_string())
         lines = filter_autoscaler_events(data["lines"])
     else:
         pid = data["pid"]

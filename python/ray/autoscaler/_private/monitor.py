@@ -227,8 +227,11 @@ class Monitor:
             list(resources_batch_data.batch))
 
         node_types = {}
+        deadlock = False
         for resource_message in resources_batch_data.batch:
             node_type = "local_{}".format(resource_message.node_id.hex())
+            if resource_message.resource_deadlock_detected:
+                deadlock = True
             resources = resource_message.resources_total
             for k in list(resources.keys()):
                 if k.startswith("node:"):
@@ -258,7 +261,8 @@ class Monitor:
             #                ip = resource_message.node_manager_address
             self.load_metrics.update(
                 ip, total_resources, available_resources, resource_load,
-                waiting_bundles, infeasible_bundles, pending_placement_groups)
+                waiting_bundles, infeasible_bundles, pending_placement_groups,
+                deadlock)
         self.extra_node_types = node_types
 
     def update_resource_requests(self):

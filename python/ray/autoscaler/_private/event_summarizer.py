@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List
+import time
 
 
 class EventSummarizer:
@@ -7,7 +8,7 @@ class EventSummarizer:
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}
         self.messages = []
-        self.keys = set()
+        self.key_ttl = {}
 
     def add(self, template: str, *, quantity: Any,
             aggregate: Callable[[Any, Any], Any]) -> None:
@@ -29,9 +30,9 @@ class EventSummarizer:
         else:
             self.events_by_key[template] = quantity
 
-    def add_once(self, message, key):
-        if key not in self.keys:
-            self.keys.add(key)
+    def add_once(self, message, key, ttl):
+        if key not in self.key_ttl:
+            self.key_ttl[key] = time.time() + ttl
             self.messages.append(message)
 
     def summary(self) -> List[str]:
@@ -46,3 +47,6 @@ class EventSummarizer:
         """Clear the events added."""
         self.events_by_key.clear()
         self.messages.clear()
+        for k, t in list(self.key_ttl.items()):
+            if time.time() > t:
+                del self.key_ttl[k]

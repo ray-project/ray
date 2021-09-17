@@ -285,6 +285,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
       (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }
     (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
+    iter->second.set_resource_deadlock_detected(resources.resource_deadlock_detected());
   }
 }
 

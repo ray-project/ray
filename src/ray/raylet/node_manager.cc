@@ -1489,6 +1489,7 @@ void NodeManager::HandleRequestResourceReport(
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
+  resources_data->set_resource_deadlock_detected(resource_deadlock_warned_ >= 1);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
