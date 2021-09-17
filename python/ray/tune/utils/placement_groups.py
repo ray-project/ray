@@ -298,6 +298,7 @@ class PlacementGroupManager:
             if force or (time.time() -
                          self._removal_delay) >= self._pgs_for_removal[pg]:
                 self._pgs_for_removal.pop(pg)
+
                 remove_placement_group(pg)
 
                 # Remove from unstaged cache
@@ -333,6 +334,7 @@ class PlacementGroupManager:
                     # If block=False, only run once
                     has_non_removed_pg_left = block
                     pg = get_placement_group(info["name"])
+
                     remove_placement_group(pg)
 
                     # Remove from unstaged cache
@@ -381,8 +383,7 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return (len(self._staging_futures) + len(
-            self._unstaged_pg_pgf)) < self._max_staging
+        return len(self._staging_futures) < self._max_staging
 
     def update_status(self):
         """Update placement group status.
@@ -500,10 +501,15 @@ class PlacementGroupManager:
         pgf = trial.placement_group_factory
 
         staged_pg = self._unstage_unused_pg(pgf)
-        if not staged_pg:
+        if not staged_pg and not self._unstaged_pgf_pg[pgf]:
+            # If we have an unstaged placement group for this factory,
+            # this might be the same one we unstaged previously. If so,
+            # we should continue with the caching. If not, this will be
+            # reconciled later.
             return None
 
-        self.remove_pg(staged_pg)
+        if staged_pg:
+            self.remove_pg(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
