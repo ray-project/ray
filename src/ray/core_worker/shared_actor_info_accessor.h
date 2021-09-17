@@ -42,16 +42,31 @@ class SharedActorInfoAccessor {
   /// the destroyed CoreWorker instance or its fields/sub-fields.
   absl::Mutex worker_shutdown_mutex_;
 
+  /// This map stores notification callbacks of subscribe actions from all CoreWorker
+  /// instances. We use this map to invoke the notification callbacks of those workers
+  /// which subscribes an actor when the actor state notification message arrives.
   std::unordered_map<
       ActorID,
       std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>>
       id_to_notification_callbacks_ GUARDED_BY(mutex_);
 
+  /// This map stores done callbacks of subscribe actions from all CoreWorker
+  /// instances. We use this map to invoke the done callbacks of those workers
+  /// which subscribes an actor when the underlying subscribe operatation finishes.
   std::unordered_map<ActorID, std::unordered_map<WorkerID, gcs::StatusCallback>>
       id_to_done_callbacks_ GUARDED_BY(mutex_);
 
+  /// This map stores the cached subscribe status of all actors. Because the underlying
+  /// subscribe operation is only performed once for each actor, we need to cache the
+  /// status so we can invoke the done callback immediately for the subsequent subscribe
+  /// operations from other workers.
   std::unordered_map<ActorID, Status> ids_gcs_done_callback_invoked_ GUARDED_BY(mutex_);
 
+  /// This map stores the cached actor state notification messages of all subscribed
+  /// actors. If the actor is already subscribed by a worker and the latest actor state
+  /// notification has already arrived, and another worker is subscribing to the same
+  /// actor, we need to invoke the notification callback from the latter worker with the
+  /// cached message immediately.
   std::unordered_map<ActorID, rpc::ActorTableData> actor_infos_ GUARDED_BY(mutex_);
 };
 
