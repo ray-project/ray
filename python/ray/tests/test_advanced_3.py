@@ -13,7 +13,7 @@ import pickle
 import pytest
 
 import ray
-from ray.new_dashboard import k8s_utils
+from ray.dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
@@ -695,9 +695,9 @@ def test_k8s_cpu():
         file.flush()
     with mock.patch("ray._private.utils.os.environ",
                     {"KUBERNETES_SERVICE_HOST"}),\
-            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
+            mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH",
                        cpu_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
+            mock.patch("ray.dashboard.k8s_utils.PROC_STAT_PATH",
                        proc_stat_file.name),\
             mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
                        (shares_file.name,)):

@@ -20,6 +20,8 @@
 
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 
@@ -159,6 +161,11 @@ Status TaskExecutor::ExecuteTask(
   if (!status.ok()) {
     if (status.IsIntentionalSystemExit()) {
       return status;
+    } else {
+      RAY_EVENT(ERROR, EL_RAY_CPP_TASK_FAILED)
+              .WithField("task_type", TaskType_Name(task_type))
+              .WithField("function_name", func_name)
+          << "C++ task failed: " << status.ToString();
     }
 
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
@@ -189,6 +196,10 @@ Status TaskExecutor::ExecuteTask(
     }
 
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+  } else {
+    if (!status.ok()) {
+      return ray::Status::CreationTaskError();
+    }
   }
   return ray::Status::OK();
 }

@@ -11,7 +11,6 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
-from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -385,6 +384,9 @@ def run_learning_tests_from_yaml(
         yaml_files (List[str]): List of yaml file names.
         max_num_repeats (int): How many times should we repeat a failed
             experiment?
+        smoke_test (bool): Whether this is just a smoke-test. If True,
+            set time_total_s to 5min and don't early out due to rewards
+            or timesteps reached.
     """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:
@@ -416,12 +418,11 @@ def run_learning_tests_from_yaml(
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
-                # 15min hardcoded for now.
-                e["stop"]["time_total_s"] = 900
-                # Don't stop smoke tests b/c of any reward received.
-                e["pass_criteria"]["episode_reward_mean"] = float("inf")
-                # Same for timesteps.
-                e["pass_criteria"]["timesteps_total"] = LARGE_INTEGER
+                # 0sec for each(!) experiment/trial.
+                # This is such that if there are many experiments/trials
+                # in a test (e.g. rllib_learning_test), each one can at least
+                # create its trainer and run a first iteration.
+                e["stop"]["time_total_s"] = 0
             else:
                 # We also stop early, once we reach the desired reward.
                 e["stop"]["episode_reward_mean"] = \
@@ -456,7 +457,7 @@ def run_learning_tests_from_yaml(
                     "passed": False,
                 }
                 # This key would break tune.
-                del e["pass_criteria"]
+                e.pop("pass_criteria", None)
 
     # Print out the actual config.
     print("== Test config ==")
@@ -495,8 +496,15 @@ def run_learning_tests_from_yaml(
             check_eval = experiments[experiment]["config"].get(
                 "evaluation_interval", None) is not None
 
+            # Error: Increase failure count and repeat.
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
+            # Smoke-tests always succeed.
+            elif smoke_test:
+                checks[experiment]["passed"] = True
+                del experiments_to_run[experiment]
+            # Experiment finished: Check reward achieved and timesteps done
+            # (throughput).
             else:
                 reward_mean = \
                     t.last_result["evaluation"]["episode_reward_mean"] if \

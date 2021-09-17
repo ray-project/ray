@@ -41,6 +41,9 @@ python python/ray/tests/test_multiprocessing.py
 python python/ray/tests/test_node_manager.py
 python python/ray/tests/test_object_manager.py
 python python/ray/tests/test_placement_group.py
+python python/ray/tests/test_placement_group_mini_integration.py
+python python/ray/tests/test_placement_group_2.py
+python python/ray/tests/test_placement_group_3.py
 python python/ray/tests/test_ray_init.py 
 python python/ray/tests/test_resource_demand_scheduler.py
 python python/ray/tests/test_runtime_env_env_vars.py

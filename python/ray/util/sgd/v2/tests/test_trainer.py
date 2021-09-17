@@ -17,8 +17,11 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
+from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
+    TrainClass as HorovodTrainClass
 from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
+    as \
+    fashion_mnist_train_func
 from ray.util.sgd.v2.examples.train_linear_example import train_func as \
     linear_train_func
 
@@ -87,7 +90,8 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].execute.remote(f, *args, **kwargs)
+        return self.workers[i]._BaseWorkerMixin__execute.remote(
+            f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -630,6 +634,25 @@ def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
         assert worker_result[num_epochs - 1] < worker_result[0]
 
 
+def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
+    num_workers = 2
+    num_epochs = 2
+    trainer = Trainer("horovod", num_workers)
+    workers = trainer.to_worker_group(
+        HorovodTrainClass, config={
+            "num_epochs": num_epochs,
+            "lr": 1e-3
+        })
+    results = []
+    for epoch in range(num_epochs):
+        results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
+    trainer.shutdown()
+
+    assert len(results) == num_epochs
+    for i in range(num_workers):
+        assert results[num_epochs - 1][i] < results[0][i]
+
+
 def test_init_failure(ray_start_2_cpus):
     with pytest.raises(TypeError):
         Trainer(5)
@@ -999,6 +1022,33 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     result = trainer.run(get_resources)
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
+
+
+def test_to_worker_group(ray_start_2_cpus):
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+
+    class Incrementer:
+        def __init__(self, starting=0):
+            self.count = starting
+
+        def increment(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    workers = trainer.to_worker_group(Incrementer, starting=2)
+    assert ray.get([w.get_count.remote() for w in workers]) == [2, 2]
+
+    ray.get([w.increment.remote() for w in workers])
+    assert ray.get([w.get_count.remote() for w in workers]) == [3, 3]
+
+    ray.get(workers[0].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 3]
+
+    ray.get(workers[1].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 4]
 
 
 if __name__ == "__main__":

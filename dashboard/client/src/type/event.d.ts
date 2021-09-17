@@ -13,6 +13,9 @@ export type Event = {
   timeStamp: number;
   jobName: string;
   severity: string;
+  customFields: {
+    [key: string]: any;
+  };
 };
 
 export type EventRsp = {

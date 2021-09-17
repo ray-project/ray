@@ -10,7 +10,7 @@ import sys
 from threading import Lock, Thread, RLock
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.cloudpickle.compat import pickle
@@ -21,7 +21,8 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
-from ray.util.client.common import (ClientServerHandle,
+from ray.util.client.common import (_get_client_id_from_context,
+                                    ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
@@ -43,19 +44,6 @@ CHECK_CHANNEL_TIMEOUT_S = 30
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
-
-
-def _get_client_id_from_context(context: Any) -> str:
-    """
-    Get `client_id` from gRPC metadata. If the `client_id` is not present,
-    this function logs an error and sets the status_code.
-    """
-    metadata = {k: v for k, v in context.invocation_metadata()}
-    client_id = metadata.get("client_id") or ""
-    if client_id == "":
-        logger.error("Client connecting with no client_id")
-        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
-    return client_id
 
 
 @dataclass
