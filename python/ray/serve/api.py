@@ -21,7 +21,8 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
+                              ReplicaConfig)
 from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
@@ -227,10 +228,10 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, python_methods,
-                                           version, prev_version, route_prefix,
-                                           ray.get_runtime_context().job_id))
+            self._controller.deploy.remote(
+                name, backend_config.to_proto_bytes(), replica_config,
+                python_methods, version, prev_version, route_prefix,
+                ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
 
@@ -874,7 +875,8 @@ def deployment(name: Optional[str] = None,
                init_args: Optional[Tuple[Any]] = None,
                ray_actor_options: Optional[Dict] = None,
                user_config: Optional[Any] = None,
-               max_concurrent_queries: Optional[int] = None
+               max_concurrent_queries: Optional[int] = None,
+               _autoscaling_config: Optional[dict] = None
                ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -891,6 +893,7 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[dict] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -954,6 +957,10 @@ def deployment(
 
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
+
+    if _autoscaling_config is not None:
+        config.autoscaling_config = AutoscalingConfig.parse_obj(
+            _autoscaling_config)
 
     def decorator(_func_or_class):
         return Deployment(
