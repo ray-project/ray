@@ -43,5 +43,5 @@ zoopt==0.4.1
 # Dependencies for Hugging Face examples:
 # `python/ray/util/sgd/v2/examples/transformers/transformers_example.py`
 accelerate==0.3.0
-datasets==1.11.0
+datasets==1.12.1
 sentencepiece==0.1.96
