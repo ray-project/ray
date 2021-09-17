@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
-from urllib.parse import urlparse
+import urllib.parse
 
 if TYPE_CHECKING:
     import pyarrow
@@ -303,26 +303,22 @@ def _expand_directory(path: str,
 
 
 def _is_url(path) -> bool:
-    return urlparse(path).scheme != ""
+    return urllib.parse.urlparse(path).scheme != ""
 
 
 def _encode_url(path):
-    from urllib.parse import quote
-
-    return quote(path, safe="/:")
+    return urllib.parse.quote(path, safe="/:")
 
 
 def _decode_url(path):
-    from urllib.parse import unquote
-
-    return unquote(path)
+    return urllib.parse.unquote(path)
 
 
 def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
-    parsed = urlparse(path)
+    parsed = urllib.parse.urlparse(path)
     return parsed.netloc + parsed.path
 
 
