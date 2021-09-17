@@ -336,6 +336,17 @@ class BackendExecutor:
                         worker_id, set_gpu_ids))
         ray.get(futures)
 
+    def _create_local_rank_map(self) -> Dict:
+        """Create mapping from worker world_rank to local_rank."""
+        rank_mapping = {}
+        ip_dict = defaultdict(int)
+        for world_rank in range(len(self.worker_group)):
+            worker = self.worker_group.workers[world_rank]
+            node_ip = worker.metadata["node_ip"]
+            rank_mapping[world_rank] = ip_dict[node_ip]
+            ip_dict[node_ip] += 1
+        return rank_mapping
+
     def start_training(
             self,
             train_func: Callable[[], T],
@@ -371,11 +382,12 @@ class BackendExecutor:
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
         # First initialize the session.
-        def initialize_session(world_rank, train_func, checkpoint):
+        def initialize_session(world_rank, local_rank, train_func, checkpoint):
             try:
                 init_session(
                     training_func=train_func,
                     world_rank=world_rank,
+                    local_rank=local_rank,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
@@ -388,6 +400,8 @@ class BackendExecutor:
 
         checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
 
+        local_rank_map = self._create_local_rank_map()
+
         futures = []
         for world_rank in range(len(self.worker_group)):
             futures.append(
@@ -395,6 +409,7 @@ class BackendExecutor:
                     world_rank,
                     initialize_session,
                     world_rank=world_rank,
+                    local_rank=local_rank_map[world_rank],
                     train_func=train_func,
                     checkpoint=checkpoint_dict))
 

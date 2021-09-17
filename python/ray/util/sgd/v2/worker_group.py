@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 import logging
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
+from ray.actor import ActorHandle
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -20,6 +22,13 @@ class BaseWorkerMixin:
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)
+
+
+@dataclass
+class Worker:
+    """Class representing a Worker."""
+    actor: ActorHandle
+    metadata: Dict
 
 
 def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
@@ -118,8 +127,13 @@ class WorkerGroup:
         self.start()
 
     def _create_worker(self):
-        return self._remote_cls.remote(*self._actor_cls_args,
-                                       **self._actor_cls_kwargs)
+        actor = self._remote_cls.remote(*self._actor_cls_args,
+                                        **self._actor_cls_kwargs)
+        node_ip = ray.get(
+            actor._BaseWorkerMixin__execute.remote(
+                ray.util.get_node_ip_address))
+        actor_metadata = {"node_ip": node_ip}
+        return Worker(actor=actor, metadata=actor_metadata)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -145,9 +159,11 @@ class WorkerGroup:
         logger.debug(f"Shutting down {len(self.workers)} workers.")
         if patience_s <= 0:
             for worker in self.workers:
-                ray.kill(worker)
+                ray.kill(worker.actor)
         else:
-            done_refs = [w.__ray_terminate__.remote() for w in self.workers]
+            done_refs = [
+                w.actor.__ray_terminate__.remote() for w in self.workers
+            ]
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
@@ -155,7 +171,7 @@ class WorkerGroup:
                              "force kill.")
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
-                    ray.kill(worker)
+                    ray.kill(worker.actor)
 
         logger.debug("Shutdown successful.")
         self.workers = []
@@ -180,7 +196,7 @@ class WorkerGroup:
                                "create a new WorkerGroup or restart this one.")
 
         return [
-            w._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
+            w.actor._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
@@ -214,7 +230,8 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index]._BaseWorkerMixin__execute.remote(
+        return self.workers[worker_index].actor._BaseWorkerMixin__execute\
+            .remote(
             func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,

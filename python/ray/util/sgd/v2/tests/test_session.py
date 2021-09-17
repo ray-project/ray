@@ -2,7 +2,8 @@ import time
 
 import pytest
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report, save_checkpoint, TrainingResultType, \
+    get_session, world_rank, local_rank, report, save_checkpoint, \
+    TrainingResultType, \
     load_checkpoint
 
 
@@ -11,7 +12,7 @@ def session():
     def f():
         return 1
 
-    init_session(training_func=f, world_rank=0)
+    init_session(training_func=f, world_rank=0, local_rank=0)
     yield get_session()
     shutdown_session()
 
@@ -32,6 +33,13 @@ def test_world_rank(session):
     shutdown_session()
     with pytest.raises(ValueError):
         world_rank()
+
+
+def test_local_rank(session):
+    assert local_rank() == 0
+    shutdown_session()
+    with pytest.raises(ValueError):
+        local_rank()
 
 
 def test_train(session):
