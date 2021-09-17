@@ -85,10 +85,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.client_last_seen: Dict[str, float] = {}
         # dictionary mapping client_id's to their reconnect grace periods
         self.reconnect_grace_periods: Dict[str, float] = {}
-        # dictionary mapping client_id's to their replay cache
+        # dictionary mapping client_id's to their response cache
         self.response_caches: Dict[str, OrderedResponseCache] = defaultdict(
             OrderedResponseCache)
-        # stopped event, useful for signally that the server is shut down
+        # stopped event, useful for signals that the server is shut down
         self.stopped = threading.Event()
 
     def Datapath(self, request_iterator, context):

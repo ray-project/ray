@@ -204,8 +204,10 @@ class DataClient:
         Once a working channel is available, a new request queue is made
         and filled with any outstanding requests to be resent to the server.
         """
-        # Ping the server to see if the current channel is reuseable
         try:
+            # Ping the server to see if the current channel is reuseable, for
+            # example if gRPC reconnected the channel on its own or if the
+            # RPC error was transient and the channel is still open
             ping_succeeded = self.client_worker.ping_server(timeout=5)
         except grpc.RpcError:
             ping_succeeded = False

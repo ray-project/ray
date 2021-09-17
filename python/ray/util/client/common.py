@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
+# Resource exhausted: Server is low on resources, or has hit the max number
+#   of client connections
+# Invalid argument: Reserved for application errors
+# Not found: Set if the client is attempting to reconnect to a session that
+#   does not exist
+# Failed precondition: Reserverd for application errors
+# Aborted: Set when an error is serialized into the details of the context,
+#   signals that error should be deserialized on the client side
 GRPC_UNRECOVERABLE_ERRORS = (grpc.StatusCode.RESOURCE_EXHAUSTED,
                              grpc.StatusCode.INVALID_ARGUMENT,
                              grpc.StatusCode.NOT_FOUND,
