@@ -3,7 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
+from typing import Callable, TypeVar, List, Optional, Dict, Union
 
 import ray
 from ray import cloudpickle
@@ -257,21 +257,11 @@ class BackendExecutor:
 
         self.checkpoint_manager.on_init()
 
-    def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None,
-              train_cls: Optional[Type] = None,
-              train_cls_args: Optional[Tuple] = None,
-              train_cls_kwargs: Optional[Dict] = None):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(
-            num_workers=self._num_workers,
-            num_cpus_per_worker=self._num_cpus_per_worker,
-            num_gpus_per_worker=self._num_gpus_per_worker,
-            additional_resources_per_worker=self.
-            _additional_resources_per_worker,
-            actor_cls=train_cls,
-            actor_cls_args=train_cls_args,
-            actor_cls_kwargs=train_cls_kwargs)
+            self._num_workers, self._num_cpus_per_worker,
+            self._num_gpus_per_worker, self._additional_resources_per_worker)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
