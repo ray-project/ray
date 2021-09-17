@@ -252,7 +252,7 @@ GLOBAL_CONFIG = {
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
     "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
-                                          "~/ray_release_test_artifacts"),
+                                          "./artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +

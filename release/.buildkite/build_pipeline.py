@@ -235,7 +235,7 @@ DEFAULT_STEP_TEMPLATE = {
         }
     }],
     "commands": [],
-    "artifact_paths": ["~/ray_release_test_artifacts/**/*"],
+    "artifact_paths": ["./artifacts/**/*"],
 }
 
 
