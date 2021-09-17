@@ -15,15 +15,14 @@ from ray.data.impl.remote_fn import cached_remote_fn
 T = TypeVar("T")
 
 
-def simple_shuffle(
-        input_blocks: BlockList[T],
-        output_num_blocks: int,
-        *,
-        random_shuffle: bool = False,
-        random_seed: Optional[int] = None,
-        map_ray_remote_args: Optional[Dict[str, Any]] = None,
-        reduce_ray_remote_args: Optional[Dict[str, Any]] = None
-) -> BlockList[T]:
+def simple_shuffle(input_blocks: BlockList[T],
+                   output_num_blocks: int,
+                   *,
+                   random_shuffle: bool = False,
+                   random_seed: Optional[int] = None,
+                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
+                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None
+                   ) -> BlockList[T]:
     # Check for spread resource labels in environment variable, and use
     # the given labels for round-robin resource-based scheduling.
     shuffle_spread_custom_resource_labels = os.getenv(
@@ -54,7 +53,8 @@ def simple_shuffle(
 
     shuffle_map_out = [
         shuffle_map.options(
-            **map_ray_remote_args, num_returns=output_num_blocks,
+            **map_ray_remote_args,
+            num_returns=output_num_blocks,
             resources=next(map_resource_iter)).remote(
                 block, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
