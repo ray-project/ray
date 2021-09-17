@@ -57,6 +57,14 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_metrics",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_metrics",
     size = "small",
     srcs = serve_tests_srcs,
@@ -227,6 +235,14 @@ py_test(
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_autoscaling_policy",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["team:serve"],
     deps = [":serve_lib"],
 )
 

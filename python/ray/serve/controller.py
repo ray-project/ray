@@ -26,6 +26,7 @@ from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -88,7 +89,17 @@ class ServeController:
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager, all_current_actor_names)
 
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def record_autoscaling_metrics(self, data: Dict[str, float],
+                                   send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def _dump_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_metrics_store.data
 
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
@@ -206,7 +217,7 @@ class ServeController:
 
     async def deploy(self,
                      name: str,
-                     backend_config: BackendConfig,
+                     backend_config_proto_bytes: bytes,
                      replica_config: ReplicaConfig,
                      python_methods: List[str],
                      version: Optional[str],
@@ -216,6 +227,9 @@ class ServeController:
                      ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
+
+        backend_config = BackendConfig.from_proto_bytes(
+            backend_config_proto_bytes)
 
         async with self.write_lock:
             if prev_version is not None:
