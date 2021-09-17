@@ -135,14 +135,14 @@ cdef class ObjectRef(BaseID):
                            "asyncio.wrap_future(ref.future()).")
         return asyncio.wrap_future(self.future())
 
-    def _on_completed(self, set_future: Callable[[Any], None]):
+    def _on_completed(self, py_callback: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.
         If the ObjectRef is already ready, the callback will be called soon.
         The callback should take the result as the only argument. The result
         can be an exception object in case of task error.
         """
         core_worker = ray.worker.global_worker.core_worker
-        core_worker.set_get_async_callback(self, set_future)
+        core_worker.set_get_async_callback(self, py_callback)
         return self
 
 
@@ -215,7 +215,7 @@ cdef class ClientObjectRef(ObjectRef):
         fut.object_ref = self
         return fut
 
-    def _on_completed(self, set_future: Callable[[Any], None]) -> None:
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
         """Register a callback that will be called after Object is ready.
         If the ObjectRef is already ready, the callback will be called soon.
         The callback should take the result as the only argument. The result
@@ -235,7 +235,7 @@ cdef class ClientObjectRef(ObjectRef):
                 else:
                     data = loads_from_server(resp.get.data)
 
-            set_future(data)
+            py_callback(data)
 
         client.ray._register_callback(self, deserialize_obj)
 

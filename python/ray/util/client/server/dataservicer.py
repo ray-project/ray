@@ -1,3 +1,4 @@
+from collections import defaultdict
 import ray
 import logging
 import grpc
@@ -5,7 +6,7 @@ from queue import Queue
 import sys
 
 from typing import Any, Dict, Iterator, TYPE_CHECKING, Union
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 import time
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -88,7 +89,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.response_caches: Dict[str, OrderedResponseCache] = defaultdict(
             OrderedResponseCache)
         # stopped event, useful for signals that the server is shut down
-        self.stopped = threading.Event()
+        self.stopped = Event()
 
     def Datapath(self, request_iterator, context):
         start_time = time.time()
@@ -205,7 +206,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 cleanup_requested = True
         finally:
             logger.debug(f"Stream is broken with client {client_id}")
-            self.basic_service.release_all(client_id)
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(

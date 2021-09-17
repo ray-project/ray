@@ -5,11 +5,12 @@ to the server.
 import base64
 import json
 import logging
+import os
+import threading
 import time
 import uuid
 import warnings
 from collections import defaultdict
-from concurrent.futures import Future
 import tempfile
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -459,7 +460,7 @@ class Worker:
         return self._call_schedule_for_task(task, instance._num_returns())
 
     def _call_schedule_for_task(self, task: ray_client_pb2.ClientTask,
-                                num_returns: int) -> List[Future]:
+                                num_returns: int) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
         metadata = self._add_ids_to_metadata(self.metadata)
@@ -531,6 +532,7 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
+        self._in_shutdown = True
         self.closed = True
         self.data_client.close()
         self.log_client.close()
