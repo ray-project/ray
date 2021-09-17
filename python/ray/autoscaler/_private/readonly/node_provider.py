@@ -14,6 +14,9 @@ class ReadOnlyNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.nodes = {}
 
+    def is_readonly(self):
+        return True
+
     def _set_last_batch(self, batch):
         nodes = {}
         for msg in batch:
