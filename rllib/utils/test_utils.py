@@ -484,11 +484,17 @@ def run_learning_tests_from_yaml(
         trials = run_experiments(experiments_to_run, resume=False, verbose=2)
         all_trials.extend(trials)
 
-        # Check each trial for whether we passed.
+        # Check each experiment for whether it passed.
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
-        for t in trials:
-            experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
+        for experiment in experiments_to_run.copy():
+            # Collect all trials within this experiment (some experiments may
+            # have num_samples or grid_searches defined).
+            trials_for_experiment = []
+            for t in trials:
+                trial_exp = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
+                if trial_exp == experiment:
+                    trials_for_experiment.append(t)
 
             # If we have evaluation workers, use their rewards.
             # This is useful for offline learning tests, where
@@ -497,7 +503,7 @@ def run_learning_tests_from_yaml(
                 "evaluation_interval", None) is not None
 
             # Error: Increase failure count and repeat.
-            if t.status == "ERROR":
+            if any(t.status == "ERROR" for t in trials_for_experiment):
                 checks[experiment]["failures"] += 1
             # Smoke-tests always succeed.
             elif smoke_test:
@@ -506,19 +512,35 @@ def run_learning_tests_from_yaml(
             # Experiment finished: Check reward achieved and timesteps done
             # (throughput).
             else:
-                reward_mean = \
-                    t.last_result["evaluation"]["episode_reward_mean"] if \
-                    check_eval else t.last_result["episode_reward_mean"]
+                if check_eval:
+                    episode_reward_mean = np.mean([
+                        t.last_result["evaluation"]["episode_reward_mean"]
+                        for t in trials_for_experiment
+                    ])
+                else:
+                    episode_reward_mean = np.mean([
+                        t.last_result["episode_reward_mean"]
+                        for t in trials_for_experiment
+                    ])
                 desired_reward = checks[experiment]["min_reward"]
 
-                throughput = t.last_result["timesteps_total"] / \
+                timesteps_total = np.mean([
+                    t.last_result["timesteps_total"]
+                    for t in trials_for_experiment
+                ])
+                total_time_s = np.mean([
                     t.last_result["time_total_s"]
+                    for t in trials_for_experiment
+                ])
+
+                throughput = timesteps_total / total_time_s
                 desired_timesteps = checks[experiment]["min_timesteps"]
                 desired_throughput = \
-                    desired_timesteps / t.stopping_criterion["time_total_s"]
+                    desired_timesteps / \
+                    trials_for_experiment[0].stopping_criterion["time_total_s"]
 
                 # We failed to reach desired reward or the desired throughput.
-                if reward_mean < desired_reward or \
+                if episode_reward_mean < desired_reward or \
                     (desired_throughput and
                      throughput < desired_throughput):
                     checks[experiment]["failures"] += 1
