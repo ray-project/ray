@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional
 import uuid
-import json
 
 import ray._private.gcs_utils as gcs_utils
 
@@ -53,8 +52,7 @@ class JobConfig:
 
     def serialize(self):
         """Serialize the struct into protobuf string"""
-        job_config = self.get_proto_job_config()
-        return job_config.SerializeToString()
+        return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
         # Lazily import this to avoid circular dependencies.
@@ -90,8 +88,8 @@ class JobConfig:
             self._cached_pb.jvm_options.extend(self.jvm_options)
             self._cached_pb.code_search_path.extend(self.code_search_path)
             self._cached_pb.runtime_env.uris[:] = self.get_runtime_env_uris()
-            self._cached_pb.runtime_env.serialized_runtime_env = json.dumps(
-                self.runtime_env)
+            serialized_env = self.get_serialized_runtime_env()
+            self._cached_pb.runtime_env.serialized_runtime_env = serialized_env
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
         return self._cached_pb
@@ -101,6 +99,10 @@ class JobConfig:
         if self.runtime_env.get("uris"):
             return self.runtime_env.get("uris")
         return []
+
+    def get_serialized_runtime_env(self) -> str:
+        """Return the JSON-serialized parsed runtime env dict"""
+        return self._parsed_runtime_env.serialize()
 
     def set_runtime_env_uris(self, uris):
         self.runtime_env["uris"] = uris
