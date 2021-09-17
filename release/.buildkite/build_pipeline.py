@@ -438,7 +438,7 @@ def build_pipeline(steps):
                 "pip install -q -r release/requirements.txt",
                 "pip install -U boto3 botocore",
                 f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
-                "cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
                 "|| true"
             ]
 
