@@ -1,4 +1,5 @@
 import asyncio
+import random
 from typing import Dict, List, Tuple
 
 import ray
@@ -54,9 +55,24 @@ class HTTPState:
 
         if location == DeploymentMode.HeadOnly:
             head_node_resource_key = get_current_node_resource_key()
-            target_nodes = [(node_id, node_resource)
-                            for node_id, node_resource in target_nodes
-                            if node_resource == head_node_resource_key][:1]
+            return [(node_id, node_resource)
+                    for node_id, node_resource in target_nodes
+                    if node_resource == head_node_resource_key][:1]
+
+        if location == DeploymentMode.FixedNumber:
+            num_replicas = self._config.fixed_number_replicas
+            if num_replicas > len(target_nodes):
+                logger.warning(
+                    "You specified fixed_number_replicas="
+                    f"{num_replicas} but there are only "
+                    f"{len(target_nodes)} total nodes. Serve will start one "
+                    "HTTP proxy per node.")
+                num_replicas = len(target_nodes)
+
+            # Seed the random state so sample is deterministic.
+            # i.e. it will always return the same set of nodes.
+            random.seed(0)
+            return random.sample(sorted(target_nodes), k=num_replicas)
 
         return target_nodes
 
