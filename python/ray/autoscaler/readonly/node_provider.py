@@ -1,8 +1,7 @@
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (TAG_RAY_NODE_KIND,
-                                 NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
-                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
-                                 STATUS_UP_TO_DATE)
+from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
+                                 TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_NAME,
+                                 TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
 
 
 class ReadOnlyNodeProvider(NodeProvider):

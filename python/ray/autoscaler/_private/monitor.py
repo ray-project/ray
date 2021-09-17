@@ -85,6 +85,42 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
+# Readonly proivder config (e.g., for laptop mode, manually setup clusters).
+BASE_READONLY_CONFIG = {
+    "cluster_name": "default",
+    "max_workers": 0,
+    "upscaling_speed": 1.0,
+    "docker": {},
+    "idle_timeout_minutes": 0,
+    "provider": {
+        "type": "readonly"
+        "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
+    },
+    "auth": {},
+    "available_node_types": {
+        "ray.head.default": {
+            "resources": {},
+            "node_config": {},
+            "max_workers": 1
+        }
+    },
+    "head_node_type": "ray.head.default",
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "file_mounts_sync_continuously": False,
+    "rsync_exclude": [],
+    "rsync_filter": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
+    "head_node": {},
+    "worker_nodes": {}
+}
+
+
 class Monitor:
     """Autoscaling monitor.
 
@@ -170,38 +206,7 @@ class Monitor:
         else:
             # This config mirrors the current setup of the manually created
             # cluster. Each node gets its own unique node type.
-            self.readonly_config = {
-                "cluster_name": "default",
-                "max_workers": 0,
-                "upscaling_speed": 1.0,
-                "docker": {},
-                "idle_timeout_minutes": 0,
-                "provider": {
-                    "type": "readonly"
-                },
-                "auth": {},
-                "available_node_types": {
-                    "ray.head.default": {
-                        "resources": {},
-                        "node_config": {},
-                        "max_workers": 1
-                    }
-                },
-                "head_node_type": "ray.head.default",
-                "file_mounts": {},
-                "cluster_synced_files": [],
-                "file_mounts_sync_continuously": False,
-                "rsync_exclude": [],
-                "rsync_filter": [],
-                "initialization_commands": [],
-                "setup_commands": [],
-                "head_setup_commands": [],
-                "worker_setup_commands": [],
-                "head_start_ray_commands": [],
-                "worker_start_ray_commands": [],
-                "head_node": {},
-                "worker_nodes": {}
-            }
+            self.readonly_config = BASE_READONLY_CONFIG
 
             # Note that the "available_node_types" of the config can change.
             def get_latest_readonly_config():
@@ -228,11 +233,11 @@ class Monitor:
             list(resources_batch_data.batch))
 
         mirror_node_types = {}
-        deadlock = False
+        resource_deadlock = False
         for resource_message in resources_batch_data.batch:
             node_type = "local_{}".format(resource_message.node_id.hex())
             if resource_message.resource_deadlock_detected:
-                deadlock = True
+                resource_deadlock = True
             resources = resource_message.resources_total
             for k in list(resources.keys()):
                 if k.startswith("node:"):
@@ -256,17 +261,17 @@ class Monitor:
             use_node_id_as_ip = (self.autoscaler is not None
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
-            ip = resource_message.node_id.hex()
-            #            if use_node_id_as_ip:
-            #                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
-            #            else:
-            #                ip = resource_message.node_manager_address
-            self.load_metrics.update(ip, total_resources, available_resources,
-                                     resource_load, waiting_bundles,
-                                     infeasible_bundles,
-                                     pending_placement_groups, deadlock)
+            if use_node_id_as_ip:
+                ip = resource_message.node_id.hex()
+            else:
+                ip = resource_message.node_manager_address
+            self.load_metrics.update(
+                ip, total_resources, available_resources, resource_load,
+                waiting_bundles, infeasible_bundles, pending_placement_groups,
+                resource_deadlock)
         if self.readonly_config:
-            self.readonly_config["available_node_types"].update(mirror_node_types)
+            self.readonly_config["available_node_types"].update(
+                mirror_node_types)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""

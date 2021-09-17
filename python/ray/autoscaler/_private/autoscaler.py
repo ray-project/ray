@@ -297,8 +297,8 @@ class StandardAutoscaler:
         num_extra_nodes_to_terminate = (
             len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
 
-        if not self.provider.is_readonly() and num_extra_nodes_to_terminate > len(
-                nodes_we_could_terminate):
+        if not self.provider.is_readonly(
+        ) and num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
             logger.warning(
                 "StandardAutoscaler: trying to terminate "
                 f"{num_extra_nodes_to_terminate} nodes, while only "
