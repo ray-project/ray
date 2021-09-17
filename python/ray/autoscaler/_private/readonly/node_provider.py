@@ -24,7 +24,8 @@ class ReadOnlyNodeProvider(NodeProvider):
             # We make up a fake node type for each node (since each node
             # could have its own unique configuration).
             nodes[node_id] = {
-                "node_type": "local_{}".format(node_id),
+                # Keep prefix in sync with node config gen in monitor.py
+                "node_type": "node_{}".format(node_id),
                 "ip": msg.node_manager_address,
             }
         self.nodes = nodes

@@ -228,15 +228,18 @@ class Monitor:
             request, timeout=4)
         resources_batch_data = response.resource_usage_data
 
-        self.autoscaler.provider._set_last_batch(
-            list(resources_batch_data.batch))
+        # Tell the readonly node provider what nodes to report.
+        if self.readonly_config:
+            self.autoscaler.provider._set_last_batch(
+                list(resources_batch_data.batch))
 
         mirror_node_types = {}
         resource_deadlock = False
         for resource_message in resources_batch_data.batch:
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
-                node_type = "local_{}".format(resource_message.node_id.hex())
+                # Keep prefix in sync with ReadonlyNodeProvider.
+                node_type = "node_{}".format(resource_message.node_id.hex())
                 if resource_message.resource_deadlock_detected:
                     resource_deadlock = True
                 resources = resource_message.resources_total
