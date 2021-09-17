@@ -66,7 +66,7 @@ def start(http_host, http_port, http_location, checkpoint_path):
             port=http_port,
             location=http_location,
         ),
-        checkpoint_path=checkpoint_path)
+        _checkpoint_path=checkpoint_path)
 
 
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")

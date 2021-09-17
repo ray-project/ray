@@ -350,8 +350,8 @@ class Client:
 def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
-        checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
         dedicated_cpu: bool = False,
+        _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
         **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -435,7 +435,7 @@ def start(
     ).remote(
         controller_name,
         http_options,
-        checkpoint_path,
+        _checkpoint_path,
         detached=detached,
     )
 

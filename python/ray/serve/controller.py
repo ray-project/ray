@@ -20,11 +20,10 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
-    CONTROL_LOOP_PERIOD_S, DEFAULT_CHECKPOINT_PATH, SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.kv_store import RayInternalKVStore, RayS3KVStore
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
@@ -68,33 +67,11 @@ class ServeController:
                        checkpoint_path: str,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        controller_namespace = ray.get_runtime_context().namespace
-        if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
-            logger.info("Using RayInternalKVStore for controller "
-                        "checkpoint and recovery.")
-            self.kv_store = RayInternalKVStore(
-                namespace=f"{controller_name}-{controller_namespace}")
-        else:
-            assert checkpoint_path.startswith("s3://"), (
-                "Only support S3 path as external controller checkpoint path.")
-
-            path_parts = checkpoint_path.replace("s3://", "").split("/")
-            bucket = path_parts.pop(0)
-
-            logger.info(
-                "Using Ray S3 KVStore for controller checkpoint and recovery. "
-                f"Bucket: {bucket}, checkpoint path: {checkpoint_path}")
-
-            self.kv_store = RayS3KVStore(
-                f"{controller_name}-{controller_namespace}",
-                bucket=bucket,
-                s3_path=checkpoint_path,
-                region_name=os.environ.get("AWS_REGION", None),
-                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY",
-                                                     None),
-                aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
-            )
+        self.controller_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.kv_store = make_kv_store(
+            checkpoint_path,
+            namespace=f"{self.controller_name}-{self.controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
