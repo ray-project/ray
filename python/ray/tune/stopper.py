@@ -414,7 +414,8 @@ class TrialMeanStopper(Stopper):
         #  Get Metric from legacy metrics, or from custom ones.
         if self._metric in result:
             self._trial_results[trial_id].append(result.get(self._metric))
-        elif "custom_metrics" in result and self._metric in result["custom_metrics"]:
+        elif "custom_metrics" in result and self._metric in result[
+                "custom_metrics"]:
             self._trial_results[trial_id].append(result["custom_metrics"].get(
                 self._metric))
         else:
@@ -424,7 +425,8 @@ class TrialMeanStopper(Stopper):
         # Get Time metric from legacy metrics, or from custom ones.
         if self._time_metric in result:
             current_time = result.get(self._time_metric)
-        elif "custom_metrics" in result and self._time_metric in result["custom_metrics"]:
+        elif "custom_metrics" in result and self._time_metric in result[
+                "custom_metrics"]:
             current_time = result["custom_metrics"].get(self._time_metric)
         else:
             raise ValueError(
