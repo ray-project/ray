@@ -451,7 +451,9 @@ def run_learning_tests_from_yaml(
                 e = experiments[k_]
                 checks[k_] = {
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
-                    "min_timesteps": e["pass_criteria"]["timesteps_total"],
+                    "min_throughput":
+                        e["pass_criteria"]["timesteps_total"] /
+                        e["stop"]["time_total_s"],
                     "time_total_s": e["stop"]["time_total_s"],
                     "failures": 0,
                     "passed": False,
@@ -488,6 +490,7 @@ def run_learning_tests_from_yaml(
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
         for experiment in experiments_to_run.copy():
+            print(f"Analyzing experiment {experiment} ...")
             # Collect all trials within this experiment (some experiments may
             # have num_samples or grid_searches defined).
             trials_for_experiment = []
@@ -495,6 +498,7 @@ def run_learning_tests_from_yaml(
                 trial_exp = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
                 if trial_exp == experiment:
                     trials_for_experiment.append(t)
+            print(f" ... Trials: {trials_for_experiment}.")
 
             # If we have evaluation workers, use their rewards.
             # This is useful for offline learning tests, where
@@ -504,9 +508,11 @@ def run_learning_tests_from_yaml(
 
             # Error: Increase failure count and repeat.
             if any(t.status == "ERROR" for t in trials_for_experiment):
+                print(f" ... ERROR.")
                 checks[experiment]["failures"] += 1
             # Smoke-tests always succeed.
             elif smoke_test:
+                print(f" ... SMOKE TEST (mark ok).")
                 checks[experiment]["passed"] = True
                 del experiments_to_run[experiment]
             # Experiment finished: Check reward achieved and timesteps done
@@ -534,18 +540,22 @@ def run_learning_tests_from_yaml(
                 ])
 
                 throughput = timesteps_total / total_time_s
-                desired_timesteps = checks[experiment]["min_timesteps"]
-                desired_throughput = \
-                    desired_timesteps / \
-                    trials_for_experiment[0].stopping_criterion["time_total_s"]
+                desired_throughput = checks[experiment]["min_throughput"]
+
+                print(f" ... Desired reward={desired_reward}; "
+                      f"desired throughput={desired_throughput}")
 
                 # We failed to reach desired reward or the desired throughput.
                 if episode_reward_mean < desired_reward or \
                     (desired_throughput and
                      throughput < desired_throughput):
+                    print(" ... Not successful: Actual "
+                          f"reward={episode_reward_mean}; "
+                          f"actual throughput={throughput}")
                     checks[experiment]["failures"] += 1
                 # We succeeded!
                 else:
+                    print(" ... Successful: (mark ok).")
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 
