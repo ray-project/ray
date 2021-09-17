@@ -1,5 +1,5 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+region: us-west-2b
 
 max_workers: 999
 
