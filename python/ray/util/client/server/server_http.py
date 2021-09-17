@@ -2,6 +2,7 @@ from ray.util.client.server.server import create_ray_handler
 import uvicorn
 from fastapi import FastAPI
 
+import uuid
 import logging
 from concurrent import futures
 import grpc
@@ -33,6 +34,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.util.client.server.background.job_runner import BackgroundJobRunner
 from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
@@ -45,8 +47,13 @@ app = FastAPI()
 
 
 @app.get("/")
-def read_root():
-    return {"Hello": "World"}
+async def read_root():
+    namespace = f"bg_{str(uuid.uuid4())}"
+
+    actor = BackgroundJobRunner.options(namespace=namespace, lifetime="detached", name="_background_actor").remote()
+    actor.run_background_job.remote(
+        command="sleep 1 && echo 'hello' && echo 'lmfao' > /tmp/test_file && sleep 100", self_handle=actor
+    )
 
 
 def main():
