@@ -33,6 +33,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
   void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
+  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {}
 
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
   MOCK_METHOD2(CancelOnWorker, ActorID(const NodeID &node_id, const WorkerID &worker_id));
