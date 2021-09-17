@@ -1526,6 +1526,7 @@ def status(address, redis_password):
         address, redis_password)
     status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
     error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    print(status)
     print(debug_status(status, error))
 
 

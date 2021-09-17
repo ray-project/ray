@@ -259,10 +259,10 @@ class Monitor:
             #                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
             #            else:
             #                ip = resource_message.node_manager_address
-            self.load_metrics.update(
-                ip, total_resources, available_resources, resource_load,
-                waiting_bundles, infeasible_bundles, pending_placement_groups,
-                deadlock)
+            self.load_metrics.update(ip, total_resources, available_resources,
+                                     resource_load, waiting_bundles,
+                                     infeasible_bundles,
+                                     pending_placement_groups, deadlock)
         self.extra_node_types = node_types
 
     def update_resource_requests(self):

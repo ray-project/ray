@@ -451,14 +451,16 @@ class StandardAutoscaler:
                         "cluster resources being claimed by actors. Consider "
                         "creating fewer actors or adding more nodes "
                         "to this Ray cluster.".format(ix),
-                        key="pending_{}".format(sorted(ix.items())), ttl=30)
+                        key="pending_{}".format(sorted(ix.items())),
+                        ttl=30)
         if infeasible:
             for ix in infeasible:
                 self.event_summarizer.add_once(
                     "Error: No available node types can fulfill resource "
                     "request {}. Add suitable node types to this cluster to "
                     "resolve this issue.".format(ix),
-                    key="infeasible_{}".format(sorted(ix.items())), ttl=30)
+                    key="infeasible_{}".format(sorted(ix.items())),
+                    ttl=30)
 
     def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
         """Terminate specified nodes and clean associated autoscaler state."""
