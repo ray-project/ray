@@ -1,5 +1,4 @@
 from itertools import groupby
-import importlib
 import json
 import logging
 import pickle

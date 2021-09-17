@@ -11,8 +11,6 @@ from ray._private.utils import import_attr
 def make_kv_store(checkpoint_path, namespace):
     """Create KVStore instance based on checkpoint_path configuration"""
 
-    print(namespace)
-
     if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
         logger.info("Using RayInternalKVStore for controller "
                     "checkpoint and recovery.")
