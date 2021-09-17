@@ -1,4 +1,5 @@
 import os
+import tempfile
 import sys
 from typing import Optional
 
@@ -73,7 +74,8 @@ def _test_operations(kv_store):
 
 
 def test_external_kv_local_disk():
-    kv_store = RayLocalKVStore("namespace", "test_kv_store.db")
+    kv_store = RayLocalKVStore(
+        "namespace", os.path.join(tempfile.gettempdir(), "test_kv_store.db"))
 
     _test_operations(kv_store)
 
@@ -133,7 +135,7 @@ def test_make_kv_store(serve_instance):
         # Wrong prefix
         make_kv_store("s4://some_path", namespace)
 
-    module_name = "ray.serve.tests.storage_tests.test_checkpoint_path"
+    module_name = "ray.serve.tests.storage_tests.test_kv_store"
     with pytest.raises(ValueError, match="doesn't inherit"):
         make_kv_store(
             f"custom://{module_name}.MyNonCompliantStoreCls",
