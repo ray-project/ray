@@ -60,9 +60,9 @@ def test_variable_number_of_args(shutdown_only):
     assert ray.get(f1.remote()) == ()
     assert ray.get(f1.remote(1)) == (1, )
     assert ray.get(f1.remote(1, 2, 3)) == (1, 2, 3)
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote()
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(1)
     assert ray.get(f2.remote(1, 2)) == (1, 2, ())
     assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3, ))

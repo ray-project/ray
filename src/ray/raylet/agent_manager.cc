@@ -83,14 +83,11 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            std::ostringstream error_message;
-            error_message << "Agent process with pid " << child.GetId()
-                          << " has not registered, restart it.";
-            RAY_LOG(WARNING) << error_message.str();
             RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
                     .WithField("ip", agent_ip_address_)
                     .WithField("pid", agent_pid_)
-                << error_message.str();
+                << "Agent process with pid " << child.GetId()
+                << " has not registered, restart it.";
             child.Kill();
           }
         },
@@ -99,14 +96,11 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
 
-    std::ostringstream error_message;
-    error_message << "Agent process with pid " << child.GetId() << " exit, return value "
-                  << exit_code;
-    RAY_LOG(WARNING) << error_message.str();
     RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
             .WithField("ip", agent_ip_address_)
             .WithField("pid", agent_pid_)
-        << error_message.str();
+        << "Agent process with pid " << child.GetId() << " exit, return value "
+        << exit_code;
     RAY_UNUSED(delay_executor_([this] { StartAgent(); },
                                RayConfig::instance().agent_restart_interval_ms()));
   });

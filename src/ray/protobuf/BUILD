@@ -251,3 +251,8 @@ proto_library(
     srcs = ["serve.proto"],
     visibility = ["//java:__subpackages__"],
 )
+
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
+)
