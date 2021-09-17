@@ -56,8 +56,8 @@ def cli(address, namespace):
     default=DEFAULT_CHECKPOINT_PATH,
     required=False,
     type=str,
-    help="Checkpoint and recovery path for serve controller. "
-    "Ray cluster GCS by default.")
+    hidden=True,
+)
 def start(http_host, http_port, http_location, checkpoint_path):
     serve.start(
         detached=True,

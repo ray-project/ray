@@ -93,7 +93,9 @@ class RayLocalKVStore(KVStoreBase):
             raise ValueError("LocalKVStore's path shouldn't be empty.")
 
         # Ensture that parent directory is created.
-        os.makedirs(os.path.split(db_path)[0], exist_ok=True)
+        parent_dir = os.path.split(db_path)[0]
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
 
         self._namespace = namepsace
         self._conn = sqlite3.connect(db_path)
