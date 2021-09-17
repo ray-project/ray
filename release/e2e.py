@@ -252,7 +252,7 @@ GLOBAL_CONFIG = {
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
     "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
-                                          "/tmp/ray_release_test_artifacts"),
+                                          "~/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
@@ -1742,7 +1742,11 @@ def run_test_config(
         logger.info(f"Removing results dir {temp_dir}")
         shutil.rmtree(temp_dir)
     else:
-        out_dir = GLOBAL_CONFIG["RELEASE_RESULTS_DIR"]
+        # Write results.json
+        with open(os.path.join(temp_dir, "results.json"), "wt") as fp:
+            json.dump(result, fp)
+
+        out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
 
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
