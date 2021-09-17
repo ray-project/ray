@@ -102,7 +102,6 @@ class Monitor:
                  prefix_cluster_info=False,
                  monitor_ip=None,
                  stop_event: Optional[Event] = None):
-        self.extra_node_types = {}
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -137,7 +136,9 @@ class Monitor:
         self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
-        self.readonly = False
+        # If set, we are in a manually created cluster (non-autoscaling) and
+        # simply mirroring what the GCS tells us the cluster node types are.
+        self.readonly_config = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -166,47 +167,47 @@ class Monitor:
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
             autoscaling_config = autoscaling_config
-            self.readonly = False
         else:
+            # This config mirrors the current setup of the manually created
+            # cluster. Each node gets its own unique node type.
+            self.readonly_config = {
+                "cluster_name": "default",
+                "max_workers": 0,
+                "upscaling_speed": 1.0,
+                "docker": {},
+                "idle_timeout_minutes": 0,
+                "provider": {
+                    "type": "readonly"
+                },
+                "auth": {},
+                "available_node_types": {
+                    "ray.head.default": {
+                        "resources": {},
+                        "node_config": {},
+                        "max_workers": 1
+                    }
+                },
+                "head_node_type": "ray.head.default",
+                "file_mounts": {},
+                "cluster_synced_files": [],
+                "file_mounts_sync_continuously": False,
+                "rsync_exclude": [],
+                "rsync_filter": [],
+                "initialization_commands": [],
+                "setup_commands": [],
+                "head_setup_commands": [],
+                "worker_setup_commands": [],
+                "head_start_ray_commands": [],
+                "worker_start_ray_commands": [],
+                "head_node": {},
+                "worker_nodes": {}
+            }
 
-            def config_reader():
-                config = {
-                    'cluster_name': 'default',
-                    'max_workers': 0,
-                    'upscaling_speed': 1.0,
-                    'docker': {},
-                    'idle_timeout_minutes': 0,
-                    'provider': {
-                        'type': 'single_node'
-                    },
-                    'auth': {},
-                    'available_node_types': {
-                        'ray.head.default': {
-                            'resources': {},
-                            'node_config': {},
-                            'max_workers': 1
-                        }
-                    },
-                    'head_node_type': 'ray.head.default',
-                    'file_mounts': {},
-                    'cluster_synced_files': [],
-                    'file_mounts_sync_continuously': False,
-                    'rsync_exclude': [],
-                    'rsync_filter': [],
-                    'initialization_commands': [],
-                    'setup_commands': [],
-                    'head_setup_commands': [],
-                    'worker_setup_commands': [],
-                    'head_start_ray_commands': [],
-                    'worker_start_ray_commands': [],
-                    'head_node': {},
-                    'worker_nodes': {}
-                }
-                config["available_node_types"].update(self.extra_node_types)
-                return config
+            # Note that the "available_node_types" of the config can change.
+            def get_latest_readonly_config():
+                return self.readonly_config
 
-            autoscaling_config = config_reader
-            self.readonly = True
+            autoscaling_config = get_latest_readonly_config
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
@@ -226,7 +227,7 @@ class Monitor:
         self.autoscaler.provider._set_last_batch(
             list(resources_batch_data.batch))
 
-        node_types = {}
+        mirror_node_types = {}
         deadlock = False
         for resource_message in resources_batch_data.batch:
             node_type = "local_{}".format(resource_message.node_id.hex())
@@ -236,11 +237,12 @@ class Monitor:
             for k in list(resources.keys()):
                 if k.startswith("node:"):
                     del resources[k]
-            node_types[node_type] = {
-                "resources": copy.deepcopy(resources),
-                "node_config": {},
-                "max_workers": 1,
-            }
+            if self.readonly_config:
+                mirror_node_types[node_type] = {
+                    "resources": copy.deepcopy(resources),
+                    "node_config": {},
+                    "max_workers": 1,
+                }
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)
@@ -263,7 +265,8 @@ class Monitor:
                                      resource_load, waiting_bundles,
                                      infeasible_bundles,
                                      pending_placement_groups, deadlock)
-        self.extra_node_types = node_types
+        if self.readonly_config:
+            self.readonly_config["available_node_types"].update(mirror_node_types)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
