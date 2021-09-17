@@ -264,7 +264,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
 
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
-        # DEPENDENCIES_UNREADY is 0, which would not be keeped in dict. We
+        # DEPENDENCIES_UNREADY is 0, which would not be kept in dict. We
         # need check its original value.
         if msg.state == 0:
             assert len(actor_data_dict) > 5
