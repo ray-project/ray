@@ -117,6 +117,8 @@ class Worker:
             # Use value in environment variable if available
             self._reconnect_grace_period = \
                 int(os.environ["RAY_CLIENT_RECONNECT_GRACE_PERIOD"])
+        # Disable retries if grace period is set to 0
+        self._reconnect_enabled = self._reconnect_grace_period != 0
 
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
@@ -237,6 +239,8 @@ class Worker:
         Returns True if the RPC error can be recovered from and a retry is
         appropriate, false otherwise.
         """
+        if not self._reconnect_enabled:
+            return False
         if self._in_shutdown:
             # Channel is being shutdown, don't try to reconnect
             return False
@@ -286,6 +290,9 @@ class Worker:
         Args:
             metadata - the gRPC metadata to append the IDs to
         """
+        if not self._reconnect_enabled:
+            # IDs not needed if the reconnects are disabled
+            return metadata
         thread_id = str(threading.get_ident())
         with self._req_id_lock:
             self._req_id += 1

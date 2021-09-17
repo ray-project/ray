@@ -103,6 +103,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         logger.debug(f"New data connection from client {client_id}: ")
         accepted_connection = self._init(client_id, context, start_time)
         response_cache = self.response_caches[client_id]
+        # Set to False if client requests a reconnect grace period of 0
+        reconnect_enabled = True
         if not accepted_connection:
             return
         try:
@@ -124,7 +126,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
-                if _should_cache(req):
+                if _should_cache(req) and reconnect_enabled:
                     cached_resp = response_cache.check_cache(req.req_id)
                     if isinstance(cached_resp, Exception):
                         # Cache state is invalid, raise exception
@@ -141,6 +143,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     with self.clients_lock:
                         self.reconnect_grace_periods[client_id] = \
                             req.init.reconnect_grace_period
+                        if req.init.reconnect_grace_period == 0:
+                            reconnect_enabled = False
+
                 elif req_type == "get":
                     if req.get.asynchronous:
                         get_resp = self.basic_service._async_get_object(
@@ -188,7 +193,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-                if _should_cache(req):
+                if _should_cache(req) and reconnect_enabled:
                     response_cache.update_cache(req.req_id, resp)
                 yield resp
         except Exception as e:
