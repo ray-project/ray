@@ -1877,6 +1877,57 @@ def start_monitor(redis_address,
     return process_info
 
 
+def start_ray_client_server_http(
+        redis_address,
+        ray_client_server_port,
+        stdout_file=None,
+        stderr_file=None,
+        redis_password=None,
+        fate_share=None,
+        metrics_agent_port=None,
+        server_type: str = "proxy",
+        serialized_runtime_env_context: Optional[str] = None):
+    """Run the server process of the Ray client.
+
+    Args:
+        ray_client_server_port (int): Port the Ray client server listens on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+        server_type (str): Whether to start the proxy version of Ray Client.
+        serialized_runtime_env_context (str|None): If specified, the serialized
+            runtime_env_context to start the client server in.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    root_ray_dir = Path(__file__).resolve().parents[1]
+    setup_worker_path = os.path.join(root_ray_dir, "workers",
+                                     ray_constants.SETUP_WORKER_FILENAME)
+
+    command = [
+        sys.executable, setup_worker_path, "-m", "ray.util.client.server.server_http",
+        f"--redis-address={redis_address}", f"--port={ray_client_server_port}",
+        f"--mode={server_type}"
+    ]
+    if redis_password:
+        command.append(f"--redis-password={redis_password}")
+    if serialized_runtime_env_context:
+        command.append(
+            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
+        )
+    if metrics_agent_port:
+        command.append(f"--metrics-agent-port={metrics_agent_port}")
+    process_info = start_ray_process(
+        command,
+        "PROCESS_TYPE_RAY_CLIENT_SERVER_HTTP",
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share)
+    return process_info
+
 def start_ray_client_server(
         redis_address,
         ray_client_server_port,

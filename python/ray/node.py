@@ -885,6 +885,24 @@ class Node:
             process_info
         ]
 
+    def start_ray_client_server_http(self):
+        """Start the ray client server process."""
+        stdout_file, stderr_file = self.get_log_file_handles(
+            "ray_client_server_http", unique=True)
+        process_info = ray._private.services.start_ray_client_server_http(
+            self._redis_address,
+            "10011",
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
+        assert ("PROCESS_TYPE_RAY_CLIENT_SERVER_HTTP" not in
+                self.all_processes)
+        self.all_processes["PROCESS_TYPE_RAY_CLIENT_SERVER_HTTP"] = [
+            process_info
+        ]
+
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(f"Process STDOUT and STDERR is being "
@@ -900,6 +918,7 @@ class Node:
 
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
+            self.start_ray_client_server_http()
 
         if self._ray_params.include_dashboard:
             self.start_dashboard(require_dashboard=True)
