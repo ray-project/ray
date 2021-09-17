@@ -59,6 +59,12 @@ class ConfigInternal {
 
   std::unordered_map<std::string, int> resources;
 
+  bool include_dashboard = false;
+
+  std::string dashboard_host = "127.0.0.1";
+
+  int dashboard_port = -1;
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;

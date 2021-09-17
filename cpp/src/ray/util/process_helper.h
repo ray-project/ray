@@ -31,7 +31,10 @@ class ProcessHelper {
   void RayStop();
   void StartRayNode(const int redis_port, const std::string redis_password,
                     const int num_cpus = -1, const int num_gpus = -1,
-                    const std::unordered_map<std::string, int> resources = {});
+                    const std::unordered_map<std::string, int> resources = {},
+                    bool include_dashboard = false,
+                    std::string dashboard_host = "127.0.0.1",
+                    int32_t dashboard_port = -1);
   void StopRayNode();
 
   static ProcessHelper &GetInstance() {

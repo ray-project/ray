@@ -48,6 +48,14 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
+ABSL_FLAG(std::string, ray_include_dashboard, "",
+          "Boolean flag indicating whether or not to start the Ray dashboard.");
+
+ABSL_FLAG(std::string, ray_dashboard_host, "",
+          "The host to bind the dashboard server to.");
+
+ABSL_FLAG(int32_t, ray_dashboard_port, -1, "The ip address for this node.");
+
 namespace ray {
 namespace internal {
 
@@ -70,6 +78,13 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
   if (!config.resources.empty()) {
     resources = config.resources;
+  }
+  include_dashboard = config.include_dashboard;
+  if (!config.dashboard_host.empty()) {
+    dashboard_host = config.dashboard_host;
+  }
+  if (config.dashboard_port >= 0) {
+    dashboard_port = config.dashboard_port;
   }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
@@ -107,6 +122,17 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
+    if (!FLAGS_ray_include_dashboard.CurrentValue().empty()) {
+      include_dashboard = FLAGS_ray_include_dashboard.CurrentValue() == "true" ||
+                          FLAGS_ray_include_dashboard.CurrentValue() == "1";
+    }
+    if (!FLAGS_ray_dashboard_host.CurrentValue().empty()) {
+      dashboard_host = FLAGS_ray_dashboard_host.CurrentValue();
+    }
+    auto flags_dashboard_port = absl::GetFlag<int32_t>(FLAGS_ray_dashboard_port);
+    if (flags_dashboard_port >= 0) {
+      dashboard_port = flags_dashboard_port;
+    }
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (redis_ip.empty()) {
@@ -132,6 +158,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
         absolute_path.emplace_back(boost::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;
+    }
+    if (dashboard_host != "127.0.0.1" && dashboard_host != "localhost" &&
+        dashboard_host != "0.0.0.0") {
+      RAY_LOG(FATAL) << "Invaild dashboard host: " << dashboard_host
+                     << ", it should either be localhost (127.0.0.1) or 0.0.0.0 "
+                        "(available from all interfaces).";
     }
   }
 };

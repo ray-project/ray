@@ -41,7 +41,10 @@ std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resou
 
 void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
                                  const int num_cpus, const int num_gpus,
-                                 const std::unordered_map<std::string, int> resources) {
+                                 const std::unordered_map<std::string, int> resources,
+                                 const bool include_dashboard,
+                                 const std::string dashboard_host,
+                                 const int32_t dashboard_port) {
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
                                     redis_password, "--include-dashboard", "false"});
@@ -56,6 +59,18 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
   if (!resources.empty()) {
     cmdargs.emplace_back("--resources");
     cmdargs.emplace_back(FormatResourcesArg(resources));
+  }
+  if (include_dashboard) {
+    cmdargs.emplace_back("--include-dashboard");
+    cmdargs.emplace_back("true");
+    if (!dashboard_host.empty()) {
+      cmdargs.emplace_back("--dashboard-host");
+      cmdargs.emplace_back(dashboard_host);
+    }
+    if (dashboard_port >= 0) {
+      cmdargs.emplace_back("--dashboard-port");
+      cmdargs.emplace_back(std::to_string(dashboard_port));
+    }
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
@@ -86,7 +101,10 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     StartRayNode(ConfigInternal::Instance().redis_port,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().num_cpus, ConfigInternal::Instance().num_gpus,
-                 ConfigInternal::Instance().resources);
+                 ConfigInternal::Instance().resources,
+                 ConfigInternal::Instance().include_dashboard,
+                 ConfigInternal::Instance().dashboard_host,
+                 ConfigInternal::Instance().dashboard_port);
   }
   if (redis_ip == "127.0.0.1") {
     redis_ip = GetNodeIpAddress();

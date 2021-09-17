@@ -37,11 +37,6 @@ class RayConfig {
   // Only searching the top level under a directory.
   std::vector<std::string> code_search_path;
 
-  /* The following are unstable parameters and their use is discouraged. */
-
-  // Prevents external clients without the password from connecting to Redis if provided.
-  boost::optional<std::string> redis_password_;
-
   // Number of CPUs the user wishes to assign to each raylet. By default, this is set
   // based on virtual cores.
   int num_cpus = -1;
@@ -52,6 +47,28 @@ class RayConfig {
 
   // A mapping the names of custom resources to the quantities for them available.
   std::unordered_map<std::string, int> resources;
+
+  // Boolean flag indicating whether or not to start the
+  // Ray dashboard, which displays the status of the Ray
+  // cluster. If this argument is None, then the UI will be started if
+  // the relevant dependencies are present.
+  bool include_dashboard = false;
+
+  // The host to bind the dashboard server to. Can either be
+  // localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+  // By default, this is set to localhost to prevent access from
+  // external machines.
+  std::string dashboard_host = "127.0.0.1";
+
+  // The port to bind the dashboard server to.
+  // Defaults to 8265 and Ray will automatically find a free port if
+  // 8265 is not available.
+  int32_t dashboard_port = -1;
+
+  /* The following are unstable parameters and their use is discouraged. */
+
+  // Prevents external clients without the password from connecting to Redis if provided.
+  boost::optional<std::string> redis_password_;
 };
 
 }  // namespace ray
