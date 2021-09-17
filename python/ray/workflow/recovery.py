@@ -29,18 +29,16 @@ class WorkflowNotResumableError(Exception):
 @WorkflowStepFunction
 def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
                            input_workflows: List[Any],
-                           input_workflow_refs: List[WorkflowRef],
-                           instant_workflow_inputs: Dict[int, StepID]):
+                           input_workflow_refs: List[WorkflowRef]):
     """A workflow step that recovers the output of an unfinished step.
 
     Args:
+        args: The positional arguments for the step function.
+        kwargs: The keyword args for the step function.
         input_workflows: The workflows in the argument of the (original) step.
             They are resolved into physical objects (i.e. the output of the
             workflows) here. They come from other recover workflows we
             construct recursively.
-        instant_workflow_inputs: Same as 'input_workflows', but they come
-            point to workflow steps that have output checkpoints. They override
-            corresponding workflows in 'input_workflows'.
 
     Returns:
         The output of the recovered step.
@@ -48,11 +46,6 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
     reader = workflow_storage.get_workflow_storage()
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
-    # for index, _step_id in instant_workflow_inputs.items():
-    #     # override input workflows with instant workflows
-    #     input_workflows[index] = reader.load_step_output(_step_id)
-    args, kwargs = reader.load_step_args(step_id, input_workflows,
-                                         input_workflow_refs)
     return func(*args, **kwargs)
 
 
@@ -82,7 +75,6 @@ def _construct_resume_workflow_from_step(
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
     input_workflows = []
-    instant_workflow_outputs: Dict[int, str] = {}
     for i, _step_id in enumerate(result.workflows):
         r = _construct_resume_workflow_from_step(reader, _step_id)
         if isinstance(r, Workflow):
@@ -100,7 +92,7 @@ def _construct_resume_workflow_from_step(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
         **result.ray_options).step(args, kwargs, input_workflows,
-                                   workflow_refs, instant_workflow_outputs)
+                                   workflow_refs)
     recovery_workflow._step_id = step_id
     recovery_workflow.data.step_type = result.step_type
     return recovery_workflow

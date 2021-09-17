@@ -165,7 +165,6 @@ class WorkflowManagementActor:
         Returns:
             Workflow execution result that contains the state and output.
         """
-        logger.info("Manager running or resuming...")
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")
@@ -227,7 +226,6 @@ class WorkflowManagementActor:
                 common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
         else:
-            # remaining = 0
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
@@ -365,7 +363,6 @@ def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
     store = storage.get_global_storage()
     try:
-        print("trying to get actor management actor...")
         workflow_manager = get_management_actor()
         storage_url = ray.get(workflow_manager.get_storage_url.remote())
         if storage_url != store.storage_url:

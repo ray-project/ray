@@ -198,13 +198,6 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
 
-    # save_tasks = [
-    #     wf_storage._put(
-    #         wf_storage._key_step_input_metadata(step_id), metadata, True),
-    #     wf_storage._put(
-    #         wf_storage._key_step_function_body(step_id), inputs.func_body),
-    #     wf_storage._put(wf_storage._key_step_args(step_id), args_obj)
-    # ]
     workflow_id = wf_storage._workflow_id
     storage = wf_storage._storage
     save_tasks = [
