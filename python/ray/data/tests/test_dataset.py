@@ -34,6 +34,21 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+@pytest.fixture
+def enable_shuffle_spread():
+    os.environ[
+        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
+    yield
+    del os.environ["RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"]
+
+
+@pytest.fixture
+def enable_read_spread():
+    os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
+    yield
+    del os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
@@ -2339,7 +2354,7 @@ def test_sort_simple(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-def test_random_shuffle(ray_start_regular_shared, pipelined):
+def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
@@ -2375,9 +2390,95 @@ def test_random_shuffle(ray_start_regular_shared, pipelined):
     assert r1 == r2, (r1, r2)
     assert r1 != r0, (r1, r0)
 
+    # Test move.
+    ds = range(100, parallelism=2)
+    r1 = ds.random_shuffle(_move=True).take(999)
+    if pipelined:
+        # Reusing source pipeline works fine when moving blocks, since the
+        # move happens after the pipeline creation so reusing the source
+        # pipeline doesn't hit a cleared dataset (the cleared dataset is
+        # transparently created and discarded within the shuffle pipeline, but
+        # after the creation of the source pipeline).
+        ds.map(lambda x: x).take(999)
+    else:
+        # Source dataset should be unusable if not pipelining.
+        with pytest.raises(ValueError):
+            ds = ds.map(lambda x: x).take(999)
+    r2 = range(100).random_shuffle(_move=True).take(999)
+    assert r1 != r2, (r1, r2)
+
+
+def test_random_shuffle_spread(ray_start_cluster, enable_shuffle_spread):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        _system_config={"max_direct_call_object_size": 0})
+    cluster.add_node(resources={"bar": 100})
+    cluster.add_node(resources={"baz": 100})
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    blocks = ds.get_blocks()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id, baz_node_id}
+
+
+def test_parquet_read_spread(ray_start_cluster, tmp_path, enable_read_spread):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        _system_config={"max_direct_call_object_size": 0})
+    cluster.add_node(resources={"bar": 100})
+    cluster.add_node(resources={"baz": 100})
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({
+        "one": list(range(300, 400)),
+        "two": list(range(400, 500))
+    })
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(data_path)
+
+    # Force reads.
+    blocks = ds.get_blocks()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id, baz_node_id}
+
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
-def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
+def test_sort_arrow(ray_start_regular, num_items, parallelism):
     a = list(reversed(range(num_items)))
     b = [f"{x:03}" for x in range(num_items)]
     shard = int(np.ceil(num_items / parallelism))
@@ -2405,7 +2506,7 @@ def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
         ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
-def test_dataset_retry_exceptions(ray_start_regular_shared, local_path):
+def test_dataset_retry_exceptions(ray_start_regular, local_path):
     @ray.remote
     class Counter:
         def __init__(self):

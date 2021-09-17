@@ -326,7 +326,8 @@ class Dataset(Generic[T]):
     def random_shuffle(self,
                        *,
                        seed: Optional[int] = None,
-                       num_blocks: Optional[int] = None) -> "Dataset[T]":
+                       num_blocks: Optional[int] = None,
+                       _move: Optional[bool] = False) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -349,13 +350,19 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-
+        if num_blocks is None:
+            num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
-            self._blocks,
-            num_blocks or self.num_blocks(),
+            self._move_blocks() if _move else self._blocks,
+            num_blocks,
             random_shuffle=True,
             random_seed=seed)
         return Dataset(new_blocks)
+
+    def _move_blocks(self):
+        blocks = self._blocks.copy()
+        self._blocks.clear()
+        return blocks
 
     def split(self,
               n: int,
