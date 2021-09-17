@@ -93,7 +93,7 @@ BASE_READONLY_CONFIG = {
     "docker": {},
     "idle_timeout_minutes": 0,
     "provider": {
-        "type": "readonly"
+        "type": "readonly",
         "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
     },
     "auth": {},
@@ -202,7 +202,7 @@ class Monitor:
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
-            autoscaling_config = autoscaling_config
+            autoscaling_config = self.autoscaling_config
         else:
             # This config mirrors the current setup of the manually created
             # cluster. Each node gets its own unique node type.
@@ -235,14 +235,15 @@ class Monitor:
         mirror_node_types = {}
         resource_deadlock = False
         for resource_message in resources_batch_data.batch:
-            node_type = "local_{}".format(resource_message.node_id.hex())
-            if resource_message.resource_deadlock_detected:
-                resource_deadlock = True
-            resources = resource_message.resources_total
-            for k in list(resources.keys()):
-                if k.startswith("node:"):
-                    del resources[k]
+            # Generate node type config based on GCS reported node list.
             if self.readonly_config:
+                node_type = "local_{}".format(resource_message.node_id.hex())
+                if resource_message.resource_deadlock_detected:
+                    resource_deadlock = True
+                resources = resource_message.resources_total
+                for k in list(resources.keys()):
+                    if k.startswith("node:"):
+                        del resources[k]
                 mirror_node_types[node_type] = {
                     "resources": copy.deepcopy(resources),
                     "node_config": {},
@@ -329,7 +330,8 @@ class Monitor:
         only the latest cluster size per batch.
         """
         avail_resources = self.load_metrics.resources_avail_summary()
-        if not self.readonly and avail_resources != self.last_avail_resources:
+        if (not self.readonly_config
+                and avail_resources != self.last_avail_resources):
             self.event_summarizer.add(
                 "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
                 quantity=avail_resources,

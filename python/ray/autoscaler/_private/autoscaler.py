@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union
+from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union, \
+    Callable
 import copy
 import logging
 import math

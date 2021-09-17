@@ -39,7 +39,7 @@ class EventSummarizer:
             interval_s (int): Throttling interval in seconds.
         """
         if key not in self.key_ttl:
-            self.key_ttl[key] = time.time() + ttl
+            self.key_ttl[key] = time.time() + interval_s
             self.messages.append(message)
 
     def summary(self) -> List[str]:
