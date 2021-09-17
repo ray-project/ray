@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]],
                             None]
 
-# Send an acknowledge on every 10th response received
-ACKNOWLEDGE_BATCH_SIZE = 10
+# Send an acknowledge on every 32nd response received
+ACKNOWLEDGE_BATCH_SIZE = 32
 
 
 class DataClient:
@@ -186,6 +186,9 @@ class DataClient:
         Lock should be held before calling this. Used when an async or
         blocking response is received.
         """
+        if not self.client_worker._reconnect_enabled:
+            # Skip ACKs if reconnect isn't enabled
+            return
         assert self.lock.locked()
         self._acknowledge_counter += 1
         if self._acknowledge_counter % ACKNOWLEDGE_BATCH_SIZE == 0:

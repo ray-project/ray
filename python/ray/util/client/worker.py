@@ -153,7 +153,7 @@ class Worker:
         reconnecting after an RPC error, cleans up the old channel and
         continues to attempt to connect until the grace period is over.
         """
-        if self.channel:
+        if self.channel is not None:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
