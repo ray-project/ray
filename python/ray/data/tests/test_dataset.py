@@ -51,10 +51,12 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
     @ray.remote
     def run():
-        ds = ray.data.range(5)
-        ds = maybe_pipeline(ds, pipelined)
+        ds0 = ray.data.range(5)
+        ds = maybe_pipeline(ds0, pipelined)
         assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+        ds = maybe_pipeline(ds0, pipelined)
         assert ds.count() == 5
+        ds = maybe_pipeline(ds0, pipelined)
         assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
