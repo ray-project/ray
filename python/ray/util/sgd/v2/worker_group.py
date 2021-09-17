@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, List, TypeVar, Optional, Dict
+from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
 from ray.types import ObjectRef
@@ -9,10 +9,10 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-class BaseWorker:
+class BaseWorkerMixin:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
+    def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 
         Args:
@@ -20,6 +20,21 @@ class BaseWorker:
             args, kwargs: The arguments to pass into func.
         """
         return func(*args, **kwargs)
+
+
+def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
+    """Create the executable class to use as the Ray actors."""
+    if not executable_cls:
+        return BaseWorkerMixin
+    elif issubclass(executable_cls, BaseWorkerMixin):
+        return executable_cls
+    else:
+
+        class _WrappedExecutable(executable_cls, BaseWorkerMixin):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+        return _WrappedExecutable
 
 
 class WorkerGroup:
@@ -43,6 +58,10 @@ class WorkerGroup:
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
+        actor_cls (Optional[Type]): If specified use this class as the
+            remote actors.
+        remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
+            these args will be used for the worker initialization.
 
 
     Example:
@@ -55,12 +74,15 @@ class WorkerGroup:
         assert all(o == 1 for o in output)
     """
 
-    def __init__(self,
-                 num_workers: int = 1,
-                 num_cpus_per_worker: float = 1,
-                 num_gpus_per_worker: float = 0,
-                 additional_resources_per_worker: Optional[Dict[
-                     str, float]] = None):
+    def __init__(
+            self,
+            num_workers: int = 1,
+            num_cpus_per_worker: float = 1,
+            num_gpus_per_worker: float = 0,
+            additional_resources_per_worker: Optional[Dict[str, float]] = None,
+            actor_cls: Type = None,
+            actor_cls_args: Optional[Tuple] = None,
+            actor_cls_kwargs: Optional[Dict] = None):
 
         if num_workers <= 0:
             raise ValueError("The provided `num_workers` must be greater "
@@ -72,21 +94,32 @@ class WorkerGroup:
                              f"num_cpus_per_worker={num_cpus_per_worker} and "
                              f"num_gpus_per_worker={num_gpus_per_worker}.")
 
+        if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
+            raise ValueError("`actor_cls_args` or `actor_class_kwargs` are "
+                             "passed in but no `actor_cls` is passed in.")
+
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
+        self._base_cls = create_executable_class(actor_cls)
+        assert issubclass(self._base_cls, BaseWorkerMixin)
+
+        self._actor_cls_args = actor_cls_args or []
+        self._actor_cls_kwargs = actor_cls_kwargs or {}
+
         # TODO(matt): Validate resources. Fast-fail if it is impossible to
         #  handle the request, rather than hang indefinitely.
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
-            resources=self.additional_resources_per_worker)(BaseWorker)
+            resources=self.additional_resources_per_worker)(self._base_cls)
         self.start()
 
     def _create_worker(self):
-        return self._remote_cls.remote()
+        return self._remote_cls.remote(*self._actor_cls_args,
+                                       **self._actor_cls_kwargs)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -146,7 +179,10 @@ class WorkerGroup:
                                "group has most likely been shut down. Please"
                                "create a new WorkerGroup or restart this one.")
 
-        return [w.execute.remote(func, *args, **kwargs) for w in self.workers]
+        return [
+            w._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
+            for w in self.workers
+        ]
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
@@ -178,7 +214,8 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index].execute.remote(func, *args, **kwargs)
+        return self.workers[worker_index]._BaseWorkerMixin__execute.remote(
+            func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,
                        **kwargs) -> T:
