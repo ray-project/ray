@@ -268,7 +268,6 @@ def start_middleman_server(on_log_response=None,
             middleman.stop(0)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_lack_of_sanity():
     """
     Randomly kills the data channel with 10% chance when receiving response
