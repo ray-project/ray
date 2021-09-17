@@ -26,9 +26,6 @@
 /cpp/example/bazel-*
 /python/ray/cpp
 
-# Artifacts from local release testing should be ignored
-/release/artifacts
-
 # Redis temporary files
 *dump.rdb
 

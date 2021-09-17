@@ -251,9 +251,8 @@ GLOBAL_CONFIG = {
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
-    "RELEASE_RESULTS_DIR": getenv_default(
-        "RELEASE_RESULTS_DIR",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "artifacts"))),
+    "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
+                                          "/tmp/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
