@@ -453,7 +453,7 @@ def run_learning_tests_from_yaml(
                     "min_reward": e["pass_criteria"]["episode_reward_mean"],
                     "min_throughput":
                         e["pass_criteria"]["timesteps_total"] /
-                        e["stop"]["time_total_s"],
+                        (e["stop"]["time_total_s"] or 1.0),
                     "time_total_s": e["stop"]["time_total_s"],
                     "failures": 0,
                     "passed": False,
