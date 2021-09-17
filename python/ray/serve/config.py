@@ -7,7 +7,9 @@ import pydantic
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
-from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
+from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
+                                           AutoscalingConfig as
+                                           AutoscalingConfigProto)
 from ray.serve.generated.serve_pb2 import BackendLanguage
 
 from ray import cloudpickle as cloudpickle
@@ -95,8 +97,11 @@ class BackendConfig(BaseModel):
 
     def to_proto_bytes(self):
         data = self.dict()
-        if "user_config" in data:
+        if data.get("user_config"):
             data["user_config"] = pickle.dumps(data["user_config"])
+        if data.get("autoscaling_config"):
+            data["autoscaling_config"] = AutoscalingConfigProto(
+                **data["autoscaling_config"])
         return BackendConfigProto(
             is_cross_language=False,
             backend_language=BackendLanguage.PYTHON,
@@ -109,6 +114,9 @@ class BackendConfig(BaseModel):
         data = MessageToDict(proto, preserving_proto_field_name=True)
         if "user_config" in data:
             data["user_config"] = pickle.loads(proto.user_config)
+        if "autoscaling_config" in data:
+            data["autoscaling_config"] = AutoscalingConfig(
+                **data["autoscaling_config"])
         return cls(**data)
 
 
