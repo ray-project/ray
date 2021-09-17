@@ -239,17 +239,17 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             msgs.append(actor_data)
 
     msgs = []
-    handle_pub_messages(p, msgs, timeout, 2)
+    handle_pub_messages(p, msgs, timeout, 3)
     # Assert we received published actor messages with state
-    # DEPENDENCIES_UNREADY and PENDING_CREATION.
-    assert len(msgs) == 2
+    # DEPENDENCIES_UNREADY, PENDING_CREATION and ALIVE.
+    assert len(msgs) == 3
 
     # Kill actor.
     ray.kill(a)
-    handle_pub_messages(p, msgs, timeout, 3)
+    handle_pub_messages(p, msgs, timeout, 4)
 
     # Assert we received published actor messages with state DEAD.
-    assert len(msgs) == 3
+    assert len(msgs) == 4
 
     def actor_table_data_to_dict(message):
         return dashboard_utils.message_to_dict(
@@ -264,18 +264,24 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
 
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
-        # DEPENDENCIES_UNREADY is 0, PENDING_CREATION is 1, which would not be
-        # keeped in dict. We need check its original value.
-        if msg.state == 0 or msg.state == 1:
+        # DEPENDENCIES_UNREADY is 0, which would not be keeped in dict. We
+        # need check its original value.
+        if msg.state == 0:
             assert len(actor_data_dict) > 5
             for k in non_state_keys:
                 assert k in actor_data_dict
-        # For status that is not PENDING_CREATION, only states fields will
+        # For status that is not DEPENDENCIES_UNREADY, only states fields will
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
                 "state", "address", "timestamp", "pid",
                 "creationTaskException", "rayNamespace"
+            }
+        elif actor_data_dict["state"] == "PENDING_CREATION":
+            assert actor_data_dict.keys() == {
+                "state", "address", "actorId", "actorCreationDummyObjectId",
+                "jobId", "ownerAddress", "taskSpec", "className",
+                "serializedRuntimeEnv", "rayNamespace"
             }
         else:
             raise Exception("Unknown state: {}".format(
