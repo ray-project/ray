@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
@@ -327,7 +326,8 @@ class Dataset(Generic[T]):
     def random_shuffle(self,
                        *,
                        seed: Optional[int] = None,
-                       num_blocks: Optional[int] = None) -> "Dataset[T]":
+                       num_blocks: Optional[int] = None,
+                       move: Optional[bool] = False) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -346,35 +346,26 @@ class Dataset(Generic[T]):
                 based on system randomness.
             num_blocks: The number of output blocks after the shuffle, or None
                 to retain the number of blocks.
+            move: Whether the blocks for the source dataset should be moved
+                into the new, shuffled dataset, which should reduce memory
+                utilization during shuffle. This will make the source dataset
+                unusable.
 
         Returns:
             The shuffled dataset.
         """
-        # Check for spread resource labels in environment variable, and use
-        # the given labels for round-robin node-based scheduling.
-        shuffle_spread_custom_resource_labels = os.getenv(
-            "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS", None)
-        if shuffle_spread_custom_resource_labels is not None:
-            shuffle_spread_custom_resource_labels = (
-                shuffle_spread_custom_resource_labels.split(","))
-            round_robin_resource_provider = itertools.cycle(
-                map(lambda resource: {resource: 0.001},
-                    shuffle_spread_custom_resource_labels))
-        else:
-            round_robin_resource_provider = None
-
-        num_blocks = self.num_blocks()
+        if num_blocks is None:
+            num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
-            self.move_blocks(),
-            num_blocks or num_blocks,
+            self._move_blocks() if move else self._blocks,
+            num_blocks,
             random_shuffle=True,
-            random_seed=seed,
-            _round_robin_resource_provider=round_robin_resource_provider)
+            random_seed=seed)
         return Dataset(new_blocks)
 
-    def move_blocks(self):
-        blocks = self._blocks
-        self._blocks = None
+    def _move_blocks(self):
+        blocks = self._blocks.copy()
+        self._blocks.clear()
         return blocks
 
     def split(self,
