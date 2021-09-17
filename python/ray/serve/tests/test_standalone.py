@@ -392,7 +392,7 @@ def test_http_head_only(ray_cluster):
     not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
             "This test can only be ran when port sharing is supported."))
-def test_http_head_only(ray_cluster):
+def test_fixed_number_proxies(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
