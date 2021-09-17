@@ -693,7 +693,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                   head_node_type: NodeType,
                   max_to_add: int,
                   resources: List[ResourceDict],
-                  strict_spread: bool = False) -> (Dict[NodeType, int], List[ResourceDict]):
+                  strict_spread: bool = False
+                  ) -> (Dict[NodeType, int], List[ResourceDict]):
     """Determine nodes to add given resource demands and constraints.
 
     Args:

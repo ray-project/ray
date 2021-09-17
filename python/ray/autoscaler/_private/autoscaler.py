@@ -113,6 +113,7 @@ class StandardAutoscaler:
         """
 
         if isinstance(config_path, str):
+
             def config_reader():
                 with open(self.config_path) as f:
                     new_config = yaml.safe_load(f.read())
@@ -296,7 +297,8 @@ class StandardAutoscaler:
         num_extra_nodes_to_terminate = (
             len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
 
-        if not self.readonly and num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
+        if not self.readonly and num_extra_nodes_to_terminate > len(
+                nodes_we_could_terminate):
             logger.warning(
                 "StandardAutoscaler: trying to terminate "
                 f"{num_extra_nodes_to_terminate} nodes, while only "
@@ -319,13 +321,14 @@ class StandardAutoscaler:
 
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
-            self.provider.non_terminated_nodes(tag_filters={}),
-            self.pending_launches.breakdown(),
-            self.load_metrics.get_resource_demand_vector(),
-            self.load_metrics.get_resource_utilization(),
-            self.load_metrics.get_pending_placement_groups(),
-            self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.load_metrics.get_resource_requests()))
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
+                self.load_metrics.get_resource_demand_vector(),
+                self.load_metrics.get_resource_utilization(),
+                self.load_metrics.get_pending_placement_groups(),
+                self.load_metrics.get_static_node_resources_by_ip(),
+                ensure_min_cluster_size=self.load_metrics.
+                get_resource_requests()))
         self._report_pending_infeasible(unfulfilled)
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
@@ -443,8 +446,8 @@ class StandardAutoscaler:
             if self.readonly:
                 self.event_summarizer.add_once(
                     "The following resource requests are pending: {}. They will be "
-                    "scheduled after existing tasks and actors.".format(
-                        ", ".join(set(str(x) for x in pending))),
+                    "scheduled after existing tasks and actors complete.".
+                    format(", ".join(set(str(x) for x in pending))),
                     key="pending")
         if infeasible:
             for ix in infeasible:

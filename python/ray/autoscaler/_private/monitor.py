@@ -168,10 +168,43 @@ class Monitor:
             autoscaling_config = autoscaling_config
             self.readonly = False
         else:
+
             def config_reader():
-                config = {'cluster_name': 'default', 'max_workers': 0, 'upscaling_speed': 1.0, 'docker': {}, 'idle_timeout_minutes': 0, 'provider': {'type': 'single_node'}, 'auth': {}, 'available_node_types': {'ray.head.default': {'resources': {}, 'node_config': {}, 'max_workers': 1}}, 'head_node_type': 'ray.head.default', 'file_mounts': {}, 'cluster_synced_files': [], 'file_mounts_sync_continuously': False, 'rsync_exclude': [], 'rsync_filter': [], 'initialization_commands': [], 'setup_commands': [], 'head_setup_commands': [], 'worker_setup_commands': [], 'head_start_ray_commands': [], 'worker_start_ray_commands': [], 'head_node': {}, 'worker_nodes': {}}
+                config = {
+                    'cluster_name': 'default',
+                    'max_workers': 0,
+                    'upscaling_speed': 1.0,
+                    'docker': {},
+                    'idle_timeout_minutes': 0,
+                    'provider': {
+                        'type': 'single_node'
+                    },
+                    'auth': {},
+                    'available_node_types': {
+                        'ray.head.default': {
+                            'resources': {},
+                            'node_config': {},
+                            'max_workers': 1
+                        }
+                    },
+                    'head_node_type': 'ray.head.default',
+                    'file_mounts': {},
+                    'cluster_synced_files': [],
+                    'file_mounts_sync_continuously': False,
+                    'rsync_exclude': [],
+                    'rsync_filter': [],
+                    'initialization_commands': [],
+                    'setup_commands': [],
+                    'head_setup_commands': [],
+                    'worker_setup_commands': [],
+                    'head_start_ray_commands': [],
+                    'worker_start_ray_commands': [],
+                    'head_node': {},
+                    'worker_nodes': {}
+                }
                 config["available_node_types"].update(self.extra_node_types)
                 return config
+
             autoscaling_config = config_reader
             self.readonly = True
         self.autoscaler = StandardAutoscaler(
@@ -190,7 +223,8 @@ class Monitor:
             request, timeout=4)
         resources_batch_data = response.resource_usage_data
 
-        self.autoscaler.provider._set_last_batch(list(resources_batch_data.batch))
+        self.autoscaler.provider._set_last_batch(
+            list(resources_batch_data.batch))
 
         node_types = {}
         for resource_message in resources_batch_data.batch:
@@ -218,10 +252,10 @@ class Monitor:
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
             ip = resource_message.node_id.hex()
-#            if use_node_id_as_ip:
-#                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
-#            else:
-#                ip = resource_message.node_manager_address
+            #            if use_node_id_as_ip:
+            #                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
+            #            else:
+            #                ip = resource_message.node_manager_address
             self.load_metrics.update(
                 ip, total_resources, available_resources, resource_load,
                 waiting_bundles, infeasible_bundles, pending_placement_groups)

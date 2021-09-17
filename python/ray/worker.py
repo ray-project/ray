@@ -1160,9 +1160,10 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
     if data["ip"] == data["localhost"]:
         for line in lines:
             print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data, line),
-                                         prefix_for(data), pid,
-                                         colorama.Style.RESET_ALL, line),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM,
+                                         color_for(data,
+                                                   line), prefix_for(data),
+                                         pid, colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
         for line in lines:
