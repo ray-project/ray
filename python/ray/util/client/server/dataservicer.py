@@ -6,7 +6,7 @@ import grpc
 from queue import Queue
 import sys
 
-from typing import Any, Dict, Iterator, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, Iterator, TYPE_CHECKING, Union
 from threading import Lock, Thread
 import time
 
@@ -27,17 +27,18 @@ logger = logging.getLogger(__name__)
 QUEUE_JOIN_SECONDS = 10
 
 
-def _get_reconnecting_from_context(context: Any) -> Optional[bool]:
+def _get_reconnecting_from_context(context: Any) -> bool:
     """
-    Get `reconnecting` from gRPC metadata, or None if missing.
+    Get `reconnecting` from gRPC metadata, or False if missing.
     """
     metadata = {k: v for k, v in context.invocation_metadata()}
     val = metadata.get("reconnecting")
     if val is None or val not in ("True", "False"):
         logger.error(
-            f'Client connecting with invalid value for "reconnecting": {val}')
-        context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
-        return None
+            f'Client connecting with invalid value for "reconnecting": {val}, '
+            "This may be because you have a mismatched client and server "
+            "version.")
+        return False
     return val == "True"
 
 
