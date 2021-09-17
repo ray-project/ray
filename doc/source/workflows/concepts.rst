@@ -46,7 +46,7 @@ Steps are functions annotated with the ``@workflow.step`` decorator. Steps are r
     def add(a: int, b: int) -> int:
         return a + b
 
-    output: Workflow[int] = add.step(100, one.step())
+    output = add.step(100, one.step())
 
 Workflows
 ~~~~~~~~~
