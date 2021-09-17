@@ -197,7 +197,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "simple_kv_store",
     srcs = glob([
         "src/ray/test/simple_kv_store/*.cc",

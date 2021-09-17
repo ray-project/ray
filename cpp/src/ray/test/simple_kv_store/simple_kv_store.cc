@@ -176,7 +176,7 @@ class Client {
 
   bool Put(const std::string &key, const std::string &val) {
     // During the restart of the main server actor, the task may fail.
-    // So we use retry here. 
+    // So we use retry here.
     AlwaysRetry([this, &key, &val] {
       (*main_actor_).Task(&MainServer::Put).Remote(key, val).Get();
       return true;
@@ -238,6 +238,8 @@ int main(int argc, char **argv) {
   Client client;
   bool r = client.Put("hello", "ray");
   assert(r);
+  // Silence warning.
+  (void)r;
 
   auto get_result = [&client](const std::string &key) {
     bool ok;
