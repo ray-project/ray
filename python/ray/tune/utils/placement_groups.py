@@ -16,7 +16,7 @@ from ray.util.placement_group import PlacementGroup, get_placement_group, \
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
-TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
+TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 1.
 
 _tune_pg_prefix = None
 
@@ -350,7 +350,6 @@ class PlacementGroupManager:
         """Create placement group for factory"""
         # This creates the placement group
         pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
-
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
 
@@ -360,8 +359,7 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return (len(self._staging_futures) + len(
-            self._pgs_for_removal)) < self._max_staging
+        return len(self._staging_futures) < self._max_staging
 
     def update_status(self):
         """Update placement group status.
