@@ -57,7 +57,7 @@ def tune_xgboost(train_df, test_df, target_column):
     }
 
     ray_params = RayParams(
-        max_actor_restarts=1, gpus_per_actor=0, cpus_per_actor=8, num_actors=4)
+        max_actor_restarts=1, gpus_per_actor=0, cpus_per_actor=4, num_actors=4)
 
     analysis = tune.run(
         tune.with_parameters(
