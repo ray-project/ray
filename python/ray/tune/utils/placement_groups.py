@@ -240,6 +240,10 @@ class PlacementGroupManager:
         # Ray futures to check if a placement group is ready
         self._staging_futures: Dict[ObjectRef, Tuple[PlacementGroupFactory,
                                                      PlacementGroup]] = {}
+        # Set of unstaged PGs (cleaned after full PG removal)
+        self._unstaged_pg_pgf: Dict[PlacementGroup, PlacementGroupFactory] = {}
+        self._unstaged_pgf_pg: Dict[PlacementGroupFactory, Set[
+            PlacementGroup]] = defaultdict(set)
 
         # Placement groups used by trials
         self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
@@ -295,6 +299,11 @@ class PlacementGroupManager:
                 self._pgs_for_removal.pop(pg)
                 remove_placement_group(pg)
 
+                # Remove from unstaged cache
+                if pg in self._unstaged_pg_pgf:
+                    pgf = self._unstaged_pg_pgf.pop(pg)
+                    self._unstaged_pgf_pg[pgf].discard(pg)
+
     def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
 
@@ -324,6 +333,12 @@ class PlacementGroupManager:
                     has_non_removed_pg_left = block
                     pg = get_placement_group(info["name"])
                     remove_placement_group(pg)
+
+                    # Remove from unstaged cache
+                    if pg in self._unstaged_pg_pgf:
+                        pgf = self._unstaged_pg_pgf.pop(pg)
+                        self._unstaged_pgf_pg[pgf].discard(pg)
+
                 time.sleep(0.1)
 
     def stage_trial_pg(self, trial: "Trial"):
@@ -348,19 +363,25 @@ class PlacementGroupManager:
 
     def _stage_pgf_pg(self, pgf: PlacementGroupFactory):
         """Create placement group for factory"""
-        # This creates the placement group
-        pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
+        if len(self._unstaged_pgf_pg[pgf]) > 0:
+            # This re-uses a previously unstaged placement group
+            pg = self._unstaged_pgf_pg[pgf].pop()
+            del self._unstaged_pg_pgf[pg]
+            self._pgs_for_removal.pop(pg, None)
+        else:
+            # This creates the placement group
+            pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-
         self._latest_staging_start_time = time.time()
 
         return True
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return len(self._staging_futures) < self._max_staging
+        return (len(self._staging_futures) + len(
+            self._unstaged_pg_pgf)) < self._max_staging
 
     def update_status(self):
         """Update placement group status.
@@ -607,6 +628,11 @@ class PlacementGroupManager:
                 if pg == trial_pg:
                     trial_future = future
                     break
+
+            # Track unstaged placement groups for potential reuse
+            self._unstaged_pg_pgf[trial_pg] = pgf
+            self._unstaged_pgf_pg[pgf].add(trial_pg)
+
             del self._staging_futures[trial_future]
 
         elif self._ready[pgf]:
