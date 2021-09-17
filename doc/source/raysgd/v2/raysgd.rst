@@ -146,7 +146,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.util.sgd.v2 import Trainer
+        from ray.sgd import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -242,7 +242,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.util.sgd.v2 import Trainer
+        from ray.sgd import Trainer
 
         trainer = Trainer(backend="tensorflow", num_workers=4)
         trainer.start()

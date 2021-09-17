@@ -155,6 +155,11 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+# Add an alias so we can point to the final location in docs.
+# TODO(amogkam) remove this once SGD v2 is out of alpha.
+import ray.util.sgd.v2 as sgd  # noqa
+__all__.append(sgd)
+
 
 # Remove modules from top-level ray
 def _ray_user_setup_function():
