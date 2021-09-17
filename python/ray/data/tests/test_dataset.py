@@ -51,10 +51,12 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
     @ray.remote
     def run():
-        ds = ray.data.range(5)
-        ds = maybe_pipeline(ds, pipelined)
+        ds0 = ray.data.range(5)
+        ds = maybe_pipeline(ds0, pipelined)
         assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+        ds = maybe_pipeline(ds0, pipelined)
         assert ds.count() == 5
+        ds = maybe_pipeline(ds0, pipelined)
         assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
@@ -144,10 +146,12 @@ def test_callable_classes(shutdown_only):
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic(ray_start_regular_shared, pipelined):
-    ds = ray.data.range(5)
-    ds = maybe_pipeline(ds, pipelined)
+    ds0 = ray.data.range(5)
+    ds = maybe_pipeline(ds0, pipelined)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+    ds = maybe_pipeline(ds0, pipelined)
     assert ds.count() == 5
+    ds = maybe_pipeline(ds0, pipelined)
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
@@ -670,8 +674,8 @@ def test_read_text(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()
-    ds = ray.data.range(10, parallelism=2)
-    ds = maybe_pipeline(ds, pipelined)
+    ds0 = ray.data.range(10, parallelism=2)
+    ds = maybe_pipeline(ds0, pipelined)
     ds.write_datasource(output)
     if pipelined:
         assert output.num_ok == 2
@@ -681,6 +685,7 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     ray.get(output.data_sink.set_enabled.remote(False))
+    ds = maybe_pipeline(ds0, pipelined)
     with pytest.raises(ValueError):
         ds.write_datasource(output)
     if pipelined:
@@ -1858,7 +1863,7 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(label_column="label", batch_size=3)
 
-    num_epochs = 2
+    num_epochs = 1 if pipelined else 2
     for _ in range(num_epochs):
         iterations = []
         for batch in iter(torchd):
