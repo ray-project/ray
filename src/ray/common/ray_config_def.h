@@ -469,5 +469,11 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, actor_register_async, true)
+
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
+
+/// Whether to avoid scheduling cpu requests on gpu nodes
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
