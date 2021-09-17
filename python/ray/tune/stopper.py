@@ -36,7 +36,6 @@ class Stopper:
         tune.run(Trainable, num_samples=200, stop=TimeStopper())
 
     """
-
     def __call__(self, trial_id, result):
         """Returns true if the trial should be terminated given the result."""
         raise NotImplementedError
@@ -68,7 +67,6 @@ class CombinedStopper(Stopper):
         tune.run(train, stop=stopper)
 
     """
-
     def __init__(self, *stoppers: Stopper):
         self._stoppers = stoppers
 
@@ -101,7 +99,6 @@ class FunctionStopper(Stopper):
             dictionary as arguments. Must return a boolean.
 
     """
-
     def __init__(self, function):
         self._fn = function
 
@@ -128,7 +125,6 @@ class MaximumIterationStopper(Stopper):
     Args:
         max_iter (int): Number of iterations before stopping a trial.
     """
-
     def __init__(self, max_iter: int):
         self._max_iter = max_iter
         self._iter = defaultdict(lambda: 0)
@@ -168,7 +164,6 @@ class ExperimentPlateauStopper(Stopper):
         ValueError: If the patience parameter is not
             a strictly positive integer.
     """
-
     def __init__(self, metric, std=0.001, top=10, mode="min", patience=0):
         if mode not in ("min", "max"):
             raise ValueError("The mode parameter can only be"
@@ -256,7 +251,6 @@ class TrialPlateauStopper(Stopper):
             `metric_threshold` has to be exceeded, if min the value has to
             be lower than `metric_threshold` in order to early stop.
     """
-
     def __init__(self,
                  metric: str,
                  std: float = 0.01,
@@ -328,7 +322,6 @@ class TimeoutStopper(Stopper):
         timeout (int|float|datetime.timedelta): Either a number specifying
             the timeout in seconds, or a `datetime.timedelta` object.
     """
-
     def __init__(self, timeout):
         from datetime import timedelta
         if isinstance(timeout, timedelta):
@@ -357,4 +350,108 @@ class TimeoutStopper(Stopper):
             logger.info(f"Reached timeout of {self._timeout_seconds} seconds. "
                         f"Stopping all trials.")
             return True
+        return False
+
+
+class TrialMeanStopper(Stopper):
+    """Stop training when a monitored metric has stopped improving.
+
+    When the mean of the `metric` result of a trial doesn't improve
+    by a `min_delta` for `patience` iterations, the trial is stopped.
+
+        Args:
+            metric (str): Metric to check for improvement.
+            min_delta (float): Minimum improvement needed to continue
+                the trial.
+            time_metric (str): Time metric defining patience and grace period.
+            patience (int): Number of iterations to wait for improvement.
+                Defaults to 1000.
+            mean_range (int): Number of values used to calculate the mean.
+                Defaults to 1000.
+            mode (str): If "max", the `min_delta` has to be exceeded, if "min"
+                the value has to be lower than `min_delta` in order to
+                early stop. Defaults to "max".
+            grace_period (int): Minimum number of iterations before a trial
+                can be early stopped. Defaults to 1000.
+            baseline ([None, float], optional): Default value to reach
+                after the grace_period. If None, baseline will be the
+                first calculated mean after grace period. Defaults to None.
+        Raises:
+            ValueError: If `mode` is not "min" nor "max".
+            ValueError: If `metric` is not found in the result dictionary.
+            ValueError: If `time_metric` is not found in the result dictionary.
+    """
+    def __init__(self,
+                 metric,
+                 min_delta,
+                 time_metric="training_iteration",
+                 patience=1000,
+                 mean_range=1000,
+                 mode="max",
+                 grace_period=0,
+                 baseline=None):
+        if mode not in ["min", "max"]:
+            raise ValueError(
+                f"When specifying a `metric_threshold`, the `mode` "
+                f"argument has to be one of [min, max]. "
+                f"Got: {mode}")
+
+        self._metric = metric
+        self._time_metric = time_metric
+        self._mode = mode
+        self._min_delta = min_delta
+
+        self._patience = patience
+        self._mean_range = mean_range
+        self._grace_period = grace_period
+        self._baseline = baseline
+
+        self._time_offset = defaultdict(lambda: grace_period)
+        self._baseline = defaultdict(lambda: baseline)
+        self._trial_results = defaultdict(lambda: deque(maxlen=mean_range))
+
+    def __call__(self, trial_id, result):
+        #  Get Metric from legacy metrics, or from custom ones.
+        if self._metric in result:
+            self._trial_results[trial_id].append(result.get(self._metric))
+        elif self._metric in result["custom_metrics"]:
+            self._trial_results[trial_id].append(result["custom_metrics"].get(
+                self._metric))
+        else:
+            raise ValueError(
+                f"Metric: {self._metric} not found in trial results.")
+
+        # Get Time metric from legacy metrics, or from custom ones.
+        if self._time_metric in result:
+            current_time = result.get(self._time_metric)
+        elif self._time_metric in result["custom_metrics"]:
+            current_time = result["custom_metrics"].get(self._time_metric)
+        else:
+            raise ValueError(
+                f"Time metric: {self._time_metric} not found in trial results."
+            )
+
+        # If not enough results, or still in grace period, do not stop.
+        if len(self._trial_results[trial_id]
+               ) < self._mean_range or current_time < self._grace_period:
+            return False
+
+        # Calculate mean from results.
+        current_mean = np.mean(self._trial_results[trial_id])
+        # If baseline is none set to first mean calculated.
+        if self._baseline[trial_id] is None:
+            self._baseline[trial_id] = current_mean
+        # If metric mean improves of min_delta, set time offset
+        # to time and update baseline.
+        elif (self._mode == "max"
+              and current_mean - self._min_delta > self._baseline[trial_id]
+              ) or (self._mode == "min" and
+                    current_mean + self._min_delta < self._baseline[trial_id]):
+            self._time_offset[trial_id] = current_time
+            self._baseline[trial_id] = current_mean
+
+        # If timer reaches patience, stop trial.
+        return current_time - self._time_offset[trial_id] >= self._patience
+
+    def stop_all(self):
         return False

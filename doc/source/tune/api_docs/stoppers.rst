@@ -44,3 +44,9 @@ TimeoutStopper (tune.stopper.TimeoutStopper)
 --------------------------------------------
 
 .. autoclass:: ray.tune.stopper.TimeoutStopper
+
+
+TrialMeanStopper (tune.stopper.TrialMeanStopper)
+--------------------------------------------
+
+.. autoclass:: ray.tune.stopper.TrialMeanStopper
