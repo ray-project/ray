@@ -7,6 +7,7 @@
     use_connect: True
     autosuspend_mins: 10
     timeout: 1200
+    prepare: python workloads/utils/wait_cluster.py 3 600
     script: python workloads/dask_xgboost_test.py
 
 - name: modin_xgboost_test
