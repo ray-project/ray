@@ -232,7 +232,7 @@ GLOBAL_CONFIG = {
         "ANYSCALE_CLOUD_ID",
         "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
     "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
-    "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
+    "RAY_VERSION": getenv_default("RAY_VERSION", "1.7.0rc0"),
     "RAY_REPO": getenv_default("RAY_REPO",
                                "https://github.com/ray-project/ray.git"),
     "RAY_BRANCH": getenv_default("RAY_BRANCH", "master"),
