@@ -1,4 +1,4 @@
-from python.ray.util.client.server.server import create_ray_handler
+from ray.util.client.server.server import create_ray_handler
 import uvicorn
 from fastapi import FastAPI
 
@@ -43,9 +43,11 @@ TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
                                             30)
 app = FastAPI()
 
+
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+
 
 def main():
     import argparse
@@ -93,4 +95,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
