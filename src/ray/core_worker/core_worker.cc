@@ -1987,7 +1987,7 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   std::promise<Status> p;
   auto f = p.get_future();
   io_service_.post([this, p = &p, actor_id, force_kill, no_restart]() {
-                     auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
+    auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
       if (status.ok()) {
         RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
                                                           no_restart, nullptr));
