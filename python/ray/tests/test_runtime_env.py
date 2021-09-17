@@ -775,7 +775,6 @@ def test_container_option_serialize():
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
     # job_config.runtime_env.serialized_runtime_env has container_option info
-    print(job_config_serialized)
     assert job_config_serialized.count(b"image") == 1
 
 
