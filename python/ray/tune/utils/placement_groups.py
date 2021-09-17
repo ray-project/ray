@@ -240,7 +240,8 @@ class PlacementGroupManager:
         # Ray futures to check if a placement group is ready
         self._staging_futures: Dict[ObjectRef, Tuple[PlacementGroupFactory,
                                                      PlacementGroup]] = {}
-        # Set of unstaged PGs (cleaned after full PG removal)
+
+        # Cache of unstaged PGs (cleaned after full PG removal)
         self._unstaged_pg_pgf: Dict[PlacementGroup, PlacementGroupFactory] = {}
         self._unstaged_pgf_pg: Dict[PlacementGroupFactory, Set[
             PlacementGroup]] = defaultdict(set)
