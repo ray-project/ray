@@ -1984,16 +1984,27 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   if (options_.is_local_mode) {
     return KillActorLocalMode(actor_id);
   }
-
-  if (!actor_manager_->CheckActorHandleExists(actor_id)) {
-    std::stringstream stream;
-    stream << "Failed to find a corresponding actor handle for " << actor_id;
-    return Status::Invalid(stream.str());
-  }
-
-  RAY_CHECK_OK(
-      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
-  return Status::OK();
+  std::promise<Status> p;
+  auto f = p.get_future();
+  io_service_.post([this, p = std::move(p), actor_id, force_kill, no_restart]() {
+    auto cb = [p = std::move(p), actor_id, force_kill, no_restart](Status status) {
+      if (status.ok()) {
+        RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
+                                                          no_restart, nullptr));
+      }
+      p.set_value(std::move(status));
+    };
+    if (actor_creator_->IsActorInRegistering(actor_id)) {
+      actor_creator_->AsyncWaitForActorRegisterFinish(actor_id, std::move(cb));
+    } else if (actor_manager_->CheckActorHandleExists(actor_id)) {
+      cb(Status::OK());
+    } else {
+      std::stringstream stream;
+      stream << "Failed to find a corresponding actor handle for " << actor_id;
+      cb(Status::Invalid(stream.ss()));
+    }
+  });
+  return f.get();
 }
 
 Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
