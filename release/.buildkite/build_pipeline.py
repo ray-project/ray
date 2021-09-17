@@ -231,13 +231,14 @@ DEFAULT_STEP_TEMPLATE = {
     "plugins": [{
         "docker#v3.8.0": {
             "image": "rayproject/ray",
-            "propagate-environment": True
+            "propagate-environment": True,
+            "volumes": [
+                "/tmp/ray_release_test_artifacts:"
+                "/tmp/ray_release_test_artifacts"
+            ],
         }
     }],
     "commands": [],
-    "volumes": [
-        "/tmp/ray_release_test_artifacts:/tmp/ray_release_test_artifacts"
-    ],
     "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
