@@ -191,8 +191,7 @@ class Worker:
     @property
     def runtime_env(self):
         """Get the runtime env in json format"""
-        return json.loads(self.core_worker.get_job_config()
-                          .runtime_env.serialized_runtime_env)
+        return self.core_worker.get_current_runtime_env_dict()
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
