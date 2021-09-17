@@ -1753,7 +1753,7 @@ def run_test_config(
                     f"{out_dir}")
 
         shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.move(temp_dir, out_dir)
+        shutil.copytree(temp_dir, out_dir)
         logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
