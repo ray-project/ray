@@ -7,8 +7,8 @@ class EventSummarizer:
 
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}
-        self.messages = []
-        self.key_ttl = {}
+        self.messages: List[str] = []
+        self.key_ttl: Dict[str, float] = {}
 
     def add(self, template: str, *, quantity: Any,
             aggregate: Callable[[Any, Any], Any]) -> None:
@@ -30,7 +30,14 @@ class EventSummarizer:
         else:
             self.events_by_key[template] = quantity
 
-    def add_once(self, message, key, ttl):
+    def add_once_per_interval(self, message: str, key: str, interval_s: int):
+        """Add a log message, which is throttled once per interval by a key.
+
+        Args:
+            message (str): The message to log.
+            key (str): The key to use to deduplicate the message.
+            interval_s (int): Throttling interval in seconds.
+        """
         if key not in self.key_ttl:
             self.key_ttl[key] = time.time() + ttl
             self.messages.append(message)
