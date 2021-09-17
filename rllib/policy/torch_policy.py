@@ -49,29 +49,27 @@ class TorchPolicy(Policy):
         model (TorchModel): Torch model instance.
         dist_class (type): Torch action distribution class.
     """
-
     @DeveloperAPI
     def __init__(
-            self,
-            observation_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            config: TrainerConfigDict,
-            *,
-            model: ModelV2,
-            loss: Callable[[
-                Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-            ], Union[TensorType, List[TensorType]]],
-            action_distribution_class: Type[TorchDistributionWrapper],
-            action_sampler_fn: Optional[Callable[[
-                TensorType, List[TensorType]
-            ], Tuple[TensorType, TensorType]]] = None,
-            action_distribution_fn: Optional[Callable[[
-                Policy, ModelV2, TensorType, TensorType, TensorType
-            ], Tuple[TensorType, Type[TorchDistributionWrapper], List[
-                TensorType]]]] = None,
-            max_seq_len: int = 20,
-            get_batch_divisibility_req: Optional[Callable[[Policy],
-                                                          int]] = None,
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
+        *,
+        model: ModelV2,
+        loss: Callable[
+            [Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch],
+            Union[TensorType, List[TensorType]]],
+        action_distribution_class: Type[TorchDistributionWrapper],
+        action_sampler_fn: Optional[Callable[[TensorType, List[TensorType]],
+                                             Tuple[TensorType,
+                                                   TensorType]]] = None,
+        action_distribution_fn: Optional[
+            Callable[[Policy, ModelV2, TensorType, TensorType, TensorType],
+                     Tuple[TensorType, Type[TorchDistributionWrapper],
+                           List[TensorType]]]] = None,
+        max_seq_len: int = 20,
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
     ):
         """Build a policy from policy and loss torch modules.
 
@@ -145,8 +143,8 @@ class TorchPolicy(Policy):
         # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TorchPolicy (worker={}) running on {}.".format(
-                worker_idx
-                if worker_idx > 0 else "local", "{} fake-GPUs".format(num_gpus)
+                worker_idx if worker_idx > 0 else "local",
+                "{} fake-GPUs".format(num_gpus)
                 if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
             self.devices = [
@@ -332,8 +330,8 @@ class TorchPolicy(Policy):
                 timestep=timestep)
         else:
             # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(
-                explore=explore, timestep=timestep)
+            self.exploration.before_compute_actions(explore=explore,
+                                                    timestep=timestep)
             if self.action_distribution_fn:
                 # Try new action_distribution_fn signature, supporting
                 # state_batches and seq_lens.
@@ -375,6 +373,7 @@ class TorchPolicy(Policy):
                     "subclass! Make sure your `action_distribution_fn` or "
                     "`make_model_and_action_dist` return a correct "
                     "distribution class.".format(dist_class.__name__))
+
             action_dist = dist_class(dist_inputs, self.model)
 
             # Get the exploration action from the forward results.
@@ -409,15 +408,15 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def compute_log_likelihoods(
-            self,
-            actions: Union[List[TensorStructType], TensorStructType],
-            obs_batch: Union[List[TensorStructType], TensorStructType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorStructType],
-                                              TensorStructType]] = None,
-            prev_reward_batch: Optional[Union[List[TensorStructType],
-                                              TensorStructType]] = None,
-            actions_normalized: bool = True,
+        self,
+        actions: Union[List[TensorStructType], TensorStructType],
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorStructType],
+                                          TensorStructType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorStructType],
+                                          TensorStructType]] = None,
+        actions_normalized: bool = True,
     ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
@@ -501,8 +500,9 @@ class TorchPolicy(Policy):
             self.model.train()
         # Callback handling.
         learn_stats = {}
-        self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+        self.callbacks.on_learn_on_batch(policy=self,
+                                         train_batch=postprocessed_batch,
+                                         result=learn_stats)
 
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
@@ -520,9 +520,9 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def load_batch_into_buffer(
-            self,
-            batch: SampleBatch,
-            buffer_index: int = 0,
+        self,
+        batch: SampleBatch,
+        buffer_index: int = 0,
     ) -> int:
         # Set the is_training flag of the batch.
         batch.is_training = True
@@ -633,10 +633,9 @@ class TorchPolicy(Policy):
         for i in range(len(tower_outputs[0][0])):
             if tower_outputs[0][0][i] is not None:
                 all_grads.append(
-                    torch.mean(
-                        torch.stack(
-                            [t[0][i].to(self.device) for t in tower_outputs]),
-                        dim=0))
+                    torch.mean(torch.stack(
+                        [t[0][i].to(self.device) for t in tower_outputs]),
+                               dim=0))
             else:
                 all_grads.append(None)
         # Set main model's grads to mean-reduced values.
@@ -787,8 +786,8 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(
-                    s, device=self.device)
+                optim_state_dict = convert_to_torch_tensor(s,
+                                                           device=self.device)
                 o.load_state_dict(optim_state_dict)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -871,14 +870,15 @@ class TorchPolicy(Policy):
                 The local PyTorch optimizer(s) to use for this Policy.
         """
         if hasattr(self, "config"):
-            return torch.optim.Adam(
-                self.model.parameters(), lr=self.config["lr"])
+            return torch.optim.Adam(self.model.parameters(),
+                                    lr=self.config["lr"])
         else:
             return torch.optim.Adam(self.model.parameters())
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str,
+    def export_model(self,
+                     export_dir: str,
                      onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
@@ -910,22 +910,21 @@ class TorchPolicy(Policy):
         seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
-            torch.onnx.export(
-                self.model, (dummy_inputs, state_ins, seq_lens),
-                file_name,
-                export_params=True,
-                opset_version=onnx,
-                do_constant_folding=True,
-                input_names=list(dummy_inputs.keys()) +
-                ["state_ins", SampleBatch.SEQ_LENS],
-                output_names=["output", "state_outs"],
-                dynamic_axes={
-                    k: {
-                        0: "batch_size"
-                    }
-                    for k in list(dummy_inputs.keys()) +
-                    ["state_ins", SampleBatch.SEQ_LENS]
-                })
+            torch.onnx.export(self.model, (dummy_inputs, state_ins, seq_lens),
+                              file_name,
+                              export_params=True,
+                              opset_version=onnx,
+                              do_constant_folding=True,
+                              input_names=list(dummy_inputs.keys()) +
+                              ["state_ins", SampleBatch.SEQ_LENS],
+                              output_names=["output", "state_outs"],
+                              dynamic_axes={
+                                  k: {
+                                      0: "batch_size"
+                                  }
+                                  for k in list(dummy_inputs.keys()) +
+                                  ["state_ins", SampleBatch.SEQ_LENS]
+                              })
         else:
             traced = torch.jit.trace(self.model,
                                      (dummy_inputs, state_ins, seq_lens))
@@ -947,8 +946,8 @@ class TorchPolicy(Policy):
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
-            functools.partial(
-                convert_to_torch_tensor, device=device or self.device))
+            functools.partial(convert_to_torch_tensor,
+                              device=device or self.device))
         return postprocessed_batch
 
     def _multi_gpu_parallel_grad_calc(self, sample_batches):
@@ -1030,8 +1029,8 @@ class TorchPolicy(Policy):
                                     if p.grad is not None:
                                         p.grad /= self.distributed_world_size
 
-                            grad_info[
-                                "allreduce_latency"] += time.time() - start
+                            grad_info["allreduce_latency"] += time.time(
+                            ) - start
 
                 with lock:
                     results[shard_idx] = (all_grads, grad_info)
@@ -1055,9 +1054,8 @@ class TorchPolicy(Policy):
         # Multi device (GPU) case: Parallelize via threads.
         else:
             threads = [
-                threading.Thread(
-                    target=_worker,
-                    args=(shard_idx, model, sample_batch, device))
+                threading.Thread(target=_worker,
+                                 args=(shard_idx, model, sample_batch, device))
                 for shard_idx, (model, sample_batch, device) in enumerate(
                     zip(self.model_gpu_towers, sample_batches, self.devices))
             ]
@@ -1082,7 +1080,6 @@ class TorchPolicy(Policy):
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
-
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
@@ -1106,7 +1103,6 @@ class LearningRateSchedule:
 @DeveloperAPI
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
-
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None

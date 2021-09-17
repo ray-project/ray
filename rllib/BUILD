@@ -11,10 +11,16 @@
 # Currently we have the following categories:
 
 # - Learning tests/regression, tagged:
-#   "learning_tests_[tf|torch]" AND "learning_tests_[cartpole|pendulum]"
+# -- "learning_tests_[tf|torch]": Distinguish tf vs torch.
+# -- "learning_tests_[cartpole|pendulum]": distinguish cartpole vs pendulum.
+# -- "learning_tests_[discrete|continuous]_[tf|torch]": distinguish discrete
+#    actions vs continuous actions AND tf vs torch.
+# -- "fake_gpus_[tf|torch]": Tests that run using 2 fake GPUs.
+
 # - Quick agent compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "trainers_dir" tests as
 #         they cover the same functionaliy.
+
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
 #   - `evaluation` directory tests.
@@ -22,16 +28,32 @@
 #   - `models` directory tests.
 #   - `policy` directory tests.
 #   - `utils` directory tests.
-# - Trainer ("agents") tests, tagged "trainers_dir".
-# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
-# - Examples directory (everything in rllib/examples/...), tagged: "examples"
 
-# The "examples" and "tests_dir" tags have further sub-tags going by the
+# - Trainer ("agents") tests, tagged "trainers_dir".
+
+# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir" and
+#   "tests_dir_[A-Z]"
+
+# - Examples directory (everything in rllib/examples/...), tagged: "examples" and
+#   "examples_[A-Z]"
+
+# Note: The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
 
-# Our .buildkite/pipeline.yml file executes all these tests in n
-# different jobs.
+# Additional tags are:
+# - "team:ml": Indicating that all tests in this file are the responsibility of
+#   the ML Team.
+# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
+# - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
+#   pipeline, defined in .buildkite/pipeline.gpu.yaml.
+# - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
+#   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
+# - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
+#   to certain incompatibilities.
+
+# Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
+# these tests in n different jobs.
 
 
 # --------------------------------------------------------------------
@@ -1933,7 +1955,7 @@ py_test(
 py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
@@ -1942,7 +1964,7 @@ py_test(
 py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
@@ -1951,7 +1973,7 @@ py_test(
 py_test(
     name = "examples/attention_net_tf",
     main = "examples/attention_net.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=60"]
@@ -1960,7 +1982,7 @@ py_test(
 py_test(
     name = "examples/attention_net_torch",
     main = "examples/attention_net.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=60", "--framework torch"]
@@ -1969,7 +1991,7 @@ py_test(
 py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
@@ -1978,7 +2000,7 @@ py_test(
 py_test(
     name = "examples/autoregressive_action_dist_torch",
     main = "examples/autoregressive_action_dist.py",
-    tags = ["team:ml", "examples", "examples_A"],
+    tags = ["team:ml", "examples", "examples_A", "gpu"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
@@ -1987,7 +2009,7 @@ py_test(
 py_test(
     name = "examples/bare_metal_policy_with_custom_view_reqs",
     main = "examples/bare_metal_policy_with_custom_view_reqs.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "small",
     srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
 )
@@ -1995,7 +2017,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=80"]
@@ -2004,7 +2026,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ppo_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=80"]
@@ -2013,7 +2035,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
@@ -2022,7 +2044,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70"]
@@ -2031,7 +2053,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
@@ -2040,7 +2062,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ddpg_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B"],
+    tags = ["team:ml", "examples", "examples_B", "gpu"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--framework=torch", "--run=DDPG", "--stop-iters=1"]
@@ -2440,28 +2462,28 @@ py_test(
 py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_tf2",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(

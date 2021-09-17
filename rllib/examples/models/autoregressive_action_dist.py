@@ -9,7 +9,6 @@ torch, nn = try_import_torch()
 
 class BinaryAutoregressiveDistribution(ActionDistribution):
     """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
-
     def deterministic_sample(self):
         # First, sample a1.
         a1_dist = self._a1_distribution()
@@ -40,8 +39,8 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         a1, a2 = actions[:, 0], actions[:, 1]
         a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
         a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
-        return (
-            Categorical(a1_logits).logp(a1) + Categorical(a2_logits).logp(a2))
+        return (Categorical(a1_logits).logp(a1) +
+                Categorical(a2_logits).logp(a2))
 
     def sampled_action_logp(self):
         return tf.exp(self._action_logp)
@@ -79,7 +78,6 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
 
 class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
     """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
-
     def deterministic_sample(self):
         # First, sample a1.
         a1_dist = self._a1_distribution()
