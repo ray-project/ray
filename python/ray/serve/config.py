@@ -1,14 +1,16 @@
 import inspect
+import pickle
 from enum import Enum
-import os
 from typing import Any, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
+from ray.serve.generated.serve_pb2 import BackendLanguage
 
 from ray import cloudpickle as cloudpickle
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_ROOT_URL_ENV_KEY)
 
 
 class BackendConfig(BaseModel):
@@ -54,6 +56,24 @@ class BackendConfig(BaseModel):
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
+
+    def to_proto_bytes(self):
+        data = self.dict()
+        if "user_config" in data:
+            data["user_config"] = pickle.dumps(data["user_config"])
+        return BackendConfigProto(
+            is_cross_language=False,
+            backend_language=BackendLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = BackendConfigProto.FromString(proto_bytes)
+        data = MessageToDict(proto, preserving_proto_field_name=True)
+        if "user_config" in data:
+            data["user_config"] = pickle.loads(proto.user_config)
+        return cls(**data)
 
 
 class ReplicaConfig:
@@ -165,15 +185,6 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
-        return v
-
-    @validator("root_url", always=True)
-    def fill_default_root_url(cls, v, values):
-        if v == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                return f"http://{values['host']}:{values['port']}"
         return v
 
     class Config:

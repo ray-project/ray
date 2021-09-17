@@ -844,18 +844,21 @@ These are the environment variables Ray Tune currently considers:
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_RESULT_WAIT_TIME_S**: Amount of time Ray Tune will block until a result from a running trial is received.
+  Defaults to 1 (second).
 * **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
-  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
-  be disabled by setting this to lower or equal to 0.
+  trial startups. After the grace period, Tune will block for up to ``TUNE_TRIAL_RESULT_WAIT_TIME_S`` seconds
+  until a result from a running trial is received. Can be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
-  the warning message is printed repeatedly every this amount of seconds. Defaults to 1 (seconds).
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 10 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
+* **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

@@ -7,9 +7,9 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
 
 # All C++ code.
@@ -27,7 +27,7 @@
 #/java/ @ray-project/ray-core-java
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
 # ==== Libraries and frameworks ====
 

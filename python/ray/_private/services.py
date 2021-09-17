@@ -16,12 +16,10 @@ import subprocess
 import sys
 import time
 from typing import Optional
-import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -160,7 +158,7 @@ def find_redis_address(address=None):
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
     #     --agent_command=/usr/bin/python
-    #     -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
+    #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
     #         --dashboard-agent-port=41856 --node-manager-port=58578
     #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
@@ -226,16 +224,6 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
-
-
-def _log_dashboard_dependency_warning_once():
-    if log_once("dashboard_failed_import"
-                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
-        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
-        warning_message += " To disable this message, set " \
-                           "RAY_DISABLE_IMPORT_WARNING " \
-                           "env var to '1'."
-        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -1190,16 +1178,15 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            import ray.new_dashboard.optional_deps  # noqa: F401
+            import ray.dashboard.optional_deps  # noqa: F401
         except ImportError:
             if require_dashboard:
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
-        dashboard_dir = "new_dashboard"
+        dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
         command = [
@@ -1334,8 +1321,6 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  setup_worker_path,
-                 worker_setup_hook,
-                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1377,10 +1362,6 @@ def start_raylet(redis_address,
             processes will execute.
         setup_worker_path (str): The path of the Python file that will run
             worker_setup_hook to set up the environment for the worker process.
-        worker_setup_hook (str): The module path to a Python function that will
-            be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1474,8 +1455,6 @@ def start_raylet(redis_address,
     start_worker_command = [
         sys.executable,
         setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1508,13 +1487,11 @@ def start_raylet(redis_address,
     # than just blindly importing the relevant packages.
     def check_should_start_agent():
         try:
-            import ray.new_dashboard.optional_deps  # noqa: F401
+            import ray.dashboard.optional_deps  # noqa: F401
 
             return True
         except ImportError:
-            _log_dashboard_dependency_warning_once()
-
-        return False
+            return False
 
     if not check_should_start_agent():
         # An empty agent command will cause the raylet not to start it.
@@ -1523,7 +1500,7 @@ def start_raylet(redis_address,
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard/agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
@@ -1535,7 +1512,6 @@ def start_raylet(redis_address,
             f"--temp-dir={temp_dir}",
             f"--session-dir={session_dir}",
             f"--runtime-env-dir={resource_dir}",
-            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
@@ -1901,15 +1877,16 @@ def start_monitor(redis_address,
     return process_info
 
 
-def start_ray_client_server(redis_address,
-                            ray_client_server_port,
-                            stdout_file=None,
-                            stderr_file=None,
-                            redis_password=None,
-                            fate_share=None,
-                            server_type: str = "proxy",
-                            serialized_runtime_env: Optional[str] = None,
-                            session_dir: Optional[str] = None):
+def start_ray_client_server(
+        redis_address,
+        ray_client_server_port,
+        stdout_file=None,
+        stderr_file=None,
+        redis_password=None,
+        fate_share=None,
+        metrics_agent_port=None,
+        server_type: str = "proxy",
+        serialized_runtime_env_context: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1920,8 +1897,8 @@ def start_ray_client_server(redis_address,
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         server_type (str): Whether to start the proxy version of Ray Client.
-        serialized_runtime_env (str|None): If specified, the serialized
-            runtime_env to start the client server in.
+        serialized_runtime_env_context (str|None): If specified, the serialized
+            runtime_env_context to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1929,26 +1906,20 @@ def start_ray_client_server(redis_address,
     root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
-    conda_shim_flag = (
-        "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
     command = [
-        sys.executable,
-        setup_worker_path,
-        conda_shim_flag,  # These two args are to use the shim process.
-        "-m",
-        "ray.util.client.server",
-        "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port),
-        "--mode=" + server_type
+        sys.executable, setup_worker_path, "-m", "ray.util.client.server",
+        f"--redis-address={redis_address}", f"--port={ray_client_server_port}",
+        f"--mode={server_type}"
     ]
     if redis_password:
-        command.append("--redis-password=" + redis_password)
-
-    if serialized_runtime_env:
-        command.append("--serialized-runtime-env=" + serialized_runtime_env)
-    if session_dir:
-        command.append(f"--session-dir={session_dir}")
+        command.append(f"--redis-password={redis_password}")
+    if serialized_runtime_env_context:
+        command.append(
+            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
+        )
+    if metrics_agent_port:
+        command.append(f"--metrics-agent-port={metrics_agent_port}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

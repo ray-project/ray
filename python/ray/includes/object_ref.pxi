@@ -35,10 +35,12 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
-    def __init__(self, id):
+    def __init__(self, id, owner_addr="", call_site_data=""):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
+        self.owner_addr = owner_addr
         self.in_core_worker = False
+        self.call_site_data = call_site_data
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
@@ -83,6 +85,12 @@ cdef class ObjectRef(BaseID):
 
     def job_id(self):
         return self.task_id().job_id()
+
+    def owner_address(self):
+        return self.owner_addr
+
+    def call_site(self):
+        return decode(self.call_site_data)
 
     cdef size_t hash(self):
         return self.data.Hash()

@@ -84,6 +84,7 @@ class GrpcServer {
       }
       is_closed_ = true;
       RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+      server_.reset();
     }
   }
 

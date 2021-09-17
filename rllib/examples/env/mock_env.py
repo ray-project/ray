@@ -37,7 +37,7 @@ class MockEnv2(gym.Env):
     def __init__(self, episode_length):
         self.episode_length = episode_length
         self.i = 0
-        self.observation_space = gym.spaces.Discrete(100)
+        self.observation_space = gym.spaces.Discrete(self.episode_length + 1)
         self.action_space = gym.spaces.Discrete(2)
         self.rng_seed = None
 

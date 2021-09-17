@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, Set
 
 import ray
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
+from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.utils import get_node_id, get_hostname, update_env_vars
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
@@ -51,7 +51,7 @@ def init_env_vars(world_rank: int, world_size: int):
     os.environ["HOROVOD_SIZE"] = str(world_size)
 
 
-class HorovodBackend(BackendInterface):
+class HorovodBackend(Backend):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: HorovodConfig):
 
@@ -94,8 +94,3 @@ class HorovodBackend(BackendInterface):
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)
-
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: HorovodConfig):
-        # Currently no additional steps are needed
-        pass

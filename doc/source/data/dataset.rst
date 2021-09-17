@@ -5,7 +5,7 @@ Datasets: Flexible Distributed Data Loading
 
 .. tip::
 
-  Datasets is available as **beta** in Ray 1.7+ (alpha release available in Ray 1.6). Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Datasets is available as **alpha** in Ray 1.6+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -62,7 +62,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Spark Dataframe
      - ``ray.data.from_spark()``
-     - (todo)
+     - ✅
    * - Dask Dataframe
      - ``ray.data.from_dask()``
      - ✅
@@ -106,7 +106,7 @@ Datasource Compatibility Matrices
      - ✅
    * - Spark Dataframe
      - ``ds.to_spark()``
-     - (todo)
+     - ✅
    * - Dask Dataframe
      - ``ds.to_dask()``
      - ✅
@@ -189,7 +189,7 @@ Datasets can be created from files on local disk or remote datasources such as S
     # Read multiple directories.
     ds = ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
 
-Finally, you can create a Dataset from existing data in the Ray object store or Ray compatible distributed DataFrames:
+Finally, you can create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
 
 .. code-block:: python
 
@@ -218,6 +218,13 @@ Datasets can be written to local or remote storage using ``.write_csv()``, ``.wr
     # Use repartition to control the number of output files:
     ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
     # -> /tmp/output2/data0.csv
+
+You can also convert a ``Dataset`` to Ray-compatibile distributed DataFrames:
+
+.. code-block:: python
+
+    # Convert a Ray Dataset into a Dask-on-Ray DataFrame.
+    dask_df = ds.to_dask()
 
 Transforming Datasets
 ---------------------
@@ -324,60 +331,6 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
 
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
-
-Tensor-typed values
--------------------
-
-Datasets support tensor-typed values, which are represented in-memory as Arrow tensors (i.e., np.ndarray format). Tensor datasets can be read from and written to ``.npy`` files. Here are some examples:
-
-.. code-block:: python
-
-    # Create a Dataset of tensor-typed values.
-    ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000,
-    #            schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
-
-    ds.map_batches(lambda t: t + 2).show(2)
-    # -> [[2 2 2 2 2]
-    #     [2 2 2 2 2]
-    #     [2 2 2 2 2]]
-    #    [[3 3 3 3 3]
-    #     [3 3 3 3 3]
-    #     [3 3 3 3 3]]
-
-    # Save to storage.
-    ds.write_numpy("/tmp/tensor_out")
-
-    # Read from storage.
-    ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?,
-    #            schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
-
-Tensor datasets are also created whenever an array type is returned from a map function:
-
-.. code-block:: python
-
-    # Create a dataset of Python integers.
-    ds = ray.data.range(10)
-    # -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
-
-    # It is now converted into a Tensor dataset.
-    ds = ds.map_batches(lambda x: np.array(x))
-    # -> Dataset(num_blocks=10, num_rows=10,
-    #            schema=<Tensor: shape=(None,), dtype=int64>)
-
-Tensor datasets can also be created from NumPy ndarrays that are already stored in the Ray object store:
-
-.. code-block:: python
-
-    import numpy as np
-
-    # Create a Dataset from a list of NumPy ndarray objects.
-    arr1 = np.arange(0, 10)
-    arr2 = np.arange(10, 20)
-    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
-
-Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 
 Custom datasources
 ------------------

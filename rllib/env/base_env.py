@@ -386,15 +386,18 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     """
 
     def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: List[MultiAgentEnv], num_envs: int):
-        """Wrap existing multi-agent envs.
+                 existing_envs: List["MultiAgentEnv"], num_envs: int):
+        """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
-            make_env (func|None): Factory that produces a new multiagent env.
-                Must be defined if the number of existing envs is less than
-                num_envs.
-            existing_envs (list): List of existing multiagent envs.
-            num_envs (int): Desired num multiagent envs to keep total.
+            make_env (Callable[[int], EnvType]): Factory that produces a new
+                MultiAgentEnv intance. Must be defined, if the number of
+                existing envs is less than num_envs.
+            existing_envs (List[MultiAgentEnv]): List of already existing
+                multi-agent envs.
+            num_envs (int): Desired num multiagent envs to have at the end in
+                total. This will include the given (already created)
+                `existing_envs`.
         """
         self.make_env = make_env
         self.envs = existing_envs
@@ -463,8 +466,9 @@ class _MultiAgentEnvState:
         self.env = env
         self.initialized = False
 
-    def poll(self) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict,
-                            MultiAgentDict, MultiAgentDict]:
+    def poll(
+            self
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         if not self.initialized:
             self.reset()
             self.initialized = True
