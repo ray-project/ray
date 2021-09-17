@@ -167,14 +167,16 @@ class Client {
  public:
   Client() {
     main_actor_ = ray::GetActor<MainServer>(MAIN_SERVER_NAME);
-    // Always retry if main server not exist.
+    // In case the main server hasn't started yet, retry getting
+    // the actor handle.
     if (!main_actor_) {
       RetryGetActor();
     }
   }
 
   bool Put(const std::string &key, const std::string &val) {
-    // Always retry if Put failed.
+    // During the restart of the main server actor, the task may fail.
+    // So we use retry here. 
     AlwaysRetry([this, &key, &val] {
       (*main_actor_).Task(&MainServer::Put).Remote(key, val).Get();
       return true;
@@ -184,7 +186,8 @@ class Client {
   }
 
   std::pair<bool, std::string> Get(const std::string &key) {
-    // Always retry if Gut failed.
+    // During the restart of the main server actor, the task may fail.
+    // So we use retry here.
     return AlwaysRetry([this, &key] {
       return *(*main_actor_).Task(&MainServer::Get).Remote(key).Get();
     });
@@ -211,7 +214,7 @@ class Client {
       } catch (const std::exception &) {
       }
 
-      std::cout << "Retry 2 seconds\n";
+      std::cout << "Retry in 2 seconds\n";
       std::this_thread::sleep_for(std::chrono::seconds(2));
       continue;
     }
