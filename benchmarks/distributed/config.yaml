@@ -7,7 +7,8 @@ upscaling_speed: 9999999
 provider:
     type: aws
     region: us-west-2
-    availability_zone: us-west-2a, us-west-2b, us-west-2c, us-west-2d
+    # r5dn.16xlarge is not supported in us-west-2d
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
 
 auth:
     ssh_user: ubuntu
