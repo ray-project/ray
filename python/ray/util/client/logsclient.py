@@ -5,12 +5,15 @@ import sys
 import logging
 import queue
 import threading
+import time
 import grpc
 
 from typing import TYPE_CHECKING
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -35,42 +38,62 @@ class LogstreamClient:
         self.request_queue = queue.Queue()
         self.log_thread = self._start_logthread()
         self.log_thread.start()
+        self.last_req = None
 
     def _start_logthread(self) -> threading.Thread:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
-        stub = ray_client_pb2_grpc.RayletLogStreamerStub(
-            self.client_worker.channel)
-        log_stream = stub.Logstream(
-            iter(self.request_queue.get, None), metadata=self._metadata)
-        try:
-            for record in log_stream:
-                if record.level < 0:
-                    self.stdstream(level=record.level, msg=record.msg)
-                self.log(level=record.level, msg=record.msg)
-        except grpc.RpcError as e:
-            self._process_rpc_error(e)
+        reconnecting = False
+        while not self.client_worker._in_shutdown:
+            if reconnecting:
+                # Refresh queue and retry last request
+                self.request_queue = queue.Queue()
+                if self.last_req:
+                    self.request_queue.put(self.last_req)
+            stub = ray_client_pb2_grpc.RayletLogStreamerStub(
+                self.client_worker.channel)
+            try:
+                log_stream = stub.Logstream(
+                    iter(self.request_queue.get, None),
+                    metadata=self._metadata)
+            except ValueError:
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
+                time.sleep(.5)
+                continue
+            try:
+                for record in log_stream:
+                    if record.level < 0:
+                        self.stdstream(level=record.level, msg=record.msg)
+                    self.log(level=record.level, msg=record.msg)
+                return
+            except grpc.RpcError as e:
+                reconnecting = self._process_rpc_error(e)
+                if not reconnecting:
+                    return
 
-    def _process_rpc_error(self, e: grpc.RpcError):
+    def _process_rpc_error(self, e: grpc.RpcError) -> bool:
         """
         Processes RPC errors that occur while reading from data stream.
+        Returns True if the error can be recovered from, False otherwise.
         """
-        if e.code() == grpc.StatusCode.CANCELLED:
-            # Graceful shutdown. We've cancelled our own connection.
-            logger.info("Cancelling logs channel")
-        elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                          grpc.StatusCode.RESOURCE_EXHAUSTED):
-            # TODO(barakmich): The server may have
-            # dropped. In theory, we can retry, as per
-            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
-            # in practice we may need to think about the correct semantics
-            # here.
-            logger.info("Server disconnected from logs channel")
-        else:
-            # Some other, unhandled, gRPC error
-            logger.exception(
-                f"Got Error from logger channel -- shutting down: {e}")
+        if self.client_worker._can_reconnect(e):
+            if log_once("lost_reconnect_logs"):
+                logger.warning(
+                    "Log channel is reconnecting. Logs produced while "
+                    "the connection was down can be found on the head "
+                    "node of the cluster in "
+                    "`ray_client_server_[port].out`")
+            logger.info("Log channel dropped, retrying.")
+            time.sleep(.5)
+            return True
+        logger.info("Shutting down log channel.")
+        if not self.client_worker._in_shutdown:
+            logger.exception("Unexpected exception:")
+        return False
 
     def log(self, level: int, msg: str):
         """Log the message from the log stream.
@@ -99,6 +122,7 @@ class LogstreamClient:
         req.enabled = True
         req.loglevel = level
         self.request_queue.put(req)
+        self.last_req = req
 
     def close(self) -> None:
         self.request_queue.put(None)
@@ -109,3 +133,4 @@ class LogstreamClient:
         req = ray_client_pb2.LogSettingsRequest()
         req.enabled = False
         self.request_queue.put(req)
+        self.last_req = req

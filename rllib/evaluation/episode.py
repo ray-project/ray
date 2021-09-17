@@ -13,6 +13,7 @@ from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
 from ray.util import log_once
 
 if TYPE_CHECKING:
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
     from ray.rllib.evaluation.sample_batch_builder import \
         MultiAgentSampleBatchBuilder
 
@@ -49,12 +50,18 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies: PolicyMap, policy_mapping_fn: Callable[
-        [AgentID, "MultiAgentEpisode"], PolicyID],
-                 batch_builder_factory: Callable[
-                     [], "MultiAgentSampleBatchBuilder"],
-                 extra_batch_callback: Callable[[SampleBatchType], None],
-                 env_id: EnvID):
+    def __init__(
+            self,
+            policies: PolicyMap,
+            policy_mapping_fn: Callable[
+                [AgentID, "MultiAgentEpisode", "RolloutWorker"], PolicyID],
+            batch_builder_factory: Callable[[],
+                                            "MultiAgentSampleBatchBuilder"],
+            extra_batch_callback: Callable[[SampleBatchType], None],
+            env_id: EnvID,
+            *,
+            worker: "RolloutWorker" = None,
+    ):
         self.new_batch_builder: Callable[
             [], "MultiAgentSampleBatchBuilder"] = batch_builder_factory
         self.add_extra_batch: Callable[[SampleBatchType],
@@ -65,6 +72,7 @@ class MultiAgentEpisode:
         self.length: int = 0
         self.episode_id: int = random.randrange(2e9)
         self.env_id = env_id
+        self.worker = worker
         self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
@@ -72,8 +80,9 @@ class MultiAgentEpisode:
         self.media: Dict[str, Any] = {}
         self.policy_map: PolicyMap = policies
         self._policies = self.policy_map  # backward compatibility
-        self._policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
-                                          PolicyID] = policy_mapping_fn
+        self.policy_mapping_fn: Callable[[
+            AgentID, "MultiAgentEpisode", "RolloutWorker"
+        ], PolicyID] = policy_mapping_fn
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
@@ -87,6 +96,16 @@ class MultiAgentEpisode:
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(
             list)
+
+    # TODO: Deprecated.
+    @property
+    def _policy_mapping_fn(self):
+        deprecation_warning(
+            old="MultiAgentEpisode._policy_mapping_fn",
+            new="MultiAgentEpisode.policy_mapping_fn",
+            error=False,
+        )
+        return self.policy_mapping_fn
 
     @DeveloperAPI
     def soft_reset(self) -> None:
@@ -106,7 +125,8 @@ class MultiAgentEpisode:
         """Returns and stores the policy ID for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
-        agent to a policy for the duration of the episode.
+        agent to a policy for the duration of the entire episode (even if the
+        policy_mapping_fn is changed in the meantime).
 
         Args:
             agent_id (AgentID): The agent ID to lookup the policy ID for.
@@ -117,10 +137,10 @@ class MultiAgentEpisode:
 
         if agent_id not in self._agent_to_policy:
             # Try new API: pass in agent_id and episode as named args.
-            # New signature should be: (agent_id, episode, **kwargs)
+            # New signature should be: (agent_id, episode, worker, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = \
-                    self._policy_mapping_fn(agent_id, self)
+                    self.policy_mapping_fn(agent_id, self, worker=self.worker)
             except TypeError as e:
                 if "positional argument" in e.args[0] or \
                         "unexpected keyword argument" in e.args[0]:
@@ -128,9 +148,9 @@ class MultiAgentEpisode:
                         deprecation_warning(
                             old="policy_mapping_fn(agent_id)",
                             new="policy_mapping_fn(agent_id, episode, "
-                            "**kwargs)")
+                            "worker, **kwargs)")
                     policy_id = self._agent_to_policy[agent_id] = \
-                        self._policy_mapping_fn(agent_id)
+                        self.policy_mapping_fn(agent_id)
                 else:
                     raise e
         else:
