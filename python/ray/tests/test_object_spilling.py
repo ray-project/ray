@@ -14,7 +14,7 @@ from ray.tests.conftest import (file_system_object_spilling_config,
                                 mock_distributed_fs_object_spilling_config)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
@@ -439,9 +439,13 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
             obj = ray.get(x)
         print(obj.shape)
         del obj
+
+    # In CI, Mac.metal suffers from EBS code start problem. Increase
+    # the timeout to 90.
+    timeout_seconds = 90 if platform.system() == "Darwin" else 30
     duration = datetime.now() - start
     assert duration <= timedelta(
-        seconds=30
+        seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["redis_address"])
 

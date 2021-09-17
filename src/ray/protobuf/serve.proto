@@ -22,6 +22,12 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+// Configuration options for Serve's replica autoscaler.
+message AutoscalingConfig {
+  // The frequency of how long does each replica sending metrics to autoscaler.
+  double metrics_interval_s = 1;
+}
+
 // Configuration options for a backend, to be set by the user.
 message BackendConfig {
   // The number of processes to start up that will handle requests to this backend.
@@ -49,10 +55,25 @@ message BackendConfig {
 
   // The backend's programming language.
   BackendLanguage backend_language = 7;
+
+  // The backend's autoscaling configuration.
+  AutoscalingConfig autoscaling_config = 8;
 }
 
 // Backend language.
 enum BackendLanguage {
   PYTHON = 0;
   JAVA = 1;
+}
+
+message RequestMetadata {
+  string request_id = 1;
+
+  string endpoint = 2;
+
+  string call_method = 3;
+}
+
+message RequestWrapper {
+  bytes body = 1;
 }

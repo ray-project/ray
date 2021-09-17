@@ -1,7 +1,7 @@
 import ray
 import ray._private.services as services
 import ray.worker
-from ray import profiling
+import ray._private.profiling as profiling
 from ray import ray_constants
 from ray.state import GlobalState
 
@@ -24,7 +24,7 @@ def memory_summary(address=None,
                    line_wrap=True,
                    stats_only=False,
                    num_entries=None):
-    from ray.new_dashboard.memory_utils import memory_summary
+    from ray.dashboard.memory_utils import memory_summary
     if not address:
         address = services.get_ray_address_to_use_or_die()
     if address == "auto":

@@ -11,9 +11,9 @@ import traceback
 
 import ray
 from ray._private.utils import hex_to_binary
-from ray.new_dashboard.tests.conftest import *  # noqa
-from ray.new_dashboard.modules.job import job_consts
-from ray.test_utils import (
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.modules.job import job_consts
+from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,

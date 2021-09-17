@@ -347,16 +347,18 @@ class TFPolicy(Policy):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self.get_session(), self.variables())
 
-        # gather update ops for any batch norm layers
-        if not self._update_ops:
-            self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf1.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+        # Gather update ops for any batch norm layers.
+        if len(self.devices) <= 1:
+            if not self._update_ops:
+                self._update_ops = tf1.get_collection(
+                    tf1.GraphKeys.UPDATE_OPS,
+                    scope=tf1.get_variable_scope().name)
+            if self._update_ops:
+                logger.info("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+            with tf1.control_dependencies(self._update_ops):
+                self._apply_op = self.build_apply_op(self._optimizer,
+                                                     self._grads_and_vars)
 
         if log_once("loss_used"):
             logger.debug(
@@ -818,7 +820,7 @@ class TFPolicy(Policy):
             tf1.saved_model.utils.build_tensor_info(self._obs_input)
 
         if self._seq_lens is not None:
-            input_signature["seq_lens"] = \
+            input_signature[SampleBatch.SEQ_LENS] = \
                 tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
@@ -1033,7 +1035,7 @@ class TFPolicy(Policy):
         for key in state_keys:
             feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = train_batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
 

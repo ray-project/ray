@@ -10,8 +10,8 @@ import ray
 import ray._private.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
-from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
-                            get_error_message)
+from ray._private.test_utils import (wait_for_condition, SignalActor,
+                                     init_error_pubsub, get_error_message)
 
 
 def test_unhandled_errors(ray_start_regular):

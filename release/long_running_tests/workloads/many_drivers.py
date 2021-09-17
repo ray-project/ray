@@ -5,7 +5,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 
 
 def update_progress(result):

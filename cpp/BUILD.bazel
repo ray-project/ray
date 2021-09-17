@@ -119,8 +119,8 @@ genrule(
         THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
         rm -rf $$THIRDPARTY_DIR &&
         mkdir $$THIRDPARTY_DIR &&
-        ln -s "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
-        ln -s "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
         cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
         echo "$$WORK_DIR" > $@
     """,
@@ -136,6 +136,7 @@ cc_test(
     ]),
     copts = COPTS,
     linkstatic = False,
+    tags = ["team:serverless"],
     deps = [
         "ray_api",
         "@boost//:filesystem",
@@ -159,6 +160,7 @@ cc_test(
         "ray_cpp_pkg",
     ],
     linkstatic = True,
+    tags = ["team:serverless"],
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",

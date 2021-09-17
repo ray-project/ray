@@ -62,4 +62,5 @@ def start(http_host, http_port, http_location):
 
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
 def shutdown():
-    serve.connect().shutdown()
+    serve.api._connect()
+    serve.shutdown()

@@ -1,14 +1,22 @@
 import inspect
+import pickle
 from enum import Enum
-import os
 from typing import Any, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
+                                           AutoscalingConfig as
+                                           AutoscalingConfigProto)
+from ray.serve.generated.serve_pb2 import BackendLanguage
 
 from ray import cloudpickle as cloudpickle
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_ROOT_URL_ENV_KEY)
+
+
+class AutoscalingConfig(BaseModel):
+    metrics_interval_s: float
 
 
 class BackendConfig(BaseModel):
@@ -40,6 +48,8 @@ class BackendConfig(BaseModel):
     experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
     experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
+    autoscaling_config: Optional[AutoscalingConfig] = None
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -54,6 +64,30 @@ class BackendConfig(BaseModel):
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
+
+    def to_proto_bytes(self):
+        data = self.dict()
+        if data.get("user_config"):
+            data["user_config"] = pickle.dumps(data["user_config"])
+        if data.get("autoscaling_config"):
+            data["autoscaling_config"] = AutoscalingConfigProto(
+                **data["autoscaling_config"])
+        return BackendConfigProto(
+            is_cross_language=False,
+            backend_language=BackendLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = BackendConfigProto.FromString(proto_bytes)
+        data = MessageToDict(proto, preserving_proto_field_name=True)
+        if "user_config" in data:
+            data["user_config"] = pickle.loads(proto.user_config)
+        if "autoscaling_config" in data:
+            data["autoscaling_config"] = AutoscalingConfig(
+                **data["autoscaling_config"])
+        return cls(**data)
 
 
 class ReplicaConfig:
@@ -165,15 +199,6 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
-        return v
-
-    @validator("root_url", always=True)
-    def fill_default_root_url(cls, v, values):
-        if v == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                return f"http://{values['host']}:{values['port']}"
         return v
 
     class Config:

@@ -8,7 +8,7 @@ import pytest
 import requests
 
 import ray
-from ray.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from ray.serve.utils import get_random_letters
 
@@ -248,6 +248,34 @@ def test_config_change(serve_instance, use_handle):
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconfigure_with_exception(serve_instance):
+    @serve.deployment
+    class A:
+        def __init__(self):
+            self.config = "yoo"
+
+        def reconfigure(self, config):
+            if config == "hi":
+                raise Exception("oops")
+
+            self.config = config
+
+        def __call__(self, *args):
+            return self.config
+
+    A.options(user_config="not_hi").deploy()
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
+
+    with pytest.raises(RuntimeError):
+        A.options(user_config="hi").deploy()
+
+    # Ensure we should be able to rollback to "hi" config
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -636,12 +664,13 @@ def test_redeploy_scale_up(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_handle_validation(serve_instance):
+    @serve.deployment
     class A:
         def b(self, *args):
             return "hello"
 
-    serve_instance.deploy("f", A)
-    handle = serve.get_handle("f")
+    A.deploy()
+    handle = A.get_handle()
 
     # Legacy code path
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
@@ -649,17 +678,6 @@ def test_deploy_handle_validation(serve_instance):
     assert ray.get(handle.b.remote()) == "hello"
     with pytest.raises(AttributeError):
         handle.c.remote()
-
-    # Test missing_ok case
-    missing_handle = serve.get_handle("g", missing_ok=True)
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
-    serve_instance.deploy("g", A)
-    # Old code path still work
-    assert ray.get(missing_handle.options(method_name="b").remote()) == "hello"
-    # Because the missing_ok flag, handle.b.remote won't work.
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
 
 
 def test_init_args(serve_instance):

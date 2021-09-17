@@ -234,7 +234,8 @@ class Monitor:
                     "autoscaler_report"] = self.autoscaler.summary()._asdict()
 
                 for msg in self.event_summarizer.summary():
-                    logger.info(":event_summary:{}".format(msg))
+                    logger.info("{}{}".format(
+                        ray_constants.LOG_PREFIX_EVENT_SUMMARY, msg))
                 self.event_summarizer.clear()
 
             as_json = json.dumps(status)

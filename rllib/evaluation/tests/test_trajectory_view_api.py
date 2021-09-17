@@ -26,10 +26,10 @@ class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
-        assert sum(train_batch["seq_lens"]) == 201
+        assert sum(train_batch[SampleBatch.SEQ_LENS]) == 201
         for k, v in train_batch.items():
             if k == "state_in_0":
-                assert len(v) == len(train_batch["seq_lens"])
+                assert len(v) == len(train_batch[SampleBatch.SEQ_LENS])
             else:
                 assert len(v) == 201
         current = None
@@ -403,7 +403,7 @@ def analyze_rnn_batch(batch, max_seq_len):
 
     # Check after seq-len 0-padding.
     cursor = 0
-    for i, seq_len in enumerate(batch["seq_lens"]):
+    for i, seq_len in enumerate(batch[SampleBatch.SEQ_LENS]):
         state_in_0 = batch["state_in_0"][i]
         state_in_1 = batch["state_in_1"][i]
         for j in range(seq_len):

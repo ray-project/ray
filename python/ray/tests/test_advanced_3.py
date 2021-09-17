@@ -13,17 +13,17 @@ import pickle
 import pytest
 
 import ray
-from ray.new_dashboard import k8s_utils
+from ray.dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-import ray.test_utils
-from ray import resource_spec
+import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors)
+from ray._private.test_utils import (check_call_ray, wait_for_condition,
+                                     wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -695,9 +695,9 @@ def test_k8s_cpu():
         file.flush()
     with mock.patch("ray._private.utils.os.environ",
                     {"KUBERNETES_SERVICE_HOST"}),\
-            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
+            mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH",
                        cpu_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
+            mock.patch("ray.dashboard.k8s_utils.PROC_STAT_PATH",
                        proc_stat_file.name),\
             mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
                        (shares_file.name,)):
@@ -747,7 +747,7 @@ def test_sync_job_config(shutdown_only):
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
-    job_config = ray.gcs_utils.JobConfig()
+    job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)

@@ -25,7 +25,8 @@ PullManager::PullManager(
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
     int64_t num_bytes_available,
-    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object)
+    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
+    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -35,6 +36,7 @@ PullManager::PullManager(
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       pin_object_(pin_object),
+      get_locally_spilled_object_url_(get_locally_spilled_object_url),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -458,13 +460,18 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // If we can restore directly from this raylet, then try to do so.
-  bool can_restore_directly =
-      !request.spilled_url.empty() &&
-      (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
-  if (can_restore_directly) {
+  // check if we can restore the object directly in the current raylet.
+  // first check local spilled objects
+  std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
+  if (direct_restore_url.empty()) {
+    if (!request.spilled_url.empty() && request.spilled_node_id.IsNil()) {
+      direct_restore_url = request.spilled_url;
+    }
+  }
+  if (!direct_restore_url.empty()) {
+    // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(object_id, request.spilled_url,
+    restore_spilled_object_(object_id, direct_restore_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id

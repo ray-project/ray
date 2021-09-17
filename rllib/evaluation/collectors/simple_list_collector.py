@@ -73,7 +73,7 @@ class _AgentCollector:
             episode_id (EpisodeID): Unique ID for the episode we are adding the
                 initial observation for.
             agent_index (int): Unique int index (starting from 0) for the agent
-                within its episode.
+                within its episode. Not to be confused with AGENT_ID (Any).
             env_id (EnvID): The environment index (in a vectorized setup).
             t (int): The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
@@ -85,14 +85,14 @@ class _AgentCollector:
                 single_row={
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
-                    "env_id": env_id,
-                    "t": t,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.T: t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
         self.episode_id = episode_id
         self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
-        self.buffers["env_id"].append(env_id)
-        self.buffers["t"].append(t)
+        self.buffers[SampleBatch.ENV_ID].append(env_id)
+        self.buffers[SampleBatch.T].append(t)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -192,8 +192,10 @@ class _AgentCollector:
                         d.itemsize * int(np.product(d.shape[i + 1:]))
                         for i in range(1, len(d.shape))
                     ]
+                    start = self.shift_before - shift_win + 1 + obs_shift + \
+                        view_req.shift_to
                     data = np.lib.stride_tricks.as_strided(
-                        d[self.shift_before - shift_win:],
+                        d[start:start + self.agent_steps],
                         [self.agent_steps, shift_win
                          ] + [d.shape[i] for i in range(1, len(d.shape))],
                         [data_size, data_size] + strides)
@@ -279,7 +281,7 @@ class _AgentCollector:
                 continue
             shift = self.shift_before - (1 if col in [
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                "env_id", "t"
+                SampleBatch.ENV_ID, SampleBatch.T
             ] else 0)
             # Python primitive, tensor, or dict (e.g. INFOs).
             self.buffers[col] = [data for _ in range(shift)]
@@ -546,8 +548,8 @@ class SimpleListCollector(SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [
-                SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX
+                SampleBatch.OBS, SampleBatch.ENV_ID, SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX, SampleBatch.T
             ] else 0
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.shift_from is not None:
@@ -563,9 +565,13 @@ class SimpleListCollector(SampleCollector):
                     data_list.append(self.agent_collectors[k].episode_id)
                 else:
                     if data_col not in buffers[k]:
-                        fill_value = np.zeros_like(view_req.space.sample()) \
-                            if isinstance(view_req.space, Space) else \
-                            view_req.space
+                        if view_req.data_col is not None:
+                            space = policy.view_requirements[
+                                view_req.data_col].space
+                        else:
+                            space = view_req.space
+                        fill_value = np.zeros_like(space.sample()) \
+                            if isinstance(space, Space) else space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })

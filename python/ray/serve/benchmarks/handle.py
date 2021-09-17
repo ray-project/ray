@@ -28,7 +28,6 @@ import time
 
 import ray
 from ray import serve
-from ray.serve import BackendConfig
 
 num_queries = 10000
 max_concurrent_queries = 100000
@@ -36,17 +35,18 @@ max_concurrent_queries = 100000
 ray.init(address="auto")
 
 
-def worker(_):
+@serve.deployment(max_concurrent_queries=max_concurrent_queries)
+def worker(*args):
     return b"Hello World"
 
 
-class ForwardActor:
+@serve.deployment(max_concurrent_queries=max_concurrent_queries)
+class Forwarder:
     def __init__(self, sync: bool):
-        client = serve.connect()
         self.sync = sync
-        self.handle = client.get_handle("worker", sync=sync)
+        self.handle = worker.get_handle(sync=sync)
 
-    async def __call__(self, _):
+    async def __call__(self, *args):
         if self.sync:
             await self.handle.remote()
         else:
@@ -54,29 +54,15 @@ class ForwardActor:
 
 
 async def run_test(num_replicas, num_forwarders, sync):
-    client = serve.start()
-    client.create_backend(
-        "worker",
-        worker,
-        config=BackendConfig(
-            num_replicas=num_replicas,
-            max_concurrent_queries=max_concurrent_queries,
-        ))
-    client.create_endpoint("worker", backend="worker")
-    endpoint_name = "worker"
+    serve.start()
 
-    if num_forwarders > 0:
-        client.create_backend(
-            "ForwardActor",
-            ForwardActor,
-            sync,
-            config=BackendConfig(
-                num_replicas=num_forwarders,
-                max_concurrent_queries=max_concurrent_queries))
-        client.create_endpoint("ForwardActor", backend="ForwardActor")
-        endpoint_name = "ForwardActor"
+    worker.options(num_replicas=num_replicas).deploy()
 
-    handle = client.get_handle(endpoint_name, sync=sync)
+    if num_forwarders == 0:
+        handle = worker.get_handle(sync=sync)
+    else:
+        Forwarder.options(num_replicas=num_forwarders).deploy(sync)
+        handle = Forwarder.get_handle(sync=sync)
 
     # warmup - helpful to wait for gc.collect() and actors to start
     start = time.time()
@@ -97,7 +83,7 @@ async def run_test(num_replicas, num_forwarders, sync):
     print(
         f"Sync: {sync}, {num_forwarders} forwarders and {num_replicas} worker "
         f"replicas: {int(qps)} requests/s")
-    client.shutdown()
+    serve.shutdown()
 
 
 async def main():

@@ -98,7 +98,8 @@ def _get_wheel_name(minor_version_number):
         ]
         assert len(matches) == 1, (
             f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*' instead of 1")
+            f"{minor_version_number}*-manylinux*' instead of 1.\n"
+            f"wheel matches: {matches}")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
@@ -257,6 +258,9 @@ def build_ray_ml():
         f"{_get_root_dir()}/python/**/requirements*.txt", recursive=True)
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
+    # Install atari roms script
+    shutil.copy(f"{_get_root_dir()}/rllib/utils/install_atari_roms.sh",
+                os.path.join(root_dir, "docker/ray-ml/"))
     ray_ml_images = _build_cpu_gpu_images("ray-ml")
     for img in ray_ml_images:
         tag = img.split(":")[-1]

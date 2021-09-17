@@ -12,5 +12,5 @@ python-dotenv
 expiringdict
 requests
 pytz
-git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
+git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray[default]
 git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray

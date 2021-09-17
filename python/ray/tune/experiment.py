@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Dict, Sequence, Any
 import copy
 import inspect
 import logging
@@ -103,6 +103,9 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
     """
+
+    # keys that will be present in `public_spec` dict
+    PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
                  name,
@@ -328,6 +331,15 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
+
+    @property
+    def public_spec(self) -> Dict[str, Any]:
+        """Returns the spec dict with only the public-facing keys.
+
+        Intended to be used for passing information to callbacks,
+        Searchers and Schedulers.
+        """
+        return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
 def convert_to_experiment_list(experiments):

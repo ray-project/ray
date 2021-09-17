@@ -423,8 +423,8 @@ Building Policies in TensorFlow Eager
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting
-the ``"framework": "tf2"`` / ``"eager_tracing": True`` config options or
-using ``rllib train '{"framework": "tf2", "eager_tracing": True}'``.
+the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options or
+using ``rllib train '{"framework": "tf2", "eager_tracing": true}'``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
@@ -614,7 +614,7 @@ In code, this dataflow can be expressed as the following execution plan, which i
         return StandardMetricsReporting(train_op, workers, config)
 
 
-As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators documentation <iter.html>`__). The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program. A couple other points to note:
+As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators implementation <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__). The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program. A couple other points to note:
 
  - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
  - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
@@ -624,7 +624,7 @@ These iterators represent the infinite stream of data items that can be produced
 Understanding and Debugging Execution Plans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Execution plans are based on Ray `parallel iterators <iter.html>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
+Execution plans are based on Ray `parallel iterators <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
 
 .. code-block:: python
 

@@ -1109,6 +1109,13 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 }
 
+double ClusterResourceScheduler::GetLocalAvailableCpus() const {
+  NodeResources local_resources;
+  RAY_CHECK(GetNodeResources(local_node_id_, &local_resources));
+  auto &capacity = local_resources.predefined_resources[CPU];
+  return capacity.available.Double();
+}
+
 ray::gcs::NodeResourceInfoAccessor::ResourceMap
 ClusterResourceScheduler::GetResourceTotals() const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
@@ -1135,6 +1142,13 @@ ClusterResourceScheduler::GetResourceTotals() const {
     }
   }
   return map;
+}
+
+bool ClusterResourceScheduler::IsLocallySchedulable(
+    const std::unordered_map<std::string, double> &shape) {
+  auto resource_request = ResourceMapToResourceRequest(
+      string_to_int_map_, shape, /*requires_object_store_memory=*/false);
+  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;
 }
 
 }  // namespace ray

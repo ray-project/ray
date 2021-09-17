@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 from ray import tune
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
@@ -257,6 +257,7 @@ class ProgressReporterTest(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
 
     def mock_trial(self, status, i):

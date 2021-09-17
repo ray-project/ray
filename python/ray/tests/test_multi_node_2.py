@@ -8,8 +8,8 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import (generate_system_config_map, wait_for_condition,
-                            SignalActor)
+from ray._private.test_utils import (generate_system_config_map,
+                                     wait_for_condition, SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -291,7 +291,7 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     ray.get(main_actor.ping.remote())
 
     ray.shutdown()
-    ray.init(address=cluster.address, namespace="")
+    ray.init(address=cluster.address, namespace="default_test_namespace")
 
     main_actor = ray.get_actor("main")
     num_to_start = int(ray.available_resources().get("CPU", 0) + 1)
@@ -321,7 +321,6 @@ def test_multi_node_pgs(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes(2)
-
     ray.init(address=cluster.address)
 
     pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(4)]

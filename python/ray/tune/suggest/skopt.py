@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     LogUniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -18,8 +19,6 @@ try:
     import skopt as sko
 except ImportError:
     sko = None
-
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +220,7 @@ class SkOptSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -340,7 +339,7 @@ class SkOptSearch(Searcher):
                     domain.lower, domain.upper - 1, prior="uniform")
 
             elif isinstance(domain, Categorical):
-                return domain.categories
+                return sko.space.Categorical(domain.categories)
 
             raise ValueError("SkOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(

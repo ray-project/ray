@@ -61,6 +61,8 @@ message ClientTask {
   // A name parameter, if the payload can be called in more than one way
   // (like a method on a payload object).
   string name = 2;
+  // A namespace parameter.
+  string namespace = 9;
   // A reference to the payload.
   bytes payload_id = 3;
   // Positional parameters to pass to this call.
@@ -114,17 +116,21 @@ message PutResponse {
 // Requests data from the server.
 message GetRequest {
   // The reference ID for the requested object data
-  bytes id = 1;
+  repeated bytes ids = 4;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+
+  // Deprecated fields.
+  bytes id = 1 [deprecated = true];
 }
 
 message GetResponse {
   // Whether or not the data was successfully retrieved
   bool valid = 1;
-  // The data blob, on success
+  // The data blob containing a list of serialized objects, on success.
+  // Total size and the order of objects match those in `GetRequest.ids`.
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;
@@ -252,6 +258,7 @@ message KVListResponse {
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
+  string ray_init_kwargs = 2;
 }
 
 message InitResponse {

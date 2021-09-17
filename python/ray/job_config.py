@@ -1,8 +1,8 @@
-import ray
 from typing import Any, Dict, Optional
 import uuid
 import json
 
+import ray._private.gcs_utils as gcs_utils
 from ray.core.generated.common_pb2 import RuntimeEnv as RuntimeEnvPB
 
 
@@ -79,7 +79,7 @@ class JobConfig:
     def get_proto_job_config(self):
         """Return the prototype structure of JobConfig"""
         if self._cached_pb is None:
-            self._cached_pb = ray.gcs_utils.JobConfig()
+            self._cached_pb = gcs_utils.JobConfig()
             if self.ray_namespace is None:
                 self._cached_pb.ray_namespace = str(uuid.uuid4())
             else:

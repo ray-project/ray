@@ -13,10 +13,10 @@ import ray
 from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import (wait_for_condition, new_scheduler_enabled,
-                            Semaphore, object_memory_usage, SignalActor)
+from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
+                                     Semaphore, object_memory_usage,
+                                     SignalActor)
 
 logger = logging.getLogger(__name__)
 

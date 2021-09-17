@@ -14,7 +14,8 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, unbatch, unsquash_action
+    get_base_struct_from_space, get_dummy_batch_for_space, unbatch, \
+    unsquash_action
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -291,7 +292,7 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_actions_from_input_dict(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: SampleBatch,
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
@@ -303,10 +304,10 @@ class Policy(metaclass=ABCMeta):
         to construct the input_dict for the Model.
 
         Args:
-            input_dict (Dict[str, TensorType]): An input dict mapping str
-                keys to Tensors. `input_dict` already abides to the Policy's
-                as well as the Model's view requirements and can be passed
-                to the Model as-is.
+            input_dict (SampleBatch): A SampleBatch containing the Tensors
+                to compute actions. `input_dict` already abides to the
+                Policy's as well as the Model's view requirements and can
+                thus be passed to the Model as-is.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.
@@ -600,7 +601,7 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             state (object): The new state to set this policy to. Can be
-                obtained by calling `Policy.get_state()`.
+                obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
@@ -780,13 +781,13 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-            postprocessed_batch["seq_lens"] = seq_lens
+            postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
         train_batch.is_training = True
         if seq_lens is not None:
-            train_batch["seq_lens"] = seq_lens
+            train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -850,7 +851,9 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            if self.config["preprocessor_pref"] is not None and \
+                    isinstance(view_req.space,
+                               (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
@@ -858,23 +861,23 @@ class Policy(metaclass=ABCMeta):
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:
-                    ret[view_col] = np.zeros_like([[
-                        view_req.space.sample()
-                        for _ in range(view_req.shift_to -
-                                       view_req.shift_from + 1)
-                    ] for _ in range(batch_size)])
-                # Set of (probably non-consecutive) indices.
+                    ret[view_col] = get_dummy_batch_for_space(
+                        view_req.space,
+                        batch_size=batch_size,
+                        time_size=view_req.shift_to - view_req.shift_from + 1)
+                # Sequence of (probably non-consecutive) indices.
                 elif isinstance(view_req.shift, (list, tuple)):
-                    ret[view_col] = np.zeros_like([[
-                        view_req.space.sample()
-                        for t in range(len(view_req.shift))
-                    ] for _ in range(batch_size)])
+                    ret[view_col] = get_dummy_batch_for_space(
+                        view_req.space,
+                        batch_size=batch_size,
+                        time_size=len(view_req.shift))
                 # Single shift int value.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = np.zeros_like([
-                            view_req.space.sample() for _ in range(batch_size)
-                        ])
+                        ret[view_col] = get_dummy_batch_for_space(
+                            view_req.space,
+                            batch_size=batch_size,
+                            fill_value=0.0)
                     else:
                         ret[view_col] = [
                             view_req.space for _ in range(batch_size)
@@ -934,15 +937,21 @@ class Policy(metaclass=ABCMeta):
             else:
                 space = state
             for vr in view_reqs:
-                vr["state_in_{}".format(i)] = ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    used_for_compute_actions=True,
-                    batch_repeat_value=self.config.get("model", {}).get(
-                        "max_seq_len", 1),
-                    space=space)
-                vr["state_out_{}".format(i)] = ViewRequirement(
-                    space=space, used_for_training=True)
+                # Only override if user has not already provided
+                # custom view-requirements for state_in_n.
+                if "state_in_{}".format(i) not in vr:
+                    vr["state_in_{}".format(i)] = ViewRequirement(
+                        "state_out_{}".format(i),
+                        shift=-1,
+                        used_for_compute_actions=True,
+                        batch_repeat_value=self.config.get("model", {}).get(
+                            "max_seq_len", 1),
+                        space=space)
+                # Only override if user has not already provided
+                # custom view-requirements for state_out_n.
+                if "state_out_{}".format(i) not in vr:
+                    vr["state_out_{}".format(i)] = ViewRequirement(
+                        space=space, used_for_training=True)
 
     @Deprecated(new="save", error=False)
     def export_checkpoint(self, export_dir: str) -> None:

@@ -64,6 +64,7 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event loop handlers that don't
 /// hook into a .post() call.
+// TODO Pull out the tracker from ASIO
 struct StatsHandle {
   std::string handler_name;
   int64_t start_time;
@@ -112,6 +113,15 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
   void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// A proxy post function that collects count, queueing, and execution statistics for
+  /// the given handler.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler. Defaults to UNKNOWN.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and

@@ -41,21 +41,23 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        B = len(train_batch[SampleBatch.SEQ_LENS])
+        max_seq_len = logits.shape[0] // B
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
         valid_mask = torch.reshape(mask_orig, [-1])
     else:
         valid_mask = torch.ones_like(values, dtype=torch.bool)
 
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS]).reshape(-1)
-    policy.pi_err = -torch.sum(
+    pi_err = -torch.sum(
         torch.masked_select(log_probs * train_batch[Postprocessing.ADVANTAGES],
                             valid_mask))
 
     # Compute a value function loss.
     if policy.config["use_critic"]:
-        policy.value_err = 0.5 * torch.sum(
+        value_err = 0.5 * torch.sum(
             torch.pow(
                 torch.masked_select(
                     values.reshape(-1) -
@@ -63,13 +65,16 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
                 2.0))
     # Ignore the value function.
     else:
-        policy.value_err = 0.0
+        value_err = 0.0
 
-    policy.entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
+    entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
 
-    total_loss = (
-        policy.pi_err + policy.value_err * policy.config["vf_loss_coeff"] -
-        policy.entropy * policy.config["entropy_coeff"])
+    total_loss = (pi_err + value_err * policy.config["vf_loss_coeff"] -
+                  entropy * policy.config["entropy_coeff"])
+
+    policy.entropy = entropy
+    policy.pi_err = pi_err
+    policy.value_err = value_err
 
     return total_loss
 

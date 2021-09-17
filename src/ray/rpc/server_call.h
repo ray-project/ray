@@ -16,11 +16,17 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <ctype.h>
 #include <boost/asio.hpp>
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/stats/metric.h"
+
+DECLARE_stats(grpc_server_req_latency_ms);
+DECLARE_stats(grpc_server_req_new);
+DECLARE_stats(grpc_server_req_handling);
+DECLARE_stats(grpc_server_req_finished);
 
 namespace ray {
 namespace rpc {
@@ -138,13 +144,26 @@ class ServerCallImpl : public ServerCall {
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {}
+        call_name_(std::move(call_name)) {
+    // TODO call_name_ sometimes get corrunpted due to memory issues.
+    RAY_CHECK(!call_name_.empty()) << "Call name is empty";
+    STATS_grpc_server_req_new.Record(1.0, call_name_);
+    start_time_ = absl::GetCurrentTimeNanos();
+  }
+
+  ~ServerCallImpl() override {
+    STATS_grpc_server_req_finished.Record(1.0, call_name_);
+    auto end_time = absl::GetCurrentTimeNanos();
+    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
+                                            call_name_);
+  }
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
@@ -223,7 +242,7 @@ class ServerCallImpl : public ServerCall {
   grpc::ServerContext context_;
 
   /// The response writer.
-  grpc_impl::ServerAsyncResponseWriter<Reply> response_writer_;
+  grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The event loop.
   instrumented_io_context &io_service_;
@@ -243,6 +262,9 @@ class ServerCallImpl : public ServerCall {
   /// The callback when sending reply fails.
   std::function<void()> send_reply_failure_callback_ = nullptr;
 
+  /// The ts when the request created
+  int64_t start_time_;
+
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;
 };
@@ -254,7 +276,7 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, Request *, grpc_impl::ServerAsyncResponseWriter<Reply> *,
+    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
     grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Implementation of `ServerCallFactory`

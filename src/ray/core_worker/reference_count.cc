@@ -95,7 +95,9 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
                                                  const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end());
+  if (it == object_id_refs_.end()) {
+    it = object_id_refs_.emplace(object_id, Reference()).first;
+  }
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   // Skip adding this object as a borrower if we already have ownership info.
@@ -117,6 +119,10 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
       it->second.contained_in_borrowed_id = outer_id;
       outer_it->second.contains.insert(object_id);
     }
+  }
+
+  if (it->second.RefCount() == 0) {
+    DeleteReferenceInternal(it, nullptr);
   }
   return true;
 }
@@ -618,9 +624,9 @@ ReferenceCounter::GetAllReferenceCounts() const {
   return all_ref_counts;
 }
 
-void ReferenceCounter::GetAndClearLocalBorrowers(
+void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
-    ReferenceCounter::ReferenceTableProto *proto) {
+    ReferenceCounter::ReferenceTableProto *proto, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -636,6 +642,28 @@ void ReferenceCounter::GetAndClearLocalBorrowers(
     }
   }
   ReferenceTableToProto(borrowed_refs, proto);
+
+  for (const auto &borrowed_id : borrowed_ids) {
+    RAY_LOG(DEBUG) << "Remove local reference to borrowed object " << borrowed_id;
+    auto it = object_id_refs_.find(borrowed_id);
+    if (it == object_id_refs_.end()) {
+      RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
+                       << borrowed_id;
+      continue;
+    }
+    if (it->second.local_ref_count == 0) {
+      RAY_LOG(WARNING)
+          << "Tried to decrease ref count for object ID that has count 0 " << borrowed_id
+          << ". This should only happen if ray.internal.free was called earlier.";
+      continue;
+    }
+
+    it->second.local_ref_count--;
+    PRINT_REF_COUNT(it);
+    if (it->second.RefCount() == 0) {
+      DeleteReferenceInternal(it, deleted);
+    }
+  }
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
@@ -833,10 +861,13 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       // until the outer object goes out of scope.
       for (const auto &inner_id : inner_ids) {
         it->second.contains.insert(inner_id);
-        auto inner_it = object_id_refs_.find(inner_id);
-        RAY_CHECK(inner_it != object_id_refs_.end());
         RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
                        << " contained_in_owned: " << object_id;
+      }
+      // WARNING: Following loop could invalidate `it` iterator on insertion.
+      // That's why we use two loops, and we should avoid using `it` hearafter.
+      for (const auto &inner_id : inner_ids) {
+        auto inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
         inner_it->second.contained_in_owned.insert(object_id);
       }
     }
@@ -848,7 +879,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
                      << owner_address.port << " to id " << inner_id
                      << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
+      if (inner_it == object_id_refs_.end()) {
+        inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
+      }
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
         auto inserted = inner_it->second.borrowers.insert(owner_address).second;
@@ -992,8 +1025,8 @@ absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to get the object locations for an object " << object_id
-                     << " that doesn't exist in the reference table";
+    RAY_LOG(DEBUG) << "Tried to get the object locations for an object " << object_id
+                   << " that doesn't exist in the reference table";
     return absl::nullopt;
   }
   return it->second.locations;
@@ -1144,9 +1177,13 @@ Status ReferenceCounter::FillObjectInformation(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+    RAY_LOG(WARNING) << "Object locations requested for " << object_id
+                     << ", but ref already removed. This may be a bug in the distributed "
+                        "reference counting protocol.";
+    object_info->set_ref_removed(true);
+  } else {
+    FillObjectInformationInternal(it, object_info);
   }
-  FillObjectInformationInternal(it, object_info);
   return Status::OK();
 }
 
@@ -1166,10 +1203,17 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(DEBUG) << "Tried to register a location subscriber for an object "
-                   << object_id << " that doesn't exist in the reference table."
-                   << " The object has probably already been freed.";
-    // Consider the object is already freed, and not subscribeable.
+    RAY_LOG(WARNING) << "Object locations requested for " << object_id
+                     << ", but ref already removed. This may be a bug in the distributed "
+                        "reference counting protocol.";
+    // First let subscribers handle this error.
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.mutable_worker_object_locations_message()->set_ref_removed(true);
+    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                                    pub_message, object_id.Binary());
+    // Then, publish a failure to subscribers since this object is unreachable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;

@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:1.5.0-py37-gpu"
+base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
 env_vars: { }
 debian_packages:
   - curl
@@ -8,8 +8,12 @@ python:
     - pytest
     - torch
     - torchvision
+    - fastapi
+    - uvicorn
+    - tblib
   conda_packages: [ ]
 
 post_build_cmds:
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

@@ -23,6 +23,12 @@
 #include <thread>
 #include <unordered_map>
 
+#include "ray/util/macros.h"
+
+#ifdef _WIN32
+#include <process.h>  // to ensure getpid() on Windows
+#endif
+
 // Portable code for unreachable
 #if defined(_MSC_VER)
 #define UNREACHABLE __assume(0)
@@ -60,6 +66,20 @@ inline std::string StringToHex(const std::string &str) {
     result.push_back(hex[val & 0xf]);
   }
   return result;
+}
+
+// Append append_str to the begining of each line of str.
+inline std::string AppendToEachLine(const std::string &str,
+                                    const std::string &append_str) {
+  std::stringstream ss;
+  ss << append_str;
+  for (char c : str) {
+    ss << c;
+    if (c == '\n') {
+      ss << append_str;
+    }
+  }
+  return ss.str();
 }
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -172,21 +192,29 @@ struct EnumClassHash {
 template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
+namespace ray {
+namespace internal {
+inline __suppress_ubsan__("signed-integer-overflow") int64_t GenerateSeed() {
+  int64_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  // To increase the entropy, mix in a number of time samples instead of a single one.
+  // This avoids the possibility of duplicate seeds for many workers that start in
+  // close succession.
+  for (int i = 0; i < 128; i++) {
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  }
+  return seed;
+}
+}  // namespace internal
+}  // namespace ray
+
 /// A helper function to fill random bytes into the `data`.
 /// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
   auto randomly_seeded_mersenne_twister = []() {
-    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    // To increase the entropy, mix in a number of time samples instead of a single one.
-    // This avoids the possibility of duplicate seeds for many workers that start in
-    // close succession.
-    for (int i = 0; i < 128; i++) {
-      std::this_thread::sleep_for(std::chrono::microseconds(10));
-      seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    }
-    std::mt19937 seeded_engine(seed);
+    std::mt19937 seeded_engine(ray::internal::GenerateSeed());
     return seeded_engine;
   };
 

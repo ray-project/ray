@@ -7,7 +7,7 @@ import platform
 import pytest
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
 
 MB = 1024 * 1024
@@ -177,7 +177,7 @@ def test_fd_reuse_no_memory_corruption(shutdown_only):
     @ray.remote
     class Actor:
         def produce(self, i):
-            s = int(random.random() * 200)
+            s = random.randrange(1, 200)
             z = np.ones(s * 1024 * 1024)
             z[0] = i
             return z

@@ -13,8 +13,6 @@ max_workers: 7
 
 available_node_types:
     ray_head_default:
-        min_workers: 0
-        max_workers: 0
         resources: {"CPU": 2}
         node_config:
             machineType: n2-standard-2
