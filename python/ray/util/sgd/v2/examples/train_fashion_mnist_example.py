@@ -88,7 +88,6 @@ def train_func(config: Dict):
 
     device = torch.device(f"cuda:{sgd.local_rank()}"
                           if torch.cuda.is_available() else "cpu")
-    torch.cuda.set_device(device)
 
     # Create data loaders.
     train_dataloader = DataLoader(
