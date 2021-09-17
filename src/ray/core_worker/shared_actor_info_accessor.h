@@ -36,6 +36,12 @@ class SharedActorInfoAccessor {
 
   absl::Mutex mutex_;
 
+  /// This mutex is used to ensure there's no running callbacks when a CoreWorker instance
+  /// is shutting down. With this mutex, we can avoid the case that the CoreWorker
+  /// instance is already been destroyed while there is a running callback tries to access
+  /// the destroyed CoreWorker instance or its fields/sub-fields.
+  absl::Mutex worker_shutdown_mutex_;
+
   std::unordered_map<
       ActorID,
       std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>>

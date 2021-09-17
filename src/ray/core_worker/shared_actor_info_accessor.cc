@@ -45,6 +45,7 @@ Status SharedActorInfoAccessor::AsyncSubscribe(
     lock.Release();
     auto gcs_notification_callback = [this](const ActorID &actor_id,
                                             const rpc::ActorTableData &actor_data) {
+      absl::MutexLock lock(&worker_shutdown_mutex_);
       std::unordered_map<WorkerID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
           notification_callbacks;
       {
@@ -95,7 +96,8 @@ Status SharedActorInfoAccessor::AsyncSubscribe(
 }
 
 void SharedActorInfoAccessor::OnWorkerShutdown(const WorkerID &worker_id) {
-  absl::ReleasableMutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
+  absl::MutexLock shutdown_lock(&worker_shutdown_mutex_);
   for (auto &entry : id_to_notification_callbacks_) {
     entry.second.erase(worker_id);
   }
