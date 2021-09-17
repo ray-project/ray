@@ -1,10 +1,11 @@
 from urllib.parse import parse_qsl, urlparse
 
-from ray.serve.utils import logger, import_from_string
+from ray.serve.utils import logger
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
                                         RayS3KVStore)
 from ray.serve.storage.kv_store_base import KVStoreBase
+from ray._private.utils import import_attr
 
 
 def make_kv_store(checkpoint_path, namespace):
@@ -22,7 +23,7 @@ def make_kv_store(checkpoint_path, namespace):
             raise ValueError(
                 f"Checkpoint must be one of `{DEFAULT_CHECKPOINT_PATH}`, "
                 "`file://path...`, `s3://path...` or "
-                "`custom://my_modue:ClassName?arg1=val1`. But it is "
+                "`custom://my_module.ClassName?arg1=val1`. But it is "
                 f"{checkpoint_path}")
 
         if parsed_url.scheme == "file":
@@ -48,7 +49,7 @@ def make_kv_store(checkpoint_path, namespace):
 
             # Prepare the parameters to initialize imported class.
             checkpoint_provider = parsed_url.netloc
-            KVStoreClass = import_from_string(checkpoint_provider)
+            KVStoreClass = import_attr(checkpoint_provider)
             if not issubclass(KVStoreClass, KVStoreBase):
                 raise ValueError(
                     f"{KVStoreClass} doesn't inherit from "

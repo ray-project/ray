@@ -136,11 +136,11 @@ def test_make_kv_store(serve_instance):
     module_name = "ray.serve.tests.storage_tests.test_checkpoint_path"
     with pytest.raises(ValueError, match="doesn't inherit"):
         make_kv_store(
-            f"custom://{module_name}:MyNonCompliantStoreCls",
+            f"custom://{module_name}.MyNonCompliantStoreCls",
             namespace=namespace)
 
     store = make_kv_store(
-        f"custom://{module_name}:MyCustomStorageCls?arg1=val1&arg2=val2",
+        f"custom://{module_name}.MyCustomStorageCls?arg1=val1&arg2=val2",
         namespace=namespace)
     assert store.namespace == namespace
     assert store.kwargs == {"arg1": "val1", "arg2": "val2"}
