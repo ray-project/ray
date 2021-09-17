@@ -206,6 +206,7 @@ cc_test(
         "simple_kv_store.so",
     ],
     linkstatic = True,
+    tags = ["team:serverless"],
     deps = [
         ":ray_api",
     ],
