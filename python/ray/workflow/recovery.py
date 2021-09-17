@@ -76,7 +76,6 @@ def _construct_resume_workflow_from_step(
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
 
-
     with serialization.objectref_cache():
         input_workflows = []
         for i, _step_id in enumerate(result.workflows):
@@ -90,13 +89,13 @@ def _construct_resume_workflow_from_step(
         workflow_refs = list(map(WorkflowRef, result.workflow_refs))
 
         args, kwargs = reader.load_step_args(step_id, input_workflows,
-                                            workflow_refs)
+                                             workflow_refs)
 
         recovery_workflow: Workflow = _recover_workflow_step.options(
             max_retries=result.max_retries,
             catch_exceptions=result.catch_exceptions,
             **result.ray_options).step(args, kwargs, input_workflows,
-                                    workflow_refs)
+                                       workflow_refs)
         recovery_workflow._step_id = step_id
         recovery_workflow.data.step_type = result.step_type
         return recovery_workflow

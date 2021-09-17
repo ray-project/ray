@@ -120,7 +120,8 @@ def _put_helper(identifier: str, obj: Any, workflow_id: str,
         raise NotImplementedError("Workflow does not support checkpointing "
                                   "nested object references yet.")
     paths = obj_id_to_paths(workflow_id, identifier)
-    promise = dump_to_storage(paths, obj, workflow_id, storage, update_existing=False)
+    promise = dump_to_storage(
+        paths, obj, workflow_id, storage, update_existing=False)
     return asyncio.get_event_loop().run_until_complete(promise)
 
 
@@ -137,8 +138,11 @@ def _reduce_objectref(workflow_id: str, storage: storage.Storage,
     return _load_object_ref, (paths, storage)
 
 
-async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
-                          storage: storage.Storage, update_existing=True) -> None:
+async def dump_to_storage(paths: List[str],
+                          obj: Any,
+                          workflow_id: str,
+                          storage: storage.Storage,
+                          update_existing=True) -> None:
     """Serializes and puts arbitrary object, handling references. The object will
         be uploaded at `paths`. Any object references will be uploaded to their
         global, remote storage.
@@ -158,7 +162,6 @@ async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
         scan_result = await storage.scan_prefix(prefix)
         if paths[-1] in scan_result:
             return
-
 
     tasks = []
 

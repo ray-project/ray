@@ -153,15 +153,12 @@ def test_embedded_objectrefs(workflow_start_regular):
         def __init__(self, refs):
             self.refs = refs
 
-    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
-                                                  storage.get_global_storage())
-    url = storage.get_global_storage().storage_url
+    url = base_storage.storage_url
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 
-
-    promise = serialization.dump_to_storage(
-        ["key"], wrapped, workflow_id, base_storage)
+    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id,
+                                            base_storage)
     workflow_storage.asyncio_run(promise)
 
     # Be extremely explicit about shutting down. We want to make sure the

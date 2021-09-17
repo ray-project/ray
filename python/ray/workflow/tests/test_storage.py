@@ -2,13 +2,10 @@ import pytest
 import ray
 from ray._private import signature
 from ray.tests.conftest import *  # noqa
-from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
-from ray.workflow.workflow_storage import asyncio_run, \
-    get_workflow_storage
+from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import StepType
-import subprocess
 
 
 def some_func(x):
