@@ -953,6 +953,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
 }
 
 void GcsActorManager::SchedulePendingActors() {
+  schedule_pending_actors_posted_ = false;
   if (pending_actors_.empty()) {
     return;
   }
@@ -962,6 +963,10 @@ void GcsActorManager::SchedulePendingActors() {
   for (auto &actor : actors) {
     gcs_actor_scheduler_->Schedule(std::move(actor));
   }
+}
+
+bool &GcsActorManager::SchedulePendingActorsPosted() {
+  return schedule_pending_actors_posted_;
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {

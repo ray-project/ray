@@ -487,7 +487,11 @@ void GcsServer::InstallEventListeners() {
     auto gcs_actor_scheduler =
         std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
     gcs_actor_scheduler->AddClusterResourcesChangedListener([this] {
-      main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
+      bool &posted = gcs_actor_manager_->SchedulePendingActorsPosted();
+      if (!posted) {
+        posted = true;
+        main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
+      }
     });
   }
 }

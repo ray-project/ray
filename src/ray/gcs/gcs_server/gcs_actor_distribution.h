@@ -93,7 +93,6 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   virtual ~GcsBasedActorScheduler() = default;
 
   /// Handle the destruction of an actor.
-  /// It will release the actor's acquired resources.
   ///
   /// \param actor The actor to be destoryed.
   void OnActorDestruction(std::shared_ptr<GcsActor> actor) override;
@@ -151,7 +150,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
-  /// Reset the actor's current assignment.
+  /// Reset the actor's current assignment, while releasing acquired resources.
   void ResetActorWorkerAssignment(std::shared_ptr<GcsActor> actor);
 
   /// Notify that the cluster resources are changed.

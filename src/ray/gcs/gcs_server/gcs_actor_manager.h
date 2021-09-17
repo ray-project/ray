@@ -339,6 +339,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   std::string DebugString() const;
 
+  bool &SchedulePendingActorsPosted();
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -505,6 +507,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
+
+  /// Indicate whether a call of SchedulePendingActors has been posted.
+  bool schedule_pending_actors_posted_;
 
   // Debug info.
   enum CountType {

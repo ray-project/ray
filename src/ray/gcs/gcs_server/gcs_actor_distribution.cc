@@ -233,7 +233,7 @@ void GcsBasedActorScheduler::NotifyClusterResourcesChanged() {
 }
 
 void GcsBasedActorScheduler::ResetActorWorkerAssignment(std::shared_ptr<GcsActor> actor) {
-  if (actor->GetActorWorkerAssignment() != nullptr) {
+  if (actor->GetActorWorkerAssignment()) {
     if (gcs_resource_manager_->ReleaseResources(
             actor->GetActorWorkerAssignment()->GetNodeID(),
             actor->GetActorWorkerAssignment()->GetResources())) {
