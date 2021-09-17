@@ -1,7 +1,7 @@
 cc_binary(
     name = "example",
     srcs = glob([
-        "example.cc",
+        "*.cc",
     ]),
     data = [
         "example.so",
@@ -15,7 +15,7 @@ cc_binary(
 cc_binary(
     name = "example.so",
     srcs = glob([
-        "example.cc",
+        "*.cc",
     ]),
     linkopts = ["-shared"],
     linkstatic = True,
@@ -38,28 +38,3 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_binary(
-    name = "simple_kv_store",
-    srcs = glob([
-        "simple_kv_store.cc",
-    ]),
-    data = [
-        "simple_kv_store.so",
-    ],
-    linkstatic = True,
-    deps = [
-        ":ray_api",
-    ],
-)
-
-cc_binary(
-    name = "simple_kv_store.so",
-    srcs = glob([
-        "simple_kv_store.cc",
-    ]),
-    linkopts = ["-shared"],
-    linkstatic = True,
-    deps = [
-        ":ray_api",
-    ],
-)
