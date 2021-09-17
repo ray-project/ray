@@ -50,10 +50,10 @@ def _import_local(provider_config):
         return LocalNodeProvider
 
 
-def _import_single(provider_config):
-    from ray.autoscaler._private.local.node_provider import \
-        SingleNodeProvider
-    return SingleNodeProvider
+def _import_readonly(provider_config):
+    from ray.autoscaler._private.readonly.node_provider import \
+        ReadOnlyNodeProvider
+    return ReadOnlyNodeProvider
 
 
 def _import_kubernetes(provider_config):
@@ -117,7 +117,7 @@ def _import_external(provider_config):
 
 _NODE_PROVIDERS = {
     "local": _import_local,
-    "single_node": _import_single,
+    "readonly": _import_readonly,
     "aws": _import_aws,
     "gcp": _import_gcp,
     "azure": _import_azure,
@@ -128,7 +128,7 @@ _NODE_PROVIDERS = {
 }
 
 _PROVIDER_PRETTY_NAMES = {
-    "single": "Single Node",
+    "readonly": "Readonly (Manual Cluster Setup)",
     "local": "Local",
     "aws": "AWS",
     "gcp": "GCP",

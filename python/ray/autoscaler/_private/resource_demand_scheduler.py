@@ -71,20 +71,10 @@ class ResourceDemandScheduler:
         For legacy yamls, it merges previous state and new state to make sure
         inferered resources are not lost.
         """
-        print("RESET_CONFIG ANT", node_types)
-        try:
-            new_node_types = copy.deepcopy(node_types)
-        except Exception as e:
-            logger.exception("s")
-            print("ANT EXCEPTION", e)
-        finally:
-            print("RESET_CONFIG ANT 1")
+        new_node_types = copy.deepcopy(node_types)
         final_node_types = _convert_memory_unit(new_node_types)
-        print("RESET_CONFIG ANT 2")
         if self.is_legacy_yaml(new_node_types):  # If new configs are legacy.
-            print("RESET_CONFIG ANT 3")
             if self.is_legacy_yaml():  # If old configs were legacy.
-                print("RESET_CONFIG ANT 4")
 
                 def _update_based_on_node_config(node_type: NodeType) -> None:
                     if self.node_types[node_type][
@@ -103,8 +93,6 @@ class ResourceDemandScheduler:
                 _update_based_on_node_config(NODE_TYPE_LEGACY_HEAD)
                 _update_based_on_node_config(NODE_TYPE_LEGACY_WORKER)
                 final_node_types = self.node_types
-                print("RESET_CONFIG ANT 5")
-        print("ANT FINAL RESET_CONFIG RESULT", final_node_types)
 
         self.provider = provider
         self.node_types = copy.deepcopy(final_node_types)
@@ -125,7 +113,6 @@ class ResourceDemandScheduler:
                 and NODE_TYPE_LEGACY_WORKER in node_types)
 
     def is_feasible(self, bundle: ResourceDict) -> bool:
-        print("CHECK FEASIBLE", self.node_types)
         for node_type, config in self.node_types.items():
             max_of_type = config.get("max_workers", 0)
             node_resources = config["resources"]
