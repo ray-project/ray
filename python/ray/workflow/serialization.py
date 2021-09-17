@@ -1,5 +1,5 @@
 import asyncio
-# import contextlib
+import contextlib
 from dataclasses import dataclass
 import logging
 import ray
@@ -7,7 +7,7 @@ from ray import cloudpickle
 from ray.types import ObjectRef
 from ray.workflow import common
 from ray.workflow import storage
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Generator, List, Optional, Tuple, TYPE_CHECKING
 
 from collections import ChainMap
 import io
@@ -120,7 +120,7 @@ def _put_helper(identifier: str, obj: Any, workflow_id: str,
         raise NotImplementedError("Workflow does not support checkpointing "
                                   "nested object references yet.")
     paths = obj_id_to_paths(workflow_id, identifier)
-    promise = dump_to_storage(paths, obj, workflow_id, storage)
+    promise = dump_to_storage(paths, obj, workflow_id, storage, update_existing=False)
     return asyncio.get_event_loop().run_until_complete(promise)
 
 
@@ -138,7 +138,7 @@ def _reduce_objectref(workflow_id: str, storage: storage.Storage,
 
 
 async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
-                          storage: storage.Storage) -> None:
+                          storage: storage.Storage, update_existing=True) -> None:
     """Serializes and puts arbitrary object, handling references. The object will
         be uploaded at `paths`. Any object references will be uploaded to their
         global, remote storage.
@@ -150,7 +150,16 @@ async def dump_to_storage(paths: List[str], obj: Any, workflow_id: str,
         workflow_id: The workflow id.
         storage: The storage to use. If obj contains object references,
                 `storage.put` will be called on them individually.
+        update_existing: If False, the object will not be uploaded if the path
+                exists.
     """
+    if not update_existing:
+        prefix = storage.make_key(*paths[:-1])
+        scan_result = await storage.scan_prefix(prefix)
+        if paths[-1] in scan_result:
+            return
+
+
     tasks = []
 
     # NOTE: Cloudpickle doesn't support private dispatch tables, so we extend
@@ -192,14 +201,15 @@ def _load_ref_helper(key: str, storage: storage.Storage):
 
 
 # TODO (Alex): We should use weakrefs here instead of leaking...
-_object_cache: Optional[Dict[str, ray.ObjectRef]] = {}
+_object_cache: Optional[Dict[str, ray.ObjectRef]] = None
 
 
 def _load_object_ref(paths: List[str],
                      storage: storage.Storage) -> ray.ObjectRef:
     global _object_cache
-
     key = storage.make_key(*paths)
+    if _object_cache is None:
+        return _load_ref_helper.remote(key, storage)
 
     if _object_cache is None:
         return _load_ref_helper.remote(key, storage)
@@ -210,14 +220,15 @@ def _load_object_ref(paths: List[str],
     return _object_cache[key]
 
 
-# @contextlib.contextmanager
-# def objectref_cache() -> None:
-#     """ A reentrant caching context for object refs."""
-#     global _object_cache
-#     clear_cache = _object_cache is None
-#     _object_cache = {}
-#     try:
-#         yield
-#     finally:
-#         if clear_cache:
-#             _object_cache = {}
+@contextlib.contextmanager
+def objectref_cache() -> Generator:
+    """ A reentrant caching context for object refs."""
+    global _object_cache
+    clear_cache = _object_cache is None
+    if clear_cache:
+        _object_cache = {}
+    try:
+        yield
+    finally:
+        if clear_cache:
+            _object_cache = None

@@ -2,6 +2,7 @@ from typing import List, Any, Union, Dict, Callable, Tuple, Optional
 
 import ray
 from ray.workflow import workflow_context
+from ray.workflow import serialization
 from ray.workflow.common import (Workflow, StepID, WorkflowRef,
                                  WorkflowExecutionResult)
 from ray.workflow import storage
@@ -74,28 +75,31 @@ def _construct_resume_workflow_from_step(
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
-    input_workflows = []
-    for i, _step_id in enumerate(result.workflows):
-        r = _construct_resume_workflow_from_step(reader, _step_id)
-        if isinstance(r, Workflow):
-            input_workflows.append(r)
-        else:
-            assert isinstance(r, StepID)
-            # TODO (Alex): We should consider caching these outputs too.
-            input_workflows.append(reader.load_step_output(r))
-    workflow_refs = list(map(WorkflowRef, result.workflow_refs))
 
-    args, kwargs = reader.load_step_args(step_id, input_workflows,
-                                         workflow_refs)
 
-    recovery_workflow: Workflow = _recover_workflow_step.options(
-        max_retries=result.max_retries,
-        catch_exceptions=result.catch_exceptions,
-        **result.ray_options).step(args, kwargs, input_workflows,
-                                   workflow_refs)
-    recovery_workflow._step_id = step_id
-    recovery_workflow.data.step_type = result.step_type
-    return recovery_workflow
+    with serialization.objectref_cache():
+        input_workflows = []
+        for i, _step_id in enumerate(result.workflows):
+            r = _construct_resume_workflow_from_step(reader, _step_id)
+            if isinstance(r, Workflow):
+                input_workflows.append(r)
+            else:
+                assert isinstance(r, StepID)
+                # TODO (Alex): We should consider caching these outputs too.
+                input_workflows.append(reader.load_step_output(r))
+        workflow_refs = list(map(WorkflowRef, result.workflow_refs))
+
+        args, kwargs = reader.load_step_args(step_id, input_workflows,
+                                            workflow_refs)
+
+        recovery_workflow: Workflow = _recover_workflow_step.options(
+            max_retries=result.max_retries,
+            catch_exceptions=result.catch_exceptions,
+            **result.ray_options).step(args, kwargs, input_workflows,
+                                    workflow_refs)
+        recovery_workflow._step_id = step_id
+        recovery_workflow.data.step_type = result.step_type
+        return recovery_workflow
 
 
 @ray.remote(num_returns=2)
