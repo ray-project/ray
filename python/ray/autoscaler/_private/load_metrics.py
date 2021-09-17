@@ -83,7 +83,7 @@ class LoadMetrics:
         self.infeasible_bundles = []
         self.pending_placement_groups = []
         self.resource_requests = []
-        self.deadlock = False
+        self.resource_deadlock_reported = False
 
     def update(self,
                ip: str,
@@ -93,11 +93,10 @@ class LoadMetrics:
                waiting_bundles: List[Dict[str, float]] = None,
                infeasible_bundles: List[Dict[str, float]] = None,
                pending_placement_groups: List[PlacementGroupTableData] = None,
-               deadlock: bool = False):
+               resource_deadlock_reported: bool = False):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
-        self.deadlock = deadlock
-        print("DEADLOCK", deadlock)
+        self.resource_deadlock_reported = resource_deadlock_reported
 
         if not waiting_bundles:
             waiting_bundles = []

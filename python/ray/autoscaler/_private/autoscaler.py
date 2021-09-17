@@ -444,7 +444,7 @@ class StandardAutoscaler:
             else:
                 infeasible.append(bundle)
         if pending:
-            if self.load_metrics.deadlock:
+            if self.load_metrics.resource_deadlock_reported:
                 for request in pending:
                     self.event_summarizer.add_once_per_interval(
                         "Warning: The following resource request cannot be "
