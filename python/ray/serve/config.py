@@ -17,8 +17,8 @@ from ray import cloudpickle as cloudpickle
 
 class AutoscalingConfig(BaseModel):
     # Publicly exposed options
-    max_replicas: int
     min_replicas: int
+    max_replicas: int
     target_num_ongoing_requests_per_replica: int = 1
 
     # Private options below
