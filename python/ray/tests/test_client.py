@@ -668,5 +668,14 @@ def test_sanity():
             assert result == i * 123
 
 
+def test_sanity2():
+    import ray
+    with ray_start_client_server():
+        refs = [ray.put(i * 123) for i in range(500)]
+        results = ray.get(refs)
+        for i, result in enumerate(results):
+            assert result == i * 123
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
