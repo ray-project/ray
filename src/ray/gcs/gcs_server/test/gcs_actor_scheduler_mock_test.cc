@@ -47,9 +47,8 @@ class GcsActorSchedulerTest : public Test {
     actor_scheduler = std::make_unique<RayletBasedActorScheduler>(
         io_context, *actor_table, *gcs_node_manager, pub_sub,
         [this](auto a) { schedule_failure_handler(a); },
-        [this](auto a, const rpc::PushTaskReply) {
-          schedule_success_handler(a); }, client_pool,
-        [this](const rpc::Address &) { return core_worker_client; });
+        [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
+        client_pool, [this](const rpc::Address &) { return core_worker_client; });
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
