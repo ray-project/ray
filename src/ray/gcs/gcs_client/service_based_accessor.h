@@ -176,31 +176,33 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const OptionalItemCallback<std::string> &callback) override;
 
  private:
+  mutable absl::Mutex mu_;
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
-  SubscribeOperation subscribe_node_operation_;
+  SubscribeOperation subscribe_node_operation_ GUARDED_BY(mu_);
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
-  FetchDataOperation fetch_node_data_operation_;
+  FetchDataOperation fetch_node_data_operation_ GUARDED_BY(mu_);
 
-  void HandleNotification(const rpc::GcsNodeInfo &node_info);
+  void HandleNotification(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mu_);
 
   ServiceBasedGcsClient *client_impl_;
 
   using NodeChangeCallback =
       std::function<void(const NodeID &id, const rpc::GcsNodeInfo &node_info)>;
 
-  rpc::GcsNodeInfo local_node_info_;
-  NodeID local_node_id_;
+  rpc::GcsNodeInfo local_node_info_ GUARDED_BY(mu_);
+  NodeID local_node_id_ GUARDED_BY(mu_);
 
   /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_{nullptr};
+  NodeChangeCallback node_change_callback_ GUARDED_BY(mu_) {nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_;
+  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_ GUARDED_BY(mu_);
   /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
+  std::unordered_set<NodeID> removed_nodes_ GUARDED_BY(mu_);
 };
 
 /// \class ServiceBasedNodeResourceInfoAccessor

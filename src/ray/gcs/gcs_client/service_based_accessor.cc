@@ -403,6 +403,7 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
                                                   const StatusCallback &callback) {
+  absl::MutexLock lock(&mu_);
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
@@ -415,6 +416,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
       request, [this, node_id, local_node_info, callback](
                    const Status &status, const rpc::RegisterNodeReply &reply) {
         if (status.ok()) {
+          absl::MutexLock lock(&mu_);
           local_node_info_.CopyFrom(local_node_info);
           local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
         }
@@ -429,6 +431,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 }
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
+  absl::MutexLock lock(&mu_);
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
@@ -438,6 +441,7 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
       request,
       [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
+          absl::MutexLock lock(&mu_);
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
@@ -447,9 +451,13 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   return Status::OK();
 }
 
-const NodeID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
+const NodeID &ServiceBasedNodeInfoAccessor::GetSelfId() const {
+  absl::MutexLock lock(&mu_);
+  return local_node_id_;
+}
 
 const GcsNodeInfo &ServiceBasedNodeInfoAccessor::GetSelfInfo() const {
+  absl::MutexLock lock(&mu_);
   return local_node_info_;
 }
 
@@ -508,6 +516,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
+  absl::MutexLock lock(&mu_);
   RAY_CHECK(subscribe != nullptr);
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
@@ -535,12 +544,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   };
 
   return subscribe_node_operation_([this, subscribe, done](const Status &status) {
+    absl::MutexLock lock(&mu_);
     fetch_node_data_operation_(done);
   });
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const NodeID &node_id, bool filter_dead_nodes) const {
+  absl::MutexLock lock(&mu_);
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
@@ -554,10 +565,12 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
 
 const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
+  absl::MutexLock lock(&mu_);
   return node_cache_;
 }
 
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
+  absl::MutexLock lock(&mu_);
   return removed_nodes_.count(node_id) == 1;
 }
 
@@ -576,6 +589,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
+  absl::MutexLock lock(&mu_);
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   auto entry = node_cache_.find(node_id);
@@ -629,6 +643,7 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 }
 
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
+  absl::MutexLock lock(&mu_);
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
   auto fetch_all_done = [](const Status &status) {
     RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
@@ -642,6 +657,7 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
     if (subscribe_node_operation_ != nullptr) {
       RAY_CHECK_OK(
           subscribe_node_operation_([this, fetch_all_done](const Status &status) {
+            absl::MutexLock lock(&mu_);
             fetch_node_data_operation_(fetch_all_done);
           }));
     }
