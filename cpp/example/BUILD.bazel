@@ -37,4 +37,3 @@ cc_library(
     strip_include_prefix = "thirdparty/include",
     visibility = ["//visibility:public"],
 )
-
