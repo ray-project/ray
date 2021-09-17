@@ -446,7 +446,7 @@ class StandardAutoscaler:
             if self.readonly:
                 self.event_summarizer.add_once(
                     "The following resource requests are pending: {}. They will be "
-                    "scheduled after existing tasks and actors complete.".
+                    "scheduled after existing tasks and actors finish.".
                     format(", ".join(set(str(x) for x in pending))),
                     key="pending")
         if infeasible:
