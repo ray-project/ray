@@ -206,7 +206,7 @@ class ServeController:
 
     async def deploy(self,
                      name: str,
-                     backend_config: BackendConfig,
+                     backend_config_proto_bytes: bytes,
                      replica_config: ReplicaConfig,
                      python_methods: List[str],
                      version: Optional[str],
@@ -216,6 +216,9 @@ class ServeController:
                      ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
+
+        backend_config = BackendConfig.from_proto_bytes(
+            backend_config_proto_bytes)
 
         async with self.write_lock:
             if prev_version is not None:
