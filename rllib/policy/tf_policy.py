@@ -249,6 +249,9 @@ class TFPolicy(Policy):
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
 
         self._optimizers: List[LocalOptimizer] = []
+        # Backward compatibility and for some code shared with tf-eager Policy.
+        self._optimizer = None
+
         self._grads_and_vars: Union[ModelGradients, List[ModelGradients]] = []
         self._grads: Union[ModelGradients, List[ModelGradients]] = []
         # Policy tf-variables (weights), whose values to get/set via
@@ -259,8 +262,11 @@ class TFPolicy(Policy):
         self._optimizer_variables: \
             Optional[ray.experimental.tf_utils.TensorFlowVariables] = None
 
-        # The loss tf-op(s).
+        # The loss tf-op(s). Number of losses must match number of optimizers.
         self._losses = []
+        # Backward compatibility (in case custom child TFPolicies access this
+        # property).
+        self._loss = None
         # A batch dict passed into loss function as input.
         self._loss_input_dict = {}
         losses = force_list(loss)
@@ -341,9 +347,13 @@ class TFPolicy(Policy):
             self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._losses = losses
+        # Backward compatibility.
+        self._loss = self._losses[0]
 
         if not self._optimizers:
             self._optimizers = force_list(self.optimizer())
+            # Backward compatibility.
+            self._optimizer = self._optimizers[0]
 
         # Supporting more than one loss/optimizer.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
@@ -773,7 +783,7 @@ class TFPolicy(Policy):
             self,
             optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
             loss: Union[TensorType, List[TensorType]],
-    ) -> List[Tuple[TensorType, TensorType]]:
+    ) -> Union[List[ModelGradients], List[List[ModelGradients]]]:
         """Override this for a custom gradient computation behavior.
 
         Args:
@@ -781,8 +791,9 @@ class TFPolicy(Policy):
             loss ():
 
         Returns:
-            List[Tuple[TensorType, TensorType]]: List of tuples with grad
-                values and the grad-value's corresponding tf.variable in it.
+            Union[List[ModelGradients], List[List[ModelGradients]]]: List of
+                ModelGradients (grads and vars OR just grads) OR List of List of
+                ModelGradients in case we have more than one optimizer/loss.
         """
         # We have more than one optimizers and loss terms.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
@@ -1132,7 +1143,9 @@ class LearningRateSchedule:
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
-                self._optimizers[0].learning_rate.assign(self.cur_lr)
+                # This property (self._optimizer) is (still) accessible for
+                # both TFPolicy and any TFPolicy_eager.
+                self._optimizer.learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)
     def optimizer(self):

@@ -572,6 +572,8 @@ class DynamicTFPolicy(TFPolicy):
         # steps (e.g. exploration postprocessing) may need this.
         if not self._optimizers:
             self._optimizers = self.optimizer()
+            # Backward compatibility.
+            self._optimizer = self._optimizers[0]
 
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
@@ -763,13 +765,13 @@ class TFMultiGPUTowerStack:
                 error=False,
             )
             self.policy = None
-            self.optimizer = optimizer
+            self.optimizers = optimizer
             self.devices = devices
             self.max_per_device_batch_size = max_per_device_batch_size
-            self.build_graph = build_graph
+            self.policy_copy = build_graph
         else:
             self.policy = policy
-            self.optimizer = self.policy._optimizer
+            self.optimizers = self.policy._optimizers
             self.devices = self.policy.devices
             self.max_per_device_batch_size = \
                 (max_per_device_batch_size or
@@ -783,7 +785,7 @@ class TFMultiGPUTowerStack:
                     self.policy._seq_lens
                 ]
             grad_norm_clipping = self.policy.config.get("grad_clip")
-            self.build_graph = self.policy.copy
+            self.policy_copy = self.policy.copy
 
         assert len(self.devices) > 1 or "gpu" in self.devices[0]
         self.loss_inputs = input_placeholders + rnn_inputs
@@ -1014,9 +1016,9 @@ class TFMultiGPUTowerStack:
                          [-1] * len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
-                graph_obj = self.build_graph(device_input_slices)
-                device_grads = graph_obj.gradients(self.optimizer,
-                                                   graph_obj._loss)
+                graph_obj = self.policy_copy(device_input_slices)
+                device_grads = graph_obj.gradients(self.optimizers,
+                                                   graph_obj._losses)
             return Tower(
                 tf.group(
                     *[batch.initializer for batch in device_input_batches]),
