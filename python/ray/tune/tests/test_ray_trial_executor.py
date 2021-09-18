@@ -41,7 +41,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
 
-            def __init__(self, steps=5):
+            def __init__(self, steps=4):
                 self._step = 0
                 self.steps = steps
 
@@ -73,7 +73,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                "(possibly via `resources_per_trial` "
                "or via `num_workers` for rllib) "
                "and/or add more resources to your Ray runtime.")
-        mocked_warn.assert_called_with(msg)
+        mocked_warn.assert_called_once_with(msg)
 
 
 class RayTrialExecutorTest(unittest.TestCase):
