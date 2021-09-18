@@ -214,6 +214,7 @@ cc_test(
 
 cc_binary(
     name = "simple_kv_store.so",
+    testonly = True,
     srcs = glob([
         "src/ray/test/simple_kv_store/*.cc",
     ]),
