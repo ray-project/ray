@@ -46,16 +46,15 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
     """
     Returns True if the response should to the given request should be cached,
     false otherwise. At the moment the only requests we do not cache are:
-        - asynchronous gets: These arrive out of order. Skipping caching here
-            is fine, since repeating an async get is idempotent
+        - gets: Gets are idempotent, so it's fine not to cache their response
+            (get responses can also be quite large, so we should avoiding
+             caching them if we can)
         - acks: Repeating acks is idempotent
         - clean up requests: Also idempotent, and client has likely already
              wrapped up the data connection by this point.
     """
     req_type = req.WhichOneof("type")
-    if req_type == "get" and req.get.asynchronous:
-        return False
-    return req_type not in ("acknowledge", "connection_cleanup")
+    return req_type not in ("acknowledge", "connection_cleanup", "get")
 
 
 def fill_queue(
