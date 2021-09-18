@@ -297,7 +297,6 @@ cc_library(
     srcs = [
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
-        "src/ray/object_manager/plasma/malloc.cc",
         "src/ray/object_manager/plasma/plasma.cc",
         "src/ray/object_manager/plasma/protocol.cc",
         "src/ray/object_manager/plasma/shared_memory.cc",
@@ -311,13 +310,6 @@ cc_library(
     hdrs = [
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
-        "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/compat.h",
-        "src/ray/object_manager/plasma/connection.h",
-        "src/ray/object_manager/plasma/malloc.h",
-        "src/ray/object_manager/plasma/plasma.h",
-        "src/ray/object_manager/plasma/plasma_generated.h",
-        "src/ray/object_manager/plasma/protocol.h",
         "src/ray/object_manager/plasma/shared_memory.h",
     ] + select({
         "@bazel_tools//src/conditions:windows": [
@@ -339,6 +331,7 @@ cc_library(
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
         "@msgpack",
+        ":plasma_store_server_lib",
     ],
 )
 
@@ -355,6 +348,7 @@ cc_library(
         "src/ray/object_manager/plasma/stats_collector.cc",
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
+        "src/ray/object_manager/plasma/malloc.cc",
     ],
     hdrs = [
         "src/ray/object_manager/common.h",
@@ -369,12 +363,20 @@ cc_library(
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
+        "src/ray/object_manager/plasma/malloc.h",
+        "src/ray/object_manager/plasma/common.h",
+        "src/ray/object_manager/plasma/compat.h",
+        "src/ray/object_manager/plasma/plasma.h",
+        "src/ray/object_manager/plasma/plasma_generated.h",
+        "src/ray/object_manager/plasma/connection.h",
+        "src/ray/object_manager/plasma/protocol.h",
     ],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":plasma_client",
+        #":plasma_client",
+        ":ray_common",
     ],
 )
 

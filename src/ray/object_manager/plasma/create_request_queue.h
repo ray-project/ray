@@ -83,16 +83,14 @@ class CreateRequestQueue {
   /// Try to fulfill a request immediately, for clients that cannot retry.
   ///
   /// \param object_id The ID of the object to create.
-  /// \param client The client that sent the request. This is used as a key to
-  /// drop this request if the client disconnects.
   /// \param create_callback A callback to attempt to create the object.
   /// \param object_size Object size in bytes.
   /// \return The result of the call. This will return an out-of-memory error
   /// if there are other requests queued or there is not enough space left in
   /// the object store, this will return an out-of-memory error.
   std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(
-      const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-      const CreateObjectCallback &create_callback, size_t object_size);
+      const ObjectID &object_id, const CreateObjectCallback &create_callback,
+      size_t object_size);
 
   /// Process requests in the queue.
   ///

@@ -134,24 +134,17 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   client->MarkObjectAsUsed(object_id);
 }
 
-PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
-                                                   const std::vector<uint8_t> &message,
-                                                   bool fallback_allocator,
-                                                   PlasmaObject *object,
-                                                   bool *spilling_required) {
-  uint8_t *input = (uint8_t *)message.data();
-  size_t input_size = message.size();
-  ray::ObjectInfo object_info;
-  fb::ObjectSource source;
-  int device_num;
-  ReadCreateRequest(input, input_size, &object_info, &source, &device_num);
-
+PlasmaError PlasmaStore::HandleCreateObjectRequest(
+    const std::shared_ptr<Client> &client, const ray::ObjectInfo object_info,
+    const flatbuf::ObjectSource source, int device_num, bool fallback_allocator,
+    PlasmaObject *object, bool *spilling_required) {
   if (device_num != 0) {
     RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
     return PlasmaError::OutOfMemory;
   }
 
-  auto error = CreateObject(object_info, source, client, fallback_allocator, object);
+  auto error =
+      CreateObjectInternal(object_info, source, client, fallback_allocator, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_info.object_id
                    << ", data_size=" << object_info.data_size
@@ -173,12 +166,13 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
     }
   }
   return error;
-}
+}  // namespace plasma
 
-PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
-                                      fb::ObjectSource source,
-                                      const std::shared_ptr<Client> &client,
-                                      bool fallback_allocator, PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObjectInternal(const ray::ObjectInfo &object_info,
+                                              fb::ObjectSource source,
+                                              const std::shared_ptr<Client> &client,
+                                              bool fallback_allocator,
+                                              PlasmaObject *result) {
   auto pair = object_lifecycle_mgr_.CreateObject(object_info, source, fallback_allocator);
   auto entry = pair.first;
   auto error = pair.second;
@@ -335,6 +329,36 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
+std::pair<PlasmaObject, PlasmaError> PlasmaStore::CreateObject(
+    const ObjectID &object_id, const std::shared_ptr<Client> &client, size_t object_size,
+    bool immediately, uint64_t &req_id, ray::ObjectInfo &object_info,
+    flatbuf::ObjectSource &source, int device_num) {
+  /// absl failed analyze mutex safety for lambda
+  /// TODO: (Wanxing) Do not copy ray::ObjectInfo and flatbuf::ObjectSource
+  auto handle_create = [this, client, object_info, source, device_num](
+                           bool fallback_allocator, PlasmaObject *result,
+                           bool *spilling_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+    mutex_.AssertHeld();
+    return HandleCreateObjectRequest(client, object_info, source, device_num,
+                                     fallback_allocator, result, spilling_required);
+  };
+
+  if (immediately) {
+    auto result_error =
+        create_request_queue_.TryRequestImmediately(object_id, handle_create,
+
+                                                    object_size);
+    return result_error;
+  }
+
+  req_id =
+      create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
+  RAY_LOG(DEBUG) << "Received create request for object " << object_id
+                 << " assigned request ID " << req_id << ", " << object_size << " bytes";
+  ProcessCreateRequests();
+  return {{}, PlasmaError::OK};
+}
+
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    fb::MessageType type,
                                    const std::vector<uint8_t> &message) {
@@ -351,20 +375,19 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    // absl failed analyze mutex safety for lambda
-    auto handle_create = [this, client, message](
-                             bool fallback_allocator, PlasmaObject *result,
-                             bool *spilling_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
-      mutex_.AssertHeld();
-      return HandleCreateObjectRequest(client, message, fallback_allocator, result,
-                                       spilling_required);
-    };
+    uint8_t *input = (uint8_t *)message.data();
+    size_t input_size = message.size();
+    ray::ObjectInfo object_info;
+    fb::ObjectSource source;
+    int device_num;
+    ReadCreateRequest(input, input_size, &object_info, &source, &device_num);
 
+    uint64_t req_id;
     if (request->try_immediately()) {
       RAY_LOG(DEBUG) << "Received request to create object " << object_id
                      << " immediately";
-      auto result_error = create_request_queue_.TryRequestImmediately(
-          object_id, client, handle_create, object_size);
+      auto result_error = CreateObject(object_id, client, object_size, true, req_id,
+                                       object_info, source, device_num);
       const auto &result = result_error.first;
       const auto &error = result_error.second;
       if (SendCreateReply(client, object_id, result, error).ok() &&
@@ -372,12 +395,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
         static_cast<void>(client->SendFd(result.store_fd));
       }
     } else {
-      auto req_id =
-          create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
-      RAY_LOG(DEBUG) << "Received create request for object " << object_id
-                     << " assigned request ID " << req_id << ", " << object_size
-                     << " bytes";
-      ProcessCreateRequests();
+      CreateObject(object_id, client, object_size, false, req_id, object_info, source,
+                   device_num);
       ReplyToCreateClient(client, object_id, req_id);
     }
   } break;

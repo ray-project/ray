@@ -175,7 +175,7 @@ class ObjectBufferPool {
   std::unordered_map<ray::ObjectID, CreateBufferState> create_buffer_state_;
 
   /// Plasma client pool.
-  plasma::PlasmaClient store_client_;
+  plasma::RemotePlasmaClient store_client_;
   /// Socket name of plasma store.
   std::string store_socket_name_;
 };

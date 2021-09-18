@@ -59,8 +59,8 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
 }
 
 std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
-    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback, size_t object_size) {
+    const ObjectID &object_id, const CreateObjectCallback &create_callback,
+    size_t object_size) {
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
