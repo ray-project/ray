@@ -92,7 +92,8 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
 NodeID GcsBasedActorScheduler::AllocateResources(const ResourceSet &required_resources) {
   auto selected_nodes =
-      gcs_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD).second;
+      gcs_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD)
+          .second;
 
   if (selected_nodes.size() == 0) {
     RAY_LOG(INFO)
