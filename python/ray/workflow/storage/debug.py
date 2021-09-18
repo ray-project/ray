@@ -119,13 +119,17 @@ class DebugStorage(Storage):
         return self._wrapped_storage.make_key(*names)
 
     async def get(self, key: str, is_json: bool = False) -> Any:
-        await self._logged_storage.get(key, is_json)
+        if self._log_on:
+            await self._logged_storage.get(key, is_json)
         return await self._wrapped_storage.get(key, is_json)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         if self._log_on:
             await self._logged_storage.put(key, data, is_json)
         await self._wrapped_storage.put(key, data, is_json)
+
+    def open(self, key: str):
+        return self._wrapped_storage.open(key)
 
     async def delete_prefix(self, prefix: str) -> None:
         if self._log_on:

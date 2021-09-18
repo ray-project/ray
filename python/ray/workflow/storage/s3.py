@@ -1,13 +1,18 @@
+import asyncio
+import nest_asyncio
 import tempfile
 import json
 import urllib.parse as parse
 from botocore.exceptions import ClientError
 import aioboto3
 import itertools
+import io
 import ray
-from typing import Any, List
+from typing import Any, Callable, List
 from ray.workflow.storage.base import Storage, KeyNotFoundError
 import ray.cloudpickle
+
+nest_asyncio.apply()
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -79,6 +84,15 @@ class S3StorageImpl(Storage):
             else:
                 raise
 
+    def open(self, key: str) -> io.BufferedIOBase:
+        def onclose(bio):
+            coro = self.put(key, bio.getvalue(), is_json=False)
+            # NOTE: There's no easy way to `await` this put.
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(coro)
+
+        return _BytesIOWithCallback(onclose)
+
     async def delete_prefix(self, key_prefix: str) -> None:
         async with self._session.resource(
                 "s3", endpoint_url=self._endpoint_url,
@@ -134,3 +148,15 @@ class S3StorageImpl(Storage):
                                self._endpoint_url, self._aws_access_key_id,
                                self._aws_secret_access_key,
                                self._aws_session_token, self._config)
+
+
+class _BytesIOWithCallback(io.BytesIO):
+    def __init__(self, callback: Callable[[io.BytesIO], None], *args,
+                 **kwargs):
+        self._callback = callback
+
+    def close(self):
+        if self._callback:
+            self._callback(self)
+            self._callback = None
+        super().close()
