@@ -1,9 +1,10 @@
 import unittest
 
 import ray
-from ray.tune import register_trainable, run_experiments, run
+from ray.tune import register_trainable, run_experiments, run, choice
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.experiment import Experiment
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.trial import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -32,6 +33,22 @@ class RemoteTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         analysis = run(train, _remote=True)
+        [trial] = analysis.trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testRemoteRunWithSearcher(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        analysis = run(
+            train,
+            search_alg=HyperOptSearch(),
+            config={"a": choice(["a", "b"])},
+            metric="timesteps_total",
+            mode="max",
+            _remote=True)
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
