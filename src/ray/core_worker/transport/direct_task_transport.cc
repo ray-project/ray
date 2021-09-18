@@ -446,6 +446,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
+  if (scheduling_key_entry.task_queue.size() ==
+      scheduling_key_entry.raylet_to_pending_lease_request.size()) {
+    // All tasks have corresponding pending leases, no need to request more
+    return;
+  }
+
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
@@ -489,7 +495,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
-  int64_t queue_size = task_queue.size() - 1;
+  const int64_t queue_size =
+      task_queue.size() - scheduling_key_entry.raylet_to_pending_lease_request.size() - 1;
 
   lease_client->RequestWorkerLease(
       resource_spec,
