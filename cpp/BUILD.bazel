@@ -200,7 +200,7 @@ cc_binary(
 cc_test(
     name = "simple_kv_store",
     srcs = glob([
-        "src/ray/test/simple_kv_store/*.cc",
+        "src/ray/test/examples/*.cc",
     ]),
     data = [
         "simple_kv_store.so",
@@ -216,7 +216,7 @@ cc_binary(
     name = "simple_kv_store.so",
     testonly = True,
     srcs = glob([
-        "src/ray/test/simple_kv_store/*.cc",
+        "src/ray/test/examples/*.cc",
     ]),
     linkopts = ["-shared"],
     linkstatic = True,
