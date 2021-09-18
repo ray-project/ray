@@ -197,7 +197,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   NodeID local_node_id_ GUARDED_BY(mu_);
 
   /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_ GUARDED_BY(mu_) {nullptr};
+  NodeChangeCallback node_change_callback_ {nullptr};
 
   /// A cache for information about all nodes.
   std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_ GUARDED_BY(mu_);

@@ -589,7 +589,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
-  absl::MutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(&mu_);
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   auto entry = node_cache_.find(node_id);
@@ -638,6 +638,10 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
       removed_nodes_.insert(node_id);
     }
     GcsNodeInfo &cache_data = node_cache_[node_id];
+    // NOTE(kfstorm): We assume that `AsyncSubscribeToNodeChange` won't be called multiple
+    // times and `node_change_callback_` will only be set once, so it's safe to access
+    // `node_change_callback_` without lock.
+    lock.Release();
     node_change_callback_(node_id, cache_data);
   }
 }
