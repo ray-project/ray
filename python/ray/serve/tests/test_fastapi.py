@@ -555,6 +555,27 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     assert resp.json()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fastapi_shutdown_hook(serve_instance):
+    # https://github.com/ray-project/ray/issues/18349
+    signal = SignalActor.remote()
+
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    def call_signal():
+        signal.send.remote()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+    A.delete()
+    ray.get(signal.wait.remote(), timeout=20)
+
+
 def test_fastapi_method_redefinition(serve_instance):
     app = FastAPI()
 

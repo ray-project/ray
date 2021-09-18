@@ -13,10 +13,12 @@ from ray.util.inspect import is_cython, is_function_or_method
 import json
 import logging
 import threading
+from collections import OrderedDict
 from typing import Any
 from typing import List
 from typing import Dict
 from typing import Optional
+from typing import Tuple
 from typing import Union
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,21 @@ logger = logging.getLogger(__name__)
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
 INT32_MAX = (2**31) - 1
+
+# gRPC status codes that the client shouldn't attempt to recover from
+# Resource exhausted: Server is low on resources, or has hit the max number
+#   of client connections
+# Invalid argument: Reserved for application errors
+# Not found: Set if the client is attempting to reconnect to a session that
+#   does not exist
+# Failed precondition: Reserverd for application errors
+# Aborted: Set when an error is serialized into the details of the context,
+#   signals that error should be deserialized on the client side
+GRPC_UNRECOVERABLE_ERRORS = (grpc.StatusCode.RESOURCE_EXHAUSTED,
+                             grpc.StatusCode.INVALID_ARGUMENT,
+                             grpc.StatusCode.NOT_FOUND,
+                             grpc.StatusCode.FAILED_PRECONDITION,
+                             grpc.StatusCode.ABORTED)
 
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
@@ -385,6 +402,13 @@ class ClientServerHandle:
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
     grpc_server: grpc.Server
 
+    def stop(self, grace: int) -> None:
+        # The data servicer might be sleeping while waiting for clients to
+        # reconnect. Signal that they no longer have to sleep and can exit
+        # immediately, since the RPC server is stopped.
+        self.grpc_server.stop(grace)
+        self.data_servicer.stopped.set()
+
     # Add a hook for all the cases that previously
     # expected simply a gRPC server
     def __getattr__(self, attr):
@@ -402,3 +426,241 @@ def _get_client_id_from_context(context: Any) -> str:
         logger.error("Client connecting with no client_id")
         context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
     return client_id
+
+
+def _propagate_error_in_context(e: Exception, context: Any) -> bool:
+    """
+    Encode an error into the context of an RPC response. Returns True
+    if the error can be recovered from, false otherwise
+    """
+    try:
+        if isinstance(e, grpc.RpcError):
+            # RPC error, propagate directly by copying details into context
+            context.set_code(e.code())
+            context.set_details(e.details())
+            return e.code() not in GRPC_UNRECOVERABLE_ERRORS
+    except Exception:
+        # Extra precaution -- if encoding the RPC directly fails fallback
+        # to treating it as a regular error
+        pass
+    context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+    context.set_details(str(e))
+    return False
+
+
+def _id_is_newer(id1: int, id2: int) -> bool:
+    """
+    We should only replace cache entries with the responses for newer IDs.
+    Most of the time newer IDs will be the ones with higher value, except when
+    the req_id counter rolls over. We check for this case by checking the
+    distance between the two IDs. If the distance is significant, then it's
+    likely that the req_id counter rolled over, and the smaller id should
+    still be used to replace the one in cache.
+    """
+    diff = abs(id2 - id1)
+    if diff > (INT32_MAX // 2):
+        # Rollover likely occurred. In this case the smaller ID is newer
+        return id1 < id2
+    return id1 > id2
+
+
+class ResponseCache:
+    """
+    Cache for blocking method calls. Needed to prevent retried requests from
+    being applied multiple times on the server, for example when the client
+    disconnects. This is used to cache requests/responses sent through
+    unary-unary RPCs to the RayletServicer.
+
+    Note that no clean up logic is used, the last response for each thread
+    will always be remembered, so at most the cache will hold N entries,
+    where N is the number of threads on the client side. This relies on the
+    assumption that a thread will not make a new blocking request until it has
+    received a response for a previous one, at which point it's safe to
+    overwrite the old response.
+
+    The high level logic is:
+
+    1. Before making a call, check the cache for the current thread.
+    2. If present in the cache, check the request id of the cached
+        response.
+        a. If it matches the current request_id, then the request has been
+            received before and we shouldn't re-attempt the logic. Wait for
+            the response to become available in the cache, and then return it
+        b. If it doesn't match, then this is a new request and we can
+            proceed with calling the real stub. While the response is still
+            being generated, temporarily keep (req_id, None) in the cache.
+            Once the call is finished, update the cache entry with the
+            new (req_id, response) pair. Notify other threads that may
+            have been waiting for the response to be prepared.
+    """
+
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.cache: Dict[int, Tuple[int, Any]] = {}
+
+    def check_cache(self, thread_id: int, request_id: int) -> Optional[Any]:
+        """
+        Check the cache for a given thread, and see if the entry in the cache
+        matches the current request_id. Returns None if the request_id has
+        not been seen yet, otherwise returns the cached result.
+
+        Throws an error if the placeholder in the cache doesn't match the
+        request_id -- this means that a new request evicted the old value in
+        the cache, and that the RPC for `request_id` is redundant and the
+        result can be discarded, i.e.:
+
+        1. Request A is sent (A1)
+        2. Channel disconnects
+        3. Request A is resent (A2)
+        4. A1 is received
+        5. A2 is received, waits for A1 to finish
+        6. A1 finishes and is sent back to client
+        7. Request B is sent
+        8. Request B overwrites cache entry
+        9. A2 wakes up extremely late, but cache is now invalid
+
+        In practice this is VERY unlikely to happen, but the error can at
+        least serve as a sanity check or catch invalid request id's.
+        """
+        with self.cv:
+            if thread_id in self.cache:
+                cached_request_id, cached_resp = self.cache[thread_id]
+                if cached_request_id == request_id:
+                    while cached_resp is None:
+                        # The call was started, but the response hasn't yet
+                        # been added to the cache. Let go of the lock and
+                        # wait until the response is ready.
+                        self.cv.wait()
+                        cached_request_id, cached_resp = self.cache[thread_id]
+                        if cached_request_id != request_id:
+                            raise RuntimeError(
+                                "Cached response doesn't match the id of the "
+                                "original request. This might happen if this "
+                                "request was received out of order. The "
+                                "result of the caller is no longer needed. "
+                                f"({request_id} != {cached_request_id})")
+                    return cached_resp
+                if not _id_is_newer(request_id, cached_request_id):
+                    raise RuntimeError(
+                        "Attempting to replace newer cache entry with older "
+                        "one. This might happen if this request was received "
+                        "out of order. The result of the caller is no "
+                        f"longer needed. ({request_id} != {cached_request_id}")
+            self.cache[thread_id] = (request_id, None)
+        return None
+
+    def update_cache(self, thread_id: int, request_id: int,
+                     response: Any) -> None:
+        """
+        Inserts `response` into the cache for `request_id`.
+        """
+        with self.cv:
+            cached_request_id, cached_resp = self.cache[thread_id]
+            if cached_request_id != request_id or cached_resp is not None:
+                # The cache was overwritten by a newer requester between
+                # our call to check_cache and our call to update it.
+                # This can't happen if the assumption that the cached requests
+                # are all blocking on the client side, so if you encounter
+                # this, check if any async requests are being cached.
+                raise RuntimeError(
+                    "Attempting to update the cache, but placeholder's "
+                    "do not match the current request_id. This might happen "
+                    "if this request was received out of order. The result "
+                    f"of the caller is no longer needed. ({request_id} != "
+                    f"{cached_request_id})")
+            self.cache[thread_id] = (request_id, response)
+            self.cv.notify_all()
+
+
+class OrderedResponseCache:
+    """
+    Cache for streaming RPCs, i.e. the DataServicer. Relies on explicit
+    ack's from the client to determine when it can clean up cache entries.
+    """
+
+    def __init__(self):
+        self.last_received = 0
+        self.cv = threading.Condition()
+        self.cache: Dict[int, Any] = OrderedDict()
+
+    def check_cache(self, req_id: int) -> Optional[Any]:
+        """
+        Check the cache for a given thread, and see if the entry in the cache
+        matches the current request_id. Returns None if the request_id has
+        not been seen yet, otherwise returns the cached result.
+        """
+        with self.cv:
+            if _id_is_newer(self.last_received,
+                            req_id) or self.last_received == req_id:
+                # Request is for an id that has already been cleared from
+                # cache/acknowledged.
+                raise RuntimeError(
+                    "Attempting to accesss a cache entry that has already "
+                    "cleaned up. The client has already acknowledged "
+                    f"receiving this response. ({req_id}, "
+                    f"{self.last_received})")
+            if req_id in self.cache:
+                cached_resp = self.cache[req_id]
+                while cached_resp is None:
+                    # The call was started, but the response hasn't yet been
+                    # added to the cache. Let go of the lock and wait until
+                    # the response is ready
+                    self.cv.wait()
+                    if req_id not in self.cache:
+                        raise RuntimeError(
+                            "Cache entry was removed. This likely means that "
+                            "the result of this call is no longer needed.")
+                    cached_resp = self.cache[req_id]
+                return cached_resp
+            self.cache[req_id] = None
+        return None
+
+    def update_cache(self, req_id: int, resp: Any) -> None:
+        """
+        Inserts `response` into the cache for `request_id`.
+        """
+        with self.cv:
+            self.cv.notify_all()
+            if req_id not in self.cache:
+                raise RuntimeError(
+                    "Attempting to update the cache, but placeholder is "
+                    "missing. This might happen on a redundant call to "
+                    f"update_cache. ({req_id})")
+            self.cache[req_id] = resp
+
+    def invalidate(self, e: Exception) -> bool:
+        """
+        Invalidate any partially populated cache entries, replacing their
+        placeholders with the passed in exception. Useful to prevent a thread
+        from waiting indefinitely on a failed call.
+
+        Returns True if the cache contains an error, False otherwise
+        """
+        with self.cv:
+            invalid = False
+            for req_id in self.cache:
+                if self.cache[req_id] is None:
+                    self.cache[req_id] = e
+                if isinstance(self.cache[req_id], Exception):
+                    invalid = True
+            self.cv.notify_all()
+        return invalid
+
+    def cleanup(self, last_received: int) -> None:
+        """
+        Cleanup all of the cached requests up to last_received. Assumes that
+        the cache entries were inserted in ascending order.
+        """
+        with self.cv:
+            if _id_is_newer(last_received, self.last_received):
+                self.last_received = last_received
+            to_remove = []
+            for req_id in self.cache:
+                if _id_is_newer(last_received,
+                                req_id) or last_received == req_id:
+                    to_remove.append(req_id)
+                else:
+                    break
+            for req_id in to_remove:
+                del self.cache[req_id]
+            self.cv.notify_all()
