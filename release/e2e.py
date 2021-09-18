@@ -301,6 +301,11 @@ class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
     pass
 
 
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
+    pass
+
+
 class State:
     def __init__(self, state: str, timestamp: float, data: Any):
         self.state = state
@@ -747,10 +752,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -770,7 +775,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -781,7 +786,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -1494,7 +1499,8 @@ def run_test_config(
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
                       or isinstance(e, SessionTimeoutError)
-                      or isinstance(e, PrepareCommandRuntimeError)):
+                      or isinstance(e, PrepareCommandRuntimeError)
+                      or isinstance(e, AppConfigBuildFailure)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):

@@ -22,10 +22,11 @@
 /// Fixed point data type.
 class FixedPoint {
  private:
-  int64_t i_;
+  int64_t i_ = 0;
 
  public:
-  FixedPoint(double d = 0);
+  FixedPoint() = default;
+  FixedPoint(double d);
   FixedPoint(int i);
   FixedPoint(uint32_t i);
   FixedPoint(int64_t i);

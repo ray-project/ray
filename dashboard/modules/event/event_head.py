@@ -6,16 +6,16 @@ from collections import OrderedDict, defaultdict
 
 import aiohttp.web
 
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray.ray_constants import env_bool
-from ray.new_dashboard.modules.event import event_consts
-from ray.new_dashboard.modules.event.event_utils import (
+from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_utils import (
     parse_event_strings,
     monitor_events,
 )
 from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource
+from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
