@@ -2394,12 +2394,8 @@ def test_random_shuffle(shutdown_only, pipelined):
     ds = range(100, parallelism=2)
     r1 = ds.random_shuffle(_move=True).take(999)
     if pipelined:
-        # Reusing source pipeline works fine when moving blocks, since the
-        # move happens after the pipeline creation so reusing the source
-        # pipeline doesn't hit a cleared dataset (the cleared dataset is
-        # transparently created and discarded within the shuffle pipeline, but
-        # after the creation of the source pipeline).
-        ds.map(lambda x: x).take(999)
+        with pytest.raises(RuntimeError):
+            ds = ds.map(lambda x: x).take(999)
     else:
         # Source dataset should be unusable if not pipelining.
         with pytest.raises(ValueError):
