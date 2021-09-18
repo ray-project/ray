@@ -212,10 +212,6 @@ test_cpp() {
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
 
-  # run simple_kv_store test with external cluster
-  bazel test //cpp:simple_kv_store --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
-    --test_arg=--ray_redis_password="1234"
-
   # run the cpp example
   cd cpp/example && sh run.sh
 }
