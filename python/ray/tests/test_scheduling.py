@@ -522,7 +522,7 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
 def build_cluster(num_cpu_nodes, num_gpu_nodes):
     cluster = ray.cluster_utils.Cluster()
     gpu_ids = [
-        cluster.add_node(num_cpus=10, num_gpus=1).unique_id
+        cluster.add_node(num_cpus=2, num_gpus=1).unique_id
         for _ in range(num_gpu_nodes)
     ]
     cpu_ids = [
