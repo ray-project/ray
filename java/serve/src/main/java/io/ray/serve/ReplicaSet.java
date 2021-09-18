@@ -11,13 +11,13 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
 import io.ray.serve.generated.BackendConfig;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +52,6 @@ public class ReplicaSet {
     if (newValue != this.maxConcurrentQueries) {
       this.maxConcurrentQueries = newValue;
       LOGGER.debug("ReplicaSet: changing max_concurrent_queries to {}", newValue);
-      // TODO self.config_updated_event.set()
     }
   }
 
@@ -70,7 +69,6 @@ public class ReplicaSet {
 
     if (added.size() > 0 || removed.size() > 0) {
       LOGGER.debug("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
-      // TODO self.config_updated_event.set()
     }
   }
 
@@ -132,22 +130,12 @@ public class ReplicaSet {
   private ObjectRef<Object> tryAssignReplica(Query query) {
 
     List<ActorHandle<RayServeWrappedReplica>> handles = new ArrayList<>(inFlightQueries.keySet());
-    Collections.shuffle(handles);
-    for (ActorHandle<RayServeWrappedReplica> replica : handles) {
-      if (inFlightQueries.get(replica).size() >= maxConcurrentQueries) {
-        // This replica is overloaded, try next one
-        continue;
-      }
-      LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
-      // Directly passing args because it might contain an ObjectRef.
-      ObjectRef<Object> userRef =
-          replica
-              .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
-              .remote();
-      inFlightQueries.get(replica).add(userRef);
-      return userRef;
-    }
-    return null;
+    int randomIndex = RandomUtils.nextInt(0, handles.size());
+    ActorHandle<RayServeWrappedReplica> replica = handles.get(randomIndex);
+    LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
+    return replica
+        .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
+        .remote();
   }
 
   private synchronized int drainCompletedObjectRefs() {
