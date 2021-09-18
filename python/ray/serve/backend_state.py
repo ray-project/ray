@@ -15,7 +15,7 @@ from ray.serve.config import BackendConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
 from ray.serve.version import BackendVersion, VersionedReplica
@@ -1140,7 +1140,7 @@ class BackendStateManager:
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
+                 kv_store: KVStoreBase, long_poll_host: LongPollHost,
                  goal_manager: AsyncGoalManager,
                  all_current_actor_names: List[str]):
 
