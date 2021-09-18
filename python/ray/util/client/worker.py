@@ -6,8 +6,8 @@ import base64
 import json
 import logging
 import os
-import time
 import threading
+import time
 import uuid
 import warnings
 from collections import defaultdict
@@ -391,7 +391,7 @@ class Worker:
             out = out[0]
         return out
 
-    def _put(self, val, *, client_ref_id: bytes = None):
+    def _put(self, val, client_ref_id: bytes):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -400,6 +400,9 @@ class Worker:
                 "do this, you can wrap the ObjectRef in a list and "
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
+        return self._put_pickled(data, client_ref_id)
+
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
@@ -454,17 +457,21 @@ class Worker:
             task.args.append(pb_arg)
         for k, v in kwargs.items():
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
-        return self._call_schedule_for_task(task)
+        return self._call_schedule_for_task(task, instance._num_returns())
 
-    def _call_schedule_for_task(
-            self, task: ray_client_pb2.ClientTask) -> List[bytes]:
+    def _call_schedule_for_task(self, task: ray_client_pb2.ClientTask,
+                                num_returns: int) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
         metadata = self._add_ids_to_metadata(self.metadata)
+        if num_returns is None:
+            num_returns = 1
+
         try:
             ticket = self._call_stub("Schedule", task, metadata=metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -501,6 +508,9 @@ class Worker:
                 "unserializable object\" section of the Ray Design Patterns "
                 "document, available here: "
                 f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
+        if num_returns != len(ticket.return_ids):
+            raise TypeError("Unexpected number of returned values. Expected "
+                            f"{num_returns} actual {ticket.return_ids}")
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
@@ -523,13 +533,13 @@ class Worker:
 
     def close(self):
         self._in_shutdown = True
+        self.closed = True
         self.data_client.close()
         self.log_client.close()
+        self.server = None
         if self.channel:
             self.channel.close()
             self.channel = None
-        self.server = None
-        self.closed = True
 
     def get_actor(self, name: str,
                   namespace: Optional[str] = None) -> ClientActorHandle:
@@ -537,7 +547,7 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
-        ids = self._call_schedule_for_task(task)
+        ids = self._call_schedule_for_task(task, num_returns=1)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
 
@@ -722,6 +732,9 @@ class Worker:
         """Check if a key UUID is present in the store of converted objects."""
         return key in self._converted
 
+    def _dumps_from_client(self, val) -> bytes:
+        return dumps_from_client(val, self._client_id)
+
 
 def make_client_id() -> str:
     id = uuid.uuid4()
@@ -732,9 +745,9 @@ def decode_exception(e: grpc.RpcError) -> Exception:
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
         # error is serialized into the the exception details. If the code
-        # isn't ABORTED, then raise the original error since there's no
+        # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details
-        raise
+        return ConnectionError(f"GRPC connection failed: {e}")
     data = base64.standard_b64decode(e.details())
     return loads_from_server(data)
