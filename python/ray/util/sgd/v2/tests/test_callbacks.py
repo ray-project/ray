@@ -3,6 +3,8 @@ import os
 import shutil
 import tempfile
 import json
+import glob
+from collections import defaultdict
 
 import ray
 import ray.util.sgd.v2 as sgd
@@ -10,9 +12,15 @@ from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.constants import (
     TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS, BASIC_AUTOFILLED_KEYS,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
-from ray.util.sgd.v2.callbacks import JsonLoggerCallback
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.worker_group import WorkerGroup
+
+try:
+    from tensorflow.python.summary.summary_iterator \
+        import summary_iterator
+except ImportError:
+    summary_iterator = None
 
 
 @pytest.fixture
@@ -78,15 +86,17 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         # if None, use default value
         callback = JsonLoggerCallback(
             make_temp_dir, workers_to_log=workers_to_log)
-        assert str(
-            callback.log_path.name) == JsonLoggerCallback._default_filename
     else:
         callback = JsonLoggerCallback(
             make_temp_dir, filename=filename, workers_to_log=workers_to_log)
-        assert str(callback.log_path.name) == filename
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
+    if filename is None:
+        assert str(
+            callback.log_path.name) == JsonLoggerCallback._default_filename
+    else:
+        assert str(callback.log_path.name) == filename
 
     with open(callback.log_path, "r") as f:
         log = json.load(f)
@@ -110,3 +120,39 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         assert all(
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
+
+
+def _validate_tbx_result(events_dir):
+    events_file = list(glob.glob(f"{events_dir}/events*"))[0]
+    results = defaultdict(list)
+    for event in summary_iterator(events_file):
+        for v in event.summary.value:
+            assert v.tag.startswith("ray/sgd")
+            results[v.tag[8:]].append(v.simple_value)
+
+    assert len(results["episode_reward_mean"]) == 3
+    assert [int(res) for res in results["episode_reward_mean"]] == [4, 5, 6]
+    assert len(results["score"]) == 1
+    assert len(results["hello/world"]) == 1
+
+
+@pytest.mark.skipif(
+    summary_iterator is None, reason="tensorboard is not installed")
+def test_TBX(ray_start_4_cpus, make_temp_dir):
+    config = TestConfig()
+
+    temp_dir = make_temp_dir
+    num_workers = 4
+
+    def train_func():
+        sgd.report(episode_reward_mean=4)
+        sgd.report(episode_reward_mean=5)
+        sgd.report(episode_reward_mean=6, score=[1, 2, 3], hello={"world": 1})
+        return 1
+
+    callback = TBXLoggerCallback(temp_dir)
+    trainer = Trainer(config, num_workers=num_workers)
+    trainer.start()
+    trainer.run(train_func, callbacks=[callback])
+
+    _validate_tbx_result(temp_dir)

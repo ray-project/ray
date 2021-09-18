@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -223,6 +222,9 @@ def run(args, parser):
             verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
+        # Import this only here so that train.py also works with
+        # older versions (and user doesn't use `--ray-num-nodes`).
+        from ray.cluster_utils import Cluster
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(

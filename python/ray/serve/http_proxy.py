@@ -85,8 +85,8 @@ class LongestPrefixRouter:
         self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
-        # Endpoints and methods associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        # Endpoints associated with the routes.
+        self.route_info: Dict[str, EndpointTag] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -108,7 +108,7 @@ class LongestPrefixRouter:
                 route = info.route
 
             routes.append(route)
-            route_info[route] = (endpoint, info.http_methods)
+            route_info[route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -123,13 +123,12 @@ class LongestPrefixRouter:
         self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
         self.route_info = route_info
 
-    def match_route(self, target_route: str, target_method: str
+    def match_route(self, target_route: str
                     ) -> Tuple[Optional[str], Optional[RayServeHandle]]:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
             target_route (str): route to match against.
-            target_method (str): method to match against.
 
         Returns:
             (matched_route (str), serve_handle (RayServeHandle)) if found,
@@ -154,9 +153,8 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint, methods = self.route_info[route]
-                    if target_method in methods:
-                        return route, self.handles[endpoint]
+                    endpoint = self.route_info[route]
+                    return route, self.handles[endpoint]
 
         return None, None
 
@@ -165,17 +163,17 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name))
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(self, controller_name: str, controller_namespace: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(None, None,
                                                     controller_name, None)
 
         # Used only for displaying the route table.
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
             return serve.api._get_global_client().get_handle(
@@ -187,7 +185,7 @@ class HTTPProxy:
 
         self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name), {
+            ray.get_actor(controller_name, namespace=controller_namespace), {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
             call_in_event_loop=asyncio.get_event_loop())
@@ -201,7 +199,7 @@ class HTTPProxy:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
             route = info.route if info.route is not None else f"/{endpoint}"
-            self.route_info[route] = (endpoint, info.http_methods)
+            self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
 
@@ -212,7 +210,7 @@ class HTTPProxy:
             if time.time() - start > timeout_s:
                 raise TimeoutError(
                     f"Waited {timeout_s} for {endpoint} to propagate.")
-            for existing_endpoint, _ in self.route_info.values():
+            for existing_endpoint in self.route_info.values():
                 if existing_endpoint == endpoint:
                     return
             await asyncio.sleep(0.2)
@@ -239,8 +237,7 @@ class HTTPProxy:
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
-        route_prefix, handle = self.prefix_router.match_route(
-            scope["path"], scope["method"])
+        route_prefix, handle = self.prefix_router.match_route(scope["path"])
         if route_prefix is None:
             return await self._not_found(scope, receive, send)
 
@@ -261,6 +258,7 @@ class HTTPProxyActor:
                  host: str,
                  port: int,
                  controller_name: str,
+                 controller_namespace: str,
                  http_middlewares: List[
                      "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
@@ -268,7 +266,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(controller_name, controller_namespace)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:

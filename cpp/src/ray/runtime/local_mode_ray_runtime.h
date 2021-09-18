@@ -26,6 +26,7 @@ class LocalModeRayRuntime : public AbstractRayRuntime {
   LocalModeRayRuntime();
 
   ActorID GetNextActorID();
+  ActorID GetCurrentActorID();
 };
 
 }  // namespace internal

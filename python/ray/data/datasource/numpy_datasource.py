@@ -6,6 +6,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
+from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
 
 
@@ -27,3 +28,10 @@ class NumpyDatasource(FileBasedDatasource):
         buf.write(data)
         buf.seek(0)
         return np.load(buf)
+
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
+        np.save(f, block.to_arrow())
+
+    def _file_format(self):
+        return "npy"

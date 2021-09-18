@@ -16,8 +16,22 @@ DEFAULT_HTTP_PORT = 8000
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# How often to call the control loop on the controller.
+CONTROL_LOOP_PERIOD_S = 0.1
+
+# Upon controller failure and recovery with running actor names,
+# we will update replica handles that halt all traffic to the cluster.
+# This constant indicates grace period to avoid controller thrashing.
+CONTROLLER_STARTUP_GRACE_PERIOD_S = 5
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
+
+#: Max retry count for allowing failures in replica constructor.
+#: If no replicas at target version is running by the time we're at
+#: max construtor retry count, deploy() is considered failed.
+#: By default we set threshold as min(num_replicas * 3, this value)
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -37,13 +51,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
 
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
-
-#: All defined HTTP methods.
-# https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-ALL_HTTP_METHODS = [
-    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
-    "PATCH"
-]
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 

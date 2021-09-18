@@ -16,7 +16,6 @@ import logging
 from typing import List, Optional, Type
 
 from ray.rllib.agents import dqn
-from ray.rllib.agents.dqn.dqn import execution_plan
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
@@ -145,8 +144,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 R2D2Trainer = dqn.DQNTrainer.with_updates(
     name="R2D2",
     default_policy=R2D2TFPolicy,
+    get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
 )

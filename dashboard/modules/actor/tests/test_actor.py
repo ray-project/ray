@@ -7,11 +7,11 @@ import traceback
 import ray
 import pytest
 import redis
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray.new_dashboard.tests.conftest import *  # noqa
-from ray.new_dashboard.modules.actor import actor_consts
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.modules.actor import actor_consts
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -274,7 +274,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
-                "state", "address", "timestamp", "pid", "creationTaskException"
+                "state", "address", "timestamp", "pid",
+                "creationTaskException", "rayNamespace"
             }
         else:
             raise Exception("Unknown state: {}".format(

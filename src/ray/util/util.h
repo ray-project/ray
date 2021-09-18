@@ -25,6 +25,10 @@
 
 #include "ray/util/macros.h"
 
+#ifdef _WIN32
+#include <process.h>  // to ensure getpid() on Windows
+#endif
+
 // Portable code for unreachable
 #if defined(_MSC_VER)
 #define UNREACHABLE __assume(0)
@@ -62,6 +66,20 @@ inline std::string StringToHex(const std::string &str) {
     result.push_back(hex[val & 0xf]);
   }
   return result;
+}
+
+// Append append_str to the begining of each line of str.
+inline std::string AppendToEachLine(const std::string &str,
+                                    const std::string &append_str) {
+  std::stringstream ss;
+  ss << append_str;
+  for (char c : str) {
+    ss << c;
+    if (c == '\n') {
+      ss << append_str;
+    }
+  }
+  return ss.str();
 }
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The

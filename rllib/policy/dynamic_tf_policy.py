@@ -327,7 +327,8 @@ class DynamicTFPolicy(TFPolicy):
                         explore=explore)
 
         # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session()
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"]))
 
         batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
