@@ -191,7 +191,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
                 elif req_type == "task":
                     with self.clients_lock:
-                        resp_ticket = self.basic_service.Schedule(req.task)
+                        resp_ticket = self.basic_service.Schedule(req.task,
+                                                                  context)
                         resp = ray_client_pb2.DataResponse(
                             task_ticket=resp_ticket)
                 elif req_type == "terminate":

@@ -11,18 +11,14 @@ def test_list_named_actors_basic(ray_start_regular):
     class A:
         pass
 
-    # Accessing _actor_id waits for actor creation in client mode.
     a = A.remote()
-    assert not a._actor_id.is_nil()
     assert not ray.util.list_named_actors()
 
     a = A.options(name="hi").remote()
-    assert not a._actor_id.is_nil()
     assert len(ray.util.list_named_actors()) == 1
     assert "hi" in ray.util.list_named_actors()
 
     b = A.options(name="hi2").remote()
-    assert not b._actor_id.is_nil()
     assert len(ray.util.list_named_actors()) == 2
     assert "hi" in ray.util.list_named_actors()
     assert "hi2" in ray.util.list_named_actors()
@@ -48,16 +44,13 @@ def test_list_named_actors_basic_local_mode(ray_start_regular):
         pass
 
     a = A.remote()
-    assert not a._actor_id.is_nil()
     assert not ray.util.list_named_actors()
 
     a = A.options(name="hi").remote()  # noqa: F841
-    assert not a._actor_id.is_nil()
     assert len(ray.util.list_named_actors()) == 1
     assert "hi" in ray.util.list_named_actors()
 
     b = A.options(name="hi2").remote()  # noqa: F841
-    assert not b._actor_id.is_nil()
     assert len(ray.util.list_named_actors()) == 2
     assert "hi" in ray.util.list_named_actors()
     assert "hi2" in ray.util.list_named_actors()
@@ -71,7 +64,6 @@ def test_list_named_actors_restarting_actor(ray_start_regular):
             os._exit(0)
 
     a = A.options(name="hi").remote()
-    assert not a._actor_id.is_nil()
     for _ in range(10000):
         assert ray.util.list_named_actors() == ["hi"]
 
@@ -88,7 +80,6 @@ def test_list_named_actors_ray_kill(ray_start_regular):
             pass
 
     a = A.options(name="hi").remote()
-    assert not a._actor_id.is_nil()
     assert ray.util.list_named_actors() == ["hi"]
     ray.kill(a, no_restart=False)
     assert ray.util.list_named_actors() == ["hi"]
@@ -110,7 +101,6 @@ class A:
 
 A.options(name="hi", lifetime="detached").remote()
 a = A.options(name="sad").remote()
-assert not a._actor_id.is_nil()
 
 assert len(ray.util.list_named_actors()) == 2
 assert "hi" in ray.util.list_named_actors()
@@ -135,8 +125,7 @@ ray.init(address="{}", namespace="test")
 class A:
     pass
 
-assert not A.options(name="hi", lifetime="detached").remote() \
-    ._actor_id.is_nil()
+A.options(name="hi", lifetime="detached").remote()
 
 assert len(ray.util.list_named_actors()) == 1
 assert ray.util.list_named_actors() == ["hi"]

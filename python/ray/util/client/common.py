@@ -182,6 +182,9 @@ class ClientActorClass(ClientStub):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
+        self._init_signature = inspect.Signature(
+            parameters=extract_signature(
+                actor_cls.__init__, ignore_first=True))
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
@@ -237,6 +240,10 @@ class ClientActorClass(ClientStub):
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
         return task
+
+    @staticmethod
+    def _num_returns() -> int:
+        return 1
 
 
 class ClientActorHandle(ClientStub):

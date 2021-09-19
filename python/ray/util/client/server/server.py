@@ -312,6 +312,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
+    @_use_response_cache
     def Terminate(self, req, context=None):
         if req.WhichOneof("terminate_type") == "task_object":
             try:
@@ -488,6 +489,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
+    @_use_response_cache
     def Schedule(self, task: ray_client_pb2.ClientTask,
                  context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
