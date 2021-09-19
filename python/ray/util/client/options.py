@@ -70,7 +70,8 @@ def validate_options(
         pg = out.get("placement_group", None)
         if pg is None:
             pg = PlacementGroup.empty()
-        if pg == "default" and "placement_group_capture_child_tasks" not in out:
+        if pg == "default" and (out.get("placement_group_capture_child_tasks",
+                                        None) is None):
             pg = PlacementGroup.empty()
         if isinstance(pg, PlacementGroup):
             check_placement_group_index(pg, bundle_index)
