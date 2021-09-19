@@ -38,7 +38,6 @@ Setting up your development environment
 
 To edit the Ray source code, you'll want to checkout the repository and also build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
 
-
 Submitting and Merging a Contribution
 -------------------------------------
 
@@ -56,9 +55,10 @@ There are a couple steps to merge a contribution.
    in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
    example if applicable.
-5. Request code reviews from other contributors and address their comments. One fast way to get reviews is
-   to help review others' code so that they return the favor. You should aim to improve the code as much as
-   possible before the review. We highly value patches that can get in without extensive reviews.
+5. Request code reviews from other contributors and address their comments. During the review
+   process you may need to address merge conflicts with other changes. To resolve merge conflicts,
+   run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
+   friendly to the GitHub review tool. All commits will be squashed on merge.)
 6. Reviewers will merge and approve the pull request; be sure to ping them if
    the pull request is getting stale.
 
