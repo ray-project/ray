@@ -33,6 +33,66 @@ ray.get(foo.remote("abc", "def"))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_core_worker_error_message():
+    script = """
+import ray
+import sys
+
+ray.init(local_mode=True)
+
+# In local mode this generates an ERROR level log.
+ray._private.utils.push_error_to_driver(
+    ray.worker.global_worker, "type", "Hello there")
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    err_str = proc.stderr.read().decode("ascii")
+
+    assert "Hello there" in err_str, err_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_disable_driver_logs_breakpoint():
+    script = """
+import time
+import os
+import ray
+import sys
+import threading
+
+ray.init(num_cpus=2)
+
+@ray.remote
+def f():
+    while True:
+        time.sleep(1)
+        print("hello there")
+        sys.stdout.flush()
+
+def kill():
+    time.sleep(5)
+    sys.stdout.flush()
+    time.sleep(1)
+    os._exit(0)
+
+t = threading.Thread(target=kill)
+t.start()
+x = f.remote()
+time.sleep(2)  # Enough time to print one hello.
+ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
+# breakpoint()  # Only works in Py3.7+
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    num_hello = out_str.count("hello")
+    assert num_hello >= 1, out_str
+    assert num_hello < 3, out_str
+    assert "Temporarily disabling Ray worker logs" in out_str, out_str
+    # TODO(ekl) nice to test resuming logs too, but it's quite complicated
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multi_stdout():
     script = """
 import ray

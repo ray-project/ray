@@ -277,6 +277,10 @@ def maybe_fetch_api_token():
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
 
 
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
+
+
 class ReleaseTestTimeoutError(RuntimeError):
     pass
 
@@ -294,6 +298,11 @@ class CommandTimeoutError(ReleaseTestTimeoutError):
 
 
 class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
+    pass
+
+
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
     pass
 
 
@@ -381,11 +390,21 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        raise RuntimeError(f"Could not populate wheels sanity check command: "
+                           f"Commit hash missing. Got: {commit}")
+
+    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -517,6 +536,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         schema=schema,
         sql=sql,
     )
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -711,10 +752,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -734,7 +775,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -745,7 +786,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -876,8 +917,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1193,6 +1238,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1452,7 +1498,9 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)
+                      or isinstance(e, AppConfigBuildFailure)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1467,6 +1515,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
@@ -1684,6 +1733,8 @@ def run_test_config(
 
     logger.info(f"Final results: {result}")
 
+    log_results_and_artifacts(result)
+
     shutil.rmtree(temp_dir)
 
     return result
@@ -1865,6 +1916,9 @@ if __name__ == "__main__":
             raise RuntimeError(f"Could not find wheels for "
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
+
+        # RAY_COMMIT is set by find_ray_wheels
+        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 

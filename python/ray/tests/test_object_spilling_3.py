@@ -93,7 +93,7 @@ def _check_spilled(num_objects_spilled=0):
 
         return False
 
-    wait_for_condition(ok, timeout=30, retry_interval_ms=5000)
+    wait_for_condition(ok, timeout=90, retry_interval_ms=5000)
 
 
 def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
@@ -114,7 +114,7 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_object_spilling_threshold_default():
-    _test_object_spilling_threshold(None, 10, 0)
+    _test_object_spilling_threshold(None, 10, 5)
 
 
 @pytest.mark.skipif(

@@ -91,7 +91,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                                 self.metrics_queue)
         HTTPServer.__init__(self, (address, port), handler)
 
-        logger.info("Starting connector server at {}:{}".format(address, port))
+        logger.info("Starting connector server at {}:{}".format(
+            self.server_name, self.server_port))
 
         # Start the serving thread, listening on socket and handling commands.
         serving_thread = threading.Thread(

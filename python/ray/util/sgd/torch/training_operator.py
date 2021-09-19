@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import tempfile
+import warnings
 
 import torch
 import torch.nn as nn
@@ -835,6 +836,13 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
+        warnings.warn(
+            "Ray SGD `LightningOperator` is no longer maintained. "
+            "Check out the Ray Lightning library "
+            "(https://github.com/ray-project/ray_lightning)"
+            "instead for distributed PyTorch Lightning Training on"
+            "Ray!",
+            category=FutureWarning)
         from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):

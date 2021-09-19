@@ -14,6 +14,7 @@
 
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
@@ -49,12 +50,38 @@ namespace raylet_scheduling_policy {
 /// \param nodes: The summary view of all the nodes that can be scheduled on.
 /// \param spread_threshold: Below this threshold, critical resource utilization will be
 /// truncated to 0.
+/// \param scheduler_avoid_gpu_nodes: if set, we would try scheduling
+/// CPU-only requests on CPU-only nodes, and will fallback to scheduling on GPU nodes if
+/// needed.
 ///
-/// \return -1 if the task is infeasible, otherwise the node id (key in `nodes`) to
+/// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
 /// schedule on.
-int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
-                     const absl::flat_hash_map<int64_t, Node> &nodes,
-                     float spread_threshold, bool force_spillback,
-                     bool require_available);
+int64_t HybridPolicy(
+    const ResourceRequest &resource_request, const int64_t local_node_id,
+    const absl::flat_hash_map<int64_t, Node> &nodes, float spread_threshold,
+    bool force_spillback, bool require_available,
+    bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
+
+//
+enum class NodeFilter { kAny, kGPU, kCPUOnly };
+
+/// \param resource_request: The resource request we're attempting to schedule.
+/// \param local_node_id: The id of the local node, which is needed for traversal order.
+/// \param nodes: The summary view of all the nodes that can be scheduled on.
+/// \param spread_threshold: Below this threshold, critical resource utilization will be
+/// truncated to 0.
+/// \param node_filter: defines the subset of nodes were are allowed to schedule on.
+/// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
+/// nodes), kCPUOnly (can only schedule on non-GPU nodes.
+///
+/// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
+/// schedule on.
+int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
+                               const int64_t local_node_id,
+                               const absl::flat_hash_map<int64_t, Node> &nodes,
+                               float spread_threshold, bool force_spillback,
+                               bool require_available,
+                               NodeFilter node_filter = NodeFilter::kAny);
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

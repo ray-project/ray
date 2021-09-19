@@ -24,7 +24,7 @@ class SearchAlgorithm:
         return self._metric
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms
@@ -37,7 +37,9 @@ class SearchAlgorithm:
         Args:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
-            config (dict): Tune config dict.
+            config (Dict): Tune config dict.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:
             return False

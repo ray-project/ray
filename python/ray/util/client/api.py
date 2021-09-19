@@ -2,7 +2,6 @@
 and the overall ray module API.
 """
 import json
-
 import logging
 
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
@@ -285,7 +284,10 @@ class ClientAPI:
 
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
-        return self.is_initialized()
+        # NOTE(edoakes): the kv is always initialized because we initialize it
+        # manually in the proxier with a GCS client if Ray hasn't been
+        # initialized yet.
+        return True
 
     def _internal_kv_exists(self, key: bytes) -> bool:
         """Hook for internal_kv._internal_kv_exists."""

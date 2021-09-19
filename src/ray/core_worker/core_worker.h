@@ -67,10 +67,11 @@ struct CoreWorkerOptions {
       TaskType task_type, const std::string task_name, const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes)>;
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+      bool *is_application_level_error)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -151,19 +152,17 @@ struct CoreWorkerOptions {
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<ObjectID> &,
-                                         const std::vector<std::string> &)>
+  std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
+  std::function<int64_t(const std::vector<rpc::ObjectReference> &,
+                        const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
   /// Function to call on error objects never retrieved.
   std::function<void(const RayObject &error)> unhandled_exception_handler;
-  std::function<void(const std::string &, const std::vector<std::string> &)>
-      run_on_util_worker_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -401,6 +400,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
+  bool GetCurrentTaskRetryExceptions() const {
+    if (!options_.is_local_mode) {
+      return worker_context_.GetCurrentTask()->GetMessage().retry_exceptions();
+    } else {
+      return false;
+    }
+  }
+
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
@@ -543,10 +550,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] object create by worker or not.
+  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
-  /// \param[in] inline_small_object wether to inline create this object if it's
+  /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -689,32 +696,23 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param[in] resource_name Name of the resource to be set.
-  /// \param[in] capacity Capacity of the resource.
-  /// \param[in] node_id NodeID where the resource is to be set.
-  /// \return Status
-  Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &node_id);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \param[out] return_ids Ids of the return objects.
   /// \param[in] max_retires max number of retry when the task fails.
   /// \param[in] placement_options placement group options.
   /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
-  void SubmitTask(const RayFunction &function,
-                  const std::vector<std::unique_ptr<TaskArg>> &args,
-                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, BundleID placement_options,
-                  bool placement_group_capture_child_tasks,
-                  const std::string &debugger_breakpoint);
+  /// \return ObjectRefs returned by this task.
+  std::vector<rpc::ObjectReference> SubmitTask(
+      const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options, int max_retries, bool retry_exceptions,
+      BundleID placement_options, bool placement_group_capture_child_tasks,
+      const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
@@ -769,14 +767,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \param[out] return_ids Ids of the return objects.
-  /// \return Status error if the task is invalid or if the task submission
-  /// failed. Tasks can be invalid for direct actor calls because not all tasks
-  /// are currently supported.
-  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                       const std::vector<std::unique_ptr<TaskArg>> &args,
-                       const TaskOptions &task_options,
-                       std::vector<ObjectID> *return_ids);
+  /// \return ObjectRefs returned by this task.
+  std::vector<rpc::ObjectReference> SubmitActorTask(
+      const ActorID &actor_id, const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -950,15 +944,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Implements gRPC server handler.
-  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                                    rpc::AddObjectLocationOwnerReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(
-      const rpc::RemoveObjectLocationOwnerRequest &request,
-      rpc::RemoveObjectLocationOwnerReply *reply,
+  // Implements gRPC server handler.
+  void HandleUpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -993,11 +982,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
-
-  // Run request on an python-based IO worker
-  void HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
-                             rpc::RunOnUtilWorkerReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
@@ -1127,13 +1111,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
-                     ReferenceCounter::ReferenceTableProto *borrowed_refs);
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs,
+                     bool *is_application_level_error);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
   /// \param spec[in] task_spec Task specification.
-  void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
-                            const ActorID &actor_id = ActorID::Nil());
+  std::vector<rpc::ObjectReference> ExecuteTaskLocalMode(
+      const TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
 
   /// KillActor API for a local mode.
   Status KillActorLocalMode(const ActorID &actor_id);
@@ -1175,7 +1160,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Error if the values could not be retrieved.
   Status GetAndPinArgsForExecutor(const TaskSpecification &task,
                                   std::vector<std::shared_ptr<RayObject>> *args,
-                                  std::vector<ObjectID> *arg_reference_ids,
+                                  std::vector<rpc::ObjectReference> *arg_refs,
                                   std::vector<ObjectID> *pinned_ids);
 
   /// Process a subscribe message for wait for object eviction.
@@ -1206,6 +1191,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
+
+  void RemoveObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies

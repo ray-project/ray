@@ -1,5 +1,6 @@
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
@@ -9,6 +10,7 @@ from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.tf_ops import one_hot
 
 tf1, tf, tfv = try_import_tf()
@@ -31,21 +33,22 @@ class ComplexInputNetwork(TFModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        # TODO: (sven) Support Dicts as well.
         self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(self.original_space, (Tuple)), \
-            "`obs_space.original_space` must be Tuple!"
+        assert isinstance(self.original_space, (Dict, Tuple)), \
+            "`obs_space.original_space` must be [Dict|Tuple]!"
 
         super().__init__(self.original_space, action_space, num_outputs,
                          model_config, name)
+
+        self.flattened_input_space = flatten_space(self.original_space)
 
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
         self.one_hot = {}
         self.flatten = {}
         concat_size = 0
-        for i, component in enumerate(self.original_space):
+        for i, component in enumerate(self.flattened_input_space):
             # Image space.
             if len(component.shape) == 3:
                 config = {
@@ -64,11 +67,13 @@ class ComplexInputNetwork(TFModelV2):
                     name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
-            # Discrete inputs -> One-hot encode.
+            # Discrete|MultiDiscrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
                 self.one_hot[i] = True
                 concat_size += component.n
-            # TODO: (sven) Multidiscrete (see e.g. our auto-LSTM wrappers).
+            elif isinstance(component, MultiDiscrete):
+                self.one_hot[i] = True
+                concat_size += sum(component.nvec)
             # Everything else (1D Box).
             else:
                 self.flatten[i] = int(np.product(component.shape))
@@ -123,18 +128,22 @@ class ComplexInputNetwork(TFModelV2):
                                                    self.obs_space, "tf")
         # Push image observations through our CNNs.
         outs = []
-        for i, component in enumerate(orig_obs):
+        for i, component in enumerate(tree.flatten(orig_obs)):
             if i in self.cnns:
                 cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [tf.int32, tf.int64, tf.uint8]:
                     outs.append(
-                        one_hot(component, self.original_space.spaces[i]))
+                        one_hot(component, self.flattened_input_space[i]))
                 else:
                     outs.append(component)
             else:
-                outs.append(tf.reshape(component, [-1, self.flatten[i]]))
+                outs.append(
+                    tf.cast(
+                        tf.reshape(component, [-1, self.flatten[i]]),
+                        dtype=tf.float32,
+                    ))
         # Concat all outputs and the non-image inputs.
         out = tf.concat(outs, axis=1)
         # Push through (optional) FC-stack (this may be an empty stack).
