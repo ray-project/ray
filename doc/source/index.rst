@@ -365,17 +365,10 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributions and Development
 
    getting-involved.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Development and Ray Internals
-
    development.rst
    whitepaper.rst
    debugging.rst
    profiling.rst
-   fault-tolerance.rst
