@@ -12,7 +12,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
-from ray.rllib.utils import force_list
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
