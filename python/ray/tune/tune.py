@@ -299,7 +299,10 @@ def run(
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
 
-    # at this point, locals is equal to args and kwargs
+    # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
+    # remote_run_kwargs must be defined before any other
+    # code is ran to ensure that at this point,
+    # `locals()` is equal to args and kwargs
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
