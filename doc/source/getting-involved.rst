@@ -119,7 +119,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
         """First sentence MUST be inline with the quotes and fit on one line.
 
         Additional explanatory text can be added in paragraphs such as this one.
-        Please do not introduce multi-line first sentences.
+        Do not introduce multi-line first sentences.
 
         Examples:
             >>> # Provide code examples as possible.
