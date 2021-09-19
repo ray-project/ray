@@ -197,7 +197,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             task_ticket=resp_ticket)
                 elif req_type == "terminate":
                     with self.clients_lock:
-                        response = self.basic_service.Terminate(req.terminate)
+                        response = self.basic_service.Terminate(req.terminate,
+                                                                context)
                         resp = ray_client_pb2.DataResponse(terminate=response)
                 elif req_type == "list_named_actors":
                     with self.clients_lock:

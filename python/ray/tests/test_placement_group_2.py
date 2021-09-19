@@ -46,13 +46,11 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
                 "CPU": 2
             }])
 
-        # Calling value.remote() is needed in client mode to wait for the
-        # status of actor creation.
         error_count = 0
         try:
             Actor.options(
                 placement_group=placement_group,
-                placement_group_bundle_index=3).remote().value.remote()
+                placement_group_bundle_index=3).remote()
         except ValueError:
             error_count = error_count + 1
         assert error_count == 1
@@ -60,14 +58,13 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
         try:
             Actor.options(
                 placement_group=placement_group,
-                placement_group_bundle_index=-2).remote().value.remote()
+                placement_group_bundle_index=-2).remote()
         except ValueError:
             error_count = error_count + 1
         assert error_count == 2
 
         try:
-            Actor.options(
-                placement_group_bundle_index=0).remote().value.remote()
+            Actor.options(placement_group_bundle_index=0).remote()
         except ValueError:
             error_count = error_count + 1
         assert error_count == 3
