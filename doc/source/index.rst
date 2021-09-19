@@ -365,7 +365,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributions and Development
+   :caption: Contributing and Development
 
    getting-involved.rst
    development.rst
