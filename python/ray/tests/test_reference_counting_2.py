@@ -664,6 +664,7 @@ def test_deep_nested_refs(shutdown_only):
         try:
             r = ray.get(r)
         except ray.exceptions.ReferenceCountingAssertionError:
+            # TODO(swang): https://github.com/ray-project/ray/issues/18751.
             break
 
 
