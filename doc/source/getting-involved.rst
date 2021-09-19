@@ -116,7 +116,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
 .. code-block:: python
 
     def ray_canonical_doc_style(param1: int, param2: str) -> bool:
-        """The first sentence MUST be inline with the quote and fit on one line.
+        """First sentence MUST be inline with the quotes and fit on one line.
 
         Additional explanatory text can be added in paragraphs such as this one.
         Please do not introduce multi-line first sentences.
