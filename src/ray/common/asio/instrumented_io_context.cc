@@ -176,6 +176,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
 std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
     const std::string &name) {
   // Get this handler's stats.
+  std::shared_ptr<GuardedHandlerStats> result;
   mutex_.ReaderLock();
   auto it = post_handler_stats_.find(name);
   if (it == post_handler_stats_.end()) {
@@ -195,10 +196,12 @@ std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
       // the table.
       RAY_CHECK(it != post_handler_stats_.end());
     }
+    result = it->second;
   } else {
+    result = it->second;
     mutex_.ReaderUnlock();
   }
-  return it->second;
+  return result;
 }
 
 GlobalStats instrumented_io_context::get_global_stats() const {
