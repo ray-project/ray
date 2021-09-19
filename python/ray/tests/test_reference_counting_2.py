@@ -645,6 +645,28 @@ def test_actor_constructor_borrowed_refs(shutdown_only):
         time.sleep(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deep_nested_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(x):
+        print(f"=> step {x}")
+        if x > 200:
+            return x
+        return f.remote(x + 1)
+
+    r = f.remote(1)
+    i = 0
+    while isinstance(r, ray.ObjectRef):
+        print(i, r)
+        i += 1
+        try:
+            r = ray.get(r)
+        except ray.exceptions.ReferenceCountingAssertionError:
+            break
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

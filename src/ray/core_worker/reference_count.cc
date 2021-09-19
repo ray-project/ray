@@ -473,7 +473,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           // we have already returned this information through a previous
           // GetAndClearLocalBorrowers call.
           if (inner_it->second.contained_in_borrowed_id.has_value()) {
-            RAY_LOG(DEBUG) << "Object " << id << " deleted, still contains inner borrowed Ref " << inner_id;
+            RAY_LOG(DEBUG) << "Object " << id
+                           << " deleted, still contains inner borrowed Ref " << inner_id;
             should_delete_ref = false;
           }
         }
