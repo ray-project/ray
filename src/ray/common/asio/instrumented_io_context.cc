@@ -115,13 +115,14 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
     const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
+  int64_t curr_count = 0;
   {
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.cum_count++;
-    stats->stats.curr_count++;
+    curr_count = ++stats->stats.curr_count;
   }
-  STATS_operation_count.Record(stats->stats.curr_count, name);
-  STATS_operation_active_count.Record(stats->stats.curr_count, name);
+  STATS_operation_count.Record(curr_count, name);
+  STATS_operation_active_count.Record(curr_count, name);
   return std::make_shared<StatsHandle>(
       name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
       global_stats_);
