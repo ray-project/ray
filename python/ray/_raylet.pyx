@@ -453,7 +453,7 @@ cdef execute_task(
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
         if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-            # Record the actor class via :actor_name: magic token in the log file.
+            # Record the actor class via :actor_name: magic token in the log.
             # (Phase 1): this covers code run before __init__ finishes.
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
@@ -596,10 +596,11 @@ cdef execute_task(
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                # Record the actor repr via :actor_name: magic token in the log file.
+                # Record actor repr via :actor_name: magic token in the log.
                 # (Phase 2): this covers code run after __init__ finishes.
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in actor_class.__ray_actor_class__.__dict__):
+                        "__repr__" in
+                        actor_class.__ray_actor_class__.__dict__):
                     print("{}{}".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
             # Check for a cancellation that was called when the function
