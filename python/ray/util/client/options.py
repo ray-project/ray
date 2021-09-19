@@ -60,12 +60,17 @@ def validate_options(
                     raise ValueError(validator[2])
         out[k] = v
 
+    # Validate placement setting similar to the logic in ray/actor.py and
+    # ray/remote_function.py. The difference is that when
+    # placement_group = default and placement_group_capture_child_tasks
+    # specified, placement group cannot be resolved at client. So this check
+    # skips this case and relies on server to enforce any condition.
     bundle_index = out.get("placement_group_bundle_index", None)
     if bundle_index is not None:
         pg = out.get("placement_group", None)
         if pg is None:
             pg = PlacementGroup.empty()
-        if pg == "default" and "placement_group_capture_child_tasks" in out:
+        if pg == "default" and "placement_group_capture_child_tasks" not in out:
             pg = PlacementGroup.empty()
         if isinstance(pg, PlacementGroup):
             check_placement_group_index(pg, bundle_index)
