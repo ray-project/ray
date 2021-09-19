@@ -133,6 +133,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
         Args:
             param1: The first parameter. Do not include the types in the
                 docstring (they should be defined only in the signature).
+                Multi-line parameter docs should be indented by four spaces.
             param2: The second parameter.
 
         Returns:
