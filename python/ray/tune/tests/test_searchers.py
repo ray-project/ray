@@ -362,14 +362,26 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         searcher.suggest("1")
         searcher.suggest("2")
-        searcher.on_trial_complete("1", {self.metric_name: 1, "config/a": 1.0})
+        searcher.on_trial_complete("1", {
+            self.metric_name: 1,
+            "config/a": 1.0,
+            "time_total_s": 1
+        })
 
         searcher.save(self.checkpoint_path)
         searcher.restore(self.checkpoint_path)
 
-        searcher.on_trial_complete("2", {self.metric_name: 1, "config/a": 1.0})
+        searcher.on_trial_complete("2", {
+            self.metric_name: 1,
+            "config/a": 1.0,
+            "time_total_s": 1
+        })
         searcher.suggest("3")
-        searcher.on_trial_complete("3", {self.metric_name: 1, "config/a": 1.0})
+        searcher.on_trial_complete("3", {
+            self.metric_name: 1,
+            "config/a": 1.0,
+            "time_total_s": 1
+        })
 
     def testAx(self):
         from ray.tune.suggest.ax import AxSearch
@@ -474,9 +486,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._saveRestore(searcher)
 
     def testZOOpt(self):
-        self.skipTest(
-            "Recent ZOOpt versions fail handling invalid values gracefully. "
-            "Skipping until we or they found a workaround. ")
         from ray.tune.suggest.zoopt import ZOOptSearch
 
         searcher = ZOOptSearch(
