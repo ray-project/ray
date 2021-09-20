@@ -37,16 +37,14 @@ class Net(nn.Module):
         return F.log_softmax(x)
 
 
-def train_func(config):
+def setup(config):
     data_dir = config.get("data_dir", None)
     seed = config.get("seed", 42)
-    use_cuda = config.get("use_cuda", False)
     batch_size = config.get("batch_size", 64)
     use_adasum = config.get("use_adasum", False)
     lr = config.get("lr", 0.01)
     momentum = config.get("momentum", 0.5)
-    num_epochs = config.get("num_epochs", 10)
-    log_interval = config.get("log_interval", 10)
+    use_cuda = config.get("use_cuda", False)
 
     # Horovod: initialize library.
     hvd.init()
@@ -97,28 +95,50 @@ def train_func(config):
         named_parameters=model.named_parameters(),
         op=hvd.Adasum if use_adasum else hvd.Average)
 
+    return model, optimizer, train_loader, train_sampler
+
+
+def train_epoch(model, optimizer, train_sampler, train_loader, epoch,
+                log_interval, use_cuda):
+    loss = None
+    model.train()
+    # Horovod: set epoch to sampler for shuffling.
+    train_sampler.set_epoch(epoch)
+    for batch_idx, (data, target) in enumerate(train_loader):
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+        optimizer.zero_grad()
+        output = model(data)
+        loss = F.nll_loss(output, target)
+        loss.backward()
+        optimizer.step()
+        if batch_idx % log_interval == 0:
+            # Horovod: use train_sampler to determine the number of
+            # examples in this worker's partition.
+            print("Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
+                epoch, batch_idx * len(data), len(train_sampler),
+                100. * batch_idx / len(train_loader), loss.item()))
+    return loss.item() if loss else None
+
+
+# Horovod function API.
+
+
+def train_func(config):
+    num_epochs = config.get("num_epochs", 10)
+    log_interval = config.get("log_interval", 10)
+    use_cuda = config.get("use_cuda", False)
+
+    if use_cuda:
+        torch.cuda.set_device(hvd.local_rank())
+
+    model, optimizer, train_loader, train_sampler = setup(config)
+
     results = []
-    for epoch in range(1, num_epochs + 1):
-        model.train()
-        # Horovod: set epoch to sampler for shuffling.
-        train_sampler.set_epoch(epoch)
-        num_batches = len(train_loader)
-        for batch_idx, (data, target) in enumerate(train_loader):
-            if use_cuda:
-                data, target = data.cuda(), target.cuda()
-            optimizer.zero_grad()
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            optimizer.step()
-            if batch_idx % log_interval == 0:
-                # Horovod: use train_sampler to determine the number of
-                # examples in this worker's partition.
-                print("Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
-                    epoch, batch_idx * len(data), len(train_sampler),
-                    100. * batch_idx / len(train_loader), loss.item()))
-            if batch_idx == num_batches - 1:
-                results.append(loss.item())
+    for epoch in range(num_epochs):
+        loss = train_epoch(model, optimizer, train_sampler, train_loader,
+                           epoch, log_interval, use_cuda)
+        results.append(loss)
     return results
 
 
@@ -128,6 +148,27 @@ def main(num_workers, use_gpu, kwargs):
     loss_per_epoch = trainer.run(train_func, config=kwargs)
     trainer.shutdown()
     print(loss_per_epoch)
+
+
+# Horovod Class API.
+
+
+class HorovodTrainClass:
+    def __init__(self, config):
+        self.log_interval = config.get("log_interval", 10)
+        self.use_cuda = config.get("use_cuda", False)
+
+        if self.use_cuda:
+            torch.cuda.set_device(hvd.local_rank())
+
+        self.model, self.optimizer, self.train_loader, self.train_sampler = \
+            setup(config)
+
+    def train(self, epoch):
+        loss = train_epoch(self.model, self.optimizer, self.train_sampler,
+                           self.train_loader, epoch, self.log_interval,
+                           self.use_cuda)
+        return loss
 
 
 if __name__ == "__main__":

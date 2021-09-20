@@ -92,6 +92,10 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    # Call (base) PPO's config validation function first.
+    # Note that this will not touch or check on the train_batch_size=-1
+    # setting.
+    ppo.validate_config(config)
 
     # Error if run on Win.
     if sys.platform in ["win32", "cygwin"]:
@@ -127,8 +131,6 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
-    # Call (base) PPO's config validation function.
-    ppo.validate_config(config)
 
 
 def execution_plan(workers: WorkerSet,
@@ -157,9 +159,9 @@ def execution_plan(workers: WorkerSet,
     # Get setup tasks in order to throw errors on failure.
     ray.get([
         worker.setup_torch_data_parallel.remote(
-            address,
-            i,
-            len(workers.remote_workers()),
+            url=address,
+            world_rank=i,
+            world_size=len(workers.remote_workers()),
             backend=config["torch_distributed_backend"])
         for i, worker in enumerate(workers.remote_workers())
     ])

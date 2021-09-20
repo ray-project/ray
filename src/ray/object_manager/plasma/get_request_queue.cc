@@ -115,6 +115,13 @@ void GetRequestQueue::RemoveGetRequestsForClient(
 }
 
 void GetRequestQueue::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request) {
+  // If the get request is already removed, do no-op. This can happen because the boost
+  // timer is not atomic. See https://github.com/ray-project/ray/pull/15071 and
+  // https://github.com/ray-project/ray/issues/18400
+  if (get_request->IsRemoved()) {
+    return;
+  }
+
   // Remove the get request from each of the relevant object_get_requests hash
   // tables if it is present there. It should only be present there if the get
   // request timed out or if it was issued by a client that has disconnected.

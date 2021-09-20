@@ -32,6 +32,7 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 import ray.rllib.utils.events.events as events
+from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.events.events import TriggersEvent
 from ray.rllib.utils.events.observable import Observable
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
@@ -192,15 +193,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
     # If True, RLlib will learn entirely inside a normalized action space
-    # (0.0 centered with small stddev; only affecting Box components) and
-    # only unsquash actions (and clip just in case) to the bounds of
-    # env's action space before sending actions back to the env.
+    # (0.0 centered with small stddev; only affecting Box components).
+    # We will unsquash actions (and clip, just in case) to the bounds of
+    # the env's action space before sending actions back to the env.
     "normalize_actions": True,
     # If True, RLlib will clip actions according to the env's bounds
     # before sending them back to the env.
     # TODO: (sven) This option should be obsoleted and always be False.
     "clip_actions": False,
     # Whether to use "rllib" or "deepmind" preprocessors by default
+    # Set to None for using no preprocessor. In this case, the model will have
+    # to handle possibly complex observations from the environment.
     "preprocessor_pref": "deepmind",
 
     # === Customizations ===
@@ -776,8 +779,16 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             # A class specifier.
             elif "." in env:
-                self.env_creator = \
-                    lambda env_context: from_config(env, env_context)
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
+                    return env_obj
+
+                self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(
@@ -1154,7 +1165,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
 
         # Check the preprocessor and preprocess, if necessary.
         pp = local_worker.preprocessors[policy_id]
-        if type(pp).__name__ != "NoPreprocessor":
+        if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
         filtered_observation = local_worker.filters[policy_id](
             observation, update=False)
@@ -1328,6 +1339,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
@@ -1350,6 +1362,8 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to add the new policy also
+                to the evaluation WorkerSet.
 
         Returns:
             Policy: The newly added policy (the copy that got added to the
@@ -1371,7 +1385,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
 
         # Run foreach_worker fn on all workers (incl. evaluation workers).
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
         # Return newly added policy (from the local rollout worker).
@@ -1384,6 +1398,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
 
@@ -1398,6 +1413,8 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to also remove the policy from
+                the evaluation WorkerSet.
         """
 
         def fn(worker):
@@ -1408,7 +1425,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             )
 
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
@@ -1641,6 +1658,12 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                     config["input_evaluation"]))
 
         # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if config["preprocessor_pref"] is None:
+            model_config["_no_preprocessor"] = True
+
+        # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",
                                     DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
@@ -1873,7 +1896,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                     name,
                     lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
             else:
-                register_env(name, lambda config: env_object(config))
+                register_env(name, lambda cfg: env_object(cfg))
             return name
         elif env_object is None:
             return None

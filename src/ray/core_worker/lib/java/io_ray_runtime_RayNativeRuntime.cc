@@ -278,17 +278,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
   CoreWorkerProcess::Shutdown();
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
-  const auto node_id = JavaByteArrayToId<NodeID>(env, nodeId);
-  const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
-
-  auto status = CoreWorkerProcess::GetCoreWorker().SetResource(
-      native_resource_name, static_cast<double>(capacity), node_id);
-  env->ReleaseStringUTFChars(resourceName, native_resource_name);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
                                                                   jstring actor_name,

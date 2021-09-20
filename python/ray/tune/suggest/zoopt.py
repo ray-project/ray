@@ -216,7 +216,7 @@ class ZOOptSearch(Searcher):
                 **self.kwargs)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)

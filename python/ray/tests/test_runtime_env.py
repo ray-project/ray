@@ -13,6 +13,7 @@ import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.validation import override_task_or_actor_runtime_env  # noqa: E501
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -122,12 +123,18 @@ from test_module.test import one
 
 
 def start_client_server(cluster, client_mode):
-    from ray._private.runtime_env.working_dir import PKG_DIR
-    if not client_mode:
-        return (cluster.address, {}, PKG_DIR)
-    ray.worker._global_node._ray_params.ray_client_server_port = "10003"
-    ray.worker._global_node.start_ray_client_server()
-    return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
+    env = {}
+    if client_mode:
+        ray.worker._global_node._ray_params.ray_client_server_port = "10003"
+        ray.worker._global_node.start_ray_client_server()
+        address = "localhost:10003"
+        env["USE_RAY_CLIENT"] = "1"
+    else:
+        address = cluster.address
+
+    runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
+
+    return address, env, runtime_env_dir
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -206,7 +213,7 @@ The following test cases are related with runtime env. It following these steps
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_empty_working_dir(ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     env["EXIT_AFTER_INIT"] = "1"
     with tempfile.TemporaryDirectory() as working_dir:
         runtime_env = f"""{{
@@ -224,7 +231,7 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     env["EXIT_AFTER_INIT"] = "1"
 
     runtime_env = "{ 'working_dir': 10 }"
@@ -260,7 +267,7 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     # Setup runtime env here
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
@@ -269,7 +276,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     print(out)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
@@ -277,7 +284,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     # Testing runtime env with working_dir
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
@@ -285,7 +292,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
@@ -293,7 +300,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_module(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     # test runtime_env iwth py_modules
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     # Execute the following cmd in driver with runtime_env
@@ -301,7 +308,7 @@ def test_two_node_module(two_node_cluster, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -310,7 +317,7 @@ def test_two_node_local_file(two_node_cluster, working_dir, client_mode):
     with open(os.path.join(working_dir, "test_file"), "w") as f:
         f.write("1")
     cluster, _ = two_node_cluster
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     # test runtime_env iwth working_dir
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
@@ -321,7 +328,7 @@ print(sum([int(v) for v in vals]))
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
@@ -329,7 +336,7 @@ print(sum([int(v) for v in vals]))
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
 
     create_file(working_path / "tmp_dir" / "test_1")
@@ -385,7 +392,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
 
     def create_file(p):
@@ -449,7 +456,7 @@ cache/
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
@@ -464,7 +471,7 @@ print(ray.get_runtime_context().runtime_env["working_dir"])
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
         pkg_name = working_dir_pkg.get_project_package_name(
             working_dir, [], [])
@@ -478,7 +485,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     # pinned uri will not be deleted
     print(list(kv._internal_kv_list("")))
     assert len(kv._internal_kv_list("pingcs://")) == 1
@@ -488,7 +495,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_regular_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
@@ -498,7 +505,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
@@ -506,7 +513,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
@@ -518,15 +525,14 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert out.strip().split()[-1] == "1000"
     # It's a detached actors, so it should still be there
     assert len(kv._internal_kv_list("gcs://")) == 1
-    assert len(list(Path(PKG_DIR).iterdir())) == 2
-    pkg_dir = [f for f in Path(PKG_DIR).glob("*") if f.is_dir()][0]
-    import sys
+    assert len(list(Path(runtime_env_dir).iterdir())) == 2
+    pkg_dir = [f for f in Path(runtime_env_dir).glob("*") if f.is_dir()][0]
     sys.path.insert(0, str(pkg_dir))
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)
     time.sleep(5)
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
@@ -535,7 +541,7 @@ def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
     # start job_config=None
     # start job_config=something
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    address, env, runtime_env_dir = start_client_server(cluster, True)
     runtime_env = None
     # To make the first one hanging there
     execute_statement = """
@@ -561,7 +567,7 @@ def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
     # start job_config=something
     # start job_config=None
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    address, env, runtime_env_dir = start_client_server(cluster, True)
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     # To make the first one hanging there
     execute_statement = """
@@ -586,7 +592,7 @@ def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
     # start job_config=something
     # start job_config=something else
     cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    address, env, runtime_env_dir = start_client_server(cluster, True)
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     # To make the first one hanging ther
     execute_statement = """
@@ -622,7 +628,7 @@ def one():
         cluster = Cluster()
         cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
-        (address, env, PKG_DIR) = start_client_server(cluster, True)
+        address, env, runtime_env_dir = start_client_server(cluster, True)
         script = f"""
 import ray
 import ray.util
@@ -870,20 +876,27 @@ def test_no_spurious_worker_startup(shutdown_only):
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() > 0)
+    wait_for_condition(
+        lambda: get_num_workers() is not None and get_num_workers() > 0)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
     # If any workers were unnecessarily started during the initial env
-    # installation, they will bypass the runtime env setup hook because the
-    # created env will have been cached and should be added to num_workers
+    # installation, they will bypass the runtime env setup hook (because the
+    # created env will have been cached) and should be added to num_workers
     # within a few seconds.  Adjusting the default update period for
     # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
     # so just check it for the next 10 seconds (the default period).
-    for i in range(100):
+    start = time.time()
+    got_num_workers = False
+    while time.time() - start < 10:
         # Check that no more workers were started.
-        assert get_num_workers() <= 1
+        num_workers = get_num_workers()
+        if num_workers is not None:
+            got_num_workers = True
+            assert num_workers <= 1
         time.sleep(0.1)
+    assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -929,6 +942,46 @@ def test_large_file_error(shutdown_only):
             ray.init(runtime_env={"working_dir": "."})
 
         os.chdir(old_dir)
+
+
+class TestOverrideTaskOrActorRuntimeEnv:
+    def test_working_dir_in_child_invalid(self):
+        child_env = {"working_dir": "some_dir"}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+        with pytest.raises(NotImplementedError):
+            override_task_or_actor_runtime_env(child_env, parent_env)
+
+    def test_uri_inherit(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_uri_override(self):
+        child_env = {"uris": ["c", "d"]}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env["uris"] == ["c", "d"]
+        assert result_env.get("working_dir") is None
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {"uris": ["c", "d"]}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_no_mutate(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dictis passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
 
 
 if __name__ == "__main__":

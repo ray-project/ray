@@ -61,13 +61,16 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
         "shuffle_1tb_5000_partitions",
-        "non_streaming_shuffle_1tb_5000_partitions",
+        # TODO(sang): It doesn't even work without spilling
+        # as it hits the scalability limit.
+        # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
+        "many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -147,6 +150,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
