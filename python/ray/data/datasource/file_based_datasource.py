@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
-from urllib.parse import urlparse
+import urllib.parse
 
 if TYPE_CHECKING:
     import pyarrow
@@ -16,21 +16,6 @@ from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
-
-_PYARROW_FSES_NEEDING_URL_ENCODING = None
-
-
-# We delay creation of the set of pyarrow fses that need URL encoding in order
-# to delay the pyarrow import until we're sure that the user needs pyarrow.
-def _get_pyarrow_fses_needing_url_encoding():
-    import pyarrow as pa
-
-    global _PYARROW_FSES_NEEDING_URL_ENCODING
-
-    if _PYARROW_FSES_NEEDING_URL_ENCODING is None:
-        _PYARROW_FSES_NEEDING_URL_ENCODING = (pa.fs.S3FileSystem, )
-
-    return _PYARROW_FSES_NEEDING_URL_ENCODING
 
 
 @DeveloperAPI
@@ -202,8 +187,9 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
-    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
-        _resolve_filesystem_and_path
+    import pyarrow as pa
+    from pyarrow.fs import (FileSystem, PyFileSystem, FSSpecHandler,
+                            _resolve_filesystem_and_path)
     import fsspec
 
     if isinstance(paths, str):
@@ -225,24 +211,22 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
-        is_url = False
-        if filesystem is not None:
-            # If we provide a filesystem, _resolve_filesystem_and_path will not
-            # slice off the protocol from the provided URI/path when resolved.
-            is_url = _is_url(path)
-            path = _unwrap_protocol(path)
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
+        try:
+            resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+                path, filesystem)
+        except pa.lib.ArrowInvalid as e:
+            if "Cannot parse URI" in str(e):
+                resolved_filesystem, resolved_path = (
+                    _resolve_filesystem_and_path(
+                        _encode_url(path), filesystem))
+                resolved_path = _decode_url(resolved_path)
+            else:
+                raise
         if filesystem is None:
             filesystem = resolved_filesystem
+        else:
+            resolved_path = _unwrap_protocol(resolved_path)
         resolved_path = filesystem.normalize_path(resolved_path)
-        if is_url and isinstance(filesystem,
-                                 _get_pyarrow_fses_needing_url_encoding()):
-            # URL-encode the path if it's a URL.
-            # We need to URL-encode paths since pyarrow filesystems appear to
-            # not do any URL-encoding themselves. See
-            # https://github.com/ray-project/ray/issues/18414
-            resolved_path = _encode_url(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
@@ -265,6 +249,7 @@ def _expand_paths(paths: Union[str, List[str]],
             reading these files.
     """
     from pyarrow.fs import FileType
+
     expanded_paths = []
     file_infos = []
     for path in paths:
@@ -318,20 +303,22 @@ def _expand_directory(path: str,
 
 
 def _is_url(path) -> bool:
-    return urlparse(path).scheme != ""
+    return urllib.parse.urlparse(path).scheme != ""
 
 
 def _encode_url(path):
-    from urllib.parse import quote
+    return urllib.parse.quote(path, safe="/:")
 
-    return quote(path)
+
+def _decode_url(path):
+    return urllib.parse.unquote(path)
 
 
 def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
-    parsed = urlparse(path)
+    parsed = urllib.parse.urlparse(path)
     return parsed.netloc + parsed.path
 
 

@@ -1,5 +1,7 @@
+import itertools
 import math
-from typing import TypeVar, List, Optional
+import os
+from typing import TypeVar, List, Optional, Dict, Any
 
 import numpy as np
 
@@ -17,19 +19,49 @@ def simple_shuffle(input_blocks: BlockList[T],
                    output_num_blocks: int,
                    *,
                    random_shuffle: bool = False,
-                   random_seed: Optional[int] = None) -> BlockList[T]:
+                   random_seed: Optional[int] = None,
+                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
+                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None
+                   ) -> BlockList[T]:
+    # Check for spread resource labels in environment variable, and use
+    # the given labels for round-robin resource-based scheduling.
+    shuffle_spread_custom_resource_labels = os.getenv(
+        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS", None)
+    if shuffle_spread_custom_resource_labels is not None:
+        shuffle_spread_custom_resource_labels = (
+            shuffle_spread_custom_resource_labels.split(","))
+        round_robin_resource_provider = itertools.cycle(
+            map(lambda resource: {resource: 0.001},
+                shuffle_spread_custom_resource_labels))
+    else:
+        # If no round-robin resource provider given, yield an empty
+        # dictionary.
+        round_robin_resource_provider = itertools.repeat({})
+    # Create separate resource iterators for the map and reduce stages.
+    map_resource_iter, reduce_resource_iter = itertools.tee(
+        round_robin_resource_provider, 2)
+    if map_ray_remote_args is None:
+        map_ray_remote_args = {}
+    if reduce_ray_remote_args is None:
+        reduce_ray_remote_args = {}
     input_num_blocks = len(input_blocks)
 
-    shuffle_map = cached_remote_fn(_shuffle_map).options(
-        num_returns=output_num_blocks)
-    shuffle_reduce = cached_remote_fn(_shuffle_reduce, num_returns=2)
+    shuffle_map = cached_remote_fn(_shuffle_map)
+    shuffle_reduce = cached_remote_fn(_shuffle_reduce)
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
     shuffle_map_out = [
-        shuffle_map.remote(block, i, output_num_blocks, random_shuffle,
-                           random_seed) for i, block in enumerate(input_blocks)
+        shuffle_map.options(
+            **map_ray_remote_args,
+            num_returns=output_num_blocks,
+            resources=next(map_resource_iter)).remote(
+                block, i, output_num_blocks, random_shuffle, random_seed)
+        for i, block in enumerate(input_blocks)
     ]
+    # Eagerly delete the input block references in order to eagerly release
+    # the blocks' memory.
+    del input_blocks
     if output_num_blocks == 1:
         # Handle the num_returns=1 edge case which doesn't return a list.
         shuffle_map_out = [[x] for x in shuffle_map_out]
@@ -44,10 +76,16 @@ def simple_shuffle(input_blocks: BlockList[T],
     reduce_bar = ProgressBar(
         "Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
-        shuffle_reduce.remote(
-            *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
+        shuffle_reduce.options(
+            **reduce_ray_remote_args,
+            num_returns=2,
+            resources=next(reduce_resource_iter)).remote(
+                *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
+    # Eagerly delete the map block references in order to eagerly release
+    # the blocks' memory.
+    del shuffle_map_out
     new_blocks, new_metadata = zip(*shuffle_reduce_out)
     reduce_bar.block_until_complete(list(new_blocks))
     new_metadata = ray.get(list(new_metadata))

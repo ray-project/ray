@@ -86,9 +86,9 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
                    int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
-/// It is used for normal task, such as ray::Task(Plus1, 1), ray::Task(Plus, 1, 2).
+/// It is used for normal task, such as ray::Task(Plus1).Remote(1),
+/// ray::Task(Plus).Remote(1, 2).
 /// \param[in] func The function to be remote executed.
-/// \param[in] args The function arguments passed by a value or ObjectRef.
 /// \return TaskCaller.
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func);
