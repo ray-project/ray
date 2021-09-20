@@ -18,8 +18,8 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_placeholder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
+    TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -750,12 +750,13 @@ class TFMultiGPUTowerStack:
             build_graph=None,
             grad_norm_clipping=None,
             # Use only `policy` argument from here on.
-            policy=None,
+            policy: TFPolicy = None,
     ):
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
-            policy: The policy object that this tower stack belongs to.
+            policy (TFPolicy): The TFPolicy object that this tower stack
+                belongs to.
         """
         # Obsoleted usage, use only `policy` arg from here on.
         if policy is None:
@@ -770,8 +771,8 @@ class TFMultiGPUTowerStack:
             self.max_per_device_batch_size = max_per_device_batch_size
             self.policy_copy = build_graph
         else:
-            self.policy = policy
-            self.optimizers = self.policy._optimizers
+            self.policy: TFPolicy = policy
+            self.optimizers: List[LocalOptimizer] = self.policy._optimizers
             self.devices = self.policy.devices
             self.max_per_device_batch_size = \
                 (max_per_device_batch_size or
@@ -817,28 +818,62 @@ class TFMultiGPUTowerStack:
                 self._setup_device(tower_i, device, device_placeholders,
                                    len(input_placeholders)))
 
-        avg = average_gradients([t.grads for t in self._towers])
-        if grad_norm_clipping:
-            clipped = []
-            for grad, _ in avg:
-                clipped.append(grad)
-            clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
-            for i, (grad, var) in enumerate(avg):
-                avg[i] = (clipped[i], var)
+        if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
+            avgs = []
+            for i, optim in enumerate(self.optimizers):
+                avg = average_gradients([t.grads[i] for t in self._towers])
+                if grad_norm_clipping:
+                    clipped = []
+                    for grad, _ in avg:
+                        clipped.append(grad)
+                    clipped, _ = tf.clip_by_global_norm(
+                        clipped, grad_norm_clipping)
+                    for i, (grad, var) in enumerate(avg):
+                        avg[i] = (clipped[i], var)
+                avgs.append(avg)
 
-        # gather update ops for any batch norm layers. TODO(ekl) here we will
-        # use all the ops found which won't work for DQN / DDPG, but those
-        # aren't supported with multi-gpu right now anyways.
-        self._update_ops = tf1.get_collection(
-            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        for op in shared_ops:
-            self._update_ops.remove(op)  # only care about tower update ops
-        if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
+            # Gather update ops for any batch norm layers.
+            # TODO(ekl) here we
+            #  will se all the ops found which won't work for DQN / DDPG, but
+            #  those aren't supported with multi-gpu right now anyways.
+            self._update_ops = tf1.get_collection(
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            for op in shared_ops:
+                self._update_ops.remove(op)  # only care about tower update ops
+            if self._update_ops:
+                logger.debug("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
 
-        with tf1.control_dependencies(self._update_ops):
-            self._train_op = self.optimizer.apply_gradients(avg)
+            with tf1.control_dependencies(self._update_ops):
+                self._train_op = tf.group([
+                    o.apply_gradients(a)
+                    for o, a in zip(self.optimizers, avgs)
+                ])
+        else:
+            avg = average_gradients([t.grads for t in self._towers])
+            if grad_norm_clipping:
+                clipped = []
+                for grad, _ in avg:
+                    clipped.append(grad)
+                clipped, _ = tf.clip_by_global_norm(clipped,
+                                                    grad_norm_clipping)
+                for i, (grad, var) in enumerate(avg):
+                    avg[i] = (clipped[i], var)
+
+            # Gather update ops for any batch norm layers.
+            # TODO(ekl) here we
+            #  will se all the ops found which won't work for DQN / DDPG, but
+            #  those aren't supported with multi-gpu right now anyways.
+            self._update_ops = tf1.get_collection(
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            for op in shared_ops:
+                self._update_ops.remove(op)  # only care about tower update ops
+            if self._update_ops:
+                logger.debug("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+
+            with tf1.control_dependencies(self._update_ops):
+                self._train_op = self.optimizers[0].apply_gradients(avg)
 
     def load_data(self, sess, inputs, state_inputs):
         """Bulk loads the specified inputs into device memory.

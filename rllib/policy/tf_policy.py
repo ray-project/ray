@@ -367,8 +367,7 @@ class TFPolicy(Policy):
         else:
             self._grads_and_vars = [
                 (g, v)
-                for (g,
-                     v) in self.gradients(self._optimizer, self._loss)
+                for (g, v) in self.gradients(self._optimizer, self._loss)
                 if g is not None
             ]
             self._grads = [g for (g, v) in self._grads_and_vars]
@@ -788,9 +787,9 @@ class TFPolicy(Policy):
 
         Args:
             optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): A single
-                LocalOptimizer of a list thereof to use for gradient calculations.
-                If more than one optimizer given, the number of optimizers must
-                match the number of losses provided.
+                LocalOptimizer of a list thereof to use for gradient
+                calculations. If more than one optimizer given, the number of
+                optimizers must match the number of losses provided.
             loss (Union[TensorType, List[TensorType]]): A single loss term
                 or a list thereof to use for gradient calculations.
                 If more than one loss given, the number of loss terms must
@@ -798,8 +797,9 @@ class TFPolicy(Policy):
 
         Returns:
             Union[List[ModelGradients], List[List[ModelGradients]]]: List of
-                ModelGradients (grads and vars OR just grads) OR List of List of
-                ModelGradients in case we have more than one optimizer/loss.
+                ModelGradients (grads and vars OR just grads) OR List of List
+                of ModelGradients in case we have more than one
+                optimizer/loss.
         """
         optimizers = force_list(optimizer)
         losses = force_list(loss)
