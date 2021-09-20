@@ -202,6 +202,8 @@ struct Node {
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
+  const bool &GetRemovalStatus() const { return marked_for_removal_; }
+
  private:
   /// The resource information according to the last heartbeat reported by
   /// this node.
@@ -216,6 +218,8 @@ struct Node {
   /// make sure that our local view does not skew too much from the actual
   /// resources when light heartbeats are enabled.
   NodeResources local_view_;
+   /// Added to check if node is marked for removal
+  bool marked_for_removal_ = false;
 };
 
 /// \request Conversion result to a ResourceRequest data structure.

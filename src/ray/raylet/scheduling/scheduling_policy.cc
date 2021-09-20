@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/scheduling_policy.h"
+//Added for logger
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -29,6 +31,7 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   {
     // Make sure the local node is at the front of the list so that 1. It's first in
     // traversal order. 2. It's easy to avoid sorting it.
+    RAY_LOG(INFO) << "changes for adding local node -- starts";
     round.push_back(local_node_id);
     for (const auto &pair : nodes) {
       if (pair.first != local_node_id) {
@@ -54,7 +57,10 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
     const auto &it = nodes.find(node_id);
     RAY_CHECK(it != nodes.end());
     const auto &node = it->second;
-    if (!node.GetLocalView().IsFeasible(resource_request)) {
+    //added check for removal status
+    //TODO (asm582): check if we can add filtered alive nodes only before sending to HybridPolicy
+    //method
+    if (!node.GetRemovalStatus() && !node.GetLocalView().IsFeasible(resource_request)) {
       continue;
     }
 
