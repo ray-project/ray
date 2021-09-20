@@ -291,8 +291,7 @@ def build_tf_policy(
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     return compute_gradients_fn(self, optimizers, losses)
                 else:
-                    return compute_gradients_fn(
-                        self, optimizers[0], losses[0])
+                    return compute_gradients_fn(self, optimizers[0], losses[0])
             else:
                 return base.gradients(self, optimizers, losses)
 

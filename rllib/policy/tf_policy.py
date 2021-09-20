@@ -348,12 +348,12 @@ class TFPolicy(Policy):
         else:
             self._losses = losses
         # Backward compatibility.
-        self._loss = self._losses[0]
+        self._loss = self._losses[0] if self.losses is not None else None
 
         if not self._optimizers:
             self._optimizers = force_list(self.optimizer())
             # Backward compatibility.
-            self._optimizer = self._optimizers[0]
+            self._optimizer = self._optimizers[0] if self._optimizers else None
 
         # Supporting more than one loss/optimizer.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
@@ -389,7 +389,7 @@ class TFPolicy(Policy):
                 self._apply_op = self.build_apply_op(
                     optimizer=self._optimizers
                     if self.config["_tf_policy_handles_more_than_one_loss"]
-                    else self._optimizers[0],
+                    else self._optimizer,
                     grads_and_vars=self._grads_and_vars)
 
         if log_once("loss_used"):
