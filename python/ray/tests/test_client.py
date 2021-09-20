@@ -480,6 +480,22 @@ def test_serializing_exceptions(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_invalid_task(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote(runtime_env="invalid value")
+        def f():
+            return 1
+
+        # No exception on making the remote call.
+        ref = f.remote()
+
+        # Exception during scheduling will be raised on ray.get()
+        with pytest.raises(Exception):
+            ray.get(ref)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
