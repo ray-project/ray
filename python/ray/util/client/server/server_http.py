@@ -2,42 +2,17 @@ from ray.util.client.server.server import create_ray_handler
 import uvicorn
 from fastapi import FastAPI
 
+import os
 import uuid
 import logging
-from concurrent import futures
-import grpc
-import base64
-from collections import defaultdict
-import queue
-import pickle
 
-import threading
-from typing import Dict
-from typing import Set
-from typing import Optional
-from typing import Callable
-from ray import cloudpickle
-from ray.job_config import JobConfig
-import ray
-import ray.state
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import time
-import inspect
-import json
-from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
-                                    CLIENT_SERVER_MAX_THREADS)
-from ray.util.client.server.proxier import serve_proxier
-from ray.util.client.server.server_pickler import convert_from_arg
-from ray.util.client.server.server_pickler import dumps_from_server
-from ray.util.client.server.server_pickler import loads_from_client
-from ray.util.client.server.dataservicer import DataServicer
-from ray.util.client.server.logservicer import LogstreamServicer
-from ray.util.client.server.server_stubs import current_server
 from ray.util.client.server.background.job_runner import BackgroundJobRunner
 from ray.ray_constants import env_integer
-from ray.util.placement_group import PlacementGroup
-from ray._private.client_mode_hook import disable_client_hook
+
+import yaml
+from ray.experimental.packaging import load_package
+from ray._private.runtime_env import working_dir as working_dir_pkg
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +29,61 @@ async def read_root():
     actor.run_background_job.remote(
         command="sleep 1 && echo 'hello' && echo 'lmfao' > /tmp/test_file && sleep 100", self_handle=actor
     )
+
+    return {"yoo": "success"}
+
+@app.get("/submit/{yaml_config_path}")
+async def submit(yaml_config_path: str):
+    # Remote yaml file path on github
+    # config_path = load_package._download_from_github_if_needed(yaml_config_path)
+
+    config_path = "/Users/jiaodong/Workspace/ray/python/ray/experimental/job/example_job/job_config.yaml"
+
+    config = yaml.safe_load(open(config_path).read())
+    runtime_env = config["runtime_env"]
+    # working_dir = runtime_env["working_dir"]
+    working_dir = os.path.abspath(os.path.dirname(config_path))
+    # Uploading working_dir to GCS
+    pkg_name = working_dir_pkg.get_project_package_name(
+            working_dir=working_dir, py_modules=[], excludes=[])
+    pkg_uri = working_dir_pkg.Protocol.GCS.value + "://" + pkg_name
+
+    def do_register_package():
+        if not working_dir_pkg.package_exists(pkg_uri):
+            tmp_path = os.path.join(load_package._pkg_tmp(), "_tmp{}".format(pkg_name))
+            working_dir_pkg.create_project_package(
+                working_dir=working_dir,
+                py_modules=[],
+                excludes=[],
+                output_path=tmp_path)
+            # Ignore GC for prototype
+            working_dir_pkg.push_package(pkg_uri, tmp_path)
+            if not working_dir_pkg.package_exists(pkg_uri):
+                raise RuntimeError(
+                    "Failed to upload package {}".format(pkg_uri))
+
+    if ray.is_initialized():
+        do_register_package()
+    else:
+        ray.worker._post_init_hooks.append(do_register_package)
+    runtime_env["uris"] = [pkg_uri]
+
+    print(f"runtime_env: {runtime_env}")
+
+    command = config["command"]
+
+    namespace = f"bg_{str(uuid.uuid4())}"
+
+    actor = BackgroundJobRunner.options(
+        namespace=namespace,
+        lifetime="detached",
+        name="_background_actor").remote()
+
+    job_handle = actor.run_background_job.remote(
+        command=command, self_handle=actor
+    )
+
+    return {"job_handle": str(job_handle)}
 
 
 def main():
