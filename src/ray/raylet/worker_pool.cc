@@ -963,6 +963,8 @@ void WorkerPool::TriggerAsyncCallbacksForFailedWorkerStart(
     // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
     // startup concurrency maxed out or job not started.
     auto &task = waiting_tasks.back();
+    RAY_LOG(DEBUG) << "Failing PopWorker for task " << task.task_id << " with error "
+                   << static_cast<int>(status);
     PopWorkerCallbackAsync(std::move(task.callback), nullptr, status);
     waiting_tasks.pop_back();
   }
