@@ -15,7 +15,7 @@ from ray.serve.config import BackendConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
 from ray.serve.version import BackendVersion, VersionedReplica
@@ -75,7 +75,7 @@ class ActorReplicaWrapper:
         self._backend_tag = backend_tag
 
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
         self._actor_resources = None
         self._health_check_ref = None
 
@@ -87,13 +87,13 @@ class ActorReplicaWrapper:
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_ready_obj_ref"]
-        del clean_dict["_drain_obj_ref"]
+        del clean_dict["_graceful_shutdown_ref"]
         return clean_dict
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
 
     @property
     def replica_tag(self) -> str:
@@ -164,8 +164,8 @@ class ActorReplicaWrapper:
             **backend_info.replica_config.ray_actor_options).remote(
                 self.backend_tag, self.replica_tag,
                 backend_info.replica_config.init_args,
-                backend_info.backend_config, version, self._controller_name,
-                self._detached)
+                backend_info.backend_config.to_proto_bytes(), version,
+                self._controller_name, self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
@@ -247,7 +247,7 @@ class ActorReplicaWrapper:
         """Request the actor to exit gracefully."""
         try:
             handle = ray.get_actor(self._actor_name)
-            self._drain_obj_ref = handle.drain_pending_queries.remote()
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
 
@@ -255,7 +255,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
+            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
             stopped = len(ready) == 1
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -686,7 +686,7 @@ class BackendState:
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(
             (LongPollNamespace.BACKEND_CONFIGS, self._name),
-            self._target_info.backend_config,
+            self._target_info.backend_config.to_proto_bytes(),
         )
 
     def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
@@ -1140,7 +1140,7 @@ class BackendStateManager:
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
+                 kv_store: KVStoreBase, long_poll_host: LongPollHost,
                  goal_manager: AsyncGoalManager,
                  all_current_actor_names: List[str]):
 
