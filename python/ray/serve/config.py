@@ -7,10 +7,46 @@ import pydantic
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
-from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
+from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
+                                           AutoscalingConfig as
+                                           AutoscalingConfigProto)
 from ray.serve.generated.serve_pb2 import BackendLanguage
 
 from ray import cloudpickle as cloudpickle
+
+
+class AutoscalingConfig(BaseModel):
+    # Publicly exposed options
+    min_replicas: int
+    max_replicas: int
+    target_num_ongoing_requests_per_replica: int = 1
+
+    # Private options below
+
+    # Metrics scraping options
+    metrics_interval_s: float = 10.0
+    loop_period_s: float = 30.0
+    look_back_period_s: float = 30.0
+
+    # Internal autoscaling configuration options
+
+    # Multiplicative "gain" factor to limit scaling decisions
+    smoothing_factor: float = 1.0
+
+    # TODO(architkulkarni): implement below
+    # How long to wait before scaling down replicas
+    # downscale_delay_s: float = 600.0
+    # How long to wait before scaling up replicas
+    # upscale_delay_s: float = 30.0
+
+    # The number of replicas to start with when creating the deployment
+    # initial_replicas: int = 1
+    # The num_ongoing_requests_per_replica error ratio (desired / current)
+    # threshold for overriding `upscale_delay_s`
+    # panic_mode_threshold: float = 2.0
+
+    # TODO(architkulkarni): Add reasonable defaults
+    # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
 class BackendConfig(BaseModel):
@@ -42,6 +78,8 @@ class BackendConfig(BaseModel):
     experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
     experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
+    autoscaling_config: Optional[AutoscalingConfig] = None
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -59,8 +97,11 @@ class BackendConfig(BaseModel):
 
     def to_proto_bytes(self):
         data = self.dict()
-        if "user_config" in data:
+        if data.get("user_config"):
             data["user_config"] = pickle.dumps(data["user_config"])
+        if data.get("autoscaling_config"):
+            data["autoscaling_config"] = AutoscalingConfigProto(
+                **data["autoscaling_config"])
         return BackendConfigProto(
             is_cross_language=False,
             backend_language=BackendLanguage.PYTHON,
@@ -73,6 +114,9 @@ class BackendConfig(BaseModel):
         data = MessageToDict(proto, preserving_proto_field_name=True)
         if "user_config" in data:
             data["user_config"] = pickle.loads(proto.user_config)
+        if "autoscaling_config" in data:
+            data["autoscaling_config"] = AutoscalingConfig(
+                **data["autoscaling_config"])
         return cls(**data)
 
 

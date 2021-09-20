@@ -40,7 +40,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       client_call_manager_(main_service),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(main_service_) {}
+      pubsub_periodical_runner_(main_service_),
+      is_started_(false),
+      is_stopped_(false) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
