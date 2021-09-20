@@ -372,7 +372,6 @@ class RayAPIStub:
 
 ray = RayAPIStub()
 
-
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of
 # `from ray_client import ray` -- as the API stub
