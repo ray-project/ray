@@ -287,14 +287,14 @@ def test_auto_init_client(call_ray_start, function):
     with unittest.mock.patch.dict(os.environ,
                                   {"RAY_ADDRESS": f"ray://{address}:25036"}):
         res = function()
-        # Ensure this is not a client.connect()
+        # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
         ray.shutdown()
 
     with unittest.mock.patch.dict(os.environ,
                                   {"RAY_ADDRESS": "ray://localhost:25036"}):
         res = function()
-        # Ensure this is not a client.connect()
+        # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
 
 
