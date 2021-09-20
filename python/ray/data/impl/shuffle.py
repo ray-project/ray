@@ -1,6 +1,5 @@
 import itertools
 import math
-import os
 from typing import TypeVar, List, Optional, Dict, Any
 
 import numpy as np
@@ -15,24 +14,22 @@ from ray.data.impl.remote_fn import cached_remote_fn
 T = TypeVar("T")
 
 
-def simple_shuffle(input_blocks: BlockList[T],
-                   output_num_blocks: int,
-                   *,
-                   random_shuffle: bool = False,
-                   random_seed: Optional[int] = None,
-                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
-                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None
-                   ) -> BlockList[T]:
-    # Check for spread resource labels in environment variable, and use
-    # the given labels for round-robin resource-based scheduling.
-    shuffle_spread_custom_resource_labels = os.getenv(
-        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS", None)
-    if shuffle_spread_custom_resource_labels is not None:
-        shuffle_spread_custom_resource_labels = (
-            shuffle_spread_custom_resource_labels.split(","))
+def simple_shuffle(
+        input_blocks: BlockList[T],
+        output_num_blocks: int,
+        *,
+        random_shuffle: bool = False,
+        random_seed: Optional[int] = None,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        _shuffle_spread_custom_resource_labels: Optional[List[str]] = None
+) -> BlockList[T]:
+    # use shuffle_spread_custom_resource_labels
+    # for round-robin resource-based scheduling.
+    if _shuffle_spread_custom_resource_labels is not None:
         round_robin_resource_provider = itertools.cycle(
             map(lambda resource: {resource: 0.001},
-                shuffle_spread_custom_resource_labels))
+                _shuffle_spread_custom_resource_labels))
     else:
         # If no round-robin resource provider given, yield an empty
         # dictionary.

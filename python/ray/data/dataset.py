@@ -72,6 +72,7 @@ class Dataset(Generic[T]):
         """
         self._blocks: BlockList[T] = blocks
         self._uuid = uuid4().hex
+        self._shuffle_spread_custom_resource_labels: Optional[List[str]] = None
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,
@@ -356,13 +357,20 @@ class Dataset(Generic[T]):
             self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
-            random_seed=seed)
+            random_seed=seed,
+            _shuffle_spread_custom_resource_labels=self.
+            _shuffle_spread_custom_resource_labels)
         return Dataset(new_blocks)
 
     def _move_blocks(self):
         blocks = self._blocks.copy()
         self._blocks.clear()
         return blocks
+
+    def _set_shuffle_spread_custom_resource_labels(
+            self, labels: List[str]) -> "Dataset[T]":
+        self._shuffle_spread_custom_resource_labels = labels
+        return self
 
     def split(self,
               n: int,

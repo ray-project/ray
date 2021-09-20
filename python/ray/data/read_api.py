@@ -204,7 +204,11 @@ def read_datasource(datasource: Datasource[T],
                 input_files=metadata[0].input_files,
             ))
 
-    return Dataset(block_list)
+    ds = Dataset(block_list)
+    if read_spread_custom_resource_labels:
+        ds._set_shuffle_spread_custom_resource_labels(
+            read_spread_custom_resource_labels)
+    return ds
 
 
 @PublicAPI(stability="beta")

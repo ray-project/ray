@@ -35,14 +35,6 @@ def maybe_pipeline(ds, enabled):
 
 
 @pytest.fixture
-def enable_shuffle_spread():
-    os.environ[
-        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
-    yield
-    del os.environ["RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"]
-
-
-@pytest.fixture
 def enable_read_spread():
     os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
     yield
@@ -2404,7 +2396,7 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1 != r2, (r1, r2)
 
 
-def test_random_shuffle_spread(ray_start_cluster, enable_shuffle_spread):
+def test_random_shuffle_spread(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
@@ -2421,7 +2413,9 @@ def test_random_shuffle_spread(ray_start_cluster, enable_shuffle_spread):
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
     baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    ds = ray.data.range(100, parallelism=2).\
+        _set_shuffle_spread_custom_resource_labels(["bar", "baz"]).\
+        random_shuffle()
     blocks = ds.get_blocks()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
