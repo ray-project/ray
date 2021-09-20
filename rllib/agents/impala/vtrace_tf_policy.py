@@ -253,14 +253,14 @@ def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
         if policy.config["framework"] in ["tf2", "tfe"]:
             optim = tf.keras.optimizers.Adam(policy.cur_lr)
-            if policy.config["separate_vf_optimizer"]:
-                return optim, tf.keras.optimizers.Adam(policy.config["lr_vf"])
+            if policy.config["_separate_vf_optimizer"]:
+                return optim, tf.keras.optimizers.Adam(policy.config["_lr_vf"])
         else:
             optim = tf1.train.AdamOptimizer(policy.cur_lr)
-            if policy.config["separate_vf_optimizer"]:
-                return optim, tf1.train.AdamOptimizer(policy.config["lr_vf"])
+            if policy.config["_separate_vf_optimizer"]:
+                return optim, tf1.train.AdamOptimizer(policy.config["_lr_vf"])
     else:
-        if policy.config["separate_vf_optimizer"]:
+        if policy.config["_separate_vf_optimizer"]:
             raise ValueError("RMSProp optimizer not supported for separate"
                              "vf- and policy losses yet! Set `opt_type=adam`")
 

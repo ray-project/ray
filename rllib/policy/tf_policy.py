@@ -348,7 +348,7 @@ class TFPolicy(Policy):
         else:
             self._losses = losses
         # Backward compatibility.
-        self._loss = self._losses[0] if self.losses is not None else None
+        self._loss = self._losses[0] if self._losses is not None else None
 
         if not self._optimizers:
             self._optimizers = force_list(self.optimizer())

@@ -102,10 +102,10 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff_schedule": None,
     # Set this to true to have two separate optimizers optimize the policy-
     # and value networks.
-    "separate_vf_optimizer": False,
-    # If separate_vf_optimizer is True, define separate learning rate
-    # (and possibly schedule) for the value network.
-    "lr_vf": 0.0005,
+    "_separate_vf_optimizer": False,
+    # If _separate_vf_optimizer is True, define separate learning rate
+    # for the value network.
+    "_lr_vf": 0.0005,
 
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
@@ -235,6 +235,23 @@ def validate_config(config):
         logger.warning(
             "`num_aggregation_workers` should be significantly smaller than"
             "`num_workers`! Try setting it to 0.5*`num_workers` or less.")
+
+    # If two separate optimizers/loss terms used for tf, must also set
+    # `_tf_policy_handles_more_than_one_loss` to True.
+    if config["_separate_vf_optimizer"] is True:
+        # Only supported to tf so far.
+        # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the models
+        #  to return separate sets of weights in order to create the different
+        #  torch optimizers).
+        if config["framework"] not in ["tf", "tf2", "tfe"]:
+            raise ValueError(
+                "`_separate_vf_optimizer` only supported to tf so far!")
+        if config["_tf_policy_handles_more_than_one_loss"] is False:
+            logger.warning(
+                "`_tf_policy_handles_more_than_one_loss` must be set to True, "
+                "for TFPolicy to support more than one loss term/optimizer! "
+                "Auto-setting it to True.")
+            config["_tf_policy_handles_more_than_one_loss"] = True
 
 
 # Update worker weights as they finish generating experiences.

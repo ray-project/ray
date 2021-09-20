@@ -259,7 +259,7 @@ def appo_surrogate_loss(
     # Optional vf loss (or in a separate term due to separate
     # optimizers/networks).
     loss_wo_vf = total_loss
-    if not policy.config["separate_vf_optimizer"]:
+    if not policy.config["_separate_vf_optimizer"]:
         total_loss += mean_vf_loss * policy.config["vf_loss_coeff"]
 
     # Store stats in policy for stats_fn.
@@ -272,7 +272,7 @@ def appo_surrogate_loss(
     policy._value_targets = value_targets
 
     # Return one total loss or two losses: vf vs rest (policy + kl).
-    if policy.config["separate_vf_optimizer"]:
+    if policy.config["_separate_vf_optimizer"]:
         return loss_wo_vf, mean_vf_loss
     else:
         return total_loss
