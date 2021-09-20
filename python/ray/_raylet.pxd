@@ -88,8 +88,13 @@ cdef class ObjectRef(BaseID):
 
 cdef class ClientObjectRef(ObjectRef):
     cdef:
+        object _mutex
+        object _id_future
         # ID of the Ray client that owns this reference.
         str _client_id
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -100,8 +105,13 @@ cdef class ActorID(BaseID):
 
 cdef class ClientActorRef(ActorID):
     cdef:
+        object _mutex
+        object _id_future
         # ID of the Ray client that owns this reference.
         str _client_id
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self)
 
 cdef class CoreWorker:
     cdef:
