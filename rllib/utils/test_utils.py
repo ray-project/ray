@@ -11,6 +11,7 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
+from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -416,6 +417,9 @@ def run_learning_tests_from_yaml(
                 frameworks = ["tf", "torch"]
                 e["config"]["framework"] = "tf"
 
+            e["stop"] = e["stop"] or {}
+            e["pass_criteria"] = e["pass_criteria"] or {}
+
             # For smoke-tests, we just run for n min.
             if smoke_test:
                 # 0sec for each(!) experiment/trial.
@@ -425,8 +429,10 @@ def run_learning_tests_from_yaml(
                 e["stop"]["time_total_s"] = 0
             else:
                 # We also stop early, once we reach the desired reward.
-                e["stop"]["episode_reward_mean"] = \
-                    e["pass_criteria"]["episode_reward_mean"]
+                min_reward = e.get("pass_criteria", {}).get(
+                    "episode_reward_mean")
+                if min_reward is not None:
+                    e["stop"]["episode_reward_mean"] = min_reward
 
             keys = []
             # Generate the torch copy of the experiment.
@@ -450,11 +456,12 @@ def run_learning_tests_from_yaml(
             for k_ in keys:
                 e = experiments[k_]
                 checks[k_] = {
-                    "min_reward": e["pass_criteria"]["episode_reward_mean"],
+                    "min_reward":
+                        e["pass_criteria"].get("episode_reward_mean"),
                     "min_throughput":
-                        e["pass_criteria"]["timesteps_total"] /
-                        (e["stop"]["time_total_s"] or 1.0),
-                    "time_total_s": e["stop"]["time_total_s"],
+                        e["pass_criteria"].get("timesteps_total", 0.0) /
+                        e["stop"].get("time_total_s", 1.0),
+                    "time_total_s": e["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
                 }
@@ -540,13 +547,16 @@ def run_learning_tests_from_yaml(
                 ])
 
                 throughput = timesteps_total / total_time_s
-                desired_throughput = checks[experiment]["min_throughput"]
+                desired_throughput = None
+                # TODO(Jun): Stop checking throughput for now.
+                # desired_throughput = checks[experiment]["min_throughput"]
 
                 print(f" ... Desired reward={desired_reward}; "
                       f"desired throughput={desired_throughput}")
 
                 # We failed to reach desired reward or the desired throughput.
-                if episode_reward_mean < desired_reward or \
+                if (desired_reward and
+                    episode_reward_mean < desired_reward) or \
                     (desired_throughput and
                      throughput < desired_throughput):
                     print(" ... Not successful: Actual "
