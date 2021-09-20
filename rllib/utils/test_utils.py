@@ -429,8 +429,8 @@ def run_learning_tests_from_yaml(
                 e["stop"]["time_total_s"] = 0
             else:
                 # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria", {}).get(
-                    "episode_reward_mean")
+                min_reward = e.get("pass_criteria",
+                                   {}).get("episode_reward_mean")
                 if min_reward is not None:
                     e["stop"]["episode_reward_mean"] = min_reward
 
@@ -456,11 +456,11 @@ def run_learning_tests_from_yaml(
             for k_ in keys:
                 e = experiments[k_]
                 checks[k_] = {
-                    "min_reward":
-                        e["pass_criteria"].get("episode_reward_mean"),
-                    "min_throughput":
-                        e["pass_criteria"].get("timesteps_total", 0.0) /
-                        e["stop"].get("time_total_s", 1.0),
+                    "min_reward": e["pass_criteria"].get(
+                        "episode_reward_mean"),
+                    "min_throughput": e["pass_criteria"].get(
+                        "timesteps_total", 0.0) / e["stop"].get(
+                            "time_total_s", 1.0),
                     "time_total_s": e["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
