@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-import pickle
+import cloudpickle as pickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
