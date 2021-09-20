@@ -284,10 +284,17 @@ def build_tf_policy(
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
+            optimizers = force_list(optimizer)
+            losses = force_list(loss)
+
             if compute_gradients_fn:
-                return compute_gradients_fn(self, optimizer, loss)
+                if self.config["_tf_policy_handles_more_than_one_loss"]:
+                    return compute_gradients_fn(self, optimizers, losses)
+                else:
+                    return compute_gradients_fn(
+                        self, optimizers[0], losses[0])
             else:
-                return base.gradients(self, optimizer, loss)
+                return base.gradients(self, optimizers, losses)
 
         @override(TFPolicy)
         def build_apply_op(self, optimizer, grads_and_vars):
