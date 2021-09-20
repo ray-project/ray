@@ -72,6 +72,12 @@ class GcsActorSchedulerTest : public Test {
 };
 
 TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
+  // Ensure worker is not leak in the following case:
+  //   1. Gcs start to lease a worker
+  //   2. Gcs cancel the actor
+  //   3. Gcs lease reply with a grant
+  // We'd like to test the worker got released eventually.
+  // Worker is released with actor killing
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
@@ -80,6 +86,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _))
       .WillOnce(testing::SaveArg<1>(&cb));
+  // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
   actor_scheduler->Schedule(actor);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
@@ -91,17 +98,26 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
 }
 
 TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
+  // Ensure worker is not leak in the following case:
+  //   1. Actor is in pending creation
+  //   2. Gcs push creation task to run in worker
+  //   3. Cancel the task
+  //   4. Task creating reply received
+  // We'd like to test the worker got released eventually.
+  // Worker is released with actor killing
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(actor_data);
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
+  // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
   EXPECT_CALL(*raylet_client, RequestWorkerLease(_, _, _))
       .WillOnce(testing::SaveArg<1>(&request_worker_lease_cb));
 
   std::function<void(ray::Status)> async_put_with_index_cb;
+  // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPutWithIndex(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->Schedule(actor);
@@ -111,6 +127,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
   request_worker_lease_cb(Status::OK(), reply);
 
   rpc::ClientCallback<rpc::PushTaskReply> push_normal_task_cb;
+  // Worker start to run task
   EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
       .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
   async_put_with_index_cb(Status::OK());
