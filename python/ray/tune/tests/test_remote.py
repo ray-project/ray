@@ -1,4 +1,6 @@
+import inspect
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.tune import register_trainable, run_experiments, run, choice
@@ -36,6 +38,31 @@ class RemoteTest(unittest.TestCase):
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testRemoteRunArguments(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        def mocked_run(*args, **kwargs):
+            capture_args_kwargs = (args, kwargs)
+            return run(*args, **kwargs), capture_args_kwargs
+
+        with patch("ray.tune.tune.run", mocked_run):
+            analysis, capture_args_kwargs = run(train, _remote=True)
+        args, kwargs = capture_args_kwargs
+        self.assertFalse(args)
+        kwargs.pop("run_or_experiment")
+        kwargs.pop("_remote")
+
+        default_kwargs = {
+            k: v.default
+            for k, v in inspect.signature(run).parameters.items()
+        }
+        default_kwargs.pop("run_or_experiment")
+        default_kwargs.pop("_remote")
+
+        self.assertDictEqual(kwargs, default_kwargs)
 
     def testRemoteRunWithSearcher(self):
         def train(config, reporter):
