@@ -370,6 +370,8 @@ class TorchPolicy(Policy):
                     "subclass! Make sure your `action_distribution_fn` or "
                     "`make_model_and_action_dist` return a correct "
                     "distribution class.".format(dist_class.__name__))
+            #TODO
+            print(f"dist_inputs.device={dist_inputs.device}")
             action_dist = dist_class(dist_inputs, self.model)
 
             # Get the exploration action from the forward results.

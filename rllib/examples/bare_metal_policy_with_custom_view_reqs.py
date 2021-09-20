@@ -1,10 +1,11 @@
 import argparse
 import os
-import ray
 
+import ray
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs \
     import BareMetalPolicyWithCustomViewReqs
+from ray import tune
 
 
 def get_cli_args():
@@ -15,6 +16,21 @@ def get_cli_args():
     parser.add_argument(
         "--run", default="PPO", help="The RLlib-registered algorithm to use.")
     parser.add_argument("--num-cpus", type=int, default=3)
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=200,
+        help="Number of iterations to train.")
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=100000,
+        help="Number of timesteps to train.")
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=80.0,
+        help="Reward at which we stop training.")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -51,7 +67,12 @@ if __name__ == "__main__":
         "create_env_on_driver": True,
     }
 
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
     # Train the Trainer with our policy.
-    my_trainer = BareMetalPolicyTrainer(config=config)
-    results = my_trainer.train()
+    results = tune.run(BareMetalPolicyTrainer, config=config)
     print(results)
