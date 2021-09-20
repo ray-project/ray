@@ -19,7 +19,7 @@ from ray._private.client_mode_hook import client_mode_hook
 
 
 @PublicAPI(stability="beta")
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def list_named_actors(all_namespaces: bool = False) -> List[str]:
     """List all named actors in the system.
 
