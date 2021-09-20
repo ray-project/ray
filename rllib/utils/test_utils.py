@@ -458,8 +458,8 @@ def run_learning_tests_from_yaml(
                     "min_reward": e["pass_criteria"].get(
                         "episode_reward_mean"),
                     "min_throughput": e["pass_criteria"].get(
-                        "timesteps_total", 0.0) / e["stop"].get(
-                            "time_total_s", 1.0),
+                        "timesteps_total", 0.0) /
+                    (e["stop"].get("time_total_s", 1.0) or 1.0),
                     "time_total_s": e["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
@@ -545,7 +545,7 @@ def run_learning_tests_from_yaml(
                     for t in trials_for_experiment
                 ])
 
-                throughput = timesteps_total / total_time_s
+                throughput = timesteps_total / (total_time_s or 1.0)
                 desired_throughput = None
                 # TODO(Jun): Stop checking throughput for now.
                 # desired_throughput = checks[experiment]["min_throughput"]

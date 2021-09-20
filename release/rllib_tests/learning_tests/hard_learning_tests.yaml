@@ -115,6 +115,7 @@ appo-pongnoframeskip-v4:
         model:
             dim: 42
 
+# ARS was never tested/tuned on Hopper. Maybe change to ReacherBulletEnv-v0?
 # ars-hopperbulletenv-v0:
 #    env: HopperBulletEnv-v0
 #    run: ARS
