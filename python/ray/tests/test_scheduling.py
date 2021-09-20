@@ -532,6 +532,7 @@ def build_cluster(num_cpu_nodes, num_gpu_nodes):
     return cluster, cpu_ids, gpu_ids
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu(monkeypatch):
     monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")
     n = 5
