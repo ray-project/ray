@@ -368,7 +368,7 @@ class TFPolicy(Policy):
             self._grads_and_vars = [
                 (g, v)
                 for (g,
-                     v) in self.gradients(self._optimizers[0], self._losses[0])
+                     v) in self.gradients(self._optimizer, self._loss)
                 if g is not None
             ]
             self._grads = [g for (g, v) in self._grads_and_vars]
@@ -787,24 +787,31 @@ class TFPolicy(Policy):
         """Override this for a custom gradient computation behavior.
 
         Args:
-            optimizer ():
-            loss ():
+            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): A single
+                LocalOptimizer of a list thereof to use for gradient calculations.
+                If more than one optimizer given, the number of optimizers must
+                match the number of losses provided.
+            loss (Union[TensorType, List[TensorType]]): A single loss term
+                or a list thereof to use for gradient calculations.
+                If more than one loss given, the number of loss terms must
+                match the number of optimizers provided.
 
         Returns:
             Union[List[ModelGradients], List[List[ModelGradients]]]: List of
                 ModelGradients (grads and vars OR just grads) OR List of List of
                 ModelGradients in case we have more than one optimizer/loss.
         """
+        optimizers = force_list(optimizer)
+        losses = force_list(loss)
+
         # We have more than one optimizers and loss terms.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
-            optimizers = force_list(optimizer)
-            losses = force_list(loss)
             grads = []
             for optim, loss_ in zip(optimizers, losses):
                 grads.append(optim.compute_gradients(loss_))
         # We have only one optimizer and one loss term.
         else:
-            return optimizer.compute_gradients(loss)
+            return optimizers[0].compute_gradients(losses[0])
 
     @DeveloperAPI
     def build_apply_op(
@@ -825,9 +832,10 @@ class TFPolicy(Policy):
             tf.Operation: The tf op that applies all computed gradients
                 (`grads_and_vars`) to the model(s) via the given optimizer(s).
         """
+        optimizers = force_list(optimizer)
+
         # We have more than one optimizers and loss terms.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
-            optimizers = force_list(optimizer)
             ops = []
             for i, optim in enumerate(optimizers):
                 # Specify global_step (e.g. for TD3 which needs to count the
@@ -839,7 +847,7 @@ class TFPolicy(Policy):
             return tf.group(ops)
         # We have only one optimizer and one loss term.
         else:
-            return optimizer.apply_gradients(
+            return optimizers[0].apply_gradients(
                 grads_and_vars,
                 global_step=tf1.train.get_or_create_global_step())
 
