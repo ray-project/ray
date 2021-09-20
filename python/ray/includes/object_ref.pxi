@@ -167,7 +167,16 @@ cdef class ClientObjectRef(ObjectRef):
             # disconnected at this point.
             return
         if client.ray.is_connected():
-            self._wait_for_id(timeout=10)
+            try:
+                self._wait_for_id(timeout=10)
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception in ObjectRef is ignored in destructor. "
+                    "To raise the exception, use the object reference before "
+                    "its destructor runs.")
             if not self.data.IsNil():
                 client.ray.call_release(self.id)
 

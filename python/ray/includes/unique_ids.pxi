@@ -8,6 +8,7 @@ See https://github.com/ray-project/ray/issues/3721.
 # _ID_TYPES list at the bottom of this file.
 
 from concurrent.futures import Future
+import logging
 import os
 
 from ray.includes.unique_ids cimport (
@@ -26,6 +27,8 @@ from ray.includes.unique_ids cimport (
 
 import ray
 from ray._private.utils import decode
+
+logger = logging.getLogger(__name__)
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -327,7 +330,16 @@ cdef class ClientActorRef(ActorID):
             # disconnected at this point.
             return
         if client.ray.is_connected():
-            self._wait_for_id(timeout=10)
+            try:
+                self._wait_for_id(timeout=10)
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception from actor creation is ignored in destructor. "
+                    "To raise the exception, use the actor reference before "
+                    "its destructor runs.")
             if not self.data.IsNil():
                 client.ray.call_release(self.id)
 
