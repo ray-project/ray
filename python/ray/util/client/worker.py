@@ -103,7 +103,7 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-        self._secure = secure
+        self._secure = secure or os.environ.get("RAY_USE_TLS", "0") == "1"
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
