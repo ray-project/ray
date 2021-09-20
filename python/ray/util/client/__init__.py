@@ -2,6 +2,7 @@ from typing import List, Tuple, Dict, Any, Optional
 from ray.job_config import JobConfig
 from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
                                            _explicitly_enable_client_mode)
+
 import os
 import sys
 import logging
@@ -20,7 +21,11 @@ class _ClientContext:
     def __init__(self):
         from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
-        self.client_worker = None
+        self.client_worker: "ray.util.client.worker.Worker" = None
+        # Makes client_id available after worker shuts down. Accessed from
+        # self.__getattr__().
+        self._client_id: str = None
+        self._conn_info = {}
         self._server = None
         self._connected_with_init = False
         self._inside_client_test = False
@@ -78,12 +83,13 @@ class _ClientContext:
                 _credentials=_credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
+            self._client_id = self.client_worker._client_id
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config, ray_init_kwargs)
-            conn_info = self.client_worker.connection_info()
-            self._check_versions(conn_info, ignore_version)
+            self._conn_info = self.client_worker.connection_info()
+            self._check_versions(self._conn_info, ignore_version)
             self._register_serializers()
-            return conn_info
+            return self._conn_info
         except Exception:
             self.disconnect()
             raise
@@ -142,6 +148,10 @@ class _ClientContext:
         return self.api.remote(*args, **kwargs)
 
     def __getattr__(self, key: str):
+        if key == "id":
+            return getattr(self, "_client_id")
+        if key == "worker":
+            return getattr(self, "client_worker")
         if self.is_connected():
             return getattr(self.api, key)
         elif key in ["is_initialized", "_internal_kv_initialized"]:
@@ -179,11 +189,103 @@ class _ClientContext:
 
 # All connected context will be put here
 # This struct will be guarded by a lock for thread safety
-_all_contexts = set()
+_all_contexts: Dict[str, _ClientContext] = {}
 _lock = threading.Lock()
 
 # This is the default context which is used when allow_multiple is not True
+# It is also included in _all_contexts
 _default_context = _ClientContext()
+
+
+def num_connected_contexts():
+    """Return the number of client connections active."""
+    global _lock, _all_contexts
+    with _lock:
+        return len(_all_contexts)
+
+
+class ManagedContext:
+    """
+    Basic context manager for a RayAPIStub.
+    """
+    dashboard_url: Optional[str]
+    python_version: str
+    ray_version: str
+    ray_commit: str
+    protocol_version: Optional[str]
+    _num_clients: int
+    _context_to_restore: Optional[_ClientContext]
+
+    def __init__(self, info_dict: dict, context_to_restore: _ClientContext):
+        self.dashboard_url = info_dict["dashboard_url"]
+        self.python_version = info_dict["python_version"]
+        self.ray_version = info_dict["ray_version"]
+        self.ray_commit = info_dict["ray_commit"]
+        self.protocol_version = info_dict["protocol_version"]
+        self._num_clients = info_dict["num_clients"]
+        self._context_to_restore = context_to_restore
+
+    @property
+    def id(self):
+        """Current client's ID"""
+        if self._context_to_restore is None:
+            raise ValueError("Client context has not initialized or has "
+                             "already disconnected")
+        return self._context_to_restore.id
+
+    def __enter__(self) -> "ManagedContext":
+        self._swap_context()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._disconnect_with_context(False)
+        self._swap_context()
+
+    def disconnect(self) -> None:
+        self._swap_context()
+        self._disconnect_with_context(True)
+        self._swap_context()
+
+    def _swap_context(self) -> None:
+        import ray.util.client as ray_client
+        if self._context_to_restore is not None:
+            self._context_to_restore = ray_client.ray.set_context(
+                self._context_to_restore)
+
+    def _disconnect_with_context(self, force_disconnect: bool) -> None:
+        """
+        Disconnect Ray. If it's a ray client and created with `allow_multiple`,
+        it will do nothing. For other cases this either disconnects from the
+        remote Client Server or shuts the current driver down.
+        """
+        import ray.util.client as ray_client
+        import ray.util.client_connect as ray_client_connect
+        if ray_client.ray.is_connected():
+            if ray_client.ray.is_default() or force_disconnect:
+                # This is the only client connection
+                ray_client_connect.disconnect()
+        elif ray.worker is None or ray.worker.global_worker.node is None:
+            # Already disconnected.
+            return
+        elif ray.worker.global_worker.node.is_head():
+            logger.debug(
+                "The current Ray Cluster is scoped to this process. "
+                "Disconnecting is not possible as it will shutdown the "
+                "cluster.")
+        else:
+            # This is only a driver connected to an existing cluster.
+            ray.shutdown()
+
+
+def context_from_client_id(client_id: str) -> ManagedContext:
+    """Return the client context with ID. Or raises KeyError if not found."""
+    global _lock, _all_contexts
+    with _lock:
+        ctx = _all_contexts.get(client_id)
+        if ctx is None:
+            raise ValueError(
+                f"Client {client_id} does not exist. It may have shut down.")
+        return ManagedContext(ctx._conn_info, ctx)
 
 
 class RayAPIStub:
@@ -222,20 +324,19 @@ class RayAPIStub:
         conn = self.get_context().connect(*args, **kw_args)
         global _lock, _all_contexts
         with _lock:
-            _all_contexts.add(self._cxt.handler)
+            _all_contexts[self._cxt.handler.id] = self._cxt.handler
         return conn
 
     def disconnect(self, *args, **kw_args):
         global _lock, _all_contexts, _default_context
         with _lock:
             if _default_context == self.get_context():
-                for cxt in _all_contexts:
+                for cxt in _all_contexts.values():
                     cxt.disconnect(*args, **kw_args)
-                _all_contexts = set()
+                _all_contexts = {}
             else:
                 self.get_context().disconnect(*args, **kw_args)
-            if self.get_context() in _all_contexts:
-                _all_contexts.remove(self.get_context())
+            _all_contexts.pop(self.get_context().id, None)
             if len(_all_contexts) == 0:
                 _explicitly_disable_client_mode()
 
@@ -252,32 +353,24 @@ class RayAPIStub:
         ret = self.get_context().init(*args, **kwargs)
         global _lock, _all_contexts
         with _lock:
-            _all_contexts.add(self._cxt.handler)
+            _all_contexts[self._cxt.handler.id] = self._cxt.handler
         return ret
 
     def shutdown(self, *args, **kwargs):
         global _lock, _all_contexts
         with _lock:
             if _default_context == self.get_context():
-                for cxt in _all_contexts:
+                for cxt in _all_contexts.values():
                     cxt.shutdown(*args, **kwargs)
-                _all_contexts = set()
+                _all_contexts = {}
             else:
                 self.get_context().shutdown(*args, **kwargs)
-            if self.get_context() in _all_contexts:
-                _all_contexts.remove(self.get_context())
+            _all_contexts.pop(self.get_context().id, None)
             if len(_all_contexts) == 0:
                 _explicitly_disable_client_mode()
 
 
 ray = RayAPIStub()
-
-
-def num_connected_contexts():
-    """Return the number of client connections active."""
-    global _lock, _all_contexts
-    with _lock:
-        return len(_all_contexts)
 
 
 # Someday we might add methods in this module so that someone who

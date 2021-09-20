@@ -204,5 +204,88 @@ def test_multi_cli_threading(call_ray_start):
     assert ret == [0, 1]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    indirect=True)
+def test_multi_cli_count_and_get(call_ray_start):
+    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
+    id1 = cli1.id
+    assert ray.util.client.num_connected_contexts() == 1
+
+    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+    id2 = cli2.id
+    assert ray.util.client.num_connected_contexts() == 2
+    assert id1 != id2
+
+    with ray.init("ray://localhost:25001", allow_multiple=True) as cli3:
+        id3 = cli3.id
+        assert ray.util.client.num_connected_contexts() == 3
+        assert id1 != id3
+
+    @ray.remote
+    class Actor:
+        def __init__(self, v):
+            self.v = v
+
+        def double(self):
+            return self.v * 2
+
+    with ray.util.client.context_from_client_id(id1):
+        a1 = Actor.remote(3)
+
+    with ray.util.client.context_from_client_id(id2):
+        a2 = Actor.remote(11)
+
+    with ray.util.client.context_from_client_id(id1):
+        with pytest.raises(
+                ValueError,
+                match="ClientActorHandle is not from this Ray client"):
+            a2.double.remote()
+
+        v1 = a1.double.remote()
+
+    with ray.util.client.context_from_client_id(id2):
+        with pytest.raises(
+                ValueError,
+                match="ClientActorHandle is not from this Ray client"):
+            a1.double.remote()
+
+        v2 = a2.double.remote()
+
+    with ray.util.client.context_from_client_id(id1):
+        with pytest.raises(
+                ValueError,
+                match="ClientObjectRef is not from this Ray client"):
+            ray.get(v2)
+
+        assert ray.get(v1) == 6
+
+    with ray.util.client.context_from_client_id(id2):
+        with pytest.raises(
+                ValueError,
+                match="ClientObjectRef is not from this Ray client"):
+            ray.get(v1)
+
+        assert ray.get(v2) == 22
+
+    assert ray.util.client.num_connected_contexts() == 3
+
+    with ray.util.client.context_from_client_id(id2):
+        ray.shutdown()
+    assert ray.util.client.num_connected_contexts() == 2
+
+    with ray.util.client.context_from_client_id(id1):
+        ray.shutdown()
+    assert ray.util.client.num_connected_contexts() == 1
+
+    with pytest.raises(ValueError, match="It may have shut down"):
+        with ray.util.client.context_from_client_id(id1):
+            pass
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

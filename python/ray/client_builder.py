@@ -3,7 +3,6 @@ import importlib
 import inspect
 import json
 import logging
-from dataclasses import dataclass
 import sys
 
 from typing import Any, Dict, Optional, Tuple
@@ -17,60 +16,6 @@ from ray.worker import init as ray_driver_init
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ClientContext:
-    """
-    Basic context manager for a ClientBuilder connection.
-    """
-    dashboard_url: Optional[str]
-    python_version: str
-    ray_version: str
-    ray_commit: str
-    protocol_version: Optional[str]
-    _num_clients: int
-    _context_to_restore: Optional[ray.util.client.RayAPIStub]
-
-    def __enter__(self) -> "ClientContext":
-        self._swap_context()
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self._disconnect_with_context(False)
-        self._swap_context()
-
-    def disconnect(self) -> None:
-        self._swap_context()
-        self._disconnect_with_context(True)
-        self._swap_context()
-
-    def _swap_context(self):
-        if self._context_to_restore is not None:
-            self._context_to_restore = ray.util.client.ray.set_context(
-                self._context_to_restore)
-
-    def _disconnect_with_context(self, force_disconnect: bool) -> None:
-        """
-        Disconnect Ray. If it's a ray client and created with `allow_multiple`,
-        it will do nothing. For other cases this either disconnects from the
-        remote Client Server or shuts the current driver down.
-        """
-        if ray.util.client.ray.is_connected():
-            if ray.util.client.ray.is_default() or force_disconnect:
-                # This is the only client connection
-                ray.util.client_connect.disconnect()
-        elif ray.worker.global_worker.node is None:
-            # Already disconnected.
-            return
-        elif ray.worker.global_worker.node.is_head():
-            logger.debug(
-                "The current Ray Cluster is scoped to this process. "
-                "Disconnecting is not possible as it will shutdown the "
-                "cluster.")
-        else:
-            # This is only a driver connected to an existing cluster.
-            ray.shutdown()
 
 
 class ClientBuilder:
@@ -110,7 +55,7 @@ class ClientBuilder:
         self._job_config.set_ray_namespace(namespace)
         return self
 
-    def connect(self) -> ClientContext:
+    def connect(self) -> ray.util.client.ManagedContext:
         """
         Begin a connection to the address passed in via ray.client(...).
 
@@ -136,24 +81,19 @@ class ClientBuilder:
         if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
 
-        client_info_dict = ray.util.client_connect.connect(
+        ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
-        cxt = ClientContext(
-            dashboard_url=dashboard_url,
-            python_version=client_info_dict["python_version"],
-            ray_version=client_info_dict["ray_version"],
-            ray_commit=client_info_dict["ray_commit"],
-            protocol_version=client_info_dict["protocol_version"],
-            _num_clients=client_info_dict["num_clients"],
-            _context_to_restore=ray.util.client.ray.get_context())
+        ctx = ray.util.client.ray.get_context()
+        ctx._conn_info["dashboard_url"] = dashboard_url
+        managed_ctx = ray.util.client.ManagedContext(ctx._conn_info, ctx)
         if self._allow_multiple_connections:
             ray.util.client.ray.set_context(old_ray_cxt)
-        return cxt
+        return managed_ctx
 
     def _fill_defaults_from_env(self):
         # Check environment variables for default values
@@ -204,20 +144,22 @@ class ClientBuilder:
 
 
 class _LocalClientBuilder(ClientBuilder):
-    def connect(self) -> ClientContext:
+    def connect(self) -> ray.util.client.ManagedContext:
         """
         Begin a connection to the address passed in via ray.client(...)
         """
         connection_dict = ray.init(
             address=self.address, job_config=self._job_config)
-        return ClientContext(
-            dashboard_url=connection_dict["webui_url"],
-            python_version="{}.{}.{}".format(
-                sys.version_info[0], sys.version_info[1], sys.version_info[2]),
-            ray_version=ray.__version__,
-            ray_commit=ray.__commit__,
-            protocol_version=None,
-            _num_clients=1,
+        return ray.util.client.ManagedContext(
+            dict(
+                dashboard_url=connection_dict["webui_url"],
+                python_version="{}.{}.{}".format(sys.version_info[0],
+                                                 sys.version_info[1],
+                                                 sys.version_info[2]),
+                ray_version=ray.__version__,
+                ray_commit=ray.__commit__,
+                protocol_version=None,
+                num_clients=1),
             _context_to_restore=None)
 
 
