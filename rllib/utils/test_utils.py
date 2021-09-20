@@ -11,7 +11,6 @@ import yaml
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
-from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -515,11 +514,11 @@ def run_learning_tests_from_yaml(
 
             # Error: Increase failure count and repeat.
             if any(t.status == "ERROR" for t in trials_for_experiment):
-                print(f" ... ERROR.")
+                print(" ... ERROR.")
                 checks[experiment]["failures"] += 1
             # Smoke-tests always succeed.
             elif smoke_test:
-                print(f" ... SMOKE TEST (mark ok).")
+                print(" ... SMOKE TEST (mark ok).")
                 checks[experiment]["passed"] = True
                 del experiments_to_run[experiment]
             # Experiment finished: Check reward achieved and timesteps done
