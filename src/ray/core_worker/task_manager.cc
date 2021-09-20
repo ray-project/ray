@@ -372,9 +372,9 @@ bool TaskManager::PendingTaskFailed(
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
-          RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
         } else {
-          RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
         }
       }
     }
