@@ -185,7 +185,7 @@ def run(args, parser):
                 if isinstance(path, list):
                     return [patch_path(i) for i in path]
                 elif isinstance(path, dict):
-                    return {k: patch_path(v) for k, v in path.items()}
+                    return {patch_path(k): patch_path(v) for k, v in path.items()}
                 elif isinstance(path, str):
                     if os.path.exists(path):
                         return path
