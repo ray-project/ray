@@ -10,6 +10,7 @@ from ray.workflow import storage
 from typing import Any, Dict, Generator, List, Optional, Tuple, TYPE_CHECKING
 
 from collections import ChainMap
+import io
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -181,9 +182,16 @@ async def dump_to_storage(paths: List[str],
     key = storage.make_key(*paths)
 
     # TODO Use open()
-    with storage.open(key) as f:
+    # with wf_storage.open(key, "w") as f:
+    #     pickler = ObjectRefPickler(f)
+    #     pickler.dump(obj)
+
+    with io.BytesIO() as f:
         pickler = ObjectRefPickler(f)
         pickler.dump(obj)
+        f.seek(0)
+        task = storage.put(key, f.read())
+        tasks.append(task)
 
     await asyncio.gather(*tasks)
 

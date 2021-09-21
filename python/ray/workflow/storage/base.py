@@ -1,6 +1,5 @@
 import abc
 from abc import abstractmethod
-import io
 from typing import Any, List
 
 
@@ -46,14 +45,6 @@ class Storage(metaclass=abc.ABCMeta):
 
         Returns:
             The object from storage.
-        """
-
-    @abstractmethod
-    def open(self, key: str) -> io.BufferedIOBase:
-        """Returns a file like object that conforms to io.BufferedIOBase.
-
-        Args:
-            key: The key of the object.
         """
 
     @abstractmethod

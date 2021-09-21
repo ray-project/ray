@@ -1,6 +1,5 @@
 import contextlib
 import itertools
-import io
 import json
 import shutil
 import pathlib
@@ -34,35 +33,7 @@ def _open_atomic(path: pathlib.Path, mode="r"):
         raise ValueError("Atomic open does not support appending.")
     # backup file is hidden by default
     backup_path = path.with_name(f".{path.name}.backup")
-
-    if "w" in mode:  # overwrite mode
-        # backup existing file
-        if path.exists():
-            # remove an even older backup file
-            if backup_path.exists():
-                backup_path.unlink()
-            path.rename(backup_path)
-        tmp_new_fn = path.with_suffix(f".{path.name}.{uuid.uuid4().hex}")
-        if not tmp_new_fn.parent.exists():
-            tmp_new_fn.parent.mkdir(parents=True)
-        f = open(tmp_new_fn, mode)
-        write_ok = True
-        try:
-            yield f
-        except Exception:
-            write_ok = False
-            raise
-        finally:
-            f.close()
-            if write_ok:
-                tmp_new_fn.rename(path)
-                # cleanup the backup file
-                if backup_path.exists():
-                    backup_path.unlink()
-            else:
-                # remove file if writing failed
-                tmp_new_fn.unlink()
-    elif "r" in mode:  # read mode
+    if "r" in mode:  # read mode
         if _file_exists(path):
             f = open(path, mode)
         else:
@@ -89,6 +60,33 @@ def _open_atomic(path: pathlib.Path, mode="r"):
             if write_ok:
                 # "commit" file if writing succeeded
                 tmp_new_fn.rename(path)
+            else:
+                # remove file if writing failed
+                tmp_new_fn.unlink()
+    elif "w" in mode:  # overwrite mode
+        # backup existing file
+        if path.exists():
+            # remove an even older backup file
+            if backup_path.exists():
+                backup_path.unlink()
+            path.rename(backup_path)
+        tmp_new_fn = path.with_suffix(f".{path.name}.{uuid.uuid4().hex}")
+        if not tmp_new_fn.parent.exists():
+            tmp_new_fn.parent.mkdir(parents=True)
+        f = open(tmp_new_fn, mode)
+        write_ok = True
+        try:
+            yield f
+        except Exception:
+            write_ok = False
+            raise
+        finally:
+            f.close()
+            if write_ok:
+                tmp_new_fn.rename(path)
+                # cleanup the backup file
+                if backup_path.exists():
+                    backup_path.unlink()
             else:
                 # remove file if writing failed
                 tmp_new_fn.unlink()
@@ -150,9 +148,6 @@ class FilesystemStorageImpl(Storage):
         else:
             with _open_atomic(pathlib.Path(key), "rb") as f:
                 return ray.cloudpickle.load(f)
-
-    def open(self, key: str) -> io.BufferedIOBase:
-        return _open_atomic(pathlib.Path(key), "rwb")
 
     async def delete_prefix(self, key_prefix: str) -> None:
         path = pathlib.Path(key_prefix)
