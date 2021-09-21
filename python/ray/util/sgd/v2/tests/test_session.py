@@ -104,7 +104,7 @@ def test_checkpoint():
         assert next.type == TrainingResultType.CHECKPOINT
         assert next.data["epoch"] == expected
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     validate_zero(0)
@@ -118,7 +118,7 @@ def test_checkpoint():
         assert next.type == TrainingResultType.CHECKPOINT
         assert next.data == {}
 
-    init_session(training_func=train, world_rank=1)
+    init_session(training_func=train, world_rank=1, local_rank=1)
     session = get_session()
     session.start()
     validate_nonzero()
@@ -137,7 +137,7 @@ def test_load_checkpoint_after_save():
             checkpoint = load_checkpoint()
             assert checkpoint["epoch"] == i
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     for i in range(2):
@@ -153,7 +153,7 @@ def test_locking():
         import _thread
         _thread.interrupt_main()
 
-    init_session(training_func=train_1, world_rank=0)
+    init_session(training_func=train_1, world_rank=0, local_rank=0)
     session = get_session()
     with pytest.raises(KeyboardInterrupt):
         session.start()
@@ -164,7 +164,7 @@ def test_locking():
             report(loss=i)
         train_1()
 
-    init_session(training_func=train_2, world_rank=0)
+    init_session(training_func=train_2, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     time.sleep(3)
