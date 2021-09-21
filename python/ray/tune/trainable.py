@@ -155,8 +155,12 @@ class Trainable:
         return self._local_ip
 
     def is_actor(self):
-        actor_id = ray.worker.global_worker.actor_id
-        return actor_id != actor_id.nil()
+        try:
+            actor_id = ray.worker.global_worker.actor_id
+            return actor_id != actor_id.nil()
+        except Exception:
+            # If global_worker is not instantiated, we're not in an actor
+            return False
 
     def train_buffered(self,
                        buffer_time_s: float,
