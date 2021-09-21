@@ -32,7 +32,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   void ScheduleUnplacedBundles(
       std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> failure_handler,
+      std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>, bool)> failure_handler,
       std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> success_handler)
       override {
     absl::MutexLock lock(&mutex_);
@@ -510,6 +510,39 @@ TEST_F(GcsPlacementGroupManagerTest,
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request,
+                         [&registered_placement_group_count](const Status &status) {
+                           ++registered_placement_group_count;
+                         });
+
+  ASSERT_EQ(registered_placement_group_count, 1);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  // Mark it non-retryable.
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group, false);
+
+  // Schedule twice to make sure it will not be scheduled afterward.
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
+
+  // Add a node and make sure it will reschedule the infeasible placement group.
+  const auto &node_id = NodeID::FromRandom();
+  gcs_placement_group_manager_->OnNodeAdd(node_id);
+
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  OnPlacementGroupCreationSuccess(placement_group);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
