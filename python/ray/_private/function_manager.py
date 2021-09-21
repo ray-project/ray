@@ -23,7 +23,6 @@ from ray._private.utils import (
     decode,
     ensure_str,
     format_error_message,
-    push_error_to_driver,
 )
 from ray.util.inspect import (
     is_function_or_method,
