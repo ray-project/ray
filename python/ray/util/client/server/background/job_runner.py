@@ -25,7 +25,7 @@ class BackgroundJobRunner:
     3. Gracefully exit when the command is complete
     """
     def run_background_job(
-        self, command: str, self_handle: Any, config_path: str, pkg_uri: str
+        self, command: str, self_handle: Any, config_path: str, pkg_uri: str, actor_name: str,
     ) -> None:
 
         namespace = ray.get_runtime_context().namespace
@@ -36,6 +36,7 @@ class BackgroundJobRunner:
             "PYTHONUNBUFFERED": "1",  # Make sure python subprocess streams logs https://docs.python.org/3/using/cmdline.html#cmdoption-u
             "RAY_ADDRESS": "auto",  # Make sure that internal ray.init has an anyscale RAY_ADDRESS
             ANYSCALE_BACKGROUND_JOB_CONTEXT: context.to_json(),
+            "BACKGROUND_ACTOR_NAME": actor_name,
         }
         env = {**os.environ, **env_vars}
 
@@ -45,7 +46,9 @@ class BackgroundJobRunner:
 
         # GCS version
         code = _internal_kv_get(pkg_uri)
-        cur_path = Path().resolve()
+        cur_path = Path(f"/tmp/ray/{namespace}/")
+        if not os.path.exists(cur_path):
+            os.mkdir(cur_path)
         pkg_zip_file = Path(cur_path, "compressed_code")
         pkg_zip_file.write_bytes(code)
         print(f"Uncompressing code to {pkg_zip_file}")

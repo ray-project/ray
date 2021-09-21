@@ -2,6 +2,7 @@
 # intermediate status are dumped to GCS
 import argparse
 import time
+import os
 
 import ray
 import ray.experimental.internal_kv as ray_kv
@@ -15,14 +16,17 @@ class StepActor:
         self.current_step = 1
         self.total_steps = total_steps
 
-        worker = ray.worker.global_worker
-        worker_id = worker.core_worker.get_actor_id()
+        # worker = ray.worker.global_worker
+        # worker_id = worker.core_worker.get_actor_id()
+        self.backgound_actor_name = os.env.get("BACKGROUND_ACTOR_NAME")
         ray_kv._internal_kv_put(
-            f"JOB:{worker_id}", self.current_step, overwrite=True)
+            f"JOB:{self.backgound_actor_name}", self.current_step, overwrite=True)
 
     def run(self):
-        worker = ray.worker.global_worker
-        worker_id = worker.core_worker.get_actor_id()
+        # worker = ray.worker.global_worker
+        # worker_id = worker.core_worker.get_actor_id()
+        print(f"self.backgound_actor_name: {self.backgound_actor_name}")
+
 
         while self.current_step <= self.total_steps:
             if not self.stopped:
@@ -31,13 +35,13 @@ class StepActor:
                 time.sleep(self.interval_s)
                 self.current_step += 1
                 ray_kv._internal_kv_put(
-                    f"JOB:{worker_id}", self.current_step, overwrite=True)
+                    f"JOB:{self.backgound_actor_name}", self.current_step, overwrite=True)
             else:
                 print("Stop called or reached final step.")
                 break
 
         self.stopped = True
-        ray_kv._internal_kv_put(f"JOB:{worker_id}", "DONE", overwrite=True)
+        ray_kv._internal_kv_put(f"JOB:{self.backgound_actor_name}", "DONE", overwrite=True)
         return "DONE"
 
     def get_step(self):

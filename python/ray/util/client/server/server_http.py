@@ -13,6 +13,7 @@ import yaml
 from ray.experimental.packaging import load_package
 from ray._private.runtime_env import working_dir as working_dir_pkg
 import ray
+import ray.experimental.internal_kv as ray_kv
 
 logger = logging.getLogger(__name__)
 
@@ -75,18 +76,29 @@ async def submit(yaml_config_path: str):
 
     command = config["command"]
 
+    actor_name = str(uuid.uuid4())
     namespace = f"bg_{str(uuid.uuid4())}"
 
     actor = BackgroundJobRunner.options(
+        name=actor_name,
         namespace=namespace,
-        lifetime="detached",
-        name="_background_actor").remote()
+        lifetime="detached").remote()
 
     job_handle = actor.run_background_job.remote(
-        command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri
+        command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri, actor_name=actor_name
     )
 
-    return {"job_handle": str(job_handle)}
+    return {"actor_name": actor_name, "namespace": namespace}
+
+
+@app.get("/status/{actor_name}")
+async def status(actor_name: str, namespace: str):
+    try:
+        # actor = ray.get_actor(name=actor_name, namespace=namespace)
+        status = ray_kv._internal_kv_get(f"JOB:{actor_name}")
+        return {"Result": status}
+    except:
+        return {"Result": "Not Found."}
 
 
 def main():
