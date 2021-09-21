@@ -2,15 +2,19 @@ import os
 import re
 import subprocess
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Tuple
 import uuid
 
 import yaml
+from zipfile import ZipFile
+from pathlib import Path
+from ray.experimental.internal_kv import _internal_kv_get
+from urllib.parse import urlparse
 
 from ray.util.client.server.background.const import ANYSCALE_BACKGROUND_JOB_CONTEXT
 from ray.util.client.server.background.job_context import BackgroundJob, BackgroundJobContext
 import ray
-
+from ray._private.runtime_env import working_dir as working_dir_pkg
 @ray.remote
 class BackgroundJobRunner:
     """
@@ -21,7 +25,7 @@ class BackgroundJobRunner:
     3. Gracefully exit when the command is complete
     """
     def run_background_job(
-        self, command: str, self_handle: Any
+        self, command: str, self_handle: Any, config_path: str,
     ) -> None:
 
         namespace = ray.get_runtime_context().namespace
@@ -38,6 +42,19 @@ class BackgroundJobRunner:
         print("Inside of the actor!!!!")
         print("Inside of the actor!!!!")
         print("Inside of the actor!!!!")
+
+        # # os.system(f"cd {os.path.dirname(config_path)}")
+        # fetch_package(pkg_uri)
+        print(f"config path: {config_path}")
+        dir_path = os.path.dirname(config_path)
+        print(f"dir path: {dir_path}")
+        # path = "/tmp/ray/packaging/github_snapshot_996584529c1834eff63bc59425e5f4cbe2b4d7e1/python/ray/experimental/job/example_job"
+        # print(f"dir_path == path is {dir_path == path}")
+        print(f"checking into ... {dir_path}")
+        os.system(f"cd {dir_path}")
+        os.system(f"ls")
+
+
         try:
             _run_kill_child(command, shell=True, check=True, env=env)  # noqa
         finally:

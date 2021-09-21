@@ -35,9 +35,11 @@ async def read_root():
 @app.get("/submit/{yaml_config_path}")
 async def submit(yaml_config_path: str):
     # Remote yaml file path on github
-    # config_path = load_package._download_from_github_if_needed(yaml_config_path)
+    yaml_config_path = "https://raw.githubusercontent.com/ray-project/ray/master/python/ray/experimental/job/example_job/job_config.yaml"
+    config_path = load_package._download_from_github_if_needed(yaml_config_path)
+    print(f"config_path: {config_path}")
 
-    config_path = "/Users/jiaodong/Workspace/ray/python/ray/experimental/job/example_job/job_config.yaml"
+    # config_path = "/Users/jiaodong/Workspace/ray/python/ray/experimental/job/example_job/job_config.yaml"
 
     config = yaml.safe_load(open(config_path).read())
     runtime_env = config["runtime_env"]
@@ -66,6 +68,7 @@ async def submit(yaml_config_path: str):
         do_register_package()
     else:
         ray.worker._post_init_hooks.append(do_register_package)
+
     runtime_env["uris"] = [pkg_uri]
 
     print(f"runtime_env: {runtime_env}")
@@ -80,7 +83,7 @@ async def submit(yaml_config_path: str):
         name="_background_actor").remote()
 
     job_handle = actor.run_background_job.remote(
-        command=command, self_handle=actor
+        command=command, self_handle=actor, config_path=config_path
     )
 
     return {"job_handle": str(job_handle)}
