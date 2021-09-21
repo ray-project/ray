@@ -175,6 +175,9 @@ test_python() {
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
+      -python/ray/tests:test_placement_group_2
+      -python/ray/tests:test_placement_group_3
+      -python/ray/tests:test_placement_group_mini_integration
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
@@ -199,6 +202,9 @@ test_python() {
 }
 
 test_cpp() {
+  # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
+  # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
+  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
@@ -439,6 +445,15 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
+  if command -v clang-tidy > /dev/null; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
+    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+  else
+    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
+  fi
+
   # Run script linting
   lint_scripts
 
@@ -460,13 +475,6 @@ _lint() {
        bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
        bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
-
-    # Run clang-tidy last since it needs to rebuild.
-    if command -v clang-tidy > /dev/null; then
-      "${ROOT_DIR}"/check-git-clang-tidy-output.sh
-    else
-      { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
-    fi
   fi
 }
 
