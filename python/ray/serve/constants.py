@@ -20,7 +20,7 @@ DEFAULT_CHECKPOINT_PATH = "ray://"
 ASYNC_CONCURRENCY = int(1e6)
 
 # How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 2
+CONTROL_LOOP_PERIOD_S = 0.1
 
 # Upon controller failure and recovery with running actor names,
 # we will update replica handles that halt all traffic to the cluster.
