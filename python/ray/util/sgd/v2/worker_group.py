@@ -1,3 +1,4 @@
+import socket
 from dataclasses import dataclass
 import logging
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
@@ -31,9 +32,10 @@ class WorkerMetadata:
     This information is expected to stay the same throughout the lifetime of
     actor.
     """
-    node_id: str
-    hostname: str
-    gpu_ids: Optional[List[int]]
+    node_id: str  # ID of the node this worker is on.
+    node_ip: str  # IP address of the node this worker is on.
+    hostname: str  # Hostname that this worker is on.
+    gpu_ids: Optional[List[int]]  # List of CUDA IDs available to this worker.
 
 
 @dataclass
@@ -56,6 +58,20 @@ def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
                 super().__init__(*args, **kwargs)
 
         return _WrappedExecutable
+
+
+def construct_metadata() -> WorkerMetadata:
+    """Creates metadata for this worker.
+
+    This function is expected to be run on the actor.
+    """
+    node_id = ray.get_runtime_context().node_id.hex()
+    node_ip = ray.util.get_node_ip_address()
+    hostname = socket.hostname()
+    gpu_ids = ray.get_gpu_ids()
+
+    return WorkerMetadata(
+        node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids)
 
 
 class WorkerGroup:
@@ -141,10 +157,8 @@ class WorkerGroup:
     def _create_worker(self):
         actor = self._remote_cls.remote(*self._actor_cls_args,
                                         **self._actor_cls_kwargs)
-        node_ip = ray.get(
-            actor._BaseWorkerMixin__execute.remote(
-                ray.util.get_node_ip_address))
-        actor_metadata = {"node_ip": node_ip}
+        actor_metadata = ray.get(
+            actor._BaseWorkerMixin__execute.remote(construct_metadata))
         return Worker(actor=actor, metadata=actor_metadata)
 
     def start(self):

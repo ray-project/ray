@@ -15,8 +15,7 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_CHECKPOINT_ID
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path, get_node_id, get_gpu_ids, \
-    check_for_failure
+from ray.util.sgd.v2.utils import construct_path, check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
@@ -309,12 +308,8 @@ class BackendExecutor:
 
         """
 
-        def get_node_id_and_gpu():
-            node_id = get_node_id()
-            gpu_ids = get_gpu_ids()
-            return node_id, gpu_ids
-
-        node_ids_and_gpu_ids = self.worker_group.execute(get_node_id_and_gpu)
+        node_ids_and_gpu_ids = [(w.metadata.node_id, w.metadata.gpu_ids)
+                                for w in self.worker_group.workers]
 
         node_id_to_worker_id = defaultdict(set)
         node_id_to_gpu_ids = defaultdict(set)
