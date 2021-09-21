@@ -342,8 +342,8 @@ class TFPolicy(Policy):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
         if self.model and not isinstance(self.model, tf.keras.Model):
-            self._losses = self.model.custom_loss(losses,
-                                                  self._loss_input_dict)
+            self._losses = force_list(
+                self.model.custom_loss(losses, self._loss_input_dict))
             self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._losses = losses
