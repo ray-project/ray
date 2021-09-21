@@ -36,7 +36,7 @@ async def read_root():
 @app.get("/submit/{yaml_config_path}")
 async def submit(yaml_config_path: str):
     # Remote yaml file path on github
-    # yaml_config_path = "https://raw.githubusercontent.com/ray-project/ray/test_wheels/prototype_job/python/ray/experimental/job/example_job/job_config.yaml"
+    yaml_config_path = "https://raw.githubusercontent.com/ray-project/ray/test_wheels/prototype_job/python/ray/experimental/job/example_job/job_config.yaml"
     config_path = load_package._download_from_github_if_needed(yaml_config_path)
     print(f"config_path: {config_path}")
 

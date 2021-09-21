@@ -66,6 +66,8 @@ class BackgroundJobRunner:
             ray_kv._internal_kv_put(
                     f"JOB:{job_id}", "RUNNING", overwrite=True)
             _run_kill_child(command, shell=True, check=True, env=env)  # noqa
+            ray_kv._internal_kv_put(
+                    f"JOB:{job_id}", "SUCCEEDED", overwrite=True)
         except:
             ray_kv._internal_kv_put(
                     f"JOB:{job_id}", "FAILED", overwrite=True)
@@ -74,8 +76,6 @@ class BackgroundJobRunner:
             time.sleep(1)
 
             self_handle.stop.remote()
-            ray_kv._internal_kv_put(
-                    f"JOB:{job_id}", "SUCCEEDED", overwrite=True)
 
     def stop(self) -> None:
 
