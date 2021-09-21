@@ -276,10 +276,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
-      for (auto &callback : borrower_callbacks_) {
+      // Copy borrower callbacks in case we modify during the callbacks.
+      auto borrower_callbacks_copy = borrower_callbacks_;
+      borrower_callbacks_.clear();
+      for (auto &callback : borrower_callbacks_copy) {
         callback.second();
       }
-      borrower_callbacks_.clear();
       return true;
     }
   }
@@ -2371,6 +2373,47 @@ TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   // Inner ObjectRef info gets popped with the outer ObjectRef.
   ASSERT_FALSE(rc->HasReference(outer_id));
   ASSERT_FALSE(rc->HasReference(inner_id));
+}
+
+TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // Owner owns a nested object ref, borrower is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(outer_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddLocalReference(inner_id, "");
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  borrower->rc_.AddLocalReference(outer_id, "");
+  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  // Borrower deserializes the inner ObjectRef.
+  borrower->rc_.AddLocalReference(inner_id, "");
+  borrower->rc_.AddBorrowedObject(inner_id, outer_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // Borrower deletes the outer ObjectRef. Inner ObjectRef is still in scope.
+  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  // WaitForRefRemoved RPC from owner arrives after outer object ref has been deleted.
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Inner ObjectRef is still in scope because the borrower is still using it.
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Delete all refs to the inner ObjectRef.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
 }
 
 }  // namespace core

@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import pytest
+import re
 
 import ray
 
@@ -139,10 +140,13 @@ class Actor1:
 
 @ray.remote
 class Actor2:
+    def __init__(self):
+        print("init")
+        self.name = "ActorX"
     def f(self):
         print("bye")
     def __repr__(self):
-        return "ActorX"
+        return self.name
 
 a = Actor1.remote()
 ray.get(a.f.remote())
@@ -152,12 +156,15 @@ ray.get(b.f.remote())
 
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
+    print(out_str)
 
     assert "hi" in out_str, out_str
     assert "(Actor1 pid=" in out_str, out_str
     assert "bye" in out_str, out_str
-    assert "(Actor2 pid=" not in out_str, out_str
-    assert "(ActorX pid=" in out_str, out_str
+    assert re.search("Actor2 pid=.*init", out_str), out_str
+    assert not re.search("ActorX pid=.*init", out_str), out_str
+    assert re.search("ActorX pid=.*bye", out_str), out_str
+    assert not re.search("Actor2 pid=.*bye", out_str), out_str
 
 
 def test_output():

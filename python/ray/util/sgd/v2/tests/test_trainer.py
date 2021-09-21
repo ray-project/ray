@@ -17,8 +17,6 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
-    TrainClass as HorovodTrainClass
 from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
     as \
     fashion_mnist_train_func
@@ -26,7 +24,7 @@ from ray.util.sgd.v2.examples.train_linear_example import train_func as \
     linear_train_func
 
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
+    horovod_torch_train_func, HorovodTrainClass
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 

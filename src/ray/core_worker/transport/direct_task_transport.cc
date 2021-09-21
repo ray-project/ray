@@ -23,21 +23,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  if (task_spec.IsActorCreationTask()) {
-    // Synchronously register the actor to GCS server.
-    // Previously, we asynchronously registered the actor after all its dependencies were
-    // resolved. This caused a problem: if the owner of the actor dies before dependencies
-    // are resolved, the actor will never be created. But the actor handle may already be
-    // passed to other workers. In this case, the actor tasks will hang forever.
-    // So we fixed this issue by synchronously registering the actor. If the owner dies
-    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
-    auto status = actor_creator_->RegisterActor(task_spec);
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
-      return status;
+      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+      return;
     }
-  }
-
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
