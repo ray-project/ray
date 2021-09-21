@@ -2,6 +2,7 @@ import unittest
 import tempfile
 import shutil
 import os
+from copy import deepcopy
 
 import numpy as np
 
@@ -357,6 +358,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         ray.shutdown()
 
     def _saveRestore(self, searcher):
+        searcher_copy = deepcopy(searcher)
+
         searcher.set_search_properties(
             metric=self.metric_name, mode="max", config=self.config)
 
@@ -369,15 +372,18 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         })
 
         searcher.save(self.checkpoint_path)
-        searcher.restore(self.checkpoint_path)
 
-        searcher.on_trial_complete("2", {
+        searcher_copy.set_search_properties(
+            metric=self.metric_name, mode="max", config=self.config)
+        searcher_copy.restore(self.checkpoint_path)
+
+        searcher_copy.on_trial_complete("2", {
             self.metric_name: 1,
             "config/a": 1.0,
             "time_total_s": 1
         })
-        searcher.suggest("3")
-        searcher.on_trial_complete("3", {
+        searcher_copy.suggest("3")
+        searcher_copy.on_trial_complete("3", {
             self.metric_name: 1,
             "config/a": 1.0,
             "time_total_s": 1
