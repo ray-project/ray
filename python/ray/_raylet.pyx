@@ -459,7 +459,7 @@ cdef execute_task(
             # We need to handle this separately because `__repr__` may not be
             # runnable until after `__init__` (e.g., if it accesses fields
             # defined in the constructor).
-            print("{}{}.__init__".format(
+            print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
     execution_info = execution_infos.get(function_descriptor)

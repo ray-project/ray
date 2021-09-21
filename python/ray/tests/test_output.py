@@ -161,8 +161,8 @@ ray.get(b.f.remote())
     assert "hi" in out_str, out_str
     assert "(Actor1 pid=" in out_str, out_str
     assert "bye" in out_str, out_str
-    assert re.search("Actor2.__init__ pid=.*init", out_str), out_str
-    assert not re.search("ActorX.*init", out_str), out_str
+    assert re.search("Actor2 pid=.*init", out_str), out_str
+    assert not re.search("ActorX pid=.*init", out_str), out_str
     assert re.search("ActorX pid=.*bye", out_str), out_str
     assert not re.search("Actor2 pid=.*bye", out_str), out_str
 
