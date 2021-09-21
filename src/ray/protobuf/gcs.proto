@@ -226,6 +226,8 @@ message GcsNodeInfo {
     ALIVE = 0;
     // Node is dead.
     DEAD = 1;
+    // Node is marked for removal
+    MARKED_FOR_REMOVAL = 2;
   }
 
   // The ID of node.

@@ -173,6 +173,7 @@ class NodeResources {
   std::string DebugString(StringIdMap string_to_int_map) const;
   /// Returns compact dict-like string.
   std::string DictString(StringIdMap string_to_int_map) const;
+  bool marked_for_removal = false;
 };
 
 /// Total and available capacities of each resource instance.
@@ -202,7 +203,7 @@ struct Node {
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
-  const bool &GetRemovalStatus() const { return marked_for_removal_; }
+  const NodeResources &GetRemovalStatus() const { return marked_for_removal; }
 
  private:
   /// The resource information according to the last heartbeat reported by
@@ -219,7 +220,7 @@ struct Node {
   /// resources when light heartbeats are enabled.
   NodeResources local_view_;
    /// Added to check if node is marked for removal
-  bool marked_for_removal_ = false;
+  NodeResources marked_for_removal;
 };
 
 /// \request Conversion result to a ResourceRequest data structure.

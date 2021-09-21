@@ -25,7 +25,7 @@ using ::testing::_;
 
 NodeResources CreateNodeResources(double available_cpu, double total_cpu,
                                   double available_memory, double total_memory,
-                                  double available_gpu, double total_gpu) {
+                                  double available_gpu, double total_gpu, bool marked_for_removal=false) {
   NodeResources resources;
   resources.predefined_resources = {{available_cpu, total_cpu},
                                     {available_memory, total_memory},
@@ -276,6 +276,24 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   int to_schedule =
       raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, true, false);
   ASSERT_EQ(to_schedule, -1);
+}
+
+TEST_F(SchedulingPolicyTest, AvoidSchedulingTaskOnNodeWithMarkedForRemovalFlag) {
+  // Since the local node is marked for removal scheduling should happen on
+  // remote node.
+  StringIdMap map;
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1,true));
+  nodes.emplace(remote_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+
+  int to_schedule =
+      raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, true, false);
+  ASSERT_EQ(to_schedule, remote_node);
 }
 
 int main(int argc, char **argv) {
