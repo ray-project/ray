@@ -270,6 +270,13 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     ASSERT_EQ(to_schedule, local_node);
   }
   {
+    // A CPU request can be be scheduled on a CPU node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, remote_node);
+  }
+  {
     // A mixed CPU/GPU request should be scheduled on a GPU node.
     const ResourceRequest req =
         ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
