@@ -17,7 +17,7 @@ DEFAULT_HTTP_PORT = 8000
 ASYNC_CONCURRENCY = int(1e6)
 
 # How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 1
+CONTROL_LOOP_PERIOD_S = 2
 
 # Upon controller failure and recovery with running actor names,
 # we will update replica handles that halt all traffic to the cluster.

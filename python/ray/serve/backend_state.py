@@ -739,8 +739,8 @@ class BackendState:
             if (existing_info.backend_config == backend_info.backend_config
                     and backend_info.version is not None
                     and existing_info.version == backend_info.version):
-                print("existing config: ", existing_info.backend_config)
-                print("new config: ", backend_info.backend_config)
+                # print("existing config: ", existing_info.backend_config)
+                # print("new config: ", backend_info.backend_config)
                 return self._curr_goal, False
 
         # Keep a copy of previous backend info in case goal failed to

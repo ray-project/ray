@@ -151,6 +151,7 @@ class ServeController:
             new_backend_config = backend_config.copy()
             new_backend_config.num_replicas = calculate_desired_num_replicas(autoscaling_config, current_num_ongoing_requests)
             print("desired num replicas: ", new_backend_config.num_replicas)
+            print("Metrics dump:  ", self._dump_autoscaling_metrics_for_testing())
             # continue #TODO: remove
             replica_config = backend_info.replica_config
             deployer_job_id = backend_info.deployer_job_id
