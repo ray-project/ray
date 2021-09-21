@@ -18,7 +18,7 @@ class StepActor:
 
         # worker = ray.worker.global_worker
         # worker_id = worker.core_worker.get_actor_id()
-        self.backgound_actor_name = os.env.get("BACKGROUND_ACTOR_NAME")
+        self.backgound_actor_name = os.environ.get("BACKGROUND_ACTOR_NAME")
         ray_kv._internal_kv_put(
             f"JOB:{self.backgound_actor_name}", self.current_step, overwrite=True)
 
