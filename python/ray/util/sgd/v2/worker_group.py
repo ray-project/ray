@@ -25,10 +25,22 @@ class BaseWorkerMixin:
 
 
 @dataclass
+class WorkerMetadata:
+    """Metadata for each worker/actor.
+
+    This information is expected to stay the same throughout the lifetime of
+    actor.
+    """
+    node_id: str
+    hostname: str
+    gpu_ids: Optional[List[int]]
+
+
+@dataclass
 class Worker:
     """Class representing a Worker."""
     actor: ActorHandle
-    metadata: Dict
+    metadata: WorkerMetadata
 
 
 def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
