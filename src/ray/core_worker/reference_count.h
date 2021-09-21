@@ -510,7 +510,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
+      bool is_nested = contained_in_borrowed_ids.size();
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
 
@@ -519,8 +519,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         has_lineage_references = lineage_ref_count > 0;
       }
 
-      return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
-               was_stored_in_objects || has_lineage_references);
+      return !(in_scope || is_nested || has_nested_borrowed_refs_in_use ||
+               has_borrowers || was_stored_in_objects || has_lineage_references);
     }
 
     /// Whether the Reference can be deleted. A Reference can only be deleted
@@ -590,13 +590,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// later found to be nested in a second object, we do not need to remember
     /// the second ID because we will already have notified the owner of the
     /// first outer object about our reference.
-    absl::optional<ObjectID> contained_in_borrowed_id;
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
     /// The object IDs contained in this object. These could be objects that we
     /// own or are borrowing. This field is updated in 2 cases:
     ///  1. We call ray.put() on this ID and store the contained IDs.
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
+    /// The object IDs contained in this object that we are currently borrowing
+    /// (RefCount() > 0).
+    bool has_nested_borrowed_refs_in_use = false;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list
@@ -639,6 +642,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  void OnBorrowedRefInUse(ReferenceTable::iterator borrowed_ref_it);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
