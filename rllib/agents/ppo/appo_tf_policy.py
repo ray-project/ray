@@ -205,7 +205,7 @@ def appo_surrogate_loss(
 
         action_kl = tf.reduce_mean(mean_kl, axis=0) \
             if is_multidiscrete else mean_kl
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -237,7 +237,7 @@ def appo_surrogate_loss(
 
         action_kl = tf.reduce_mean(mean_kl, axis=0) \
             if is_multidiscrete else mean_kl
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -255,7 +255,7 @@ def appo_surrogate_loss(
         mean_entropy * policy.config["entropy_coeff"]
     # Optional KL loss.
     if policy.config["use_kl_loss"]:
-        total_loss += policy.kl_coeff * mean_kl
+        total_loss += policy.kl_coeff * mean_kl_loss
     # Optional vf loss (or in a separate term due to separate
     # optimizers/networks).
     loss_wo_vf = total_loss
@@ -266,7 +266,8 @@ def appo_surrogate_loss(
     policy._total_loss = total_loss
     policy._loss_wo_vf = loss_wo_vf
     policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._value_targets = value_targets
@@ -312,7 +313,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict["kl"] = policy._mean_kl
+        stats_dict["kl"] = policy._mean_kl_loss
         stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict

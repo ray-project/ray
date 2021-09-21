@@ -362,7 +362,7 @@ class TFPolicy(Policy):
             for group in self.gradients(self._optimizers, self._losses):
                 g_and_v = [(g, v) for (g, v) in group if g is not None]
                 self._grads_and_vars.append(g_and_v)
-                self._grads.append([g for (g, v) in g_and_v])
+                self._grads.append([g for (g, _) in g_and_v])
         # Only one optimizer and and loss term.
         else:
             self._grads_and_vars = [
@@ -370,7 +370,7 @@ class TFPolicy(Policy):
                 for (g, v) in self.gradients(self._optimizer, self._loss)
                 if g is not None
             ]
-            self._grads = [g for (g, v) in self._grads_and_vars]
+            self._grads = [g for (g, _) in self._grads_and_vars]
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(

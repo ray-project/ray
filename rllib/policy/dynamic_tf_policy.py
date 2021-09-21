@@ -834,7 +834,7 @@ class TFMultiGPUTowerStack:
 
             # Gather update ops for any batch norm layers.
             # TODO(ekl) here we
-            #  will se all the ops found which won't work for DQN / DDPG, but
+            #  will use all the ops found which won't work for DQN / DDPG, but
             #  those aren't supported with multi-gpu right now anyways.
             self._update_ops = tf1.get_collection(
                 tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
@@ -862,7 +862,7 @@ class TFMultiGPUTowerStack:
 
             # Gather update ops for any batch norm layers.
             # TODO(ekl) here we
-            #  will se all the ops found which won't work for DQN / DDPG, but
+            #  will use all the ops found which won't work for DQN / DDPG, but
             #  those aren't supported with multi-gpu right now anyways.
             self._update_ops = tf1.get_collection(
                 tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
