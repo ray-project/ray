@@ -132,6 +132,8 @@ class _TrialCleanup:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
+                self._cleanup_map = {}
+                return
             else:
                 done = dones[0]
                 del self._cleanup_map[done]
