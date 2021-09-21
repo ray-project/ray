@@ -84,18 +84,20 @@ async def submit(yaml_config_path: str):
         namespace=namespace,
         lifetime="detached").remote()
 
+    job_id = actor._ray_actor_id.hex()
+
     job_handle = actor.run_background_job.remote(
         command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri
     )
 
-    return {"actor_name": actor_name, "namespace": namespace}
+    return {"job_id": job_id}
 
 
-@app.get("/status/{actor_name}")
-async def status(actor_name: str, namespace: str):
+@app.get("/status/{job_id}")
+async def status(job_id: str):
     try:
         # actor = ray.get_actor(name=actor_name, namespace=namespace)
-        status = ray_kv._internal_kv_get(f"JOB:{actor_name}")
+        status = ray_kv._internal_kv_get(f"JOB:{job_id}")
         return {"Result": status}
     except:
         return {"Result": "Not Found."}

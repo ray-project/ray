@@ -16,32 +16,18 @@ class StepActor:
         self.current_step = 1
         self.total_steps = total_steps
 
-        # worker = ray.worker.global_worker
-        # worker_id = worker.core_worker.get_actor_id()
-        self.namespace = ray.get_runtime_context().namespace
-        ray_kv._internal_kv_put(
-            f"JOB:{self.namespace}", self.current_step, overwrite=True)
-
     def run(self):
-        # worker = ray.worker.global_worker
-        # worker_id = worker.core_worker.get_actor_id()
-        print(f"namespace: {self.namespace}")
-
-
         while self.current_step <= self.total_steps:
             if not self.stopped:
                 print(f"Sleeping {self.interval_s} secs to executing "
                       f"step {self.current_step}")
                 time.sleep(self.interval_s)
                 self.current_step += 1
-                ray_kv._internal_kv_put(
-                    f"JOB:{self.namespace}", self.current_step, overwrite=True)
             else:
                 print("Stop called or reached final step.")
                 break
 
         self.stopped = True
-        ray_kv._internal_kv_put(f"JOB:{self.namespace}", "DONE", overwrite=True)
         return "DONE"
 
     def get_step(self):

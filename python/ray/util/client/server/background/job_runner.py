@@ -8,7 +8,7 @@ import uuid
 import yaml
 from zipfile import ZipFile
 from pathlib import Path
-from ray.experimental.internal_kv import _internal_kv_get
+import ray.experimental.internal_kv as ray_kv
 from urllib.parse import urlparse
 
 from ray.util.client.server.background.const import ANYSCALE_BACKGROUND_JOB_CONTEXT
@@ -44,7 +44,7 @@ class BackgroundJobRunner:
         print("Inside of the actor!!!!")
 
         # GCS version
-        code = _internal_kv_get(pkg_uri)
+        code = ray_kv._internal_kv_get(pkg_uri)
         cur_path = Path(f"/tmp/ray/{namespace}/")
         if not os.path.exists(cur_path):
             os.mkdir(cur_path)
@@ -61,14 +61,21 @@ class BackgroundJobRunner:
         # print(f"checking into ... {dir_path}")
         # os.chdir(dir_path)
 
-
         try:
+            job_id = self_handle._ray_actor_id.hex()
+            ray_kv._internal_kv_put(
+                    f"JOB:{job_id}", "RUNNING", overwrite=True)
             _run_kill_child(command, shell=True, check=True, env=env)  # noqa
+        except:
+            ray_kv._internal_kv_put(
+                    f"JOB:{job_id}", "FAILED", overwrite=True)
         finally:
             # allow time for any logs to propogate before the task exits
             time.sleep(1)
 
             self_handle.stop.remote()
+            ray_kv._internal_kv_put(
+                    f"JOB:{job_id}", "SUCCEEDED", overwrite=True)
 
     def stop(self) -> None:
 
