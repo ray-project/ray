@@ -292,9 +292,6 @@ def test_async_function_errored(ray_start_regular_shared):
 async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     @ray.remote
     def f():
-        # Ensure there is time to enter x1's destructor, before raising an
-        # exception.
-        time.sleep(1)
         raise ValueError()
 
     num_exceptions = 0
