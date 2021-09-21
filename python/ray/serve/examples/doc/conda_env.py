@@ -25,5 +25,5 @@ tf_version.options(
         }
     }).deploy()
 
-print(requests.get("http://127.0.0.1:8000/tf1").text)  # Tensorflow 1.15.0
-print(requests.get("http://127.0.0.1:8000/tf2").text)  # Tensorflow 2.3.0
+assert requests.get("http://127.0.0.1:8000/tf1").text == "1.15.0"
+assert requests.get("http://127.0.0.1:8000/tf1").text == "2.3.0"

@@ -248,7 +248,7 @@ Example:
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
 .. note::
-  When using any Ray library (for example, Ray Serve) in a runtime environment, it must
+  When using a Ray library (for example, Ray Serve) in a runtime environment, it must
   explicitly be included in the dependencies, as in the above example.  This is not
   required when just using Ray Core.
 
