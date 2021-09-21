@@ -908,13 +908,24 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         from ax.modelbridge.registry import Models
 
         # set generation strategy to sobol to ensure reproductibility
-        gs = GenerationStrategy(steps=[
-            GenerationStep(
-                model=Models.SOBOL,
-                num_trials=-1,
-                model_kwargs={"seed": 4321},
-            ),
-        ])
+        try:
+            # ax-platform>=0.2.0
+            gs = GenerationStrategy(steps=[
+                GenerationStep(
+                    model=Models.SOBOL,
+                    num_trials=-1,
+                    model_kwargs={"seed": 4321},
+                ),
+            ])
+        except TypeError:
+            # ax-platform<0.2.0
+            gs = GenerationStrategy(steps=[
+                GenerationStep(
+                    model=Models.SOBOL,
+                    num_arms=-1,
+                    model_kwargs={"seed": 4321},
+                ),
+            ])
 
         client = AxClient(random_seed=4321, generation_strategy=gs)
         client.create_experiment(
