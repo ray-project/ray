@@ -530,7 +530,6 @@ class FunctionActorManager:
         try:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
-            assert False
         except Exception:
             logger.debug("Failed to load actor class %s.", class_name)
             # If an exception was thrown when the actor was imported, we record
