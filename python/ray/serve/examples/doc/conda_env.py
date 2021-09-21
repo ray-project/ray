@@ -13,13 +13,13 @@ def tf_version(request):
 tf_version.options(
     name="tf1", ray_actor_options={
         "runtime_env": {
-            "conda": "ray-tf1"
+            "pip": ["ray[serve]", "tensorflow==1.15.0"]
         }
     }).deploy()
 tf_version.options(
     name="tf2", ray_actor_options={
         "runtime_env": {
-            "conda": "ray-tf2"
+            "pip": ["ray[serve]", "tensorflow==2.3.0"]
         }
     }).deploy()
 
