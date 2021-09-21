@@ -332,7 +332,27 @@ class BackendExecutor:
         ray.get(futures)
 
     def _create_local_rank_map(self) -> Dict:
-        """Create mapping from worker world_rank to local_rank."""
+        """Create mapping from worker world_rank to local_rank.
+
+        Example:
+            Worker 0: 0.0.0.0
+            Worker 1: 0.0.0.0
+            Worker 2: 0.0.0.1
+            Worker 3: 0.0.0.0
+            Worker 4: 0.0.0.1
+
+            Workers 0, 1, 3 are on 0.0.0.0.
+            Workers 2, 4 are on 0.0.0.1.
+
+            Expected Output:
+            {
+                0 -> 0,
+                1 -> 1,
+                2 -> 0,
+                3 -> 2,
+                4 -> 1
+            }
+        """
         rank_mapping = {}
         ip_dict = defaultdict(int)
         for world_rank in range(len(self.worker_group)):

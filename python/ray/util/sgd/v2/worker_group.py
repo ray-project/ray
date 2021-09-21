@@ -31,11 +31,17 @@ class WorkerMetadata:
 
     This information is expected to stay the same throughout the lifetime of
     actor.
+
+    Args:
+        node_id (str): ID of the node this worker is on.
+        node_ip (str): IP address of the node this worker is on.
+        hostname (str): Hostname that this worker is on.
+        gpu_ids (List[int]): List of CUDA IDs available to this worker.
     """
-    node_id: str  # ID of the node this worker is on.
-    node_ip: str  # IP address of the node this worker is on.
-    hostname: str  # Hostname that this worker is on.
-    gpu_ids: Optional[List[int]]  # List of CUDA IDs available to this worker.
+    node_id: str
+    node_ip: str
+    hostname: str
+    gpu_ids: Optional[List[int]]
 
 
 @dataclass
