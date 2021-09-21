@@ -53,7 +53,7 @@ def test_report():
         for i in range(2):
             report(loss=i)
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     assert session.get_next().data["loss"] == 0
@@ -70,7 +70,7 @@ def test_report_fail():
             report(i)
         return 1
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     assert session.get_next() is None
