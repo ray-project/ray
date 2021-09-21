@@ -337,7 +337,7 @@ class BackendExecutor:
         ip_dict = defaultdict(int)
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata["node_ip"]
+            node_ip = worker.metadata.node_ip
             rank_mapping[world_rank] = ip_dict[node_ip]
             ip_dict[node_ip] += 1
         return rank_mapping
