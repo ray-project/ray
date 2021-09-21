@@ -571,7 +571,7 @@ class DynamicTFPolicy(TFPolicy):
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
         if not self._optimizers:
-            self._optimizers = self.optimizer()
+            self._optimizers = force_list(self.optimizer())
             # Backward compatibility.
             self._optimizer = self._optimizers[0]
 

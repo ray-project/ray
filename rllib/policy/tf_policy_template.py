@@ -280,7 +280,16 @@ def build_tf_policy(
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
 
-            return optimizers if optimizers else None
+            # No optimizers produced -> Return None.
+            if not optimizers:
+                return None
+            # New API: Allow more than one optimizer to be returned.
+            # -> Return list.
+            elif self.config["_tf_policy_handles_more_than_one_loss"]:
+                return optimizers
+            # Old API: Return a single LocalOptimizer.
+            else:
+                return optimizers[0]
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
@@ -288,8 +297,11 @@ def build_tf_policy(
             losses = force_list(loss)
 
             if compute_gradients_fn:
+                # New API: Allow more than one optimizer -> Return a list of
+                # lists of gradients.
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     return compute_gradients_fn(self, optimizers, losses)
+                # Old API: Return a single List of gradients.
                 else:
                     return compute_gradients_fn(self, optimizers[0], losses[0])
             else:
