@@ -49,7 +49,7 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    def open(self, key: str, mode: str = "r") -> io.BufferedIOBase:
+    def open(self, key: str) -> io.BufferedIOBase:
         """Returns a file like object that conforms to io.BufferedIOBase.
 
         Args:

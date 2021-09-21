@@ -52,10 +52,6 @@ class S3StorageImpl(Storage):
     def make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([self._s3_path], names))
 
-    async def _upload_obj(self, key: str, fobj: io.BufferedIOBase) -> None:
-        async with self._client() as s3:
-            await s3.upload_fileobj(fobj, self._bucket, key)
-
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with tempfile.SpooledTemporaryFile(
                 mode="w+b",
@@ -65,21 +61,19 @@ class S3StorageImpl(Storage):
             else:
                 ray.cloudpickle.dump(data, tmp_file)
             tmp_file.seek(0)
-            await self._upload_obj(key, tmp_file)
-
-    async def _download_obj(self, key: str, fobj: io.BufferedIOBase) -> None:
-        async with self._client() as s3:
-            obj = await s3.get_object(Bucket=self._bucket, Key=key)
-            async for chunk in obj["Body"]:
-                fobj.write(chunk)
-        fobj.seek(0)
+            async with self._client() as s3:
+                await s3.upload_fileobj(tmp_file, self._bucket, key)
 
     async def get(self, key: str, is_json: bool = False) -> Any:
         try:
             with tempfile.SpooledTemporaryFile(
                     mode="w+b",
                     max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
-                await self._download_obj(key, tmp_file)
+                async with self._client() as s3:
+                    obj = await s3.get_object(Bucket=self._bucket, Key=key)
+                    async for chunk in obj["Body"]:
+                        tmp_file.write(chunk)
+                tmp_file.seek(0)
                 if is_json:
                     return json.loads(tmp_file.read().decode())
                 else:
@@ -90,25 +84,14 @@ class S3StorageImpl(Storage):
             else:
                 raise
 
-    def open(self, key: str, mode: str = "r") -> io.BufferedIOBase:
-        assert "+" not in mode, "Cannot open file for both reading and writing."
-        if "w" in mode:
-            def onclose(bio):
-                bio.seek(0)
-                coro = self._upload_obj(key, bio)
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(coro)
-
-            # TODO (Alex): Use an on-disk buffer avoid wasting memory.
-            return _BytesIOWithCallback(onclose)
-        else:
-            tmp_file = tempfile.SpooledTemporaryFile(
-                    mode="w+b",
-                    max_size=MAX_RECEIVED_DATA_MEMORY_SIZE)
-            coro = self._download_obj(key, tmp_file)
+    def open(self, key: str) -> io.BufferedIOBase:
+        def onclose(bio):
+            coro = self.put(key, bio.getvalue(), is_json=False)
+            # NOTE: There's no easy way to `await` this put.
             loop = asyncio.get_event_loop()
             loop.run_until_complete(coro)
-            return tmp_file
+
+        return _BytesIOWithCallback(onclose)
 
     async def delete_prefix(self, key_prefix: str) -> None:
         async with self._session.resource(

@@ -102,10 +102,8 @@ class WorkflowStorage:
             Output of the workflow step.
         """
 
-        output_paths = self._key_step_output(step_id)
         tasks = [
-            serialization.load_from_storage(output_paths, self._storage),
-            # self._get(self._key_step_output(step_id), no_exception=True),
+            self._get(self._key_step_output(step_id), no_exception=True),
             self._get(self._key_step_exception(step_id), no_exception=True)
         ]
         ((output_ret, output_err), (exception_ret, exception_err)) = \
@@ -155,6 +153,7 @@ class WorkflowStorage:
                     self._key_step_output(step_id), ret, self._workflow_id,
                     self._storage)
                 tasks.append(promise)
+                # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
 
@@ -171,6 +170,8 @@ class WorkflowStorage:
                     self._key_step_exception(step_id), exception,
                     self._workflow_id, self._storage)
                 tasks.append(promise)
+                # tasks.append(
+                #     self._put(self._key_step_exception(step_id), exception))
 
         asyncio_run(asyncio.gather(*tasks))
 
@@ -183,8 +184,7 @@ class WorkflowStorage:
         Returns:
             A callable function.
         """
-        paths = self._key_step_function_body(step_id)
-        return asyncio_run(serialization.load_from_storage(paths, self._storage))
+        return asyncio_run(self._get(self._key_step_function_body(step_id)))
 
     def gen_step_id(self, step_name: str) -> int:
         async def _gen_step_id():
@@ -217,9 +217,8 @@ class WorkflowStorage:
         """
         with serialization_context.workflow_args_resolving_context(
                 workflows, workflow_refs):
-            args_paths = self._key_step_args(step_id)
             flattened_args = asyncio_run(
-                serialization.load_from_storage(args_paths, self._storage))
+                self._get(self._key_step_args(step_id)))
             # dereference arguments like Ray remote functions
             flattened_args = [
                 ray.get(a) if isinstance(a, ray.ObjectRef) else a

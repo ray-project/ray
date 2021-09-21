@@ -151,8 +151,8 @@ class FilesystemStorageImpl(Storage):
             with _open_atomic(pathlib.Path(key), "rb") as f:
                 return ray.cloudpickle.load(f)
 
-    def open(self, key: str, mode: str = "r") -> io.BufferedIOBase:
-        return _open_atomic(pathlib.Path(key), mode)
+    def open(self, key: str) -> io.BufferedIOBase:
+        return _open_atomic(pathlib.Path(key), "rwb")
 
     async def delete_prefix(self, key_prefix: str) -> None:
         path = pathlib.Path(key_prefix)
