@@ -113,7 +113,7 @@ class TuneBOHB(Searcher):
                  space: Optional[Union[
                      Dict, "ConfigSpace.ConfigurationSpace"]] = None,
                  bohb_config: Optional[Dict] = None,
-                 max_concurrent: int = 10,
+                 max_concurrent: Optional[int] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
