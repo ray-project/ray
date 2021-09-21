@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import pytest
-import tempfile
 import re
 
 import ray
