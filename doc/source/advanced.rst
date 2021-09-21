@@ -436,7 +436,7 @@ On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environme
 The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
 The runtime environment defines the dependencies required for your workload.
 
-You can specify a runtime environment for your whole job using ``ray.init()``
+You can specify a runtime environment for your whole job using ``ray.init()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -451,7 +451,7 @@ You can specify a runtime environment for your whole job using ``ray.init()``
     # Using Ray Client
     ray.init("ray://localhost:10001", runtime_env=runtime_env)
 
-...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
+You can also specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
