@@ -454,8 +454,12 @@ cdef execute_task(
         worker.actors[actor_id] = actor
         if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
             # Record the actor class via :actor_name: magic token in the log.
+            #
             # (Phase 1): this covers code run before __init__ finishes.
-            print("{}{}".format(
+            # We need to handle this separately because `__repr__` may not be
+            # runnable until after `__init__` (e.g., if it accesses fields
+            # defined in the constructor).
+            print("{}{}.__init__".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
     execution_info = execution_infos.get(function_descriptor)
@@ -597,7 +601,10 @@ cdef execute_task(
                     outputs = (outputs,)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 # Record actor repr via :actor_name: magic token in the log.
-                # (Phase 2): this covers code run after __init__ finishes.
+                #
+                # (Phase 2): after `__init__` finishes, we override the
+                # log prefix with the full repr of the actor. The log monitor
+                # will pick up the updated token.
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         "__repr__" in
                         actor_class.__ray_actor_class__.__dict__):
