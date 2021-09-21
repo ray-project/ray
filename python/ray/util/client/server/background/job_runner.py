@@ -25,7 +25,7 @@ class BackgroundJobRunner:
     3. Gracefully exit when the command is complete
     """
     def run_background_job(
-        self, command: str, self_handle: Any, config_path: str,
+        self, command: str, self_handle: Any, config_path: str, pkg_uri: str
     ) -> None:
 
         namespace = ray.get_runtime_context().namespace
@@ -43,16 +43,24 @@ class BackgroundJobRunner:
         print("Inside of the actor!!!!")
         print("Inside of the actor!!!!")
 
-        # # os.system(f"cd {os.path.dirname(config_path)}")
-        # fetch_package(pkg_uri)
-        print(f"config path: {config_path}")
-        dir_path = os.path.dirname(config_path)
-        print(f"dir path: {dir_path}")
+        # GCS version
+        code = _internal_kv_get(pkg_uri)
+        cur_path = Path().resolve()
+        pkg_zip_file = Path(cur_path, "compressed_code")
+        pkg_zip_file.write_bytes(code)
+        print(f"Uncompressing code to {pkg_zip_file}")
+        with ZipFile(pkg_zip_file, 'r') as zip_ref:
+            zip_ref.extractall(cur_path)
+
+        # Local disk version
+        # print(f"config path: {config_path}")
+        # dir_path = os.path.dirname(config_path)
+        # print(f"dir path: {dir_path}")
         # path = "/tmp/ray/packaging/github_snapshot_996584529c1834eff63bc59425e5f4cbe2b4d7e1/python/ray/experimental/job/example_job"
         # print(f"dir_path == path is {dir_path == path}")
-        print(f"checking into ... {dir_path}")
-        os.system(f"cd {dir_path}")
-        os.system(f"ls")
+        # print(f"checking into ... {dir_path}")
+        # os.system(f"cd {dir_path}")
+        # os.system(f"ls")
 
 
         try:

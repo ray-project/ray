@@ -83,7 +83,7 @@ async def submit(yaml_config_path: str):
         name="_background_actor").remote()
 
     job_handle = actor.run_background_job.remote(
-        command=command, self_handle=actor, config_path=config_path
+        command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri
     )
 
     return {"job_handle": str(job_handle)}
