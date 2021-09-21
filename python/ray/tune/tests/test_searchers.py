@@ -2,7 +2,6 @@ import unittest
 import tempfile
 import shutil
 import os
-from copy import deepcopy
 
 import numpy as np
 
@@ -357,9 +356,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def _saveRestore(self, searcher):
-        searcher_copy = deepcopy(searcher)
-
+    def _save(self, searcher):
         searcher.set_search_properties(
             metric=self.metric_name, mode="max", config=self.config)
 
@@ -373,17 +370,18 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         searcher.save(self.checkpoint_path)
 
-        searcher_copy.set_search_properties(
+    def _restore(self, searcher):
+        searcher.set_search_properties(
             metric=self.metric_name, mode="max", config=self.config)
-        searcher_copy.restore(self.checkpoint_path)
+        searcher.restore(self.checkpoint_path)
 
-        searcher_copy.on_trial_complete("2", {
+        searcher.on_trial_complete("2", {
             self.metric_name: 1,
             "config/a": 1.0,
             "time_total_s": 1
         })
-        searcher_copy.suggest("3")
-        searcher_copy.on_trial_complete("3", {
+        searcher.suggest("3")
+        searcher.on_trial_complete("3", {
             self.metric_name: 1,
             "config/a": 1.0,
             "time_total_s": 1
@@ -394,7 +392,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         from ax.service.ax_client import AxClient
 
         converted_config = AxSearch.convert_search_space(self.config)
-        # At least one nan, inf, -inf and float
         client = AxClient()
         client.create_experiment(
             parameters=converted_config,
@@ -402,15 +399,26 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             minimize=False)
         searcher = AxSearch(ax_client=client)
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        client = AxClient()
+        client.create_experiment(
+            parameters=converted_config,
+            objective_name=self.metric_name,
+            minimize=False)
+        searcher = AxSearch(ax_client=client)
+        self._restore(searcher)
 
     def testBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
         searcher = BayesOptSearch(
             space=self.config, metric=self.metric_name, mode="max")
+        self._save(searcher)
 
-        self._saveRestore(searcher)
+        searcher = BayesOptSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testBlendSearch(self):
         from ray.tune.suggest.flaml import BlendSearch
@@ -418,7 +426,11 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BlendSearch(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = BlendSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
@@ -426,14 +438,21 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = TuneBOHB(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = TuneBOHB(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testCFO(self):
         from ray.tune.suggest.flaml import CFO
 
         searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = CFO(space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
@@ -445,7 +464,15 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             domain="euclidean",
             optimizer="random")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = DragonflySearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            domain="euclidean",
+            optimizer="random")
+        self._restore(searcher)
 
     def testHEBO(self):
         from ray.tune.suggest.hebo import HEBOSearch
@@ -453,7 +480,11 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = HEBOSearch(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = HEBOSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testHyperopt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -461,7 +492,12 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = HyperOptSearch(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = HyperOptSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+
+        self._restore(searcher)
 
     def testNevergrad(self):
         from ray.tune.suggest.nevergrad import NevergradSearch
@@ -473,7 +509,14 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             mode="max",
             optimizer=ng.optimizers.RandomSearch)
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = NevergradSearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            optimizer=ng.optimizers.RandomSearch)
+        self._restore(searcher)
 
     def testOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
@@ -481,7 +524,11 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = OptunaSearch(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = OptunaSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testSkopt(self):
         from ray.tune.suggest.skopt import SkOptSearch
@@ -489,7 +536,11 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = SkOptSearch(
             space=self.config, metric=self.metric_name, mode="max")
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = SkOptSearch(
+            space=self.config, metric=self.metric_name, mode="max")
+        self._restore(searcher)
 
     def testZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
@@ -501,7 +552,15 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             budget=100,
             parallel_num=4)
 
-        self._saveRestore(searcher)
+        self._save(searcher)
+
+        searcher = ZOOptSearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            budget=100,
+            parallel_num=4)
+        self._restore(searcher)
 
 
 if __name__ == "__main__":
