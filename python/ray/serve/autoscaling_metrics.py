@@ -74,7 +74,7 @@ class InMemoryMetricsStore:
 
         Args:
             data_points(dict): dictionary containing the metrics values. The
-              key should be a string that uniquely identify this time series
+              key should be a string that uniquely identifies this time series
               and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
               collected at.

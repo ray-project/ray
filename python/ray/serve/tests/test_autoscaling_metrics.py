@@ -54,7 +54,11 @@ class TestInMemoryMetricsStore:
 
 def test_e2e(serve_instance):
     @serve.deployment(
-        _autoscaling_config={"metrics_interval_s": 0.1},
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 1
+        },
         max_concurrent_queries=1000)
     class A:
         def __call__(self):

@@ -55,8 +55,9 @@ def _get_insufficient_resources_warning_threshold() -> float:
     else:
         # Set the default to 10s so that we don't prematurely determine that
         # a cluster cannot fulfill the resources requirements.
+        # TODO(xwjiang): Change it back once #18608 is resolved.
         return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "10"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "60"))
 
 
 # TODO(xwjiang): Consider having a help page with more detailed instructions.
@@ -303,6 +304,7 @@ class TrialExecutor(metaclass=ABCMeta):
                             #  Raise an Error once #18608 is resolved.
                             logger.warning(
                                 _get_insufficient_resources_error_msg(trial))
+                            break
                 else:
                     # TODO(xwjiang): #17799.
                     #  Output a more helpful msg for autoscaler.
