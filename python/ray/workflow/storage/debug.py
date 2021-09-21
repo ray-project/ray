@@ -128,8 +128,8 @@ class DebugStorage(Storage):
             await self._logged_storage.put(key, data, is_json)
         await self._wrapped_storage.put(key, data, is_json)
 
-    def open(self, key: str):
-        return self._wrapped_storage.open(key)
+    def open(self, key: str, mode: str = "r"):
+        return self._wrapped_storage.open(key, mode)
 
     async def delete_prefix(self, prefix: str) -> None:
         if self._log_on:

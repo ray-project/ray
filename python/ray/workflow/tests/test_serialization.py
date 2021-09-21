@@ -169,9 +169,9 @@ def test_embedded_objectrefs(workflow_start_regular):
     subprocess.check_output("ray stop --force", shell=True)
 
     workflow.init(url)
-    storage2 = workflow_storage.get_workflow_storage(workflow_id)
+    base_storage = storage.get_global_storage()
 
-    result = workflow_storage.asyncio_run(storage2._get(["key"]))
+    result = workflow_storage.asyncio_run(serialization.load_from_storage(["key"], base_storage))
     assert ray.get(result.refs) == [1, 2]
 
 

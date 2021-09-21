@@ -180,19 +180,26 @@ async def dump_to_storage(paths: List[str],
     # TODO Expose the key related APIs.
     key = storage.make_key(*paths)
 
-    # TODO Use open()
-    with storage.open(key) as f:
+    with storage.open(key, "wb") as f:
         pickler = ObjectRefPickler(f)
         pickler.dump(obj)
 
     await asyncio.gather(*tasks)
 
 
+async def _load_from_storage(key: str, storage: storage.Storage) -> Any:
+    with storage.open(key, "rb") as f:
+        return cloudpickle.load(f)
+
+
+async def load_from_storage(paths: List[str], storage: storage.Storage) -> Any:
+    key = storage.make_key(*paths)
+    return await _load_from_storage(key, storage)
+
+
 @ray.remote
 def _load_ref_helper(key: str, storage: storage.Storage):
-    # TODO: Should be able to do `storage.open()` here too.
-    serialized = asyncio.get_event_loop().run_until_complete(storage.get(key))
-    return cloudpickle.loads(serialized)
+    return asyncio.get_event_loop().run_until_complete(_load_from_storage(key, storage))
 
 
 # TODO (Alex): We should use weakrefs here instead of leaking...
