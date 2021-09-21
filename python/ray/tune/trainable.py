@@ -76,7 +76,7 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        if self.is_actor() or True:
+        if self.is_actor():
             disable_ipython()
 
         self._result_logger = self._logdir = None
