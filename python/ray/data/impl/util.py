@@ -51,6 +51,12 @@ def _get_spread_resources_iter(nodes: List[Dict[str, Any]],
         nodes,
         include_prefix=spread_resource_prefix,
         include_colocated_with=resource_request_labels)
+    if not spread_resource_labels:
+        # No spreadable resource labels available, raise an error.
+        raise ValueError(
+            "No resources both match the provided prefix "
+            f"{spread_resource_prefix} and are colocated with resources "
+            f"{resource_request_labels}.")
     # Return a round-robin resource iterator over the spread labels.
     return itertools.cycle([{
         label: 0.001
