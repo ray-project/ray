@@ -80,6 +80,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
         head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
         child_bundle = {"custom": 1}
+        # Manually calculated number of parallel trials
+        max_num_parallel = 2
 
         placement_group_factory = PlacementGroupFactory(
             [head_bundle, child_bundle, child_bundle])
@@ -118,14 +120,25 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     scheduled,
                     min(scheduled, len(trials)),
                     msg=f"Num trials iter {iteration}")
+
+                # The following two tests were relaxed for reuse_actors=True
+                # so that up to `max_num_parallel` more placement groups can
+                # exist than we would expect. This is because caching
+                # relies on reconciliation for cleanup to avoid overscheduling
+                # of new placement groups.
+                num_parallel_reuse = int(reuse_actors) * max_num_parallel
+
                 # The number of PGs should decrease when trials finish
-                this.assertEqual(
-                    max(scheduled, len(trials)) - num_finished,
+                this.assertGreaterEqual(
+                    max(scheduled, len(trials)) - num_finished +
+                    num_parallel_reuse,
                     total_num_tracked,
                     msg=f"Num tracked iter {iteration}")
+
                 # The number of actual placement groups should match this
-                this.assertEqual(
-                    max(scheduled, len(trials)) - num_finished,
+                this.assertGreaterEqual(
+                    max(scheduled, len(trials)) - num_finished +
+                    num_parallel_reuse,
                     num_non_removed_pgs - num_removal_scheduled_pgs,
                     msg=f"Num actual iter {iteration}")
 

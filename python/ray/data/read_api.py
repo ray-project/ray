@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
 
@@ -26,6 +25,7 @@ from ray.data.impl.arrow_block import ArrowRow, \
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
@@ -137,6 +137,7 @@ def read_datasource(datasource: Datasource[T],
                     *,
                     parallelism: int = 200,
                     ray_remote_args: Dict[str, Any] = None,
+                    _spread_resource_prefix: Optional[str] = None,
                     **read_args) -> Dataset[T]:
     """Read a dataset from a custom data source.
 
@@ -165,18 +166,15 @@ def read_datasource(datasource: Datasource[T],
         ray_remote_args["num_cpus"] = 0.5
     remote_read = cached_remote_fn(remote_read)
 
-    read_spread_custom_resource_labels = os.getenv(
-        "RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS", None)
-    if read_spread_custom_resource_labels is not None:
-        read_spread_custom_resource_labels = (
-            read_spread_custom_resource_labels.split(","))
-        round_robin_resource_provider = itertools.cycle(
-            map(lambda resource: {resource: 0.001},
-                read_spread_custom_resource_labels))
+    if _spread_resource_prefix is not None:
+        # Use given spread resource prefix for round-robin resource-based
+        # scheduling.
+        nodes = ray.nodes()
+        resource_iter = _get_spread_resources_iter(
+            nodes, _spread_resource_prefix, ray_remote_args)
     else:
-        round_robin_resource_provider = itertools.repeat({})
-
-    resource_iter = iter(round_robin_resource_provider)
+        # If no spread resource prefix given, yield an empty dictionary.
+        resource_iter = itertools.repeat({})
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
