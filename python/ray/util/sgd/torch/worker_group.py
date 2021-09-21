@@ -7,6 +7,7 @@ from datetime import timedelta
 import ray
 import torch
 from ray.exceptions import RayActorError
+from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
 from ray.util.sgd.torch.constants import SGD_PLACEMENT_GROUP_TIMEOUT_S
@@ -20,6 +21,7 @@ RESIZE_COOLDOWN_S = 10
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class WorkerGroupInterface:
     """Manages a group of TorchRunner workers."""
 

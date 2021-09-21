@@ -1,6 +1,8 @@
+from ray.util.annotations import PublicAPI
 from ray.util.iter import ParallelIterator, from_iterators
 
 
+@PublicAPI(stability="beta")
 class Dataset():
     """A simple Dataset abstraction for RaySGD.
 

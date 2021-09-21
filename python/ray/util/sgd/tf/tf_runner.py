@@ -3,6 +3,7 @@ import json
 import os
 
 import ray
+from ray.util.annotations import DeveloperAPI
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,7 @@ def _try_import_strategy():
     return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
 
+@DeveloperAPI
 class TFRunner:
     """Manages a TensorFlow model for training."""
 
