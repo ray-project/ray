@@ -199,8 +199,7 @@ async def load_from_storage(paths: List[str], storage: storage.Storage) -> Any:
 
 @ray.remote
 def _load_ref_helper(key: str, storage: storage.Storage):
-    return asyncio.get_event_loop().run_until_complete(
-        _load_from_storage(key, storage))
+    return asyncio.get_event_loop().run_until_complete(_load_from_storage(key, storage))
 
 
 # TODO (Alex): We should use weakrefs here instead of leaking...

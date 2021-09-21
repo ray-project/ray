@@ -91,9 +91,8 @@ class S3StorageImpl(Storage):
                 raise
 
     def open(self, key: str, mode: str = "r") -> io.BufferedIOBase:
-        assert "+" not in mode, "Cannot open file for reading and writing."
+        assert "+" not in mode, "Cannot open file for both reading and writing."
         if "w" in mode:
-
             def onclose(bio):
                 bio.seek(0)
                 coro = self._upload_obj(key, bio)
@@ -104,7 +103,8 @@ class S3StorageImpl(Storage):
             return _BytesIOWithCallback(onclose)
         else:
             tmp_file = tempfile.SpooledTemporaryFile(
-                mode="w+b", max_size=MAX_RECEIVED_DATA_MEMORY_SIZE)
+                    mode="w+b",
+                    max_size=MAX_RECEIVED_DATA_MEMORY_SIZE)
             coro = self._download_obj(key, tmp_file)
             loop = asyncio.get_event_loop()
             loop.run_until_complete(coro)
