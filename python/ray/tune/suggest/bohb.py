@@ -48,7 +48,7 @@ class TuneBOHB(Searcher):
             Parameters will be sampled from this space which will be used
             to run trials.
         bohb_config (dict): configuration for HpBandSter BOHB algorithm
-        max_concurrent (int): Depreciated. Use
+        max_concurrent (int): Deprecated. Use
             ``tune.suggest.ConcurrencyLimiter()``.
         metric (str): The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
