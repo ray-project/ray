@@ -184,7 +184,8 @@ class WorkflowStorage:
             A callable function.
         """
         paths = self._key_step_function_body(step_id)
-        return asyncio_run(serialization.load_from_storage(paths, self._storage))
+        return asyncio_run(
+            serialization.load_from_storage(paths, self._storage))
 
     def gen_step_id(self, step_name: str) -> int:
         async def _gen_step_id():

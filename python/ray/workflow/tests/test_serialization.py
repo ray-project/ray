@@ -171,7 +171,8 @@ def test_embedded_objectrefs(workflow_start_regular):
     workflow.init(url)
     base_storage = storage.get_global_storage()
 
-    result = workflow_storage.asyncio_run(serialization.load_from_storage(["key"], base_storage))
+    result = workflow_storage.asyncio_run(
+        serialization.load_from_storage(["key"], base_storage))
     assert ray.get(result.refs) == [1, 2]
 
 
