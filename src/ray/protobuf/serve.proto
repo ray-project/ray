@@ -24,8 +24,26 @@ option java_multiple_files = true;
 
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
+  // Minimal number of replicas, must be a non-negative integer.
+  uint32 min_replicas = 1;
+  // Maximal number of replicas, must be a non-negative integer and greater or equals
+  // to min_replicas.
+  uint32 max_replicas = 2;
+  // Target number of in flight requests per replicas. This is the primary configuration
+  // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
+  // being scaled up. Must be a non-negative inter.
+  uint32 target_num_ongoing_requests_per_replica = 3;
+
   // The frequency of how long does each replica sending metrics to autoscaler.
-  double metrics_interval_s = 1;
+  double metrics_interval_s = 4;
+  // The interval (in seconds) of autoscaler evaluating metrics and performing scaling
+  // decision.
+  double loop_period_s = 5;
+  // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
+  double look_back_period_s = 6;
+
+  // The multiplicative "gain" factor to limit scaling decisions.
+  double smoothing_factor = 7;
 }
 
 // Configuration options for a backend, to be set by the user.

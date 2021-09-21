@@ -476,6 +476,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   auto actor =
       std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
+  const auto &actor_table_data = actor->GetActorTableData();
+  // Pub this state for dashboard showing.
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                     actor_table_data.SerializeAsString(), nullptr));
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due

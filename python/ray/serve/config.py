@@ -16,7 +16,37 @@ from ray import cloudpickle as cloudpickle
 
 
 class AutoscalingConfig(BaseModel):
-    metrics_interval_s: float
+    # Publicly exposed options
+    min_replicas: int
+    max_replicas: int
+    target_num_ongoing_requests_per_replica: int = 1
+
+    # Private options below
+
+    # Metrics scraping options
+    metrics_interval_s: float = 10.0
+    loop_period_s: float = 30.0
+    look_back_period_s: float = 30.0
+
+    # Internal autoscaling configuration options
+
+    # Multiplicative "gain" factor to limit scaling decisions
+    smoothing_factor: float = 1.0
+
+    # TODO(architkulkarni): implement below
+    # How long to wait before scaling down replicas
+    # downscale_delay_s: float = 600.0
+    # How long to wait before scaling up replicas
+    # upscale_delay_s: float = 30.0
+
+    # The number of replicas to start with when creating the deployment
+    # initial_replicas: int = 1
+    # The num_ongoing_requests_per_replica error ratio (desired / current)
+    # threshold for overriding `upscale_delay_s`
+    # panic_mode_threshold: float = 2.0
+
+    # TODO(architkulkarni): Add reasonable defaults
+    # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
 class BackendConfig(BaseModel):
