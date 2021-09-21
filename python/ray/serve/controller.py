@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import time
 from collections import defaultdict
@@ -6,8 +7,10 @@ import os
 from typing import Dict, List, Optional, Tuple, Any
 
 import ray
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
+from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState, BackendStateManager
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
@@ -19,7 +22,7 @@ from ray.serve.common import (
     NodeId,
     ReplicaTag,
 )
-from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import AutoscalingConfig, BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
@@ -91,6 +94,7 @@ class ServeController:
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
+        # self.autoscaling_manager = AutoscalingManager()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -126,8 +130,43 @@ class ServeController:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
+    async def update_autoscaling(self) -> None:
+        for deployment_name, (backend_info, route_prefix) in self.list_deployments().items():
+            backend_config = backend_info.backend_config
+            autoscaling_config = backend_config.autoscaling_config
+            if autoscaling_config is None:
+                continue
+            replicas = self.backend_state_manager._backend_states[
+                    deployment_name]._replicas
+            running_replicas = replicas.get([ReplicaState.RUNNING])
+            current_num_ongoing_requests = []
+            for replica in running_replicas:
+                replica_tag = replica.replica_tag
+                num_ongoing_requests = self.autoscaling_metrics_store.window_average(replica_tag, time.time() - autoscaling_config.look_back_period_s)
+                current_num_ongoing_requests.append(num_ongoing_requests)
+            if len(current_num_ongoing_requests) == 0:
+                print("length of list of num requests is zero")
+                continue
+            print("current ongoing num requests: ", current_num_ongoing_requests)
+            new_backend_config = backend_config.copy()
+            new_backend_config.num_replicas = calculate_desired_num_replicas(autoscaling_config, current_num_ongoing_requests)
+            print("desired num replicas: ", new_backend_config.num_replicas)
+            # continue #TODO: remove
+            replica_config = backend_info.replica_config
+            deployer_job_id = backend_info.deployer_job_id
+            backend_config_proto_bytes = new_backend_config.to_proto_bytes()
+            # TODO: Only allow autoscaling for versioned deployments for now
+            # TODO: Weird behavior: when spamming a new deployment, the
+            # num ongoing requests goes from 0, to 0.5, to 0.66, to 1, to (huge) (15-20ish)
+            goal_id, updating = await self.deploy(deployment_name, backend_config_proto_bytes, replica_config, version=backend_info.version, prev_version=backend_info.version, route_prefix=route_prefix, deployer_job_id=deployer_job_id)
+
+
     async def run_control_loop(self) -> None:
         while True:
+            # try:
+            await self.update_autoscaling() # TODO: see if you can move inside the async lock, incase nested locking with the same lock is okay.
+            #except Exception:
+            #    logger.exception("Exception while running autoscaling.")
             async with self.write_lock:
                 try:
                     self.http_state.update()
@@ -219,7 +258,6 @@ class ServeController:
                      name: str,
                      backend_config_proto_bytes: bytes,
                      replica_config: ReplicaConfig,
-                     python_methods: List[str],
                      version: Optional[str],
                      prev_version: Optional[str],
                      route_prefix: Optional[str],
@@ -253,10 +291,16 @@ class ServeController:
                 backend_config=backend_config,
                 replica_config=replica_config,
                 deployer_job_id=deployer_job_id,
-                start_time_ms=int(time.time() * 1000))
+                start_time_ms=int(time.time() * 1000)) #TODO: file bug.  If prev_version and version are specified, start time will be updated on any config change(incl num replicas)
 
             goal_id, updating = self.backend_state_manager.deploy_backend(
                 name, backend_info)
+            backend_def = cloudpickle.loads(replica_config.serialized_backend_def)
+            python_methods = []
+            if inspect.isclass(backend_def):
+                for method_name, _ in inspect.getmembers(backend_def,
+                                                        inspect.isfunction):
+                    python_methods.append(method_name)
             endpoint_info = EndpointInfo(
                 route=route_prefix, python_methods=python_methods)
             self.endpoint_state.update_endpoint(name, endpoint_info)

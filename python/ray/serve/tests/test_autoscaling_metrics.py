@@ -68,7 +68,7 @@ def test_e2e(serve_instance):
     handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
-    # Wait for metrics to propogate
+    # Wait for metrics to propagate
     def get_data():
         return ray.get(serve_instance._controller.
                        _dump_autoscaling_metrics_for_testing.remote())

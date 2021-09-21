@@ -221,16 +221,12 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        python_methods = []
-        if inspect.isclass(backend_def):
-            for method_name, _ in inspect.getmembers(backend_def,
-                                                     inspect.isfunction):
-                python_methods.append(method_name)
+
 
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
                 name, backend_config.to_proto_bytes(), replica_config,
-                python_methods, version, prev_version, route_prefix,
+                version, prev_version, route_prefix,
                 ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
@@ -826,7 +822,7 @@ class Deployment:
 
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
-
+        # TODO(architkulkarni): add autoscaling config?
         return Deployment(
             func_or_class,
             name,
@@ -958,9 +954,15 @@ def deployment(
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
 
+    # TODO(architkulkarni): Enforce that autoscaling_config and user-provided
+    # num_replicas should be mutually exclusive.
     if _autoscaling_config is not None:
-        config.autoscaling_config = AutoscalingConfig.parse_obj(
-            _autoscaling_config)
+        if isinstance(_autoscaling_config, dict):
+            config.autoscaling_config = AutoscalingConfig.parse_obj(
+                _autoscaling_config)
+        elif isinstance(_autoscaling_config, AutoscalingConfig):
+            config.autoscaling_config = _autoscaling_config
+
 
     def decorator(_func_or_class):
         return Deployment(
