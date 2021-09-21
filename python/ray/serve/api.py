@@ -222,12 +222,10 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-
-
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config,
-                version, prev_version, route_prefix,
+                name, backend_config.to_proto_bytes(), replica_config, version,
+                prev_version, route_prefix,
                 ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
@@ -965,7 +963,6 @@ def deployment(
                 _autoscaling_config)
         elif isinstance(_autoscaling_config, AutoscalingConfig):
             config.autoscaling_config = _autoscaling_config
-
 
     def decorator(_func_or_class):
         return Deployment(
