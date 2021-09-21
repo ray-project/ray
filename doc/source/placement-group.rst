@@ -80,6 +80,22 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
 
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Initialize Ray.
+      ray::Init();
+
+      // Construct a list of bundles.
+      std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
+
+      // Make a creation option with bundles and strategy.
+      ray::internal::PlacementGroupCreationOptions options{
+          false, "my_pg", bundles, ray::internal::PlacementStrategy::PACK};
+
+      ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
+
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
@@ -110,6 +126,20 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
       for (PlacementGroup group: allPlacementGroup) {
         System.out.println(group);
+      }
+
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Wait for the placement group to be ready within the specified time(unit is seconds).
+      boll ready = pg.Wait(60);
+      assert(ready);
+
+      // You can look at placement group states using this API.
+      std::vector<ray::PlacementGroup> all_placement_group = ray::GetAllPlacementGroups();
+      for (const ray::PlacementGroup &group : all_placement_group) {
+        std::cout << group.GetName() << std::endl;
       }
 
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
@@ -237,6 +267,56 @@ Let's create a placement group. Recall that each bundle is a collection of resou
           .remote();
         Assert.assertEquals(obj.get(), "pong");
 
+    .. group-tab:: C++
+
+      .. code-block:: c++
+
+        RayConfig config;
+        config.num_cpus = 2;
+        ray::Init(config);
+
+        class Counter {
+        public:
+          std::string Ping() {
+            return "pong";
+          }
+        };
+
+        // Factory function of Counter class.
+        static Counter *CreateCounter() {
+          return new Counter();
+        };
+
+        RAY_REMOTE(&Counter::Ping, CreateCounter);
+
+        // Construct a list of bundles.
+        std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 2.0}}};
+
+        // Create a placement group and make sure its creation is successful.
+        ray::PlacementGroupCreationOptions options{
+            false, name, bundles, ray::PlacementStrategy::STRICT_SPREAD};
+
+
+        ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
+        bool is_created = pg.Wait(60);
+        assert(is_created);
+
+        // Won't be scheduled because there are no 2 cpus now.
+        ray::ObjectRef<std::string> obj = ray::Task(&Counter::Ping)
+          .SetResource("CPU", 2.0)
+          .Remote();
+
+        std::vector<ray::ObjectRef<std::string>> wait_list = {obj};
+        auto wait_result = ray::Wait(wait_list, 1, 5 * 1000);
+        assert(wait_result.unready.size() == 1);
+
+        // Will be scheduled because 2 cpus are reserved by the placement group.
+        obj = ray::Task(&Counter::Ping)
+          .SetPlacementGroup(pg, 0)
+          .SetResource("CPU", 2.0)
+          .Remote();
+        assert(*obj.get() == "pong");
+
 .. note::
 
   When using placement groups, it is recommended to verify that their placement groups are ready (by calling ``ray.get(pg.ready())``)
@@ -283,6 +363,23 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
         boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
+
+    .. group-tab:: C++
+
+      .. code-block:: c++
+
+        std::vector<std::unordered_map<std::string, double>> bundles{{{"GPU", 2.0}, {"extra_resource", 2.0}}};
+
+        // Reserve bundles with strict pack strategy.
+        // It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+        // Using this placement group for scheduling actors or tasks will guarantee that they will
+        // be colocated on the same node.
+        ray::PlacementGroupCreationOptions options{
+            false, "my_pg", bundles, ray::PlacementStrategy::STRICT_PACK};
+
+        ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
+        bool is_created = pg.Wait(60);
+        assert(is_created);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
@@ -352,6 +449,44 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
           .setPlacementGroup(pg, 1)
           .setResource("extra_resource", 1.0)
           .remote().get();
+      }
+
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      class Counter {
+      public:
+        Counter(int init_value) : value(init_value){}
+        int GetValue() {return value;}
+        std::string Ping() {
+          return "pong";
+        }
+      private:
+        int value;
+      };
+
+      // Factory function of Counter class.
+      static Counter *CreateCounter() {
+        return new Counter();
+      };
+
+      RAY_REMOTE(&Counter::Ping, &Counter::GetValue, CreateCounter);
+      
+      // Create GPU actors on a gpu bundle.
+      for (int index = 0; index < 2; index++) {
+        ray::Actor(CreateCounter)
+          .SetResource("GPU", 1.0)
+          .SetPlacementGroup(pg, 0)
+          .Remote(1);
+      }
+
+      // Create extra_resource actors on a extra_resource bundle.
+      for (int index = 0; index < 2; index++) {
+        ray::Task(&Counter::Ping)
+          .SetPlacementGroup(pg, 1)
+          .SetResource("extra_resource", 1.0)
+          .Remote().Get();
       }
 
 
@@ -433,6 +568,14 @@ You can remove a placement group at any time to free its allocated resources.
       PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(placementGroup.getId());
       Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      ray::RemovePlacementGroup(placement_group.GetID());
+
+      ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
+      assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
 Named Placement Groups
 ----------------------
@@ -511,6 +654,43 @@ See :ref:`placement-group-lifetimes` for more details.
       PlacementGroup group = PlacementGroups.getPlacementGroup("non_global_name");
       Assert.assertNotNull(group);
 
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Create a placement group with a globally unique name.
+      std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
+
+      ray::PlacementGroupCreationOptions options{
+          true/*global*/, "global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
+
+      ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
+      pg.Wait(60);
+
+      ...
+
+      // Retrieve the placement group later somewhere.
+      ray::PlacementGroup group = ray::GetGlobalPlacementGroup("global_name");
+      assert(!group.Empty());
+
+    We also support non-global named placement group in C++, which means that the placement group name is only valid within the job and cannot be accessed from another job.
+
+    .. code-block:: c++
+
+      // Create a placement group with a job-scope-unique name.
+      std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
+
+      ray::PlacementGroupCreationOptions options{
+          false/*non-global*/, "non_global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
+
+      ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
+      pg.Wait(60);
+
+      ...
+
+      // Retrieve the placement group later somewhere in the same job.
+      ray::PlacementGroup group = ray::GetPlacementGroup("non_global_name");
+      assert(!group.Empty());
 
 .. _placement-group-lifetimes:
 

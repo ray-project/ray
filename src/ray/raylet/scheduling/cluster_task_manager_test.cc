@@ -102,10 +102,10 @@ class MockWorkerPool : public WorkerPoolInterface {
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id) {
+    const std::string &id, double num_gpus = 0.0) {
   std::unordered_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = 8;
-  local_node_resources[ray::kGPU_ResourceLabel] = 4;
+  local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
@@ -177,9 +177,9 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest()
+  ClusterTaskManagerTest(double num_gpus_at_head = 0.0)
       : id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary())),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_gpus_at_head)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -278,10 +278,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
+  std::unordered_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
+};
+
+// Same as ClusterTaskManagerTest, but the head node starts with 4.0 num gpus.
+class ClusterTaskManagerTestWithGPUsAtHead : public ClusterTaskManagerTest {
+ public:
+  ClusterTaskManagerTestWithGPUsAtHead() : ClusterTaskManagerTest(4.0) {}
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -1196,7 +1202,7 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
             task1.GetTaskSpecification().TaskId());
 }
 
-TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
+TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
   const NodeResources &node_resources = scheduler_->GetLocalNodeResources();
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);

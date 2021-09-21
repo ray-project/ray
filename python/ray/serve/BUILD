@@ -57,6 +57,14 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_metrics",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_metrics",
     size = "small",
     srcs = serve_tests_srcs,
@@ -230,6 +238,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_autoscaling_policy",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -240,6 +256,14 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_controller_recovery",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested

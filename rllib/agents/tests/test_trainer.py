@@ -9,6 +9,8 @@ import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.parallel_evaluation_and_training import \
+    AssertNumEvalEpisodesCallback
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -57,7 +59,7 @@ class TestTrainer(unittest.TestCase):
             "multiagent": {
                 # Start with a single policy.
                 "policies": {"p0"},
-                "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
                 # And only two policies that can be stored in memory at a
                 # time.
                 "policy_map_capacity": 2,
@@ -71,7 +73,7 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("p0" in r["info"]["learner"])
             for i in range(1, 3):
 
-                def new_mapping_fn(agent_id, episode, **kwargs):
+                def new_mapping_fn(agent_id, episode, worker, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
                 # Add a new policy.
@@ -109,6 +111,8 @@ class TestTrainer(unittest.TestCase):
             for i in range(2, 0, -1):
                 trainer.remove_policy(
                     f"p{i}",
+                    # Note that the complete signature of a policy_mapping_fn
+                    # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
                     policies_to_train=[f"p{i - 1}"])
 
@@ -122,7 +126,10 @@ class TestTrainer(unittest.TestCase):
             "evaluation_num_episodes": 2,
             "evaluation_config": {
                 "gamma": 0.98,
-            }
+            },
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertNumEvalEpisodesCallback,
         })
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -152,6 +159,9 @@ class TestTrainer(unittest.TestCase):
             "env": "CartPole-v0",
             # Switch off evaluation (this should already be the default).
             "evaluation_interval": None,
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertNumEvalEpisodesCallback,
         })
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call

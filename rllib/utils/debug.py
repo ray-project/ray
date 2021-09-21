@@ -69,10 +69,16 @@ class _StringValue:
         return self.value
 
 
-def update_global_seed_if_necessary(framework: str, seed: Optional[int]):
+def update_global_seed_if_necessary(framework: Optional[str] = None,
+                                    seed: Optional[int] = None) -> None:
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.
+
+    Args:
+        framework (Optional[str]): The framework specifier (may be None).
+        seed (Optional[int]): An optional int seed. If None, will not do
+            anything.
     """
     if seed is None:
         return

@@ -1,4 +1,5 @@
 import sqlite3
+import os
 
 try:
     import boto3
@@ -88,11 +89,18 @@ class RayLocalKVStore(KVStoreBase):
             namepsace: str,
             db_path: str,
     ):
+        if len(db_path) == 0:
+            raise ValueError("LocalKVStore's path shouldn't be empty.")
+
+        # Ensture that parent directory is created.
+        parent_dir = os.path.split(db_path)[0]
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
         self._namespace = namepsace
         self._conn = sqlite3.connect(db_path)
-
         cursor = self._conn.cursor()
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS {self._namespace} "
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS "{self._namespace}"'
                        "(key TEXT UNIQUE, value BLOB)")
         self._conn.commit()
 
@@ -113,7 +121,7 @@ class RayLocalKVStore(KVStoreBase):
 
         cursor = self._conn.cursor()
         cursor.execute(
-            f"INSERT OR REPLACE INTO {self._namespace} "
+            f'INSERT OR REPLACE INTO "{self._namespace}" '
             "(key, value) VALUES (?,?)", (self.get_storage_key(key), val))
         self._conn.commit()
         return True
@@ -133,7 +141,7 @@ class RayLocalKVStore(KVStoreBase):
         cursor = self._conn.cursor()
         result = list(
             cursor.execute(
-                f"SELECT value FROM {self._namespace} WHERE key = (?)",
+                f'SELECT value FROM "{self._namespace}" WHERE key = (?)',
                 (self.get_storage_key(key), )))
         if len(result) == 0:
             return None
@@ -153,7 +161,7 @@ class RayLocalKVStore(KVStoreBase):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
         cursor = self._conn.cursor()
-        cursor.execute(f"DELETE FROM {self._namespace} "
+        cursor.execute(f'DELETE FROM "{self._namespace}" '
                        "WHERE key = (?)", (self.get_storage_key(key), ))
         self._conn.commit()
 
@@ -170,7 +178,7 @@ class RayS3KVStore(KVStoreBase):
             self,
             namepsace: str,
             bucket="",
-            s3_path="",
+            prefix="",
             region_name="us-west-2",
             aws_access_key_id=None,
             aws_secret_access_key=None,
@@ -178,7 +186,7 @@ class RayS3KVStore(KVStoreBase):
     ):
         self._namespace = namepsace
         self._bucket = bucket
-        self._s3_path = s3_path
+        self._prefix = prefix + "/" if prefix else ""
         if not boto3:
             raise ImportError(
                 "You tried to use S3KVstore client without boto3 installed."
@@ -191,7 +199,7 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token)
 
     def get_storage_key(self, key: str) -> str:
-        return "{ns}-{key}".format(ns=self._namespace, key=key)
+        return f"{self._prefix}{self._namespace}-{key}"
 
     def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.
