@@ -240,8 +240,8 @@ class ClientBuilder:
         warnings.warn(
             "Starting a connection through `ray.client` is deprecated "
             "in favor of `ray.init`. See the docs for more details: "
-            f"{CLIENT_DOCS_URL}. You can replace your call to `ray.client` "
-            "with the following:\n"
+            f"{CLIENT_DOCS_URL}. You can replace your call to "
+            "`ray.client().connect()` with the following:\n"
             f"      {replacement_call}\n",
             DeprecationWarning,
             stacklevel=3)
