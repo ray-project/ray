@@ -241,6 +241,11 @@ class PlacementGroupManager:
         self._staging_futures: Dict[ObjectRef, Tuple[PlacementGroupFactory,
                                                      PlacementGroup]] = {}
 
+        # Cache of unstaged PGs (cleaned after full PG removal)
+        self._unstaged_pg_pgf: Dict[PlacementGroup, PlacementGroupFactory] = {}
+        self._unstaged_pgf_pg: Dict[PlacementGroupFactory, Set[
+            PlacementGroup]] = defaultdict(set)
+
         # Placement groups used by trials
         self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
         self._in_use_trials: Dict["Trial", PlacementGroup] = {}
@@ -293,7 +298,13 @@ class PlacementGroupManager:
             if force or (time.time() -
                          self._removal_delay) >= self._pgs_for_removal[pg]:
                 self._pgs_for_removal.pop(pg)
+
                 remove_placement_group(pg)
+
+                # Remove from unstaged cache
+                if pg in self._unstaged_pg_pgf:
+                    pgf = self._unstaged_pg_pgf.pop(pg)
+                    self._unstaged_pgf_pg[pgf].discard(pg)
 
     def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
@@ -323,7 +334,14 @@ class PlacementGroupManager:
                     # If block=False, only run once
                     has_non_removed_pg_left = block
                     pg = get_placement_group(info["name"])
+
                     remove_placement_group(pg)
+
+                    # Remove from unstaged cache
+                    if pg in self._unstaged_pg_pgf:
+                        pgf = self._unstaged_pg_pgf.pop(pg)
+                        self._unstaged_pgf_pg[pgf].discard(pg)
+
                 time.sleep(0.1)
 
     def stage_trial_pg(self, trial: "Trial"):
@@ -348,12 +366,17 @@ class PlacementGroupManager:
 
     def _stage_pgf_pg(self, pgf: PlacementGroupFactory):
         """Create placement group for factory"""
-        # This creates the placement group
-        pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
+        if len(self._unstaged_pgf_pg[pgf]) > 0:
+            # This re-uses a previously unstaged placement group
+            pg = self._unstaged_pgf_pg[pgf].pop()
+            del self._unstaged_pg_pgf[pg]
+            self._pgs_for_removal.pop(pg, None)
+        else:
+            # This creates the placement group
+            pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-
         self._latest_staging_start_time = time.time()
 
         return True
@@ -478,10 +501,15 @@ class PlacementGroupManager:
         pgf = trial.placement_group_factory
 
         staged_pg = self._unstage_unused_pg(pgf)
-        if not staged_pg:
+        if not staged_pg and not self._unstaged_pgf_pg[pgf]:
+            # If we have an unstaged placement group for this factory,
+            # this might be the same one we unstaged previously. If so,
+            # we should continue with the caching. If not, this will be
+            # reconciled later.
             return None
 
-        self.remove_pg(staged_pg)
+        if staged_pg:
+            self.remove_pg(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -607,6 +635,11 @@ class PlacementGroupManager:
                 if pg == trial_pg:
                     trial_future = future
                     break
+
+            # Track unstaged placement groups for potential reuse
+            self._unstaged_pg_pgf[trial_pg] = pgf
+            self._unstaged_pgf_pg[pgf].add(trial_pg)
+
             del self._staging_futures[trial_future]
 
         elif self._ready[pgf]:

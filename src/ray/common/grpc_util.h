@@ -16,8 +16,8 @@
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
+#include <google/protobuf/util/message_differencer.h>
 #include <grpcpp/grpcpp.h>
-
 #include <sstream>
 
 #include "ray/common/status.h"
@@ -62,6 +62,11 @@ class MessageWrapper {
 
   /// Serialize the message to a string.
   const std::string Serialize() const { return message_->SerializeAsString(); }
+
+  bool operator==(const MessageWrapper<Message> &rhs) const {
+    return google::protobuf::util::MessageDifferencer::Equivalent(GetMessage(),
+                                                                  rhs.GetMessage());
+  }
 
  protected:
   /// The wrapped message.

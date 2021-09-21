@@ -301,6 +301,11 @@ class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
     pass
 
 
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
+    pass
+
+
 class State:
     def __init__(self, state: str, timestamp: float, data: Any):
         self.state = state
@@ -747,10 +752,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -770,7 +775,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -781,7 +786,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -846,18 +851,20 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        session_operation_response = sdk.get_session_operation(
+            sop_id, _request_timeout=30)
+        session_operation = session_operation_response.result
+        completed = session_operation.completed
+
         _check_stop(stop_event, "session")
         now = time.time()
         if now > next_report:
             logger.info(f"... still waiting for session {session_name} "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        session_operation_response = sdk.get_session_operation(
-            sop_id, _request_timeout=30)
-        session_operation = session_operation_response.result
-        completed = session_operation.completed
-        time.sleep(1)
 
     return session_id
 
@@ -893,6 +900,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        result = sdk.get_session_command(session_command_id=scd_id)
+        completed = result.result.finished_at
+
         if state_str == "CMD_RUN":
             _check_stop(stop_event, "command")
         elif state_str == "CMD_PREPARE":
@@ -903,10 +916,6 @@ def wait_for_session_command_to_complete(create_session_command_result,
             logger.info(f"... still waiting for command to finish "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        result = sdk.get_session_command(session_command_id=scd_id)
-        completed = result.result.finished_at
-        time.sleep(1)
 
     status_code = result.result.status_code
     runtime = time.time() - start_wait
@@ -1494,7 +1503,8 @@ def run_test_config(
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
                       or isinstance(e, SessionTimeoutError)
-                      or isinstance(e, PrepareCommandRuntimeError)):
+                      or isinstance(e, PrepareCommandRuntimeError)
+                      or isinstance(e, AppConfigBuildFailure)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
