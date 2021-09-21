@@ -40,7 +40,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       client_call_manager_(main_service),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(main_service_) {}
+      pubsub_periodical_runner_(main_service_),
+      is_started_(false),
+      is_stopped_(false) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -244,8 +246,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     // eligible node is registered.
     gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
   };
-  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor) {
-    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
+                                         const rpc::PushTaskReply &reply) {
+    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
   };
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
