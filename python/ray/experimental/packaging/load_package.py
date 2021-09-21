@@ -133,13 +133,19 @@ def _download_from_github_if_needed(config_path: str) -> str:
         gh_branch = match.group(3)
         gh_subdir = match.group(4)
 
+        # test_wheels/prototype or test-wheels/prototype is one branch
+        if gh_branch == "test_wheels" or gh_branch == "test-wheels":
+            subdir_paths = gh_subdir.split("/")
+            gh_branch = gh_branch + "/" + subdir_paths.pop(0)
+            gh_subdir = "/".join(subdir_paths)
+
         # Compute the cache key based on the URL.
         hasher = hashlib.sha1()
         hasher.update(config_path.encode("utf-8"))
         config_key = hasher.hexdigest()
         final_path = os.path.join(_pkg_tmp(),
                                   "github_snapshot_{}".format(config_key))
-
+        print(gh_user, gh_repo, gh_branch, gh_subdir)
         # Only download the repo if needed.
         if not os.path.exists(final_path):
             tmp = tempfile.mkdtemp(

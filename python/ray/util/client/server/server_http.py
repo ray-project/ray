@@ -36,7 +36,7 @@ async def read_root():
 @app.get("/submit/{yaml_config_path}")
 async def submit(yaml_config_path: str):
     # Remote yaml file path on github
-    yaml_config_path = "https://raw.githubusercontent.com/ray-project/ray/03737184686fc4e07aad593076bada5297be914f/python/ray/experimental/job/example_job/job_config.yaml"
+    # yaml_config_path = "https://raw.githubusercontent.com/ray-project/ray/test_wheels/prototype_job/python/ray/experimental/job/example_job/job_config.yaml"
     config_path = load_package._download_from_github_if_needed(yaml_config_path)
     print(f"config_path: {config_path}")
 
@@ -85,7 +85,7 @@ async def submit(yaml_config_path: str):
         lifetime="detached").remote()
 
     job_handle = actor.run_background_job.remote(
-        command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri, actor_name=actor_name
+        command=command, self_handle=actor, config_path=config_path, pkg_uri=pkg_uri
     )
 
     return {"actor_name": actor_name, "namespace": namespace}
