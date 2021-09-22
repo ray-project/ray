@@ -107,8 +107,10 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                      << " contained_in_borrowed: " << outer_id;
       it->second.contained_in_borrowed_ids.insert(outer_id);
       outer_it->second.contains.insert(object_id);
+      // The inner object ref is in use. We must report our ref to the object's
+      // owner.
       if (it->second.RefCount() > 0) {
-        outer_it->second.has_nested_borrowed_refs_in_use = true;
+        outer_it->second.has_nested_refs_to_report = true;
       }
     }
   }
@@ -230,7 +232,7 @@ void ReferenceCounter::OnBorrowedRefInUse(ReferenceTable::iterator borrowed_ref_
        borrowed_ref_it->second.contained_in_borrowed_ids) {
     auto contained_in_it = object_id_refs_.find(contained_in_borrowed_id);
     RAY_CHECK(contained_in_it != object_id_refs_.end());
-    contained_in_it->second.has_nested_borrowed_refs_in_use = true;
+    contained_in_it->second.has_nested_refs_to_report = true;
   }
 }
 
@@ -700,11 +702,12 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
   // until all active borrowers are merged into the owner.
   it->second.borrowers.clear();
   it->second.stored_in_objects.clear();
-  it->second.has_nested_borrowed_refs_in_use = false;
   // Attempt to pop children.
   for (const auto &contained_id : it->second.contains) {
     GetAndClearLocalBorrowersInternal(contained_id, borrowed_refs);
   }
+  // We've reported our nested refs.
+  it->second.has_nested_refs_to_report = false;
 
   return true;
 }
@@ -751,9 +754,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     }
   }
 
-  // We don't have owner information about this object ID yet and the worker
-  // received it because it was nested in another ID that the worker was
-  // borrowing. Copy this information to our local table.
+  // This ref was nested inside another object. Copy this information to our
+  // local table.
   for (const auto &contained_in_borrowed_id :
        borrower_it->second.contained_in_borrowed_ids) {
     RAY_CHECK(borrower_ref.owner_address);

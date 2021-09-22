@@ -519,8 +519,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         has_lineage_references = lineage_ref_count > 0;
       }
 
-      return !(in_scope || is_nested || has_nested_borrowed_refs_in_use ||
-               has_borrowers || was_stored_in_objects || has_lineage_references);
+      return !(in_scope || is_nested || has_nested_refs_to_report || has_borrowers ||
+               was_stored_in_objects || has_lineage_references);
     }
 
     /// Whether the Reference can be deleted. A Reference can only be deleted
@@ -573,33 +573,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. A task that we submitted returned an ID(s).
     /// ObjectIDs are erased from this field when their Reference is deleted.
     absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// An Object ID that we (or one of our children) borrowed that contains
-    /// this object ID, which is also borrowed. This is used in cases where an
-    /// ObjectID is nested. We need to notify the owner of the outer ID of any
-    /// borrowers of this object, so we keep this field around until
-    /// GetAndClearLocalBorrowersInternal is called on the outer ID. This field
-    /// is updated in 2 cases:
-    ///  1. We deserialize an ID that we do not own and that was stored in
-    ///     another object that we do not own.
-    ///  2. Case (1) occurred for a task that we submitted and we also do not
-    ///     own the inner or outer object. Then, we need to notify our caller
-    ///     that the task we submitted is a borrower for the inner ID.
-    /// This field is reset to null once GetAndClearLocalBorrowersInternal is
-    /// called on contained_in_borrowed_id. For each borrower, this field is
-    /// set at most once during the reference's lifetime. If the object ID is
-    /// later found to be nested in a second object, we do not need to remember
-    /// the second ID because we will already have notified the owner of the
-    /// first outer object about our reference.
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
     absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
     /// The object IDs contained in this object. These could be objects that we
     /// own or are borrowing. This field is updated in 2 cases:
     ///  1. We call ray.put() on this ID and store the contained IDs.
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
-    /// The object IDs contained in this object that we are currently borrowing
-    /// (RefCount() > 0).
-    bool has_nested_borrowed_refs_in_use = false;
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner.
+    bool has_nested_refs_to_report = false;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list
