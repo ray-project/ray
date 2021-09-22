@@ -127,9 +127,8 @@ class PlasmaStore {
   void EvictObject(const ObjectID &object_id);
 
   template <class F, class... Args>
-  auto ExecuteInStoreThread(F &&f, Args &&... args) ->
-      typename std::result_of<F(Args...)>::type {
-    using return_type = typename std::result_of<F(Args...)>::type;
+  auto ExecuteInStoreThread(F &&f, Args &&... args) -> decltype(f(args...)) {
+    using return_type = decltype(f(args...));
     std::packaged_task<return_type()> task(
         std::bind(std::forward<F>(f), std::forward<Args>(args)...));
     std::future<return_type> res = task.get_future();
