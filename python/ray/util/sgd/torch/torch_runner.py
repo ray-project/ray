@@ -5,7 +5,6 @@ import itertools
 import ray
 import torch
 
-from ray.util.annotations import PublicAPI
 from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
 from ray.util.sgd.torch.utils import choose_amp_backend
@@ -27,7 +26,6 @@ except ImportError:
     pass
 
 
-@PublicAPI(stability="beta")
 class TorchRunner:
     """Manages a PyTorch model for training."""
 
