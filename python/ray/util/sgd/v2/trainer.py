@@ -277,7 +277,7 @@ class Trainer:
                 latest_ckpt = trainer.get_latest_checkpoint()
 
             assert iterator.is_finished()
-            model = iterator.get_fin()[0]
+            model = iterator.get_final_results()[0]
 
         Args:
             train_func (Callable): The training function to execute.

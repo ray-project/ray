@@ -11,13 +11,28 @@ Trainer
 .. autoclass:: ray.util.sgd.v2.Trainer
     :members:
 
-.. _sgd-api-iterator:
+Training Function Utilities
+---------------------------
 
-SGDIterator
-~~~~~~~~~~~
+sgd.report
+~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.SGDIterator
-    :members:
+.. autofunction::  ray.util.sgd.v2.report
+
+sgd.load_checkpoint
+~~~~~~~~~~~~~~~~~~~
+
+.. autofunction::  ray.util.sgd.v2.load_checkpoint
+
+sgd.save_checkpoint
+~~~~~~~~~~~~~~~~~~~
+
+.. autofunction::  ray.util.sgd.v2.save_checkpoint
+
+sgd.world_rank
+~~~~~~~~~~~~~~
+
+.. autofunction::  ray.util.sgd.v2.world_rank
 
 .. _sgd-api-backend-config:
 
@@ -76,25 +91,21 @@ CheckpointStrategy
 
 .. autoclass:: ray.util.sgd.v2.CheckpointStrategy
 
-Training Function Utilities
----------------------------
+Advanced APIs
+-------------
 
-sgd.report
-~~~~~~~~~~
+.. _sgd-api-iterator:
 
-.. autofunction::  ray.util.sgd.v2.report
+SGDIterator
+~~~~~~~~~~~
 
-sgd.load_checkpoint
-~~~~~~~~~~~~~~~~~~~
+.. autoclass:: ray.util.sgd.v2.SGDIterator
+    :members:
 
-.. autofunction::  ray.util.sgd.v2.load_checkpoint
+.. _sgd-api-worker-group:
 
-sgd.save_checkpoint
-~~~~~~~~~~~~~~~~~~~
-
-.. autofunction::  ray.util.sgd.v2.save_checkpoint
-
-sgd.world_rank
+SGDWorkerGroup
 ~~~~~~~~~~~~~~
 
-.. autofunction::  ray.util.sgd.v2.world_rank
+.. autoclass:: ray.util.sgd.v2.SGDWorkerGroup
+    :members:

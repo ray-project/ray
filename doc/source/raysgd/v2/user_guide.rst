@@ -745,21 +745,82 @@ A couple caveats:
 
     analysis = tune.run(trainable, config={
         "lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)}, num_samples=12)
-..
-    Advanced APIs
-    -------------
 
-    TODO
+.. _sgd-advanced-api:
 
-    Training Run Iterator API
-    ~~~~~~~~~~~~~~~~~~~~~~~~~
+Advanced APIs
+-------------
+In addition to the standard ``Trainer.run`` API, there are two additional ways
+to run your distributed training code:
+1. An iterator API to have more customization of the training loop
+2. A stateful class API for customization on the worker state.
 
-    TODO
+.. _sgd-iterator:
 
-    Stateful Class API
-    ~~~~~~~~~~~~~~~~~~
+Training Run Iterator API
+~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``Trainer.run_iterator`` API returns a :ref:`sgd-api-iterator` object that allows you to
+manually iterate through the intermediate results from ``sgd.report()`` in your training script.
+This could be useful to have more customization of the training/validation loop or if your training logic
+cannot fit into a single training function to be executed in one-shot.
 
-    TODO
+.. code-block:: python
+
+        from ray import sgd
+
+        def train_func(config):
+            for _ in config["epochs"]:
+                metrics = train()
+                metrics = validate(...)
+                sgd.report(**metrics)
+            return model
+
+        sgd_iterator = trainer.run_generator(train_func, config=config)
+
+        for result in sgd_iterator:
+            do_stuff(result) # Perform custom logic on the intermediate results.
+            latest_ckpt = trainer.get_latest_checkpoint() # Get the latest checkpoint.
+
+To get the final results returned by the training function, you can call ``iterator.get_final_results()``.
+
+.. code-block:: python
+
+    for result in sgd_iterator:
+        do_stuff(result)
+
+    assert sgd_iterator.is_finished()
+    model = sgd_iterator.get_final_results()[0]
+
+
+.. _sgd-class:
+
+Stateful Class API
+~~~~~~~~~~~~~~~~~~
+Ray SGD also provides a lower-level API for distributed execution of a stateful class, rather than just a training function.
+This is useful if you want to provide your own class for training and have more control over execution, but still want to use Ray SGD
+to setup the appropriate backend configurations (torch, tf, etc.).
+
+.. code-block:: python
+
+        class Trainer:
+            def __init__(self, config):
+                self.config = config
+
+            def train_epoch(self):
+                ...
+                return 1
+
+        config = {"lr": 0.1}
+        trainer = Trainer(num_workers=2, backend="torch")
+        workers = trainer.to_worker_group(train_cls=Trainer, config=config)
+        futures = [w.train_epoch.remote() for w in workers]
+        assert ray.get(futures) == [1, 1]
+        assert ray.get(workers[0].train_epoch.remote()) == 1
+        workers.shutdown()
+
+Calling ``Trainer.to_worker_group`` will return a 
+.. note::
+       The Stateful Class API does not support checkpointing, callbacks, or fault-tolerance.
 
 .. _sgd-backwards-compatibility:
 
