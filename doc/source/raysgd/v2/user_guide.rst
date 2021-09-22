@@ -83,30 +83,6 @@ training.
                                  sampler=DistributedSampler(dataset))
 
 
-    **Step 3:** Set the proper CUDA device if you are using GPUs.
-
-    If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
-
-    This involves 3 steps:
-    1. Use the local rank to set the default CUDA device for the worker.
-    2. Move the model to the default CUDA device (or a specific CUDA device).
-    3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
-
-    .. code-block:: python
-
-        def train_func():
-            device = torch.device(f"cuda:{sgd.local_rank()}" if
-                          torch.cuda.is_available() else "cpu")
-            torch.cuda.set_device(device)
-
-            # Create model.
-            model = NeuralNetwork()
-            model = model.to(device)
-            model = DistributedDataParallel(
-                model,
-                device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None)
-
-
   .. group-tab:: TensorFlow
 
     .. note::
