@@ -52,10 +52,13 @@ def minibatches(samples: SampleBatch,
     Args:
         samples: SampleBatch to split up.
         sgd_minibatch_size: Size of minibatches to return.
-        shuffle: Whether to shuffle the
+        shuffle: Whether to shuffle the order of the generated minibatches.
+            Note that in case of a non-recurrent policy, the incoming batch
+            is globally shuffled first regardless of this setting, before
+            the minibatches are generated from it!
 
-    Returns:
-        generator that returns mini-SampleBatches of size sgd_minibatch_size.
+    Yields:
+        SampleBatch: Each of size `sgd_minibatch_size`.
     """
     if not sgd_minibatch_size:
         yield samples
