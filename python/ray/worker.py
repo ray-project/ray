@@ -94,7 +94,6 @@ class Worker:
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
     """
-
     def __init__(self):
         """Initialize a Worker object."""
         self.node = None
@@ -352,12 +351,13 @@ class Worker:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
                         ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
-                    debugger_breakpoint = metadata_fields[1][len(
-                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+                    debugger_breakpoint = metadata_fields[1][
+                        len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
-    def run_function_on_all_workers(self, function,
+    def run_function_on_all_workers(self,
+                                    function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
 
@@ -419,7 +419,6 @@ class Worker:
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-
         def sigterm_handler(signum, frame):
             shutdown(True)
             sys.exit(1)
@@ -890,11 +889,10 @@ def init(
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
-        _global_node = ray.node.Node(
-            head=True,
-            shutdown_at_exit=False,
-            spawn_reaper=True,
-            ray_params=ray_params)
+        _global_node = ray.node.Node(head=True,
+                                     shutdown_at_exit=False,
+                                     spawn_reaper=True,
+                                     ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -927,27 +925,25 @@ def init(
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
-        _global_node = ray.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True)
+        _global_node = ray.node.Node(ray_params,
+                                     head=False,
+                                     shutdown_at_exit=False,
+                                     spawn_reaper=False,
+                                     connect_only=True)
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect.
         working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
-    connect(
-        _global_node,
-        mode=driver_mode,
-        log_to_driver=log_to_driver,
-        worker=global_worker,
-        driver_object_store_memory=_driver_object_store_memory,
-        job_id=None,
-        namespace=namespace,
-        job_config=job_config)
+    connect(_global_node,
+            mode=driver_mode,
+            log_to_driver=log_to_driver,
+            worker=global_worker,
+            driver_object_store_memory=_driver_object_store_memory,
+            job_id=None,
+            namespace=namespace,
+            job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1156,18 +1152,19 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data["ip"] == data["localhost"]:
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
-                                         prefix_for(data), pid,
-                                         colorama.Style.RESET_ALL, line),
-                file=print_file)
+            print("{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                                           prefix_for(data), pid,
+                                           colorama.Style.RESET_ALL, line),
+                  file=print_file)
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
-                    data["ip"], colorama.Style.RESET_ALL, line),
-                file=print_file)
+            print("{}{}({}{}, ip={}){} {}".format(colorama.Style.DIM,
+                                                  color_for(data),
+                                                  prefix_for(data), pid,
+                                                  data["ip"],
+                                                  colorama.Style.RESET_ALL,
+                                                  line),
+                  file=print_file)
 
 
 def listen_error_messages_raylet(worker, threads_stopped):
@@ -1427,8 +1424,8 @@ def connect(node,
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
                 "ray_print_logs", print_to_stdstream)
-            worker.logger_thread = threading.Thread(
-                target=worker.print_logs, name="ray_print_logs")
+            worker.logger_thread = threading.Thread(target=worker.print_logs,
+                                                    name="ray_print_logs")
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
@@ -1611,8 +1608,8 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
                              "or a list of object refs.")
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(object_refs,
+                                                         timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
@@ -1642,7 +1639,8 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 @PublicAPI
 @client_mode_hook
-def put(value: Any, *,
+def put(value: Any,
+        *,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
 
@@ -1696,12 +1694,13 @@ blocking_wait_inside_async_warned = False
 
 @PublicAPI
 @client_mode_hook
-def wait(object_refs: List[ray.ObjectRef],
-         *,
-         num_returns: int = 1,
-         timeout: Optional[float] = None,
-         fetch_local: bool = True
-         ) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
+def wait(
+    object_refs: List[ray.ObjectRef],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+    fetch_local: bool = True
+) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1783,8 +1782,8 @@ def wait(object_refs: List[ray.ObjectRef],
         if len(object_refs) != len(set(object_refs)):
             raise ValueError("Wait requires a list of unique object refs.")
         if num_returns <= 0:
-            raise ValueError(
-                "Invalid number of objects to return %d." % num_returns)
+            raise ValueError("Invalid number of objects to return %d." %
+                             num_returns)
         if num_returns > len(object_refs):
             raise ValueError("num_returns cannot be greater than the number "
                              "of objects provided to ray.wait.")
@@ -1998,7 +1997,7 @@ class NumbaWrapper:
         if numba_args is True:
             self.numba_args = {}
         else:
-            assert(isinstance(numba_args, dict))
+            assert (isinstance(numba_args, dict))
             self.numba_args = numba_args
         self.numba_func = None
         self.numba_pfunc = None
@@ -2019,7 +2018,8 @@ class NumbaWrapper:
         try_again = True
         count = 0
         if not self.numba_pfunc:
-            self.numba_pfunc = numba.njit(parallel=True, **self.numba_args)(self.func)
+            self.numba_pfunc = numba.njit(parallel=True,
+                                          **self.numba_args)(self.func)
             self.numba_func = numba.njit(**self.numba_args)(self.func)
 
         while try_again and count < 2:
@@ -2034,21 +2034,27 @@ class NumbaWrapper:
                     tetxt = str(te)
                     tesplit = tetxt.splitlines()
                     for teline in tesplit:
-                        if "Untyped global name" in teline and "ramba.StencilMetadata" in teline:
+                        if ("Untyped global name" in teline
+                                and "ray.StencilMetadata" in teline):
                             try_again = True
-                            # Name of global that is of type ramba.StencilMetadata
+                            # Name of global that is of type
+                            # ray.StencilMetadata
                             tes = teline[21:].split()[0][:-2]
                             outer_globals = self.func.__globals__
                             outer_locals = {}
                             etes = eval(tes, outer_globals, outer_locals)
                             etes.compile()  # Converts to a Numba StencilFunc
-                            outer_globals[tes] = etes.sfunc # Rewrite the global to the Numba StencilFunc
-                            self.numba_pfunc = numba.njit(parallel=True, **self.numba_args)(self.func)
-                            self.numba_func = numba.njit(**self.numba_args)(self.func)
+                            # Rewrite the global to the Numba StencilFunc
+                            outer_globals[tes] = etes.sfunc
+                            self.numba_pfunc = numba.njit(parallel=True,
+                                                          **self.numba_args)(
+                                                              self.func)
+                            self.numba_func = numba.njit(**self.numba_args)(
+                                self.func)
                     if not try_again:
                         self.npfunc[atypes] = False
                         print("Numba parallel=True attempt failed.")
-                except:
+                except Exception:
                     self.npfunc[atypes] = False
                     print("Numba parallel=True attempt failed.")
 
@@ -2057,10 +2063,10 @@ class NumbaWrapper:
                 ret = self.numba_func(*args, **kwargs)
                 self.nfunc[atypes] = True
                 return ret
-            except numba.core.errors.TypingError as te:
+            except numba.core.errors.TypingError:
                 self.npfunc[atypes] = False
                 print("Requested Numba compilation failed.")
-            except:
+            except Exception:
                 self.nfunc[atypes] = False
                 print("Requested Numba compilation failed.")
                 raise
@@ -2072,10 +2078,12 @@ def make_numba_wrapper(function_or_class, numba_args, kwargs):
     # The function case.
     if inspect.isfunction(function_or_class):
         fname = function_or_class.__name__
-        # Use a unique name for each NumbaWrapper to avoid global name conflicts.
+        # Use a unique name for each NumbaWrapper,
+        # to avoid global name conflicts.
         fmname = "NumbaWrapperFor" + fname
         fm = NumbaWrapper(function_or_class, numba_args)
-        ftext = "def {fname}(*args, **kwargs):\n    return {fmname}(*args, **kwargs)\n".format(fname=fname, fmname=fmname)
+        ftext = "def {fname}(*args, **kwargs):\n".format(fname=fname)
+        ftext += "    return {fmname}(*args, **kwargs)\n".format(fmname=fmname)
         ldict = {}
         gdict = globals()
         gdict[fmname] = fm
@@ -2089,7 +2097,8 @@ def make_numba_wrapper(function_or_class, numba_args, kwargs):
     # The Actor case.
     if inspect.isclass(function_or_class):
         # Implementation not copied from ramba yet.  FIX FIX FIX
-        assert(False)
+        assert (False)
+
 
 @PublicAPI
 def remote(*args, **kwargs):
@@ -2232,12 +2241,13 @@ def remote(*args, **kwargs):
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
 
-    if use_numba != False:
+    if use_numba is not False:
         if num_gpus is not None:
             assert "GPU incompatible with Numba option."
 
         def numba_wrapper(func):
             return make_numba_wrapper(func, use_numba, kwargs)
+
         return numba_wrapper
 
     resources = kwargs.get("resources")
@@ -2261,18 +2271,17 @@ def remote(*args, **kwargs):
     runtime_env = kwargs.get("runtime_env")
     retry_exceptions = kwargs.get("retry_exceptions")
 
-    return make_decorator(
-        num_returns=num_returns,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
-        object_store_memory=object_store_memory,
-        resources=resources,
-        accelerator_type=accelerator_type,
-        max_calls=max_calls,
-        max_restarts=max_restarts,
-        max_task_retries=max_task_retries,
-        max_retries=max_retries,
-        runtime_env=runtime_env,
-        worker=worker,
-        retry_exceptions=retry_exceptions)
+    return make_decorator(num_returns=num_returns,
+                          num_cpus=num_cpus,
+                          num_gpus=num_gpus,
+                          memory=memory,
+                          object_store_memory=object_store_memory,
+                          resources=resources,
+                          accelerator_type=accelerator_type,
+                          max_calls=max_calls,
+                          max_restarts=max_restarts,
+                          max_task_retries=max_task_retries,
+                          max_retries=max_retries,
+                          runtime_env=runtime_env,
+                          worker=worker,
+                          retry_exceptions=retry_exceptions)
