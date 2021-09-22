@@ -5,7 +5,7 @@ from typing import List, Union
 
 from ray._private.client_mode_hook import client_mode_hook
 
-redis = os.environ.get("RAY_KV_USE_GCS", "0") == "0"
+redis = os.environ.get("RAY_KV_USE_GCS", "1") == "0"
 _initialized = False
 
 
