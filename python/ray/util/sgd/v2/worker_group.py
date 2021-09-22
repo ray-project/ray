@@ -1,10 +1,7 @@
-import socket
-from dataclasses import dataclass
 import logging
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
-from ray.actor import ActorHandle
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -25,32 +22,6 @@ class BaseWorkerMixin:
         return func(*args, **kwargs)
 
 
-@dataclass
-class WorkerMetadata:
-    """Metadata for each worker/actor.
-
-    This information is expected to stay the same throughout the lifetime of
-    actor.
-
-    Args:
-        node_id (str): ID of the node this worker is on.
-        node_ip (str): IP address of the node this worker is on.
-        hostname (str): Hostname that this worker is on.
-        gpu_ids (List[int]): List of CUDA IDs available to this worker.
-    """
-    node_id: str
-    node_ip: str
-    hostname: str
-    gpu_ids: Optional[List[int]]
-
-
-@dataclass
-class Worker:
-    """Class representing a Worker."""
-    actor: ActorHandle
-    metadata: WorkerMetadata
-
-
 def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
     """Create the executable class to use as the Ray actors."""
     if not executable_cls:
@@ -64,20 +35,6 @@ def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
                 super().__init__(*args, **kwargs)
 
         return _WrappedExecutable
-
-
-def construct_metadata() -> WorkerMetadata:
-    """Creates metadata for this worker.
-
-    This function is expected to be run on the actor.
-    """
-    node_id = ray.get_runtime_context().node_id.hex()
-    node_ip = ray.util.get_node_ip_address()
-    hostname = socket.gethostname()
-    gpu_ids = ray.get_gpu_ids()
-
-    return WorkerMetadata(
-        node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids)
 
 
 class WorkerGroup:
@@ -161,11 +118,8 @@ class WorkerGroup:
         self.start()
 
     def _create_worker(self):
-        actor = self._remote_cls.remote(*self._actor_cls_args,
-                                        **self._actor_cls_kwargs)
-        actor_metadata = ray.get(
-            actor._BaseWorkerMixin__execute.remote(construct_metadata))
-        return Worker(actor=actor, metadata=actor_metadata)
+        return self._remote_cls.remote(*self._actor_cls_args,
+                                       **self._actor_cls_kwargs)
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -191,11 +145,9 @@ class WorkerGroup:
         logger.debug(f"Shutting down {len(self.workers)} workers.")
         if patience_s <= 0:
             for worker in self.workers:
-                ray.kill(worker.actor)
+                ray.kill(worker)
         else:
-            done_refs = [
-                w.actor.__ray_terminate__.remote() for w in self.workers
-            ]
+            done_refs = [w.__ray_terminate__.remote() for w in self.workers]
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
@@ -203,7 +155,7 @@ class WorkerGroup:
                              "force kill.")
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
-                    ray.kill(worker.actor)
+                    ray.kill(worker)
 
         logger.debug("Shutdown successful.")
         self.workers = []
@@ -228,7 +180,7 @@ class WorkerGroup:
                                "create a new WorkerGroup or restart this one.")
 
         return [
-            w.actor._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
+            w._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
@@ -262,8 +214,7 @@ class WorkerGroup:
         if worker_index >= len(self.workers):
             raise ValueError(f"The provided worker_index {worker_index} is "
                              f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index].actor._BaseWorkerMixin__execute\
-            .remote(
+        return self.workers[worker_index]._BaseWorkerMixin__execute.remote(
             func, *args, **kwargs)
 
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,

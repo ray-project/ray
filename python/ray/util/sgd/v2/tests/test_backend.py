@@ -54,10 +54,9 @@ def ray_2_node_4_gpu():
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
         """Runs f on worker 0, special_f on other workers."""
-        futures = [self.workers[0].actor._BaseWorkerMixin__execute.remote(f)]
+        futures = [self.workers[0]._BaseWorkerMixin__execute.remote(f)]
         for worker in self.workers[1:]:
-            futures.append(
-                worker.actor._BaseWorkerMixin__execute.remote(special_f))
+            futures.append(worker._BaseWorkerMixin__execute.remote(special_f))
         return futures
 
     return execute_async_special
@@ -122,18 +121,6 @@ def test_train(ray_start_2_cpus, tmp_path):
 
     e.start_training(lambda: 1, run_dir=tmp_path)
     assert e.finish_training() == [1, 1]
-
-
-def test_local_ranks(ray_start_2_cpus, tmp_path):
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-
-    def train():
-        return sgd.local_rank()
-
-    e.start_training(train, run_dir=tmp_path)
-    assert set(e.finish_training()) == {0, 1}
 
 
 def test_train_failure(ray_start_2_cpus, tmp_path):

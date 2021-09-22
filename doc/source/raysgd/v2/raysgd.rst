@@ -153,10 +153,6 @@ system. Let's take following simple examples:
         results = trainer.run(train_func_distributed)
         trainer.shutdown()
 
-
-    See :ref:`sgd-porting-code` for a more comprehensive example.
-
-
   .. group-tab:: TensorFlow
 
     This example shows how you can use RaySGD to set up `Multi-worker training
@@ -252,9 +248,6 @@ system. Let's take following simple examples:
         trainer.start()
         results = trainer.run(train_func_distributed)
         trainer.shutdown()
-
-
-    See :ref:`sgd-porting-code` for a more comprehensive example.
 
 
 **Next steps:** Check out the :ref:`User Guide <sgd-user-guide>`!
