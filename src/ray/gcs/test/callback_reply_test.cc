@@ -20,8 +20,7 @@ extern "C" {
 #include "hiredis/hiredis.h"
 }
 
-namespace ray {
-namespace gcs {
+namespace ray::gcs {
 TEST(TestCallbackReply, TestParseAsStringArray) {
   {
     redisReply redis_reply_string1;
@@ -73,8 +72,7 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
                   std::optional<std::string>(string1), std::optional<std::string>()}));
   }
 }
-}  // namespace gcs
-}  // namespace ray
+}  // namespace ray::gcs
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

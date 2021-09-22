@@ -62,7 +62,7 @@ class CallbackReply {
   const std::string &ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
-  const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
+  [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
 
   /// Read this reply data as a scan array.
   ///
