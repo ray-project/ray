@@ -230,8 +230,11 @@ class Monitor:
 
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
-            self.autoscaler.provider._set_last_batch(
-                list(resources_batch_data.batch))
+            new_nodes = []
+            for msg in list(resources_batch_data.batch):
+                node_id = msg.node_id.hex()
+                new_nodes.append((node_id, msg.node_manager_address))
+            self.autoscaler.provider._set_nodes(new_nodes)
 
         mirror_node_types = {}
         cluster_full = False

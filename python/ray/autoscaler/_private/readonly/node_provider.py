@@ -1,3 +1,5 @@
+from typing import Tuple, List
+
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_NAME,
@@ -18,18 +20,22 @@ class ReadOnlyNodeProvider(NodeProvider):
     def is_readonly(self):
         return True
 
-    def _set_last_batch(self, batch):
-        nodes = {}
-        for msg in batch:
-            node_id = msg.node_id.hex()
+    def _set_nodes(self, nodes: List[Tuple[str, str]]):
+        """Update the set of nodes in the cluster.
+
+        Args:
+            nodes: List of (node_id, node_manager_address) tuples.
+        """
+        new_nodes = {}
+        for node_id, node_manager_address in nodes:
             # We make up a fake node type for each node (since each node
             # could have its own unique configuration).
-            nodes[node_id] = {
+            new_nodes[node_id] = {
                 # Keep prefix in sync with node config gen in monitor.py
                 "node_type": format_readonly_node_type(node_id),
-                "ip": msg.node_manager_address,
+                "ip": node_manager_address,
             }
-        self.nodes = nodes
+        self.nodes = new_nodes
 
     def non_terminated_nodes(self, tag_filters):
         return list(self.nodes.keys())

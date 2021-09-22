@@ -230,6 +230,9 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
+        if not self.provider.is_readonly():
+            self.terminate_nodes_to_enforce_config_constraints(now)
+
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
                 self.provider.non_terminated_nodes(tag_filters={}),
@@ -243,7 +246,6 @@ class StandardAutoscaler:
         self._report_pending_infeasible(unfulfilled)
 
         if not self.provider.is_readonly():
-            self.terminate_nodes_to_enforce_config_constraints(now)
             self.launch_required_nodes(to_launch)
 
             if self.disable_node_updaters:
