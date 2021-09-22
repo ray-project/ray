@@ -61,14 +61,14 @@ SGDCallback
 JsonLoggerCallback
 ~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.sgd.callbacks.JsonLoggerCallback
+.. autoclass:: ray.sgd.JsonLoggerCallback
 
 .. _sgd-api-tbx-logger-callback:
 
 TBXLoggerCallback
 ~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.sgd.callbacks.TBXLoggerCallback
+.. autoclass:: ray.sgd.TBXLoggerCallback
 
 .. _sgd-api-checkpoint-strategy:
 
