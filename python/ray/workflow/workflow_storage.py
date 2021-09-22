@@ -4,10 +4,8 @@ workflows.
 """
 
 import asyncio
-from collections import ChainMap
-from typing import Dict, List, Optional, Any, Callable, Tuple, Union, IO
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
-import io
 import logging
 
 import ray
@@ -446,11 +444,8 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    async def _put(self,
-                   paths: List[str],
-                   data: Any,
-                   is_json: bool = False
-                   ) -> str:
+    async def _put(self, paths: List[str], data: Any,
+                   is_json: bool = False) -> str:
         """
         Serialize and put an object in the object store.
 
@@ -464,7 +459,8 @@ class WorkflowStorage:
         try:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
-                await serialization.dump_to_storage(paths, data, self._workflow_id, self._storage)
+                await serialization.dump_to_storage(
+                    paths, data, self._workflow_id, self._storage)
             else:
                 value = data
                 outer_coro = self._storage.put(key, value, is_json=is_json)
