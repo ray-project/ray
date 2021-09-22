@@ -12,6 +12,7 @@ import {
   Tabs,
 } from "@material-ui/core";
 import React from "react";
+import dayjs from "dayjs";
 import { Link, RouteComponentProps } from "react-router-dom";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
@@ -139,6 +140,20 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             <Grid item xs={4}>
               <span className={classes.label}>Driver Pid</span>:{" "}
               {jobInfo.driverPid}
+            </Grid>
+            <Grid item xs={4}>
+              <span className={classes.label}>StartTime</span>:{" "}
+              {dayjs(Math.floor(jobInfo.startTime)).format(
+                "YYYY/MM/DD HH:mm:ss",
+              )}
+            </Grid>
+            <Grid item xs={4}>
+              <span className={classes.label}>EndTime</span>:{" "}
+              {jobInfo.endTime > 0
+                ? dayjs(Math.floor(jobInfo.endTime)).format(
+                    "YYYY/MM/DD HH:mm:ss",
+                  )
+                : "-"}
             </Grid>
             {jobInfo.eventUrl && (
               <Grid item xs={4}>
