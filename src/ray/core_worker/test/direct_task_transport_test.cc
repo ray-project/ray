@@ -234,11 +234,21 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   };
 
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            gcs::StatusCallback callback) override {
+    return Status::OK();
+  }
+
   Status AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
     return Status::OK();
   }
+
+  void AsyncWaitForActorRegisterFinish(const ActorID &,
+                                       gcs::StatusCallback callback) override {}
+
+  bool IsActorInRegistering(const ActorID &actor_id) const override { return false; }
 
   ~MockActorCreator() {}
 };
@@ -289,10 +299,11 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   TaskSpecification task;
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
@@ -300,7 +311,8 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
@@ -310,7 +322,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
@@ -321,7 +333,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -332,7 +345,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
@@ -346,7 +359,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -354,7 +368,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
@@ -374,7 +388,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   ObjectID obj3 = ObjectID::FromRandom();
@@ -383,7 +398,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));

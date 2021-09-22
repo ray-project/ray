@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from filelock import FileLock
 
+from ray.util.annotations import PublicAPI
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (
@@ -56,6 +57,7 @@ def _is_multiple(component):
     return isinstance(component, Iterable) and len(component) > 1
 
 
+@PublicAPI(stability="beta")
 class TrainingOperator:
     """Abstract class to define training and validation state and logic.
 

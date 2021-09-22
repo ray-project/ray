@@ -41,7 +41,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
   pip install -U LINK_TO_WHEEL.whl  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default]' @ LINK_TO_WHEEL.whl`
+  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
 
 
 ===================  ===================  ======================
