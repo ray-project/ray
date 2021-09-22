@@ -4,6 +4,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorStructType, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -108,6 +109,31 @@ def huber_loss(x, delta=1.0):
     return tf.where(
         tf.abs(x) < delta,
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
+    """Helper function useful for returning dummy logp's (0) for some actions.
+
+    Args:
+        actions (TensorStructType): The input actions. This can be any struct
+            of complex action components or a simple tensor of different
+            dimensions, e.g. [B], [B, 2], or {"a": [B, 4, 5], "b": [B]}.
+
+    Returns:
+        TensorType: A 1D tensor of 0.0 (dummy logp's) matching the batch
+            dim of `actions` (shape=[B]).
+    """
+    # Need to flatten `actions` in case we have a complex action space.
+    # Take the 0th component to extract the batch dim.
+    action_component = tree.flatten(actions)[0]
+    logp_ = tf.zeros_like(action_component, dtype=tf.float32)
+    # Logp's should be single values (but with the same batch dim as
+    # `deterministic_actions` or `stochastic_actions`). In case
+    # actions are just [B], zeros_like works just fine here, but if
+    # actions are [B, ...], we have to reduce logp back to just [B].
+    if len(logp_.shape) > 1:
+        logp_ = logp_[:, 0]
+    return logp_
 
 
 def one_hot(x, space):

@@ -5,13 +5,13 @@ max_workers: 0
 
 head_node_type:
     name: head_node
-    # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
-    instance_type: m5.2xlarge
+    # 16 cpus, x86, 64G mem, 10Gb NIC, $0.484/hr on demand
+    instance_type: m5.4xlarge
 
 worker_node_types:
     - name: worker_node
-      # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
-      instance_type: m5.2xlarge
+      # 16 cpus, x86, 64G mem, 10Gb NIC, $0.484/hr on demand
+      instance_type: m5.4xlarge
       min_workers: 0
       # 1k max replicas
       max_workers: 0

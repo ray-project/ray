@@ -1,10 +1,16 @@
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import pytest
+import os
+import time
 
 
 def test_dataclient_disconnect_on_request():
-    with ray_start_client_server() as ray:
+    # Client can't signal graceful shutdown to server after unrecoverable
+    # error. Lower grace period so we don't have to sleep as long before
+    # checking new connection data.
+    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
+            ray_start_client_server() as ray:
         assert ray.is_connected()
 
         @ray.remote
@@ -20,13 +26,18 @@ def test_dataclient_disconnect_on_request():
         assert not ray.is_connected()
 
         # Test that a new connection can be made
+        time.sleep(5)  # Give server time to clean up old connection
         connection_data = ray.connect("localhost:50051")
         assert connection_data["num_clients"] == 1
         assert ray.get(f.remote()) == 42
 
 
 def test_dataclient_disconnect_before_request():
-    with ray_start_client_server() as ray:
+    # Client can't signal graceful shutdown to server after unrecoverable
+    # error. Lower grace period so we don't have to sleep as long before
+    # checking new connection data.
+    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
+            ray_start_client_server() as ray:
         assert ray.is_connected()
 
         @ray.remote
@@ -48,6 +59,7 @@ def test_dataclient_disconnect_before_request():
         assert not ray.is_connected()
 
         # Test that a new connection can be made
+        time.sleep(5)  # Give server time to clean up old connection
         connection_data = ray.connect("localhost:50051")
         assert connection_data["num_clients"] == 1
         assert ray.get(f.remote()) == 42

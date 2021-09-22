@@ -33,7 +33,7 @@ class TestIMPALA(unittest.TestCase):
             for lstm in [False, True]:
                 local_cfg["num_aggregation_workers"] = 0 if not lstm else 1
                 local_cfg["model"]["use_lstm"] = lstm
-                print("lstm={} aggregation-worker={}".format(
+                print("lstm={} aggregation-workers={}".format(
                     lstm, local_cfg["num_aggregation_workers"]))
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).

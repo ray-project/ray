@@ -100,6 +100,12 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+    # Set this to true to have two separate optimizers optimize the policy-
+    # and value networks.
+    "_separate_vf_optimizer": False,
+    # If _separate_vf_optimizer is True, define separate learning rate
+    # for the value network.
+    "_lr_vf": 0.0005,
 
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
@@ -158,20 +164,24 @@ def make_learner_thread(local_worker, config):
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
             format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
-        if config["num_multi_gpu_tower_stacks"] < \
-                config["minibatch_buffer_size"]:
-            raise ValueError(
-                "In multi-GPU mode you must have at least as many "
-                "parallel multi-GPU towers as minibatch buffers: "
-                "{} vs {}".format(config["num_multi_gpu_tower_stacks"],
-                                  config["minibatch_buffer_size"]))
+        num_stacks = config["num_multi_gpu_tower_stacks"]
+        buffer_size = config["minibatch_buffer_size"]
+        if num_stacks < buffer_size:
+            logger.warning(
+                "In multi-GPU mode you should have at least as many "
+                "multi-GPU tower stacks (to load data into on one device) as "
+                "you have stack-index slots in the buffer! You have "
+                f"configured {num_stacks} stacks and a buffer of size "
+                f"{buffer_size}. Setting "
+                f"`minibatch_buffer_size={num_stacks}`.")
+            config["minibatch_buffer_size"] = num_stacks
+
         learner_thread = MultiGPULearnerThread(
             local_worker,
             num_gpus=config["num_gpus"],
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            minibatch_buffer_size=config["minibatch_buffer_size"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"])
@@ -215,11 +225,6 @@ def validate_config(config):
     if config["entropy_coeff"] < 0.0:
         raise ValueError("`entropy_coeff` must be >= 0.0!")
 
-    if config["vtrace"] and not config["in_evaluation"]:
-        if config["batch_mode"] != "truncate_episodes":
-            raise ValueError(
-                "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
-
     # Check whether worker to aggregation-worker ratio makes sense.
     if config["num_aggregation_workers"] > config["num_workers"]:
         raise ValueError(
@@ -230,6 +235,23 @@ def validate_config(config):
         logger.warning(
             "`num_aggregation_workers` should be significantly smaller than"
             "`num_workers`! Try setting it to 0.5*`num_workers` or less.")
+
+    # If two separate optimizers/loss terms used for tf, must also set
+    # `_tf_policy_handles_more_than_one_loss` to True.
+    if config["_separate_vf_optimizer"] is True:
+        # Only supported to tf so far.
+        # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the models
+        #  to return separate sets of weights in order to create the different
+        #  torch optimizers).
+        if config["framework"] not in ["tf", "tf2", "tfe"]:
+            raise ValueError(
+                "`_separate_vf_optimizer` only supported to tf so far!")
+        if config["_tf_policy_handles_more_than_one_loss"] is False:
+            logger.warning(
+                "`_tf_policy_handles_more_than_one_loss` must be set to True, "
+                "for TFPolicy to support more than one loss term/optimizer! "
+                "Auto-setting it to True.")
+            config["_tf_policy_handles_more_than_one_loss"] = True
 
 
 # Update worker weights as they finish generating experiences.

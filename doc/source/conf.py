@@ -42,6 +42,8 @@ MOCK_MODULES = [
     "gym.spaces",
     "horovod",
     "horovod.ray",
+    "horovod.ray.runner",
+    "horovod.ray.utils",
     "hyperopt",
     "hyperopt.hp"
     "kubernetes",
@@ -59,6 +61,8 @@ MOCK_MODULES = [
     "ray.core.generated.common_pb2",
     "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
