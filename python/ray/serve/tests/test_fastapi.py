@@ -18,21 +18,29 @@ from starlette.routing import Route
 import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
+from ray.serve.http import FastAPIWrapper
 from ray.serve.http_util import make_fastapi_class_based_view
 from ray._private.test_utils import SignalActor
 
 
-def test_fastapi_function(serve_instance):
+@pytest.mark.parametrize("use_new_fastapi_api", [True, False])
+def test_fastapi_function(serve_instance, use_new_fastapi_api):
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(name="f")
-    @serve.ingress(app)
-    class FastAPIApp:
-        pass
+    if use_new_fastapi_api:
+        @serve.deployment(name="f")
+        class FastAPIApp(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+        @serve.deployment(name="f")
+        @serve.ingress(app)
+        class FastAPIApp:
+            pass
 
     FastAPIApp.deploy()
 
@@ -44,17 +52,24 @@ def test_fastapi_function(serve_instance):
     assert resp.json()["detail"][0]["type"] == "type_error.integer"
 
 
-def test_ingress_prefix(serve_instance):
+@pytest.mark.parametrize("use_new_fastapi_api", [True, False])
+def test_ingress_prefix(serve_instance, use_new_fastapi_api):
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(route_prefix="/api")
-    @serve.ingress(app)
-    class App:
-        pass
+    if use_new_fastapi_api:
+        @serve.deployment(route_prefix="/api")
+        class App(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+        @serve.deployment(route_prefix="/api")
+        @serve.ingress(app)
+        class App:
+            pass
 
     App.deploy()
 
