@@ -303,7 +303,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["rollout_fragment_length"] = 21
         config["train_batch_size"] = 147
         config["multiagent"] = {
-            "policies": {"p0", "p1"},
+            "policies": {f"p{i}"
+                         for i in range(num_agents)},
             "policy_mapping_fn": lambda aid, **kwargs: "p{}".format(aid),
             "count_steps_by": "agent_steps",
         }
