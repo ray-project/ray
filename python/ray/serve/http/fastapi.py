@@ -8,7 +8,9 @@ from fastapi import Depends, FastAPI
 from ray.serve.exceptions import RayServeException
 from ray.serve.http.asgi import ASGIWrapper
 
-FASTAPI_METHODS = ["GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"]
+FASTAPI_METHODS = [
+    "GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"
+]
 ROUTE_METADATA_ATTR = "__ray_serve_fastapi_route_metadata"
 
 GENERATED_METHOD_DOCSTRING = """
@@ -22,8 +24,10 @@ The route will be added to the app when the {wrapper_class_name} constructor
 is called using `super().__init__(app)`.
 """
 
+
 class FastAPIRouteMetadata:
-    def __init__(self, method: str, path: str, func: Callable, kwargs: Dict[Any, Any]):
+    def __init__(self, method: str, path: str, func: Callable,
+                 kwargs: Dict[Any, Any]):
         self._path = path
         self._func = func
         self._kwargs = kwargs
@@ -31,6 +35,7 @@ class FastAPIRouteMetadata:
 
     def add_to_fastapi_app(self, app: FastAPI):
         app.add_api_route(self._path, self._func, **self._kwargs)
+
 
 class FastAPIWrapper(ASGIWrapper):
     def __init__(self, app: FastAPI):
@@ -52,7 +57,8 @@ class FastAPIWrapper(ASGIWrapper):
 
         old_self_parameter = old_parameters[0]
         # XXX: why do we need Depends? Just passing self gives recursion depth exceeded.
-        new_self_parameter = old_self_parameter.replace(default=Depends(lambda: self))
+        new_self_parameter = old_self_parameter.replace(
+            default=Depends(lambda: self))
         new_parameters = [new_self_parameter] + [
             # Make the rest of the parameters keyword only because
             # the first argument is no longer positional.
@@ -62,7 +68,8 @@ class FastAPIWrapper(ASGIWrapper):
         new_signature = old_signature.replace(parameters=new_parameters)
         setattr(method, "__signature__", new_signature)
 
-        route_metadata: FastAPIRouteMetadata = getattr(method, ROUTE_METADATA_ATTR)
+        route_metadata: FastAPIRouteMetadata = getattr(method,
+                                                       ROUTE_METADATA_ATTR)
         route_metadata.add_to_fastapi_app(app)
 
     def _add_method_routes_to_app(self, app: FastAPI):
@@ -87,17 +94,19 @@ class FastAPIWrapper(ASGIWrapper):
 
             def inner_decorator(func: Callable):
                 print(f"ADDING ATTR TO {func}")
-                setattr(func, ROUTE_METADATA_ATTR, FastAPIRouteMetadata(method, path, func, kwargs))
+                setattr(func, ROUTE_METADATA_ATTR,
+                        FastAPIRouteMetadata(method, path, func, kwargs))
                 return func
 
             return inner_decorator
 
         method_decorator.__name__ = method.lower()
         method_decorator.__doc__ = GENERATED_METHOD_DOCSTRING.format(
-                method_upper = method,
-                method_lower = method.lower(),
-                wrapper_class_name = cls.__name__)
+            method_upper=method,
+            method_lower=method.lower(),
+            wrapper_class_name=cls.__name__)
         setattr(cls, method.lower(), classmethod(method_decorator))
+
 
 for method in FASTAPI_METHODS:
     FastAPIWrapper._add_method_decorator(method)
