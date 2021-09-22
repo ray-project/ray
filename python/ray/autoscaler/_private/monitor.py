@@ -268,10 +268,10 @@ class Monitor:
                 ip = resource_message.node_id.hex()
             else:
                 ip = resource_message.node_manager_address
-            self.load_metrics.update(
-                ip, total_resources, available_resources, resource_load,
-                waiting_bundles, infeasible_bundles, pending_placement_groups,
-                cluster_full)
+            self.load_metrics.update(ip, total_resources, available_resources,
+                                     resource_load, waiting_bundles,
+                                     infeasible_bundles,
+                                     pending_placement_groups, cluster_full)
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(
                 mirror_node_types)

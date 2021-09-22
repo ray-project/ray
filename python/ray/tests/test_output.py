@@ -9,7 +9,6 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-<<<<<<< HEAD
 def test_autoscaler_infeasible():
     script = """
 import ray
@@ -58,7 +57,9 @@ time.sleep(25)
     print(out_str, err_str)
     assert "Tip:" in out_str
     assert "Warning: The following resource request cannot" in out_str
-=======
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -137,7 +138,6 @@ ray.get(foo.remote())
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The remote function failed to import" in err_str
->>>>>>> a3f40236d02c6e3f75d2ddef3447c059089d392f
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
