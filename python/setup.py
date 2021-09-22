@@ -48,7 +48,6 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
                "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
 
-RAY_EXTRA_CPP = True
 
 def find_version(*filepath):
     # Extract version information from filepath
@@ -115,6 +114,12 @@ else:
     setup_spec = SetupSpec(
         SetupType.RAY, "ray", "Ray provides a simple, "
         "universal API for building distributed applications.", BUILD_TYPE)
+    RAY_EXTRA_CPP = True
+    # Disable extra cpp for the development versions.
+    if "dev" in setup_spec.version or os.getenv(
+            "RAY_DISABLE_EXTRA_CPP") == "1":
+        print("Disable extra cpp for version: {}".format(setup_spec.version))
+        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the

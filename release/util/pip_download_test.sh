@@ -44,6 +44,7 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
+    # shellcheck disable=SC2102
     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
     failed=false
