@@ -59,6 +59,15 @@ class MockWorkerPool : public WorkerPoolInterface {
     workers.push_front(worker);
   }
 
+  void TriggerPopWorkerFailedCallbacks(PopWorkerStatus status) {
+    for (auto &list : callbacks) {
+      for (auto &callback : list.second) {
+        callback(nullptr, status);
+      }
+    }
+    callbacks.clear();
+  }
+
   void TriggerCallbacks() {
     for (auto it = workers.begin(); it != workers.end();) {
       std::shared_ptr<WorkerInterface> worker = *it;
@@ -243,6 +252,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
+    ASSERT_EQ(task_manager_.num_tasks_waiting_for_dispatch_, 0);
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
   }
@@ -1515,6 +1525,56 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   // Worker has been popped. Don't call `PopWorker` repeatedly.
   ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 0);
 
+  RayTask finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, PopWorkerFailed) {
+  // Create and queue one task.
+  std::string serialized_runtime_env = "mock_env";
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{},
+                            serialized_runtime_env);
+  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+
+  // Make sure callback doesn't occurred.
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  // Popworker was called once.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
+  // Try to schedule and dispatch tasks.
+  task_manager_.ScheduleAndDispatchTasks();
+  // Popworker has been called once, don't call it repeatedly.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
+
+  // Worker fails to start.
+  pool_.TriggerPopWorkerFailedCallbacks(PopWorkerStatus::WorkerTimedOut);
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 0);
+  // Try to schedule and dispatch tasks.
+  task_manager_.ScheduleAndDispatchTasks();
+  // Task is retried.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
+
+  // Now Push worker succeeds.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+  // Make sure callback has occurred.
+  ASSERT_TRUE(callback_occurred);
   RayTask finished_task;
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),

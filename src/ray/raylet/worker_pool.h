@@ -54,7 +54,7 @@ enum PopWorkerStatus {
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
   // A nullptr worker will be returned with callback.
-  WorkerPendingRegistration = 3,
+  WorkerTimedOut = 3,
   // Any fails of runtime env creation.
   // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,

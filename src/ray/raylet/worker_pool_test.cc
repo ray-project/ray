@@ -1526,7 +1526,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   ASSERT_EQ(popped_worker, nullptr);
   // PopWorker failed while the timer was triggered and the status is
   // `RuntimeEnvCreationFailed`.
-  ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
+  ASSERT_EQ(status, PopWorkerStatus::WorkerTimedOut);
   worker_pool_->ClearProcesses();
 }
 

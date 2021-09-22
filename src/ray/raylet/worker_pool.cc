@@ -415,9 +415,8 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
               state.starting_workers_by_env_hash.erase(workers_it);
             }
 
-            TriggerAsyncCallbacksForFailedWorkerStart(
-                state, it->second.runtime_env_hash,
-                PopWorkerStatus::WorkerPendingRegistration);
+            TriggerAsyncCallbacksForFailedWorkerStart(state, it->second.runtime_env_hash,
+                                                      PopWorkerStatus::WorkerTimedOut);
           }
 
           state.starting_worker_processes.erase(it);
@@ -786,8 +785,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // error so the PopWorker client tries again.
       // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
-      TriggerAsyncCallbacksForFailedWorkerStart(
-          state, runtime_env_hash, PopWorkerStatus::WorkerPendingRegistration);
+      TriggerAsyncCallbacksForFailedWorkerStart(state, runtime_env_hash,
+                                                PopWorkerStatus::WorkerTimedOut);
     }
   }
 

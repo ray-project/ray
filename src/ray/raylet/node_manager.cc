@@ -490,6 +490,10 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
+  periodical_runner_.RunFnPeriodically(
+      [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); }, 100,
+      "NodeManager.schedule_and_dispatch_tasks");
+
   return ray::Status::OK();
 }
 
