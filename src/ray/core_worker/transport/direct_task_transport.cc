@@ -443,12 +443,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   RAY_CHECK(scheduling_key_entry.pending_lease_request_task_to_raylet.size() <
             max_pending_lease_requests_per_scheduling_category_);
 
-  if (scheduling_key_entry.task_queue.size() <=
-      scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
-    // All tasks have corresponding pending leases, no need to request more
-    return;
-  }
-
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks. If the pipelines
   // are not full, we do not request a new worker (unless work stealing is enabled, in
@@ -477,6 +471,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       }
       return;
     }
+  } else if (scheduling_key_entry.task_queue.size() <=
+             scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
+    // All tasks have corresponding pending leases, no need to request more
+    return;
   }
 
   num_leases_requested_++;
