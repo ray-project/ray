@@ -480,7 +480,7 @@ class SGDWorkerGroup:
         self._worker_group = worker_group
 
     def __getitem__(self, item) -> ActorHandle:
-        return self._worker_group.workers[item].actor
+        return self._worker_group.workers[item]
 
     def shutdown(self, patience_s: float = 5):
         """Shutdown all the workers.
