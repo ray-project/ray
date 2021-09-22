@@ -4,13 +4,9 @@ from functools import wraps
 from typing import Any, Callable, Dict, Tuple
 
 from fastapi import Depends, FastAPI
-from starlette.requests import Request
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
 
 from ray.serve.exceptions import RayServeException
-from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.utils import logger, LoggingContext
+from ray.serve.http.asgi import ASGIWrapper
 
 FASTAPI_METHODS = ["GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"]
 ROUTE_METADATA_ATTR = "__ray_serve_fastapi_route_metadata"
@@ -36,29 +32,12 @@ class FastAPIRouteMetadata:
     def add_to_fastapi_app(self, app: FastAPI):
         app.add_api_route(self._path, self._func, **self._kwargs)
 
-class FastAPIWrapper:
+class FastAPIWrapper(ASGIWrapper):
     def __init__(self, app: FastAPI):
-        self._app = app
-        self._add_method_routes_to_app()
+        self._add_method_routes_to_app(app)
+        super().__init__(app)
 
-        # Use uvicorn's lifespan handling code to properly deal with
-        # startup and shutdown event.
-        self._serve_asgi_lifespan = LifespanOn(
-            Config(self._app, lifespan="on"))
-
-        # Replace uvicorn logger with our own.
-        self._serve_asgi_lifespan.logger = logger
-
-    async def _async_setup(self):
-        """Runs FastAPI startup hooks, will be run at replica startup."""
-        # LifespanOn's logger logs in INFO level thus becomes spammy
-        # Within this block we temporarily uplevel for cleaner logging
-        with LoggingContext(
-                self._serve_asgi_lifespan.logger,
-                level=logging.WARNING):
-            await self._serve_asgi_lifespan.startup()
-
-    def _add_method_route_to_app(self, method: Callable):
+    def _add_method_route_to_app(self, app: FastAPI, method: Callable):
         # This block just adds a default values to the self parameters so that
         # FastAPI knows to inject the object when calling the route.
         # Before: def method(self, i): ...
@@ -84,15 +63,15 @@ class FastAPIWrapper:
         setattr(method, "__signature__", new_signature)
 
         route_metadata: FastAPIRouteMetadata = getattr(method, ROUTE_METADATA_ATTR)
-        route_metadata.add_to_fastapi_app(self._app)
+        route_metadata.add_to_fastapi_app(app)
 
-    def _add_method_routes_to_app(self):
-        assert isinstance(self._app, FastAPI)
+    def _add_method_routes_to_app(self, app: FastAPI):
+        assert isinstance(app, FastAPI)
 
         for attribute_name in dir(self.__class__):
             attribute = getattr(self.__class__, attribute_name)
             if hasattr(attribute, ROUTE_METADATA_ATTR):
-                self._add_method_route_to_app(attribute)
+                self._add_method_route_to_app(app, attribute)
 
     @classmethod
     def _add_method_decorator(cls, method: str):
@@ -119,25 +98,6 @@ class FastAPIWrapper:
                 method_lower = method.lower(),
                 wrapper_class_name = cls.__name__)
         setattr(cls, method.lower(), classmethod(method_decorator))
-
-    async def __call__(self, request: Request):
-        sender = ASGIHTTPSender()
-        await self._app(
-            request.scope,
-            request._receive,
-            sender,
-        )
-        return sender.build_starlette_response()
-
-    def __del__(self):
-        # LifespanOn's logger logs in INFO level thus becomes spammy
-        # Within this block we temporarily uplevel for cleaner logging
-        return
-        with LoggingContext(
-                self._serve_asgi_lifespan.logger,
-                level=logging.WARNING):
-            asyncio.get_event_loop().run_until_complete(
-                self._serve_asgi_lifespan.shutdown())
 
 for method in FASTAPI_METHODS:
     FastAPIWrapper._add_method_decorator(method)
