@@ -16,6 +16,7 @@ import time
 
 from typing import Optional, Dict
 from collections import defaultdict
+from cpuinfo import get_cpu_info
 
 import ray
 import ray.ray_constants as ray_constants
@@ -353,6 +354,10 @@ class Node:
 
         if not self._resource_spec:
             env_resources = {}
+            cpu_info = get_cpu_info()
+            if ray_constants.AVX2_INSTRUCTION_SET in cpu_info["flags"]:
+                env_resources[ray_constants.AVX2_INSTRUCTION_SET] \
+                    = ray_constants.NUM_OF_AVX2_RESOURCE
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:

@@ -10,6 +10,7 @@ import time
 
 import ray
 import ray.cluster_utils
+from cpuinfo import get_cpu_info
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -637,6 +638,28 @@ def test_creating_more_actors_than_resources(shutdown_only):
         ray.wait([object_ref])
 
     ray.get(results)
+
+def test_resources_with_avx2():
+    ray.init()
+
+    @ray.remote
+    class ResourceActor():
+        def check_avx2(self):
+            cpu_info = get_cpu_info()
+            return 'avx2' in cpu_info["flags"]
+
+    driver_cpu_info = get_cpu_info()
+    print(driver_cpu_info)
+    if 'avx2' in driver_cpu_info["flags"]:
+        print("This actor has 'avx2' instruction set.")
+        actor = ResourceActor.options(resources={"avx2": 1.0}).remote()
+        result = actor.check_avx2.remote()
+        assert ray.get(result)
+    else:
+        print("This actor does't have 'avx2' instruction set.")
+        actor = ResourceActor.remote()
+        result = actor.check_avx2.remote()
+        assert not ray.get(result)
 
 
 if __name__ == "__main__":
