@@ -3,7 +3,7 @@ import inspect
 from functools import wraps
 from typing import Any, Callable, Dict, Tuple
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -50,7 +50,7 @@ class FastAPIWrapper:
 
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging
-        # XXX: fix this, no await?
+        # XXX: fix this, no await in __init__
         # with LoggingContext(
                 # self._serve_asgi_lifespan.logger,
                 # level=logging.WARNING):
@@ -70,7 +70,8 @@ class FastAPIWrapper:
                 "their first argument.")
 
         old_self_parameter = old_parameters[0]
-        new_self_parameter = old_self_parameter.replace(default=self)
+        # XXX: why do we need Depends? Just passing self gives recursion depth exceeded.
+        new_self_parameter = old_self_parameter.replace(default=Depends(lambda: self))
         new_parameters = [new_self_parameter] + [
             # Make the rest of the parameters keyword only because
             # the first argument is no longer positional.
