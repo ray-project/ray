@@ -496,10 +496,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
     /// - Pending submitted tasks that depend on the object.
-    /// - ObjectIDs that contain this ObjectID and that are still in scope.
+    /// - ObjectIDs containing this ObjectID that we own and that are still in
+    /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() +
-             contained_in_borrowed_ids.size();
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -632,7 +632,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  void OnBorrowedRefInUse(ReferenceTable::iterator borrowed_ref_it);
+  void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const

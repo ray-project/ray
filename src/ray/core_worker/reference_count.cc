@@ -110,7 +110,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
       // The inner object ref is in use. We must report our ref to the object's
       // owner.
       if (it->second.RefCount() > 0) {
-        outer_it->second.has_nested_refs_to_report = true;
+        SetNestedRefInUseRecursive(it);
       }
     }
   }
@@ -223,16 +223,19 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Add local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (!was_in_use && it->second.RefCount() > 0) {
-    OnBorrowedRefInUse(it);
+    SetNestedRefInUseRecursive(it);
   }
 }
 
-void ReferenceCounter::OnBorrowedRefInUse(ReferenceTable::iterator borrowed_ref_it) {
+void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it) {
   for (const auto &contained_in_borrowed_id :
-       borrowed_ref_it->second.contained_in_borrowed_ids) {
+       inner_ref_it->second.contained_in_borrowed_ids) {
     auto contained_in_it = object_id_refs_.find(contained_in_borrowed_id);
     RAY_CHECK(contained_in_it != object_id_refs_.end());
-    contained_in_it->second.has_nested_refs_to_report = true;
+    if (!contained_in_it->second.has_nested_refs_to_report) {
+      contained_in_it->second.has_nested_refs_to_report = true;
+      SetNestedRefInUseRecursive(contained_in_it);
+    }
   }
 }
 
@@ -277,7 +280,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     // retried again.
     it->second.lineage_ref_count++;
     if (!was_in_use && it->second.RefCount() > 0) {
-      OnBorrowedRefInUse(it);
+      SetNestedRefInUseRecursive(it);
     }
   }
   // Release the submitted task ref and the lineage ref for any argument IDs
@@ -295,7 +298,7 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
     bool was_in_use = it->second.RefCount() > 0;
     it->second.submitted_task_ref_count++;
     if (!was_in_use && it->second.RefCount() > 0) {
-      OnBorrowedRefInUse(it);
+      SetNestedRefInUseRecursive(it);
     }
   }
 }
@@ -769,6 +772,10 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     for (const auto &addr : new_borrowers) {
       WaitForRefRemoved(it, addr);
     }
+  } else {
+    // We received ref counts from another borrower. Make sure we forward it
+    // back to the owner.
+    SetNestedRefInUseRecursive(it);
   }
 
   // If the borrower stored this object ID inside another object ID that it did
@@ -875,7 +882,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
         bool was_in_use = inner_it->second.RefCount() > 0;
         inner_it->second.contained_in_owned.insert(object_id);
         if (!was_in_use && inner_it->second.RefCount() > 0) {
-          OnBorrowedRefInUse(inner_it);
+          SetNestedRefInUseRecursive(inner_it);
         }
       }
     }

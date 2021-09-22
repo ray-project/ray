@@ -2501,6 +2501,51 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
 }
 
+TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
+  auto borrower1 = std::make_shared<MockWorkerClient>("1");
+  auto borrower2 = std::make_shared<MockWorkerClient>("2");
+  bool first_borrower = true;
+  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+    return first_borrower ? borrower1 : borrower2;
+  });
+
+  // Owner owns a nested object ref, borrower1 is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID middle_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower1->address_);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Borrower 1 forwards the ObjectRef to borrower 2 via task submission.
+  borrower1->rc_.AddLocalReference(outer_id, "");
+  borrower1->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower1->SubmitTaskWithArg(outer_id);
+
+  // Borrower 2 executes the task, keeps ref to inner ref.
+  borrower2->ExecuteTaskWithArg(outer_id, middle_id, owner->address_);
+  borrower2->GetSerializedObjectId(middle_id, inner_id, owner->address_);
+  borrower2->rc_.RemoveLocalReference(middle_id, nullptr);
+  auto borrower_refs = borrower2->FinishExecutingTask(outer_id, ObjectID::Nil());
+  borrower1->HandleSubmittedTaskFinished(outer_id, {}, borrower2->address_,
+                                         borrower_refs);
+  borrower1->rc_.RemoveLocalReference(outer_id, nullptr);
+
+  // Now the owner should contact borrower 2.
+  first_borrower = false;
+  ASSERT_TRUE(borrower1->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  ASSERT_TRUE(borrower2->FlushBorrowerCallbacks());
+  borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
+}
+
 }  // namespace core
 }  // namespace ray
 
