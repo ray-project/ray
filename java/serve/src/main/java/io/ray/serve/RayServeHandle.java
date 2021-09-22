@@ -5,11 +5,14 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
+import io.ray.serve.generated.RequestMetadata;
 import org.apache.commons.lang3.RandomStringUtils;
 
 public class RayServeHandle {
 
   private String endpointName;
+
+  private HandleOptions handleOptions;
 
   private String handleTag;
 
@@ -17,10 +20,15 @@ public class RayServeHandle {
 
   private Router router;
 
-  public RayServeHandle(BaseActorHandle controllerHandle, String endpointName) {
+  public RayServeHandle(
+      BaseActorHandle controllerHandle,
+      String endpointName,
+      HandleOptions handleOptions,
+      Router router) {
     this.endpointName = endpointName;
+    this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
     this.handleTag = endpointName + "#" + RandomStringUtils.randomAlphabetic(6);
-    this.router = new Router(controllerHandle, endpointName);
+    this.router = router != null ? router : new Router(controllerHandle, endpointName);
     RayServeMetrics.execute(
         () ->
             this.requestCounter =
@@ -41,21 +49,25 @@ public class RayServeHandle {
    * Returns a Ray ObjectRef whose results can be waited for or retrieved using ray.wait or ray.get
    * (or ``await object_ref``), respectively.
    *
-   * @param parameters input parameters of specified method.
-   * @param handleOptions specified options
+   * @param parameters The input parameters of the specified method to invoke on the backend.
    * @return ray.ObjectRef
    */
-  public ObjectRef<Object> remote(Object[] parameters, HandleOptions handleOptions) {
-
+  public ObjectRef<Object> remote(Object[] parameters) {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
-    io.ray.serve.generated.RequestMetadata.Builder requestMetadata =
-        io.ray.serve.generated.RequestMetadata.newBuilder(); // TODO merge the pre PR.
-
+    RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
     requestMetadata.setEndpoint(endpointName);
     requestMetadata.setCallMethod(
-        handleOptions != null ? handleOptions.getMethodName() : null); // TODO default call.
-
+        handleOptions != null ? handleOptions.getMethodName() : Constants.DEFAULT_CALL_METHOD);
     return router.assignRequest(requestMetadata.build(), parameters);
+  }
+
+  public RayServeHandle setMethodName(String methodName) {
+    handleOptions.setMethodName(methodName);
+    return this;
+  }
+
+  public Router getRouter() {
+    return router;
   }
 }

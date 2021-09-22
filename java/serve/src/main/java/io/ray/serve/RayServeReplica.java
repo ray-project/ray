@@ -34,7 +34,7 @@ public class RayServeReplica {
 
   private String replicaTag;
 
-  private BackendConfig config;
+  private BackendConfig backendConfig;
 
   private AtomicInteger numOngoingRequests = new AtomicInteger();
 
@@ -59,7 +59,7 @@ public class RayServeReplica {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
-    this.config = backendConfig;
+    this.backendConfig = backendConfig;
     this.reconfigure(ServeProtoUtil.parseUserConfig(backendConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
@@ -210,7 +210,7 @@ public class RayServeReplica {
   public void drainPendingQueries() {
     while (true) {
       try {
-        Thread.sleep((long) (config.getExperimentalGracefulShutdownWaitLoopS() * 1000));
+        Thread.sleep((long) (backendConfig.getExperimentalGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
@@ -220,7 +220,7 @@ public class RayServeReplica {
       } else {
         LOGGER.debug(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
-            config.getExperimentalGracefulShutdownWaitLoopS(),
+            backendConfig.getExperimentalGracefulShutdownWaitLoopS(),
             numOngoingRequests.get());
       }
     }
@@ -262,8 +262,8 @@ public class RayServeReplica {
    * @param newConfig the new configuration of backend
    */
   private void updateBackendConfigs(Object newConfig) {
-    config = (BackendConfig) newConfig;
-    reconfigure(((BackendConfig) newConfig).getUserConfig());
+    backendConfig = (BackendConfig) newConfig;
+    reconfigure(backendConfig.getUserConfig());
   }
 
   private void reportMetrics(Runnable runnable) {

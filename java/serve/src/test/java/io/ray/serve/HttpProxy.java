@@ -7,6 +7,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.generated.EndpointInfo;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -115,7 +116,7 @@ public class HttpProxy implements ServeProxy {
           parameters = MessagePackSerializer.decode(body, Object[].class);
         }
 
-        Object result = router.matchRoute(route, method).remote(parameters, null).get();
+        Object result = router.matchRoute(route, method).remote(parameters).get();
 
         httpExchange.sendResponseHeaders(code, 0);
         OutputStream outputStream = httpExchange.getResponseBody();

@@ -4,9 +4,9 @@ import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.function.PyActorMethod;
-import io.ray.serve.EndpointInfo;
 import io.ray.serve.RayServeException;
 import io.ray.serve.RayServeHandle;
+import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.LogUtil;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,7 +60,7 @@ public class Client {
       throw new RayServeException(LogUtil.format("Endpoint {} does not exist.", endpointName));
     }
 
-    RayServeHandle handle = new RayServeHandle(controller, endpointName);
+    RayServeHandle handle = new RayServeHandle(controller, endpointName, null, null);
     handleCache.put(cacheKey, handle);
     return handle;
   }

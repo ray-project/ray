@@ -5,6 +5,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
+import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
@@ -52,10 +53,12 @@ public class Router {
    * @param requestArgs the request body of incoming queries.
    * @return ray.ObjectRef
    */
-  public ObjectRef<Object> assignRequest(
-      io.ray.serve.generated.RequestMetadata requestMetadata, Object[] requestArgs) {
+  public ObjectRef<Object> assignRequest(RequestMetadata requestMetadata, Object[] requestArgs) {
     RayServeMetrics.execute(() -> numRouterRequests.inc(1.0));
-    return replicaSet.assignReplica(
-        new Query(requestArgs, null)); // TODO io.ray.serve.generated.RequestMetadata
+    return replicaSet.assignReplica(new Query(requestMetadata, requestArgs));
+  }
+
+  public ReplicaSet getReplicaSet() {
+    return replicaSet;
   }
 }

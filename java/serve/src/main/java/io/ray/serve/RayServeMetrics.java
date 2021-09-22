@@ -34,7 +34,7 @@ public enum RayServeMetrics {
   }
 
   public static void execute(Runnable runnable) {
-    if (isMetricsEnabled) {
+    if (!isMetricsEnabled) {
       return;
     }
     runnable.run();

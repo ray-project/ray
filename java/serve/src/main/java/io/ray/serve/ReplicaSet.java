@@ -9,8 +9,11 @@ import io.ray.api.WaitResult;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
+import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.util.CollectionUtil;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,24 +54,34 @@ public class ReplicaSet {
     int newValue = ((BackendConfig) backendConfig).getMaxConcurrentQueries();
     if (newValue != this.maxConcurrentQueries) {
       this.maxConcurrentQueries = newValue;
-      LOGGER.debug("ReplicaSet: changing max_concurrent_queries to {}", newValue);
+      LOGGER.info("ReplicaSet: changing max_concurrent_queries to {}", newValue);
     }
   }
 
+  public int getMaxConcurrentQueries() {
+    return maxConcurrentQueries;
+  }
+
   @SuppressWarnings("unchecked")
-  public synchronized void updateWorkerReplicas(Object workerReplicas) {
+  public synchronized void updateWorkerReplicas(Object actorSet) {
+    List<String> actorNames = ((ActorSet) actorSet).getNamesList();
+    Set<ActorHandle<RayServeWrappedReplica>> workerReplicas = new HashSet<>();
+    if (!CollectionUtil.isEmpty(actorNames)) {
+      actorNames.forEach(
+          name ->
+              workerReplicas.add((ActorHandle<RayServeWrappedReplica>) Ray.getActor(name).get()));
+    }
+
     Set<ActorHandle<RayServeWrappedReplica>> added =
-        Sets.difference(
-            (Set<ActorHandle<RayServeWrappedReplica>>) workerReplicas, inFlightQueries.keySet());
+        new HashSet<>(Sets.difference(workerReplicas, inFlightQueries.keySet()));
     Set<ActorHandle<RayServeWrappedReplica>> removed =
-        Sets.difference(
-            inFlightQueries.keySet(), (Set<ActorHandle<RayServeWrappedReplica>>) workerReplicas);
+        new HashSet<>(Sets.difference(inFlightQueries.keySet(), workerReplicas));
 
     added.forEach(actorHandle -> inFlightQueries.put(actorHandle, Sets.newConcurrentHashSet()));
     removed.forEach(actorHandle -> inFlightQueries.remove(actorHandle));
 
     if (added.size() > 0 || removed.size() > 0) {
-      LOGGER.debug("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
+      LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
     }
   }
 
@@ -88,29 +101,8 @@ public class ReplicaSet {
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
                 TagKey.tagsFromMap(ImmutableMap.of(RayServeMetrics.TAG_ENDPOINT, endpoint))));
-    ObjectRef<Object> assignedRef = tryAssignReplica(query);
-
-    while (assignedRef == null) { // Can't assign a replica right now.
-      LOGGER.debug("Failed to assign a replica for query {}", query.getMetadata().getRequestId());
-      // Maybe there exists a free replica, we just need to refresh our query tracker.
-
-      int numFinished = drainCompletedObjectRefs();
-      // All replicas are really busy, wait for a query to complete or the config to be updated.
-      if (numFinished == 0) {
-        LOGGER.debug("All replicas are busy, waiting for a free replica.");
-
-        Ray.wait(null, numFinished);
-
-        /*await asyncio.wait(
-            self._all_query_refs + [self.config_updated_event.wait()],
-            return_when=asyncio.FIRST_COMPLETED)
-        if self.config_updated_event. is_set():
-            self.config_updated_event.clear()*/
-        // TODO
-      }
-      assignedRef = tryAssignReplica(query);
-    }
-
+    ObjectRef<Object> assignedRef =
+        tryAssignReplica(query); // TODO controll concurrency using maxConcurrentQueries
     numQueuedQueries.decrementAndGet();
     RayServeMetrics.execute(
         () ->
@@ -131,14 +123,16 @@ public class ReplicaSet {
 
     List<ActorHandle<RayServeWrappedReplica>> handles = new ArrayList<>(inFlightQueries.keySet());
     int randomIndex = RandomUtils.nextInt(0, handles.size());
-    ActorHandle<RayServeWrappedReplica> replica = handles.get(randomIndex);
+    ActorHandle<RayServeWrappedReplica> replica =
+        handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     return replica
         .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
         .remote();
   }
 
-  private synchronized int drainCompletedObjectRefs() {
+  public synchronized int
+      drainCompletedObjectRefs() { // TODO when using maxConcurrentQueries, change it to private.
     List<ObjectRef<Object>> refs =
         inFlightQueries
             .values()
@@ -152,5 +146,9 @@ public class ReplicaSet {
         .forEach(replicaInFlightQueries -> replicaInFlightQueries.removeAll(waitResult.getReady()));
 
     return waitResult.getReady().size();
+  }
+
+  public Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> getInFlightQueries() {
+    return inFlightQueries;
   }
 }

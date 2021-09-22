@@ -3,6 +3,7 @@ package io.ray.serve;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.EndpointInfo;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -62,7 +63,7 @@ public class HttpRouter {
     }
 
     HttpEndpointInfo httpEndpointInfo = new HttpEndpointInfo();
-    httpEndpointInfo.setEndpointTag(endpointInfo.getEndpointTag());
+    httpEndpointInfo.setEndpointTag(endpointInfo.getEndpointName());
     httpEndpointInfo.setRoute(endpointInfo.getRoute());
     httpEndpointInfo.setConfig(endpointInfo.getConfig());
 

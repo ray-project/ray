@@ -4,6 +4,8 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
@@ -119,9 +121,8 @@ public class ProxyActor {
     proxies.forEach((key, value) -> value.registerServiceDiscovery());
   }
 
-  @SuppressWarnings("unchecked")
   private void updateRoutes(Object endpoints) {
-    Map<String, EndpointInfo> endpointInfos = (Map<String, EndpointInfo>) endpoints;
+    Map<String, EndpointInfo> endpointInfos = ((EndpointSet) endpoints).getEndpointsMap();
     Map<String, EndpointInfo> routeInfo = new HashMap<>();
     if (endpointInfos != null) {
       endpointInfos.forEach(
@@ -147,7 +148,7 @@ public class ProxyActor {
             LogUtil.format("Waited {} for {} to propagate.", timeoutS, endpoint));
       }
       for (EndpointInfo endpointInfo : routeInfo.values()) {
-        if (StringUtils.equals(endpointInfo.getEndpointTag(), endpoint)) {
+        if (StringUtils.equals(endpointInfo.getEndpointName(), endpoint)) {
           return;
         }
       }

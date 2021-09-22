@@ -2,26 +2,39 @@ package io.ray.serve.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.gson.Gson;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import io.ray.serve.generated.UpdatedObject;
+import io.ray.serve.poll.KeyType;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes)
-      throws InvalidProtocolBufferException {
+  private static final Gson GSON = new Gson();
+
+  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes) {
 
     // Get a builder from BackendConfig(bytes) or create a new one.
     BackendConfig.Builder builder = null;
     if (backendConfigBytes == null) {
       builder = BackendConfig.newBuilder();
     } else {
-      BackendConfig backendConfig = BackendConfig.parseFrom(backendConfigBytes);
+      BackendConfig backendConfig = null;
+      try {
+        backendConfig = BackendConfig.parseFrom(backendConfigBytes);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
+      }
       if (backendConfig == null) {
         builder = BackendConfig.newBuilder();
       } else {
@@ -84,7 +97,7 @@ public class ServeProtoUtil {
 
     // Set default values.
     if (StringUtils.isBlank(builder.getCallMethod())) {
-      builder.setCallMethod("call");
+      builder.setCallMethod(Constants.DEFAULT_CALL_METHOD);
     }
 
     return builder.build();
@@ -107,5 +120,21 @@ public class ServeProtoUtil {
     }
 
     return builder.build();
+  }
+
+  public static Map<KeyType, UpdatedObject> parseUpdatedObjects(byte[] longPollResultBytes)
+      throws InvalidProtocolBufferException {
+    if (longPollResultBytes == null) {
+      return null;
+    }
+    LongPollResult longPollResult = LongPollResult.parseFrom(longPollResultBytes);
+    Map<String, UpdatedObject> updatedObjects = longPollResult.getUpdatedObjectsMap();
+    if (updatedObjects == null || updatedObjects.isEmpty()) {
+      return null;
+    }
+    Map<KeyType, UpdatedObject> udpates = new HashMap<>(updatedObjects.size());
+    updatedObjects.forEach(
+        (key, value) -> udpates.put(ServeProtoUtil.GSON.fromJson(key, KeyType.class), value));
+    return udpates;
   }
 }

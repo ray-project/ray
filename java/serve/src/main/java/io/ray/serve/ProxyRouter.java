@@ -1,6 +1,7 @@
 package io.ray.serve;
 
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.EndpointInfo;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class ProxyRouter {
    */
   public RayServeHandle matchRoute(String route) {
     EndpointInfo endpointInfo = routeInfo.get(route);
-    return endpointInfo == null ? null : handles.get(endpointInfo.getEndpointTag());
+    return endpointInfo == null ? null : handles.get(endpointInfo.getEndpointName());
   }
 
   public Map<String, EndpointInfo> getRouteInfo() {

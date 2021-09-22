@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import io.ray.serve.generated.EndpointInfo;
 import java.util.Map;
 
 public interface ServeProxy {
