@@ -52,11 +52,15 @@ parser.add_argument(
     type=float,
     default=7.0,
     help="Reward at which we stop training.")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     grouping = {
         "group_1": [0, 1],

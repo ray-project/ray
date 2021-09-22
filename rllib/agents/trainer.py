@@ -113,6 +113,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "model": MODEL_DEFAULTS,
     # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
+    # Experimental flag, indicating that TFPolicy will handle more than one
+    # loss/optimizer. Set this to True, if you would like to return more than
+    # one loss term from your `loss_fn` and an equal number of optimizers
+    # from your `optimizer_fn`.
+    "_tf_policy_handles_more_than_one_loss": False,
 
     # === Environment Settings ===
     # Number of steps after which the episode is forced to terminate. Defaults
