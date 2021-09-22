@@ -281,7 +281,7 @@ Using ``Trainer.run``, these results can be processed through :ref:`Callbacks
 <sgd-callbacks>` with a ``handle_result`` method defined.
 
 For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
-:ref:`sgd-api-iterator` which will iterate over the reported results.
+:ref:`sgd-api-iterator` which will iterate over the reported results. See :ref:`sgd-iterator` for more details.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.).
 
@@ -798,7 +798,7 @@ Stateful Class API
 ~~~~~~~~~~~~~~~~~~
 Ray SGD also provides a lower-level API for distributed execution of a stateful class, rather than just a training function.
 This is useful if you want to provide your own class for training and have more control over execution, but still want to use Ray SGD
-to setup the appropriate backend configurations (torch, tf, etc.).
+to setup the appropriate backend configurations (PyTorch, Tensorflow, Horovod).
 
 .. code-block:: python
 
@@ -811,6 +811,7 @@ to setup the appropriate backend configurations (torch, tf, etc.).
                 return 1
 
         config = {"lr": 0.1}
+
         trainer = Trainer(num_workers=2, backend="torch")
         workers = trainer.to_worker_group(train_cls=Trainer, config=config)
         futures = [w.train_epoch.remote() for w in workers]
@@ -818,9 +819,15 @@ to setup the appropriate backend configurations (torch, tf, etc.).
         assert ray.get(workers[0].train_epoch.remote()) == 1
         workers.shutdown()
 
-Calling ``Trainer.to_worker_group`` will return a 
+Calling ``Trainer.to_worker_group`` will return a :ref:`sgd-api-worker-group` object that represents a grouping of Ray actors
+of the provided ``train_cls``. The backend specific setup on each actor process is already handled by Ray SGD.
+For example, if you specified a torch backend, the torch process group will already be setup on each of actor processes.
+You can then index into or iterate over the :ref:`sgd-api-worker-group` to call methods from your ``train_cls`` remotely
+on any of the actors.
+
 .. note::
-       The Stateful Class API does not support checkpointing, callbacks, or fault-tolerance.
+       The Stateful Class API does not support checkpointing, callbacks, or fault-tolerance. These functionalities
+        are expected to be handled by the user.
 
 .. _sgd-backwards-compatibility:
 
