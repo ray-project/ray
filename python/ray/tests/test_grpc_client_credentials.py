@@ -38,3 +38,25 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
     with pytest.raises(Stop) as stop:
         Worker(secure=True, _credentials=Credentials("test"))
     assert stop.value.credentials.name == "test"
+
+
+def test_grpc_client_credentials_are_generated(monkeypatch):
+    # Test that credentials are generated when secure is True, but _credentials
+    # isn't passed.
+    class Stop(Exception):
+        def __init__(self, result):
+            self.result = result
+
+    def mock_gen_credentials():
+        raise Stop("ssl_channel_credentials called")
+
+    monkeypatch.setattr(grpc, "ssl_channel_credentials", mock_gen_credentials)
+
+    with pytest.raises(Stop) as stop:
+        Worker(secure=True)
+    assert stop.value.result == "ssl_channel_credentials called"
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

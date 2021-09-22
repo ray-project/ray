@@ -115,13 +115,14 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
     const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
+  int64_t curr_count = 0;
   {
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.cum_count++;
-    stats->stats.curr_count++;
+    curr_count = ++stats->stats.curr_count;
   }
-  STATS_operation_count.Record(stats->stats.curr_count, name);
-  STATS_operation_active_count.Record(stats->stats.curr_count, name);
+  STATS_operation_count.Record(curr_count, name);
+  STATS_operation_active_count.Record(curr_count, name);
   return std::make_shared<StatsHandle>(
       name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
       global_stats_);
@@ -175,6 +176,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
 std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
     const std::string &name) {
   // Get this handler's stats.
+  std::shared_ptr<GuardedHandlerStats> result;
   mutex_.ReaderLock();
   auto it = post_handler_stats_.find(name);
   if (it == post_handler_stats_.end()) {
@@ -194,10 +196,12 @@ std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
       // the table.
       RAY_CHECK(it != post_handler_stats_.end());
     }
+    result = it->second;
   } else {
+    result = it->second;
     mutex_.ReaderUnlock();
   }
-  return it->second;
+  return result;
 }
 
 GlobalStats instrumented_io_context::get_global_stats() const {

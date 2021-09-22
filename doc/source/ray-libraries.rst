@@ -10,8 +10,11 @@ Ray also comes packaged with several libraries solving problems in the machine l
 - :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
-- :ref:`rayserve`
 - :ref:`datasets` (alpha)
+
+As well as libraries for taking ML and distributed apps to production:
+
+- :ref:`rayserve`
 - :ref:`workflows` (alpha)
 
 Airflow |airflow|

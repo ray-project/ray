@@ -120,6 +120,10 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
       outer_it->second.contains.insert(object_id);
     }
   }
+
+  if (it->second.RefCount() == 0) {
+    DeleteReferenceInternal(it, nullptr);
+  }
   return true;
 }
 
@@ -449,6 +453,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
+  bool should_delete_ref = true;
 
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
@@ -467,8 +472,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           // If this object ID was nested in a borrowed object, make sure that
           // we have already returned this information through a previous
           // GetAndClearLocalBorrowers call.
-          RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value())
-              << "Outer object " << id << ", inner object " << inner_id;
+          if (inner_it->second.contained_in_borrowed_id.has_value()) {
+            RAY_LOG(DEBUG) << "Object " << id
+                           << " deleted, still contains inner borrowed Ref " << inner_id;
+            should_delete_ref = false;
+          }
         }
         DeleteReferenceInternal(inner_it, deleted);
       }
@@ -482,7 +490,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
   }
-  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
+  if (it->second.ShouldDelete(lineage_pinning_enabled_) && should_delete_ref) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {
@@ -620,9 +628,9 @@ ReferenceCounter::GetAllReferenceCounts() const {
   return all_ref_counts;
 }
 
-void ReferenceCounter::GetAndClearLocalBorrowers(
+void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
-    ReferenceCounter::ReferenceTableProto *proto) {
+    ReferenceCounter::ReferenceTableProto *proto, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -638,6 +646,28 @@ void ReferenceCounter::GetAndClearLocalBorrowers(
     }
   }
   ReferenceTableToProto(borrowed_refs, proto);
+
+  for (const auto &borrowed_id : borrowed_ids) {
+    RAY_LOG(DEBUG) << "Remove local reference to borrowed object " << borrowed_id;
+    auto it = object_id_refs_.find(borrowed_id);
+    if (it == object_id_refs_.end()) {
+      RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
+                       << borrowed_id;
+      continue;
+    }
+    if (it->second.local_ref_count == 0) {
+      RAY_LOG(WARNING)
+          << "Tried to decrease ref count for object ID that has count 0 " << borrowed_id
+          << ". This should only happen if ray.internal.free was called earlier.";
+      continue;
+    }
+
+    it->second.local_ref_count--;
+    PRINT_REF_COUNT(it);
+    if (it->second.RefCount() == 0) {
+      DeleteReferenceInternal(it, deleted);
+    }
+  }
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
