@@ -299,7 +299,8 @@ class Trial:
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = {}
+        self._last_result = {}
+        self._default_result_future = None
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -393,6 +394,20 @@ class Trial:
             resource_kwargs = self.resources._asdict()
             resource_kwargs["has_placement_group"] = True
             self.resources = Resources(**resource_kwargs)
+
+    @property
+    def last_result(self) -> dict:
+        result = self._last_result
+        if not result and self._default_result_future:
+            if isinstance(self._default_result_future, ray.ObjectRef):
+                self._default_result_future = ray.get(
+                    self._default_result_future)
+            result = self._default_result_future
+        return result
+
+    @last_result.setter
+    def last_result(self, val: dict):
+        self._last_result = val
 
     @property
     def node_ip(self):
@@ -499,6 +514,9 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
+        if runner:
+            self._default_result_future = (
+                runner.get_auto_filled_metrics.remote(get_defaults=True))
         self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
@@ -729,6 +747,7 @@ class Trial:
 
         state["_state_json"] = None
         state["_state_valid"] = False
+        state["_default_result_future"] = None
 
         return copy.deepcopy(state)
 

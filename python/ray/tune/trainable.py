@@ -153,6 +153,32 @@ class Trainable:
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
 
+    def get_auto_filled_metrics(self,
+                                now=None,
+                                time_this_iter=None,
+                                get_defaults=False):
+        if now is None:
+            now = datetime.today()
+        autofilled = dict(
+            experiment_id=self._experiment_id,
+            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
+            timestamp=int(time.mktime(now.timetuple())),
+            time_this_iter_s=time_this_iter,
+            time_total_s=self._time_total,
+            pid=os.getpid(),
+            hostname=platform.node(),
+            node_ip=self._local_ip,
+            config=self.config,
+            time_since_restore=self._time_since_restore,
+            timesteps_since_restore=self._timesteps_since_restore,
+            iterations_since_restore=self._iterations_since_restore)
+        if get_defaults:
+            autofilled.setdefault(DONE, False)
+            autofilled.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
+            autofilled.setdefault(EPISODES_TOTAL, self._episodes_total)
+            autofilled.setdefault(TRAINING_ITERATION, self._iteration)
+        return autofilled
+
     def train_buffered(self,
                        buffer_time_s: float,
                        max_buffer_length: int = 1000):
@@ -280,19 +306,7 @@ class Trainable:
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=platform.node(),
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
+        result.update(self.get_auto_filled_metrics(now, time_this_iter))
 
         monitor_data = self._monitor.get_data()
         if monitor_data:

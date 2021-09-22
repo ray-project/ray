@@ -4,6 +4,7 @@ from collections import deque
 from functools import partial
 import logging
 import os
+import gc
 import random
 import time
 import traceback
@@ -1099,6 +1100,7 @@ class RayTrialExecutor(TrialExecutor):
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
+        gc.collect()
 
     @contextmanager
     def _change_working_directory(self, trial):
