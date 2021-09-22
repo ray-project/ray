@@ -108,10 +108,8 @@ def debug_status(status, error) -> str:
         as_dict = json.loads(status)
         time = datetime.datetime.fromtimestamp(as_dict["time"])
         lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
-        autoscaler_summary = AutoscalerSummary(
-            **as_dict["autoscaler_report"])
-        status = format_info_string(
-            lm_summary, autoscaler_summary, time=time)
+        autoscaler_summary = AutoscalerSummary(**as_dict["autoscaler_report"])
+        status = format_info_string(lm_summary, autoscaler_summary, time=time)
     if error:
         status += "\n"
         status += error.decode("utf-8")
