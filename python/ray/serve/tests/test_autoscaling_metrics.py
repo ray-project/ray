@@ -54,7 +54,11 @@ class TestInMemoryMetricsStore:
 
 def test_e2e(serve_instance):
     @serve.deployment(
-        autoscaling_config={"metrics_interval_s": 0.1},
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 1
+        },
         max_concurrent_queries=1000)
     class A:
         def __call__(self):
@@ -83,3 +87,9 @@ def test_e2e(serve_instance):
         return data[only_key][-1]
 
     wait_for_condition(lambda: last_timestamp_value().value > 50)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

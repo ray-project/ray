@@ -466,6 +466,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
+  bool should_delete_ref = true;
 
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
@@ -481,8 +482,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           // object.
           RAY_CHECK(inner_it->second.contained_in_owned.erase(id));
         } else {
-          RAY_CHECK(inner_it->second.contained_in_borrowed_ids.erase(id))
-              << " " << rpc_address_.worker_id;
+          RAY_CHECK(inner_it->second.contained_in_borrowed_ids.erase(id));
         }
         DeleteReferenceInternal(inner_it, deleted);
       }
@@ -496,7 +496,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
   }
-  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
+  if (it->second.ShouldDelete(lineage_pinning_enabled_) && should_delete_ref) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {

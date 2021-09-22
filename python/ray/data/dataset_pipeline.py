@@ -52,7 +52,8 @@ class DatasetPipeline(Generic[T]):
                  base_iterable: Iterable[Callable[[], Dataset[T]]],
                  stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
                  length: int = None,
-                 progress_bars: bool = progress_bar._enabled):
+                 progress_bars: bool = progress_bar._enabled,
+                 _executed: List[bool] = None):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
@@ -64,6 +65,9 @@ class DatasetPipeline(Generic[T]):
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
+        # Whether the pipeline execution has started.
+        # This variable is shared across all pipelines descending from this.
+        self._executed = _executed or [False]
 
     def iter_batches(self,
                      *,
@@ -193,6 +197,9 @@ class DatasetPipeline(Generic[T]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
             self, n, splitter)
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
 
         class SplitIterator:
             def __init__(self, split_index, coordinator):
@@ -287,6 +294,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             Iterator over the datasets outputted from this pipeline.
         """
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
         return PipelineExecutor(self)
 
     @DeveloperAPI
@@ -300,8 +310,14 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The transformed DatasetPipeline.
         """
-        return DatasetPipeline(self._base_iterable, self._stages + [fn],
-                               self._length, self._progress_bars)
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        return DatasetPipeline(
+            self._base_iterable,
+            self._stages + [fn],
+            self._length,
+            self._progress_bars,
+            _executed=self._executed)
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],

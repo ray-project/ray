@@ -11,26 +11,27 @@ from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
                     overload)
 from weakref import WeakValueDictionary
 
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
-from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
 
-import ray
-from ray import cloudpickle
 from ray.actor import ActorHandle
-from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
                               ReplicaConfig)
-from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
+from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
+                                 SERVE_CONTROLLER_NAME)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.utils import (ensure_serialization_context, format_actor_name,
-                             get_current_node_resource_key, get_random_letters,
-                             logger, LoggingContext)
+from ray.serve.utils import (LoggingContext, ensure_serialization_context,
+                             format_actor_name, get_current_node_resource_key,
+                             get_random_letters, logger)
+from ray.util.annotations import PublicAPI
+import ray
+from ray import cloudpickle
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
@@ -350,6 +351,7 @@ def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
         dedicated_cpu: bool = False,
+        _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
         **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -433,6 +435,7 @@ def start(
     ).remote(
         controller_name,
         http_options,
+        _checkpoint_path,
         detached=detached,
     )
 
