@@ -1,4 +1,5 @@
-"""Example of setting preprocessor_pref=None to disable all preprocessing.
+"""
+Example for using _disable_preprocessor_api=True to disable all preprocessing.
 
 This example shows:
   - How a complex observation space from the env is handled directly by the
@@ -85,11 +86,11 @@ if __name__ == "__main__":
                 }),
             },
         },
-        # Set this to None to enforce no preprocessors being used.
+        # Set this to True to enforce no preprocessors being used.
         # Complex observations now arrive directly in the model as
         # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
         # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        "preprocessor_pref": None,
+        "_disable_preprocessor_api": True,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
         "framework": args.framework,

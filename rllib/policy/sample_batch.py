@@ -364,6 +364,9 @@ class SampleBatch(dict):
             for i, p in enumerate(path):
                 if i == len(path) - 1:
                     curr[p] = value[permutation]
+                # Translate into list (tuples are immutable).
+                if isinstance(curr[p], tuple):
+                    curr[p] = list(curr[p])
                 curr = curr[p]
 
         tree.map_structure_with_path(_permutate_in_place, self)

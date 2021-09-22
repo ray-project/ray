@@ -4,6 +4,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -179,10 +180,10 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_single_action(
             self,
-            obs: TensorType,
+            obs: TensorStructType,
             state: Optional[List[TensorType]] = None,
-            prev_action: Optional[TensorType] = None,
-            prev_reward: Optional[TensorType] = None,
+            prev_action: Optional[TensorStructType] = None,
+            prev_reward: Optional[TensorStructType] = None,
             info: dict = None,
             episode: Optional["MultiAgentEpisode"] = None,
             clip_actions: bool = None,
@@ -190,37 +191,34 @@ class Policy(metaclass=ABCMeta):
             timestep: Optional[int] = None,
             unsquash_actions: bool = None,
             **kwargs) -> \
-            Tuple[TensorStructType, List[TensorStructType], Dict[str, TensorType]]:
+            Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
 
         Args:
-            obs (TensorType): Single observation.
-            state (Optional[List[TensorType]]): List of RNN state inputs, if
-                any.
-            prev_action (Optional[TensorType]): Previous action value, if any.
-            prev_reward (Optional[TensorType]): Previous reward, if any.
+            obs: Single observation.
+            state: List of RNN state inputs, if any.
+            prev_action: Previous action value, if any.
+            prev_reward: Previous reward, if any.
             info (dict): Info object, if any.
-            episode (Optional[MultiAgentEpisode]): this provides access to all
+            episode: this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            unsquash_actions (bool): Should actions be unsquashed according to
+            unsquash_actions: Should actions be unsquashed according to
                 the Policy's action space?
-            clip_actions (bool): Should actions be clipped according to the
+            clip_actions: Should actions be clipped according to the
                 Policy's action space?
-            explore (Optional[bool]): Whether to pick an exploitation or
+            explore: Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
-            timestep (Optional[int]): The current (sampling) time step.
+            timestep: The current (sampling) time step.
 
         Keyword Args:
             kwargs: Forward compatibility.
 
         Returns:
-            Tuple:
-                - actions (TensorType): Single action.
-                - state_outs (List[TensorType]): List of RNN state outputs,
-                    if any.
-                - info (dict): Dictionary of extra features, if any.
+            - actions: Single action.
+            - state_outs: List of RNN state outputs, if any.
+            - info: Dictionary of extra features, if any.
         """
         # If policy works in normalized space, we should unsquash the action.
         # Use value of config.normalize_actions, if None.
@@ -251,7 +249,7 @@ class Policy(metaclass=ABCMeta):
             ]
 
         out = self.compute_actions(
-            [obs],
+            tree.map_structure(lambda s: np.array([s]), obs),
             state_batch,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
@@ -850,7 +848,7 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if self.config["preprocessor_pref"] is not None and \
+            if not self.config["_disable_preprocessor_api"] and \
                     isinstance(view_req.space,
                                (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(

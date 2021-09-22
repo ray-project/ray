@@ -436,8 +436,9 @@ class TFPolicy(Policy):
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
-            else obs_batch.shape[0]
+        self.global_timestep += \
+            len(obs_batch) if isinstance(obs_batch, list) \
+            else tree.flatten(obs_batch)[0].shape[0]
 
         return fetched
 
@@ -1010,7 +1011,10 @@ class TFPolicy(Policy):
                     "Must pass in RNN state batches for placeholders {}, "
                     "got {}".format(self._state_inputs, state_batches))
 
-            builder.add_feed_dict({self._obs_input: obs_batch})
+            tree.map_structure(
+                lambda k, v: builder.add_feed_dict({k: v}),
+                self._obs_input, obs_batch,
+            )
             if state_batches:
                 builder.add_feed_dict({
                     self._seq_lens: np.ones(len(obs_batch))

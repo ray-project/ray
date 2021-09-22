@@ -177,7 +177,7 @@ class RolloutWorker(ParallelIteratorWorker):
             count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
-            preprocessor_pref: Optional[str] = "deepmind",
+            preprocessor_pref: str = "deepmind",
             sample_async: bool = False,
             compress_observations: bool = False,
             num_envs: int = 1,
@@ -259,9 +259,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
-            preprocessor_pref (Optional[str]): Whether to use no preprocessor
-                (None), RLlib preprocessors ("rllib") or deepmind ("deepmind"),
-                when applicable.
+            preprocessor_pref (str): Whether to use RLlib preprocessors
+                ("rllib") or deepmind ("deepmind"), when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -424,7 +423,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = False \
-            if preprocessor_pref is None else True
+            if policy_config["_disable_preprocessor_api"] else True
         self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None

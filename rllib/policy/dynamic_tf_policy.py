@@ -557,7 +557,7 @@ class DynamicTFPolicy(TFPolicy):
                     # int (range or list of ints).
                     flatten = view_col not in [
                         SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
-                              self.config["preprocessor_pref"] is not None
+                              not self.config["_disable_preprocessor_api"]
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,
                         name=view_col,
