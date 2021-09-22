@@ -136,7 +136,7 @@ class Worker:
 
         self.closed = False
 
-        # Track these values to raise a warning if too data are transferred.
+        # Track this value to raise a warning if a lot of data are transferred.
         self.total_outbound_message_size_bytes = 0
 
         # Used to create unique IDs for RPCs to the RayletServicer
