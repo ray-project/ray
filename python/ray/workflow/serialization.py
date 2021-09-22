@@ -93,8 +93,7 @@ class Manager:
             upload_task = _put_helper.remote(identifier_ref, ref, workflow_id,
                                              self._storage)
             self._uploads[key] = Upload(
-                identifier_ref=identifier_ref,
-                upload_task=upload_task)
+                identifier_ref=identifier_ref, upload_task=upload_task)
             self._num_uploads += 1
 
         info = self._uploads[key]

@@ -88,6 +88,7 @@ def test_same_object_many_workflows(workflow_start_regular_shared):
     """Ensure that when we dedupe uploads, we upload the object once per workflow,
     since different workflows shouldn't look in each others object directories.
     """
+
     @ray.workflow.step
     def f(a):
         return [a[0]]
@@ -192,8 +193,6 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     result = workflow_storage.asyncio_run(storage2._get(["key"]))
     assert ray.get(result.refs) == [1, 2]
-
-
 
 
 if __name__ == "__main__":
