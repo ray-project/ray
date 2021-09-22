@@ -98,6 +98,9 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
+/// The fraction of resource utilization on a node after which the scheduler starts
+/// to prefer spreading tasks to other nodes. This balances between locality and
+/// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
            getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
                ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
@@ -213,8 +216,14 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+// TODO: fix win32 timeout in ci and unify these two.
+#ifdef _MSC_VER
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+#else
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 8)
+#endif
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -414,9 +423,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_task_scheduling_enabled,
-           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
+           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -466,5 +475,11 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, actor_register_async, true)
+
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
+
+/// Whether to avoid scheduling cpu requests on gpu nodes
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)

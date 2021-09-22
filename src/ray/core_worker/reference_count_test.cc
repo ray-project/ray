@@ -236,7 +236,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 class MockWorkerClient : public MockCoreWorkerClientInterface {
  public:
   // Helper function to generate a random address.
-  rpc::Address CreateRandomAddress(const std::string &addr) {
+  static rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
     address.set_raylet_id(NodeID::FromRandom().Binary());
@@ -276,10 +276,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
-      for (auto &callback : borrower_callbacks_) {
+      // Copy borrower callbacks in case we modify during the callbacks.
+      auto borrower_callbacks_copy = borrower_callbacks_;
+      borrower_callbacks_.clear();
+      for (auto &callback : borrower_callbacks_copy) {
         callback.second();
       }
-      borrower_callbacks_.clear();
       return true;
     }
   }
@@ -342,9 +344,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     ReferenceCounter::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
-      rc_.GetAndClearLocalBorrowers({arg_id}, &refs);
-      // Remove the sentinel reference.
-      rc_.RemoveLocalReference(arg_id, nullptr);
+      rc_.PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
     }
     return refs;
   }
@@ -355,6 +355,10 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
+    for (const auto &pair : nested_return_ids) {
+      // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
+      rc_.AddNestedObjectIds(pair.first, pair.second, address_);
+    }
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
@@ -2331,6 +2335,85 @@ TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
   ASSERT_TRUE(rc->HasReference(id));
   rc->RemoveOwnedObject(id);
   ASSERT_FALSE(rc->HasReference(id));
+}
+
+TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
+  // https://github.com/ray-project/ray/issues/18557.
+  // Check that we track an ObjectRef nested inside another borrowed ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+
+  // We have a reference to the borrowed ObjectRef.
+  rpc::Address owner_address(MockWorkerClient::CreateRandomAddress("1234"));
+  rc->AddLocalReference(outer_id, "");
+  rc->AddBorrowedObject(outer_id, ObjectID::Nil(), owner_address);
+  ASSERT_TRUE(rc->HasReference(outer_id));
+  // Task finishes and our local ref to the outer ObjectRef is deleted. We
+  // return borrower information to the owner.
+  ReferenceCounter::ReferenceTableProto refs_proto;
+  rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
+  ASSERT_FALSE(rc->HasReference(outer_id));
+  // Future resolution is async, so we may receive information about the inner
+  // ObjectRef after we deleted the outer ObjectRef. Check that we do not leak
+  // the inner Reference info.
+  rc->AddBorrowedObject(inner_id, outer_id, owner_address);
+  ASSERT_FALSE(rc->HasReference(inner_id));
+
+  // Now we do it again but the future is resolved while the outer ObjectRef is
+  // still in scope.
+  rc->AddLocalReference(outer_id, "");
+  rc->AddBorrowedObject(outer_id, ObjectID::Nil(), owner_address);
+  ASSERT_TRUE(rc->HasReference(outer_id));
+  // Future is resolved and we receive information about the inner ObjectRef.
+  // This time we keep the Reference information.
+  rc->AddBorrowedObject(inner_id, outer_id, owner_address);
+  ASSERT_TRUE(rc->HasReference(inner_id));
+  refs_proto.Clear();
+  rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
+  // Inner ObjectRef info gets popped with the outer ObjectRef.
+  ASSERT_FALSE(rc->HasReference(outer_id));
+  ASSERT_FALSE(rc->HasReference(inner_id));
+}
+
+TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // Owner owns a nested object ref, borrower is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(outer_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddLocalReference(inner_id, "");
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  borrower->rc_.AddLocalReference(outer_id, "");
+  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  // Borrower deserializes the inner ObjectRef.
+  borrower->rc_.AddLocalReference(inner_id, "");
+  borrower->rc_.AddBorrowedObject(inner_id, outer_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // Borrower deletes the outer ObjectRef. Inner ObjectRef is still in scope.
+  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  // WaitForRefRemoved RPC from owner arrives after outer object ref has been deleted.
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Inner ObjectRef is still in scope because the borrower is still using it.
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Delete all refs to the inner ObjectRef.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
 }
 
 }  // namespace core

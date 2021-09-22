@@ -35,13 +35,26 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_cannot_read_twice(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    pipe = ds.pipeline(parallelism=1)
+    assert pipe.count() == 10
+    with pytest.raises(RuntimeError):
+        pipe.count()
+    with pytest.raises(RuntimeError):
+        next(pipe.iter_batches())
+    with pytest.raises(RuntimeError):
+        pipe.map(lambda x: x).count()
+    with pytest.raises(RuntimeError):
+        pipe.split(2)
+
+
 def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.data.range(10)
 
     pipe = ds.pipeline(parallelism=1)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
-    for _ in range(2):
-        assert pipe.count() == 10
+    assert pipe.count() == 10
 
     pipe = ds.pipeline(parallelism=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=3)"
@@ -53,8 +66,8 @@ def test_basic_pipeline(ray_start_regular_shared):
 
     pipe = ds.repeat(10)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
-    for _ in range(2):
-        assert pipe.count() == 100
+    assert pipe.count() == 100
+    pipe = ds.repeat(10)
     assert pipe.sum() == 450
 
 
@@ -77,7 +90,9 @@ def test_repeat_forever(ray_start_regular_shared):
 def test_repartition(ray_start_regular_shared):
     pipe = ray.data.range(10).repeat(10)
     assert pipe.repartition(1).sum() == 450
+    pipe = ray.data.range(10).repeat(10)
     assert pipe.repartition(10).sum() == 450
+    pipe = ray.data.range(10).repeat(10)
     assert pipe.repartition(100).sum() == 450
 
 

@@ -1,6 +1,7 @@
 import copy
 import gym
 import logging
+import numpy as np
 import platform
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
@@ -33,7 +34,8 @@ from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.error import EnvError
+from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
+    HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -411,7 +413,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
-        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        self.policy_mapping_fn = \
+            lambda agent_id, episode, worker, **kwargs: DEFAULT_POLICY_ID
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
@@ -556,16 +559,16 @@ class RolloutWorker(ParallelIteratorWorker):
                 ray.worker._mode() != ray.worker.LOCAL_MODE and \
                 not policy_config.get("_fake_gpus"):
 
+            devices = []
             if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
-                if len(get_tf_gpu_devices()) < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found for num_gpus={num_gpus}! "
-                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+                devices = get_tf_gpu_devices()
             elif policy_config.get("framework") == "torch":
-                if torch.cuda.device_count() < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
-                        f"for num_gpus={num_gpus}!")
+                devices = list(range(torch.cuda.device_count()))
+
+            if len(devices) < num_gpus:
+                raise RuntimeError(
+                    ERR_MSG_NO_GPUS.format(len(devices), devices) +
+                    HOWTO_CHANGE_CONFIG)
         # Warn, if running in local-mode and actual GPUs (not faked) are
         # requested.
         elif ray.is_initialized() and \
@@ -1511,6 +1514,14 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
             env, "action_space")
         # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
+        # Convert lists to np.ndarrays.
+        if type(dummy_obs) is list and isinstance(env.observation_space,
+                                                  gym.spaces.Box):
+            dummy_obs = np.array(dummy_obs)
+        # Ignore float32/float64 diffs.
+        if isinstance(env.observation_space, gym.spaces.Box) and \
+                env.observation_space.dtype != dummy_obs.dtype:
+            dummy_obs = dummy_obs.astype(env.observation_space.dtype)
         # Check, if observation is ok (part of the observation space). If not,
         # error.
         if not env.observation_space.contains(dummy_obs):

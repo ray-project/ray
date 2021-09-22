@@ -1,7 +1,7 @@
 .. _datasets_tensor_support:
 
-Datasets Tensor Support
-=======================
+Dataset Tensor Support
+======================
 
 Tensor-typed values
 -------------------

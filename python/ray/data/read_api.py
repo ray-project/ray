@@ -1,3 +1,4 @@
+import itertools
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
@@ -24,6 +25,7 @@ from ray.data.impl.arrow_block import ArrowRow, \
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
@@ -135,6 +137,7 @@ def read_datasource(datasource: Datasource[T],
                     *,
                     parallelism: int = 200,
                     ray_remote_args: Dict[str, Any] = None,
+                    _spread_resource_prefix: Optional[str] = None,
                     **read_args) -> Dataset[T]:
     """Read a dataset from a custom data source.
 
@@ -155,13 +158,33 @@ def read_datasource(datasource: Datasource[T],
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    remote_read = cached_remote_fn(remote_read, **ray_remote_args)
+    # Increase the read parallelism by default to maximize IO throughput. This
+    # is particularly important when reading from e.g., remote storage.
+    if "num_cpus" not in ray_remote_args:
+        # Note that the too many workers warning triggers at 4x subscription,
+        # so we go at 0.5 to avoid the warning message.
+        ray_remote_args["num_cpus"] = 0.5
+    remote_read = cached_remote_fn(remote_read)
+
+    if _spread_resource_prefix is not None:
+        # Use given spread resource prefix for round-robin resource-based
+        # scheduling.
+        nodes = ray.nodes()
+        resource_iter = _get_spread_resources_iter(
+            nodes, _spread_resource_prefix, ray_remote_args)
+    else:
+        # If no spread resource prefix given, yield an empty dictionary.
+        resource_iter = itertools.repeat({})
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
 
     for task in read_tasks:
-        calls.append(lambda task=task: remote_read.remote(task))
+        calls.append(
+            lambda task=task,
+            resources=next(resource_iter): remote_read.options(
+                **ray_remote_args,
+                resources=resources).remote(task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
@@ -506,7 +529,6 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-@PublicAPI(stability="beta")
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
     """Create a dataset from a set of NumPy ndarrays.
 
@@ -524,34 +546,40 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef["pyarrow.Table"]]) -> Dataset[ArrowRow]:
+def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
+               ) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
-        dfs: A list of Ray object references to Arrow tables.
+        tables: A list of Ray object references to Arrow tables,
+                or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
-
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)))
 
 
 @PublicAPI(stability="beta")
-def from_spark(df: "pyspark.sql.DataFrame", *,
-               parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_spark(df: "pyspark.sql.DataFrame",
+               *,
+               parallelism: Optional[int] = None) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
 
     Args:
+        spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
-        parallelism: The amount of parallelism to use for the dataset.
+            parallelism: The amount of parallelism to use for the dataset.
+            If not provided, it will be equal to the number of partitions of
+            the original Spark dataframe.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P2
+    import raydp
+    return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:

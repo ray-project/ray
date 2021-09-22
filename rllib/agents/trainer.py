@@ -29,6 +29,7 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
@@ -112,6 +113,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "model": MODEL_DEFAULTS,
     # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
+    # Experimental flag, indicating that TFPolicy will handle more than one
+    # loss/optimizer. Set this to True, if you would like to return more than
+    # one loss term from your `loss_fn` and an equal number of optimizers
+    # from your `optimizer_fn`.
+    "_tf_policy_handles_more_than_one_loss": False,
 
     # === Environment Settings ===
     # Number of steps after which the episode is forced to terminate. Defaults
@@ -698,8 +704,16 @@ class Trainer(Trainable):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             # A class specifier.
             elif "." in env:
-                self.env_creator = \
-                    lambda env_context: from_config(env, env_context)
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
+                    return env_obj
+
+                self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(

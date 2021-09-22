@@ -5,6 +5,8 @@ to the server.
 import base64
 import json
 import logging
+import os
+import threading
 import time
 import uuid
 import warnings
@@ -21,14 +23,17 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
+from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
 from ray.util.client.common import (ClientActorClass, ClientActorHandle,
                                     ClientActorRef, ClientObjectRef,
-                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS)
+                                    ClientRemoteFunc, ClientStub, GRPC_OPTIONS,
+                                    GRPC_UNRECOVERABLE_ERRORS, INT32_MAX)
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.runtime_env.working_dir as working_dir_pkg
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -97,26 +102,91 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-
-        if secure and _credentials is None:
-            _credentials = grpc.ssl_channel_credentials()
+        self._secure = secure
+        self._conn_str = conn_str
+        self._connection_retries = connection_retries
 
         if _credentials is not None:
+            self._credentials = _credentials
+            self._secure = True
+        else:
+            self._credentials = None
+
+        self._reconnect_grace_period = DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+        if "RAY_CLIENT_RECONNECT_GRACE_PERIOD" in os.environ:
+            # Use value in environment variable if available
+            self._reconnect_grace_period = \
+                int(os.environ["RAY_CLIENT_RECONNECT_GRACE_PERIOD"])
+        # Disable retries if grace period is set to 0
+        self._reconnect_enabled = self._reconnect_grace_period != 0
+
+        # Set to True when the connection cannot be recovered and reconnect
+        # attempts should be stopped
+        self._in_shutdown = False
+        # Set to True after initial connection succeeds
+        self._has_connected = False
+
+        self._connect_channel()
+        self._has_connected = True
+
+        # Initialize the streams to finish protocol negotiation.
+        self.data_client = DataClient(self, self._client_id, self.metadata)
+        self.reference_count: Dict[bytes, int] = defaultdict(int)
+
+        self.log_client = LogstreamClient(self, self.metadata)
+        self.log_client.set_logstream_level(logging.INFO)
+
+        self.closed = False
+
+        # Track these values to raise a warning if many tasks are being
+        # scheduled
+        self.total_num_tasks_scheduled = 0
+        self.total_outbound_message_size_bytes = 0
+
+        # Used to create unique IDs for RPCs to the RayletServicer
+        self._req_id_lock = threading.Lock()
+        self._req_id = 0
+
+    def _connect_channel(self, reconnecting=False) -> None:
+        """
+        Attempts to connect to the server specified by conn_str. If
+        reconnecting after an RPC error, cleans up the old channel and
+        continues to attempt to connect until the grace period is over.
+        """
+        if self.channel is not None:
+            self.channel.unsubscribe(self._on_channel_state_change)
+            self.channel.close()
+
+        if self._secure:
+            if self._credentials is not None:
+                credentials = self._credentials
+            else:
+                credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, _credentials, options=GRPC_OPTIONS)
+                self._conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=GRPC_OPTIONS)
+                self._conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
         # Retry the connection until the channel responds to something
         # looking like a gRPC connection, though it may be a proxy.
+        start_time = time.time()
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         service_ready = False
-        while conn_attempts < max(connection_retries, 1):
+        while conn_attempts < max(self._connection_retries, 1) or reconnecting:
             conn_attempts += 1
+            if self._in_shutdown:
+                # User manually closed the worker before connection finished
+                break
+            elapsed_time = time.time() - start_time
+            if reconnecting and elapsed_time > self._reconnect_grace_period:
+                self._in_shutdown = True
+                raise ConnectionError(
+                    "Failed to reconnect within the reconnection grace period "
+                    f"({self._reconnect_grace_period}s)")
             try:
                 # Let gRPC wait for us to see if the channel becomes ready.
                 # If it throws, we couldn't connect.
@@ -144,12 +214,17 @@ class Worker:
             # Fallthrough, backoff, and retry at the top of the loop
             logger.info("Waiting for Ray to become ready on the server, "
                         f"retry in {timeout}s...")
-            timeout = backoff(timeout)
+            if not reconnecting:
+                # Don't increase backoff when trying to reconnect --
+                # we already know the server exists, attempt to reconnect
+                # as soon as we can
+                timeout = backoff(timeout)
 
         # If we made it through the loop without service_ready
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
+            self._in_shutdown = True
             if log_once("ray_client_security_groups"):
                 warnings.warn(
                     "Ray Client connection timed out. Ensure that "
@@ -159,20 +234,72 @@ class Worker:
                     "more information.")
             raise ConnectionError("ray client connection timeout")
 
-        # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self.channel, self._client_id,
-                                      self.metadata)
-        self.reference_count: Dict[bytes, int] = defaultdict(int)
+    def _can_reconnect(self, e: grpc.RpcError) -> bool:
+        """
+        Returns True if the RPC error can be recovered from and a retry is
+        appropriate, false otherwise.
+        """
+        if not self._reconnect_enabled:
+            return False
+        if self._in_shutdown:
+            # Channel is being shutdown, don't try to reconnect
+            return False
+        if e.code() in GRPC_UNRECOVERABLE_ERRORS:
+            # Unrecoverable error -- These errors are specifically raised
+            # by the server's application logic
+            return False
+        if e.code() == grpc.StatusCode.INTERNAL:
+            details = e.details()
+            if details == "Exception serializing request!":
+                # The client failed tried to send a bad request (for example,
+                # passing "None" instead of a valid grpc message). Don't
+                # try to reconnect/retry.
+                return False
+        # All other errors can be treated as recoverable
+        return True
 
-        self.log_client = LogstreamClient(self.channel, self.metadata)
-        self.log_client.set_logstream_level(logging.INFO)
+    def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
+        """
+        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        If a recoverable error occurrs while calling the stub, attempts to
+        retry the RPC.
+        """
+        while not self._in_shutdown:
+            try:
+                return getattr(self.server, stub_name)(*args, **kwargs)
+            except grpc.RpcError as e:
+                if self._can_reconnect(e):
+                    time.sleep(.5)
+                    continue
+                raise
+            except ValueError:
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
+                time.sleep(.5)
+                continue
+        raise ConnectionError("Client is shutting down.")
 
-        self.closed = False
-
-        # Track these values to raise a warning if many tasks are being
-        # scheduled
-        self.total_num_tasks_scheduled = 0
-        self.total_outbound_message_size_bytes = 0
+    def _add_ids_to_metadata(self, metadata: Any):
+        """
+        Adds a unique req_id and the current thread's identifier to the
+        metadata. These values are useful for preventing mutating operations
+        from being replayed on the server side in the event that the client
+        must retry a requsest.
+        Args:
+            metadata - the gRPC metadata to append the IDs to
+        """
+        if not self._reconnect_enabled:
+            # IDs not needed if the reconnects are disabled
+            return metadata
+        thread_id = str(threading.get_ident())
+        with self._req_id_lock:
+            self._req_id += 1
+            if self._req_id > INT32_MAX:
+                self._req_id = 1
+            req_id = str(self._req_id)
+        return metadata + [("thread_id", thread_id), ("req_id", req_id)]
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
@@ -182,7 +309,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -240,7 +367,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -264,7 +391,7 @@ class Worker:
             out = out[0]
         return out
 
-    def _put(self, val, *, client_ref_id: bytes = None):
+    def _put(self, val, client_ref_id: bytes):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -273,6 +400,9 @@ class Worker:
                 "do this, you can wrap the ObjectRef in a list and "
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
+        return self._put_pickled(data, client_ref_id)
+
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
@@ -307,7 +437,7 @@ class Worker:
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
-        resp = self.server.WaitObject(req, metadata=self.metadata)
+        resp = self._call_stub("WaitObject", req, metadata=self.metadata)
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
@@ -327,16 +457,20 @@ class Worker:
             task.args.append(pb_arg)
         for k, v in kwargs.items():
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
-        return self._call_schedule_for_task(task)
+        return self._call_schedule_for_task(task, instance._num_returns())
 
-    def _call_schedule_for_task(
-            self, task: ray_client_pb2.ClientTask) -> List[bytes]:
+    def _call_schedule_for_task(self, task: ray_client_pb2.ClientTask,
+                                num_returns: int) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
+        metadata = self._add_ids_to_metadata(self.metadata)
+        if num_returns is None:
+            num_returns = 1
+
         try:
-            ticket = self.server.Schedule(task, metadata=self.metadata)
+            ticket = self._call_stub("Schedule", task, metadata=metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
         if not ticket.valid:
             try:
@@ -374,6 +508,9 @@ class Worker:
                 "unserializable object\" section of the Ray Design Patterns "
                 "document, available here: "
                 f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
+        if num_returns != len(ticket.return_ids):
+            raise TypeError("Unexpected number of returned values. Expected "
+                            f"{num_returns} actual {ticket.return_ids}")
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
@@ -395,13 +532,14 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
+        self._in_shutdown = True
+        self.closed = True
         self.data_client.close()
         self.log_client.close()
+        self.server = None
         if self.channel:
             self.channel.close()
             self.channel = None
-        self.server = None
-        self.closed = True
 
     def get_actor(self, name: str,
                   namespace: Optional[str] = None) -> ClientActorHandle:
@@ -409,7 +547,7 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
-        ids = self._call_schedule_for_task(task)
+        ids = self._call_schedule_for_task(task, num_returns=1)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
 
@@ -424,9 +562,10 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            metadata = self._add_ids_to_metadata(self.metadata)
+            self._call_stub("Terminate", term, metadata=metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -441,14 +580,18 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self.server.Terminate(term, metadata=self.metadata)
+            metadata = self._add_ids_to_metadata(self.metadata)
+            self._call_stub("Terminate", term, metadata=metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
-    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
+    def get_cluster_info(self,
+                         type: ray_client_pb2.ClusterInfoType.TypeEnum,
+                         timeout: Optional[float] = None):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self.server.ClusterInfo(req, metadata=self.metadata)
+        resp = self.server.ClusterInfo(
+            req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
@@ -459,35 +602,37 @@ class Worker:
 
     def internal_kv_get(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self.server.KVGet(req, metadata=self.metadata)
+        resp = self._call_stub("KVGet", req, metadata=self.metadata)
         return resp.value
 
     def internal_kv_exists(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self.server.KVGet(req, metadata=self.metadata)
+        resp = self._call_stub("KVGet", req, metadata=self.metadata)
         return resp.value
 
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
             key=key, value=value, overwrite=overwrite)
-        resp = self.server.KVPut(req, metadata=self.metadata)
+        metadata = self._add_ids_to_metadata(self.metadata)
+        resp = self._call_stub("KVPut", req, metadata=metadata)
         return resp.already_exists
 
     def internal_kv_del(self, key: bytes) -> None:
         req = ray_client_pb2.KVDelRequest(key=key)
-        self.server.KVDel(req, metadata=self.metadata)
+        metadata = self._add_ids_to_metadata(self.metadata)
+        self._call_stub("KVDel", req, metadata=metadata)
 
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
-        return self.server.KVList(req, metadata=self.metadata).keys
+        return self._call_stub("KVList", req, metadata=self.metadata).keys
 
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(
             all_namespaces=all_namespaces)
         return json.loads(
-            self.server.ListNamedActors(req,
-                                        metadata=self.metadata).actors_json)
+            self._call_stub("ListNamedActors", req,
+                            metadata=self.metadata).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:
@@ -495,7 +640,7 @@ class Worker:
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
 
-    def ping_server(self) -> bool:
+    def ping_server(self, timeout=None) -> bool:
         """Simple health check.
 
         Piggybacks the IS_INITIALIZED call to check if the server provides
@@ -503,12 +648,13 @@ class Worker:
         """
         if self.server is not None:
             logger.debug("Pinging server.")
-            result = self.get_cluster_info(ray_client_pb2.ClusterInfoType.PING)
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.PING, timeout=timeout)
             return result is not None
         return False
 
     def is_connected(self) -> bool:
-        return self._conn_state == grpc.ChannelConnectivity.READY
+        return not self._in_shutdown and self._has_connected
 
     def _server_init(self,
                      job_config: JobConfig,
@@ -522,28 +668,24 @@ class Worker:
             else:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                import ray._private.runtime_env.working_dir as working_dir_pkg
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    (old_dir,
-                     working_dir_pkg.PKG_DIR) = (working_dir_pkg.PKG_DIR,
-                                                 tmp_dir)
                     working_dir_pkg.rewrite_runtime_env_uris(job_config)
-                    working_dir_pkg.upload_runtime_env_package_if_needed(
-                        job_config)
-                    working_dir_pkg.PKG_DIR = old_dir
+                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
+                    manager.upload_runtime_env_package_if_needed(job_config)
 
                 serialized_job_config = pickle.dumps(job_config)
 
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,
-                    ray_init_kwargs=json.dumps(ray_init_kwargs)))
+                    ray_init_kwargs=json.dumps(ray_init_kwargs),
+                    reconnect_grace_period=self._reconnect_grace_period))
             if not response.ok:
                 raise ConnectionAbortedError(
                     f"Initialization failure from server:\n{response.msg}")
 
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise decode_exception(e)
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -590,12 +732,22 @@ class Worker:
         """Check if a key UUID is present in the store of converted objects."""
         return key in self._converted
 
+    def _dumps_from_client(self, val) -> bytes:
+        return dumps_from_client(val, self._client_id)
+
 
 def make_client_id() -> str:
     id = uuid.uuid4()
     return id.hex
 
 
-def decode_exception(data) -> Exception:
-    data = base64.standard_b64decode(data)
+def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() != grpc.StatusCode.ABORTED:
+        # The ABORTED status code is used by the server when an application
+        # error is serialized into the the exception details. If the code
+        # isn't ABORTED, then return the original error since there's no
+        # serialized error to decode.
+        # See server.py::return_exception_in_context for details
+        return ConnectionError(f"GRPC connection failed: {e}")
+    data = base64.standard_b64decode(e.details())
     return loads_from_server(data)

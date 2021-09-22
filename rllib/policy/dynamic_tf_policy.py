@@ -12,13 +12,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_placeholder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
+    TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -427,13 +428,13 @@ class DynamicTFPolicy(TFPolicy):
             ])
 
         instance._loss_input_dict = input_dict
-        loss = instance._do_loss_init(SampleBatch(input_dict))
+        losses = instance._do_loss_init(SampleBatch(input_dict))
         loss_inputs = [
             (k, existing_inputs[i])
             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
         ]
 
-        TFPolicy._initialize_loss(instance, loss, loss_inputs)
+        TFPolicy._initialize_loss(instance, losses, loss_inputs)
         if instance._grad_stats_fn:
             instance._stats_fetches.update(
                 instance._grad_stats_fn(instance, input_dict, instance._grads))
@@ -575,7 +576,10 @@ class DynamicTFPolicy(TFPolicy):
 
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
-        self._optimizer = self.optimizer()
+        if not self._optimizers:
+            self._optimizers = force_list(self.optimizer())
+            # Backward compatibility.
+            self._optimizer = self._optimizers[0]
 
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
@@ -632,14 +636,14 @@ class DynamicTFPolicy(TFPolicy):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        loss = self._do_loss_init(train_batch)
+        losses = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
             train_batch.accessed_keys | dummy_batch.accessed_keys | \
             dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
-        TFPolicy._initialize_loss(self, loss, [
+        TFPolicy._initialize_loss(self, losses, [
             (k, v) for k, v in train_batch.items() if k in all_accessed_keys
         ] + ([(SampleBatch.SEQ_LENS, train_batch[SampleBatch.SEQ_LENS])]
              if SampleBatch.SEQ_LENS in train_batch else []))
@@ -711,14 +715,15 @@ class DynamicTFPolicy(TFPolicy):
         }
 
     def _do_loss_init(self, train_batch: SampleBatch):
-        loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
+        losses = self._loss_fn(self, self.model, self.dist_class, train_batch)
+        losses = force_list(losses)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, train_batch))
         # Override the update ops to be those of the model.
         self._update_ops = []
         if not isinstance(self.model, tf.keras.Model):
             self._update_ops = self.model.update_ops()
-        return loss
+        return losses
 
 
 class TFMultiGPUTowerStack:
@@ -751,12 +756,13 @@ class TFMultiGPUTowerStack:
             build_graph=None,
             grad_norm_clipping=None,
             # Use only `policy` argument from here on.
-            policy=None,
+            policy: TFPolicy = None,
     ):
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
-            policy: The policy object that this tower stack belongs to.
+            policy (TFPolicy): The TFPolicy object that this tower stack
+                belongs to.
         """
         # Obsoleted usage, use only `policy` arg from here on.
         if policy is None:
@@ -766,13 +772,13 @@ class TFMultiGPUTowerStack:
                 error=False,
             )
             self.policy = None
-            self.optimizer = optimizer
+            self.optimizers = optimizer
             self.devices = devices
             self.max_per_device_batch_size = max_per_device_batch_size
-            self.build_graph = build_graph
+            self.policy_copy = build_graph
         else:
-            self.policy = policy
-            self.optimizer = self.policy._optimizer
+            self.policy: TFPolicy = policy
+            self.optimizers: List[LocalOptimizer] = self.policy._optimizers
             self.devices = self.policy.devices
             self.max_per_device_batch_size = \
                 (max_per_device_batch_size or
@@ -786,7 +792,7 @@ class TFMultiGPUTowerStack:
                     self.policy._seq_lens
                 ]
             grad_norm_clipping = self.policy.config.get("grad_clip")
-            self.build_graph = self.policy.copy
+            self.policy_copy = self.policy.copy
 
         assert len(self.devices) > 1 or "gpu" in self.devices[0]
         self.loss_inputs = input_placeholders + rnn_inputs
@@ -818,28 +824,62 @@ class TFMultiGPUTowerStack:
                 self._setup_device(tower_i, device, device_placeholders,
                                    len(input_placeholders)))
 
-        avg = average_gradients([t.grads for t in self._towers])
-        if grad_norm_clipping:
-            clipped = []
-            for grad, _ in avg:
-                clipped.append(grad)
-            clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
-            for i, (grad, var) in enumerate(avg):
-                avg[i] = (clipped[i], var)
+        if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
+            avgs = []
+            for i, optim in enumerate(self.optimizers):
+                avg = average_gradients([t.grads[i] for t in self._towers])
+                if grad_norm_clipping:
+                    clipped = []
+                    for grad, _ in avg:
+                        clipped.append(grad)
+                    clipped, _ = tf.clip_by_global_norm(
+                        clipped, grad_norm_clipping)
+                    for i, (grad, var) in enumerate(avg):
+                        avg[i] = (clipped[i], var)
+                avgs.append(avg)
 
-        # gather update ops for any batch norm layers. TODO(ekl) here we will
-        # use all the ops found which won't work for DQN / DDPG, but those
-        # aren't supported with multi-gpu right now anyways.
-        self._update_ops = tf1.get_collection(
-            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        for op in shared_ops:
-            self._update_ops.remove(op)  # only care about tower update ops
-        if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
+            # Gather update ops for any batch norm layers.
+            # TODO(ekl) here we
+            #  will use all the ops found which won't work for DQN / DDPG, but
+            #  those aren't supported with multi-gpu right now anyways.
+            self._update_ops = tf1.get_collection(
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            for op in shared_ops:
+                self._update_ops.remove(op)  # only care about tower update ops
+            if self._update_ops:
+                logger.debug("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
 
-        with tf1.control_dependencies(self._update_ops):
-            self._train_op = self.optimizer.apply_gradients(avg)
+            with tf1.control_dependencies(self._update_ops):
+                self._train_op = tf.group([
+                    o.apply_gradients(a)
+                    for o, a in zip(self.optimizers, avgs)
+                ])
+        else:
+            avg = average_gradients([t.grads for t in self._towers])
+            if grad_norm_clipping:
+                clipped = []
+                for grad, _ in avg:
+                    clipped.append(grad)
+                clipped, _ = tf.clip_by_global_norm(clipped,
+                                                    grad_norm_clipping)
+                for i, (grad, var) in enumerate(avg):
+                    avg[i] = (clipped[i], var)
+
+            # Gather update ops for any batch norm layers.
+            # TODO(ekl) here we
+            #  will use all the ops found which won't work for DQN / DDPG, but
+            #  those aren't supported with multi-gpu right now anyways.
+            self._update_ops = tf1.get_collection(
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            for op in shared_ops:
+                self._update_ops.remove(op)  # only care about tower update ops
+            if self._update_ops:
+                logger.debug("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+
+            with tf1.control_dependencies(self._update_ops):
+                self._train_op = self.optimizers[0].apply_gradients(avg)
 
     def load_data(self, sess, inputs, state_inputs):
         """Bulk loads the specified inputs into device memory.
@@ -1017,9 +1057,9 @@ class TFMultiGPUTowerStack:
                          [-1] * len(ph.shape[1:])))
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
-                graph_obj = self.build_graph(device_input_slices)
-                device_grads = graph_obj.gradients(self.optimizer,
-                                                   graph_obj._loss)
+                graph_obj = self.policy_copy(device_input_slices)
+                device_grads = graph_obj.gradients(self.optimizers,
+                                                   graph_obj._losses)
             return Tower(
                 tf.group(
                     *[batch.initializer for batch in device_input_batches]),

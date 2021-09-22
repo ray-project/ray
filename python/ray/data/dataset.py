@@ -323,10 +323,13 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def random_shuffle(self,
-                       *,
-                       seed: Optional[int] = None,
-                       num_blocks: Optional[int] = None) -> "Dataset[T]":
+    def random_shuffle(
+            self,
+            *,
+            seed: Optional[int] = None,
+            num_blocks: Optional[int] = None,
+            _move: Optional[bool] = False,
+            _spread_resource_prefix: Optional[str] = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -349,13 +352,20 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-
+        if num_blocks is None:
+            num_blocks = self.num_blocks()
         new_blocks = simple_shuffle(
-            self._blocks,
-            num_blocks or self.num_blocks(),
+            self._move_blocks() if _move else self._blocks,
+            num_blocks,
             random_shuffle=True,
-            random_seed=seed)
+            random_seed=seed,
+            _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks)
+
+    def _move_blocks(self):
+        blocks = self._blocks.copy()
+        self._blocks.clear()
+        return blocks
 
     def split(self,
               n: int,
@@ -1269,7 +1279,8 @@ class Dataset(Generic[T]):
         pd_objs = self.to_pandas()
         return from_partitions(pd_objs, axis=0)
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
+    def to_spark(self,
+                 spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -1277,7 +1288,14 @@ class Dataset(Generic[T]):
         Returns:
             A Spark dataframe created from this dataset.
         """
-        raise NotImplementedError  # P2
+        import raydp
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_blocks()
+        ]
+        return raydp.spark.ray_dataset_to_spark_dataframe(
+            spark, self.schema(), self.get_blocks(), locations)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
