@@ -21,6 +21,8 @@ import "src/ray/protobuf/agent_manager.proto";
 message CreateRuntimeEnvRequest {
   string serialized_runtime_env = 1;
   bytes job_id = 2;
+  // Allocated resource instances.
+  string serialized_allocated_resource_instances = 3;
 }
 
 message CreateRuntimeEnvReply {

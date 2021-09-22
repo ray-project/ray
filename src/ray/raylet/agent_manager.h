@@ -66,6 +66,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \param[in] runtime_env The runtime env.
   virtual void CreateRuntimeEnv(const JobID &job_id,
                                 const std::string &serialized_runtime_env,
+                                const std::string &serialized_allocated_resource_instances,
                                 CreateRuntimeEnvCallback callback);
 
   /// Request agent to delete a list of URIs.
