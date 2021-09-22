@@ -1461,7 +1461,7 @@ py_test(
 py_test(
     name = "test_preprocessors",
     tags = ["team:ml", "models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
