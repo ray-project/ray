@@ -496,10 +496,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
     /// - Pending submitted tasks that depend on the object.
-    /// - ObjectIDs that we own, that contain this ObjectID, and that are still
-    ///   in scope.
+    /// - ObjectIDs that contain this ObjectID and that are still in scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() +
+             contained_in_borrowed_ids.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
