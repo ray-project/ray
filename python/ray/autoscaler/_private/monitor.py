@@ -234,14 +234,14 @@ class Monitor:
                 list(resources_batch_data.batch))
 
         mirror_node_types = {}
-        resource_deadlock = False
+        cluster_full = False
         for resource_message in resources_batch_data.batch:
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = "node_{}".format(resource_message.node_id.hex())
-                if resource_message.resource_deadlock_detected:
-                    resource_deadlock = True
+                if resource_message.cluster_full_detected:
+                    cluster_full = True
                 resources = resource_message.resources_total
                 for k in list(resources.keys()):
                     if k.startswith("node:"):
@@ -271,7 +271,7 @@ class Monitor:
             self.load_metrics.update(
                 ip, total_resources, available_resources, resource_load,
                 waiting_bundles, infeasible_bundles, pending_placement_groups,
-                resource_deadlock)
+                cluster_full)
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(
                 mirror_node_types)
