@@ -587,7 +587,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<ObjectID> contains;
     /// ObjectRefs nested in this object that are or were in use. These objects
     /// are not owned by us, and we need to report that we are borrowing them
-    /// to their owner.
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
     bool has_nested_refs_to_report = false;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
