@@ -134,7 +134,7 @@ class SelfPlayCallback(DefaultCallbacks):
             # Re-define the mapping function, such that "main" is forced
             # to play against any of the previously played policies
             # (excluding "random").
-            def policy_mapping_fn(agent_id, episode, **kwargs):
+            def policy_mapping_fn(agent_id, episode, worker, **kwargs):
                 # agent_id = [0|1] -> policy depends on episode ID
                 # This way, we make sure that both policies sometimes play
                 # (start player) and sometimes agent1 (player to move 2nd).
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     register_env("open_spiel_env",
                  lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
         # This way, we make sure that both policies sometimes play agent0
         # (start player) and sometimes agent1 (player to move 2nd).

@@ -88,8 +88,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             const StatusCallback &callback) override;
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const StatusCallback &callback) override;
+  Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override;
 
   Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
                         const StatusCallback &callback) override;

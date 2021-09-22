@@ -212,7 +212,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._value_targets = value_targets
@@ -252,7 +253,7 @@ def stats(policy: Policy, train_batch: SampleBatch):
         stats_dict.update({"var_IS": is_stat_var})
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy._mean_kl})
+        stats_dict.update({"kl": policy._mean_kl_loss})
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict

@@ -58,11 +58,9 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     last_logger_index = None
     syncer_index = None
 
+    # Deprecate: 1.9
     # Create LegacyLoggerCallback for passed Logger classes
     if loggers:
-        # Todo(krfricke): Deprecate `loggers` argument, print warning here.
-        # Add warning as soon as we ported all loggers to LoggerCallback
-        # classes.
         add_loggers = []
         for trial_logger in loggers:
             if isinstance(trial_logger, LoggerCallback):

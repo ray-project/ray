@@ -2,7 +2,6 @@
 and the overall ray module API.
 """
 import json
-
 import logging
 
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI

@@ -23,7 +23,7 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
-SUPPORTED_BAZEL = (3, 4, 1)
+SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -148,6 +148,7 @@ if setup_spec.type == SetupType.RAY_CPP:
 generated_python_directories = [
     "ray/core/generated",
     "ray/streaming/generated",
+    "ray/serve/generated",
 ]
 
 ray_files.append("ray/nightly-wheels.yaml")
@@ -168,8 +169,9 @@ ray_files += [
 
 # Dashboard files.
 ray_files += [
-    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
-    os.walk("ray/new_dashboard/client/build") for filename in filenames
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
 
 # If you're adding dependencies for ray extras, please
