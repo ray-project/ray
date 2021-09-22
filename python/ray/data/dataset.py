@@ -700,6 +700,7 @@ class Dataset(Generic[T]):
             blocks.append(res)
             metadata.append(meta)
 
+        # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
         return Dataset(BlockList(blocks, metadata))
 
