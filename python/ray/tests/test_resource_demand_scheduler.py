@@ -10,9 +10,7 @@ import copy
 
 import ray
 import ray.ray_constants
-from ray.autoscaler._private.util import \
-    prepare_config, format_info_string, \
-    format_info_string_no_node_types
+from ray.autoscaler._private.util import prepare_config, format_info_string
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
     MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
@@ -2645,38 +2643,6 @@ def test_info_string_no_node_type():
             "memory_group_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
             "memory_group_0_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
         }, 1)])
-
-    expected = """
-======== Cluster status: 2020-12-28 01:02:03 ========
-Node status
------------------------------------------------------
- 1 node(s) with resources:
-  CPU: 16.0 (2.0 reserved in placement groups)
-  memory: 8589934592.0 (4294967296 reserved in placement groups)
-
-Resources
------------------------------------------------------
-Usage:
- 0/2 AcceleratorType:V100
- 529.0/544.0 CPU (1.0 used of 2.0 reserved in placement groups)
- 2/2 GPU
- 6.00/8.000 GiB memory (4.00 used of 4.00 GiB reserved in placement groups)
- 3.14/16.000 GiB object_store_memory
-
-Demands:
- {'GPU': 0.5, 'memory': 300}: 150+ pending tasks/actors
- {'GPU': 0.5}: 250+ pending tasks/actors (100+ using placement groups)
- {'CPU': 2.0, 'memory': 123455}: 3+ pending tasks/actors """ + \
-        """(3+ using placement groups)
- {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
-"""
-
-    actual = format_info_string_no_node_types(
-        lm_summary,
-        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
-    print(actual)
-    assert expected.strip() == actual
 
 
 if __name__ == "__main__":

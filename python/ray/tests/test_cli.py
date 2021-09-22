@@ -468,7 +468,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 def test_ray_status():
     import ray
-    address = ray.init().get("redis_address")
+    address = ray.init(num_cpus=3).get("redis_address")
     runner = CliRunner()
 
     def output_ready():
@@ -491,6 +491,25 @@ def test_ray_status():
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
     _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+
+
+def test_ray_status_multinode():
+    from ray.cluster_utils import Cluster
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=2)
+    address = cluster.address
+    runner = CliRunner()
+
+    def output_ready():
+        result = runner.invoke(scripts.status)
+        result.stdout
+        return not result.exception and "memory" in result.output
+
+    wait_for_condition(output_ready)
+
+    result = runner.invoke(scripts.status, [])
+    _check_output_via_pattern("test_ray_status_multinode.txt", result)
 
 
 @pytest.mark.skipif(

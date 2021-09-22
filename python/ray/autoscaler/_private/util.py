@@ -613,7 +613,6 @@ Pending:
 
 Resources
 {separator}
-
 Usage:
 {usage_report}
 
@@ -651,34 +650,3 @@ def format_no_node_type_string(node_type: dict):
         output_lines.append(output_line)
 
     return "\n  ".join(output_lines)
-
-
-def format_info_string_no_node_types(lm_summary, time=None):
-    if time is None:
-        time = datetime.now()
-    header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
-    separator = "-" * len(header)
-
-    node_lines = []
-    for node_type, count in lm_summary.node_types:
-        line = (f" {count} node(s) with resources:"
-                f"{format_no_node_type_string(node_type)}")
-        node_lines.append(line)
-    node_report = "\n".join(node_lines)
-
-    usage_report = get_usage_report(lm_summary)
-    demand_report = get_demand_report(lm_summary)
-
-    formatted_output = f"""{header}
-Node status
-{separator}
-{node_report}
-
-Resources
-{separator}
-Usage:
-{usage_report}
-
-Demands:
-{demand_report}"""
-    return formatted_output
