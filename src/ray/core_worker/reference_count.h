@@ -633,7 +633,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it);
+  void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
