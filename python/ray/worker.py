@@ -1992,6 +1992,105 @@ def make_decorator(num_returns=None,
     return decorator
 
 
+class NumbaWrapper:
+    def __init__(self, func, numba_args):
+        self.func = func
+        if numba_args is True:
+            self.numba_args = {}
+        else:
+            assert(isinstance(numba_args, dict))
+            self.numba_args = numba_args
+        self.numba_func = None
+        self.numba_pfunc = None
+        self.nfunc = {}
+        self.npfunc = {}
+
+    def __call__(self, *args, **kwargs):
+        """Get the types of the arguments.  See if we attempted to compile that
+        set of arguments with Numba parallel=True or Numba parallel=False.  We
+        always try Numba parallel=True first and then Numba parallel=False.  If
+        either of those ever fail to compile or run then we record that failure
+        in npfunc or nfunc so that we don't try the failed case again.  If
+        neither of those work then fall back to Python.
+        """
+        import numba
+
+        atypes = tuple([type(x) for x in args])
+        try_again = True
+        count = 0
+        if not self.numba_pfunc:
+            self.numba_pfunc = numba.njit(parallel=True, **self.numba_args)(self.func)
+            self.numba_func = numba.njit(**self.numba_args)(self.func)
+
+        while try_again and count < 2:
+            count += 1
+            try_again = False
+            if self.npfunc.get(atypes, True):
+                try:
+                    ret = self.numba_pfunc(*args, **kwargs)
+                    self.npfunc[atypes] = True
+                    return ret
+                except numba.core.errors.TypingError as te:
+                    tetxt = str(te)
+                    tesplit = tetxt.splitlines()
+                    for teline in tesplit:
+                        if "Untyped global name" in teline and "ramba.StencilMetadata" in teline:
+                            try_again = True
+                            # Name of global that is of type ramba.StencilMetadata
+                            tes = teline[21:].split()[0][:-2]
+                            outer_globals = self.func.__globals__
+                            outer_locals = {}
+                            etes = eval(tes, outer_globals, outer_locals)
+                            etes.compile()  # Converts to a Numba StencilFunc
+                            outer_globals[tes] = etes.sfunc # Rewrite the global to the Numba StencilFunc
+                            self.numba_pfunc = numba.njit(parallel=True, **self.numba_args)(self.func)
+                            self.numba_func = numba.njit(**self.numba_args)(self.func)
+                    if not try_again:
+                        self.npfunc[atypes] = False
+                        print("Numba parallel=True attempt failed.")
+                except:
+                    self.npfunc[atypes] = False
+                    print("Numba parallel=True attempt failed.")
+
+        if self.nfunc.get(atypes, True):
+            try:
+                ret = self.numba_func(*args, **kwargs)
+                self.nfunc[atypes] = True
+                return ret
+            except numba.core.errors.TypingError as te:
+                self.npfunc[atypes] = False
+                print("Requested Numba compilation failed.")
+            except:
+                self.nfunc[atypes] = False
+                print("Requested Numba compilation failed.")
+                raise
+
+        return self.func(*args, **kwargs)
+
+
+def make_numba_wrapper(function_or_class, numba_args, kwargs):
+    # The function case.
+    if inspect.isfunction(function_or_class):
+        fname = function_or_class.__name__
+        # Use a unique name for each NumbaWrapper to avoid global name conflicts.
+        fmname = "NumbaWrapperFor" + fname
+        fm = NumbaWrapper(function_or_class, numba_args)
+        ftext = "def {fname}(*args, **kwargs):\n    return {fmname}(*args, **kwargs)\n".format(fname=fname, fmname=fmname)
+        ldict = {}
+        gdict = globals()
+        gdict[fmname] = fm
+        exec(ftext, gdict, ldict)
+        if len(kwargs) > 0:
+            rfunc = remote(**kwargs)(ldict[fname])
+        else:
+            rfunc = remote(ldict[fname])
+        return rfunc
+
+    # The Actor case.
+    if inspect.isclass(function_or_class):
+        # Implementation not copied from ramba yet.  FIX FIX FIX
+        assert(False)
+
 @PublicAPI
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
@@ -2114,7 +2213,8 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
+        "numba"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2126,8 +2226,20 @@ def remote(*args, **kwargs):
     for key in kwargs:
         assert key in valid_kwargs, error_string
 
+    use_numba = kwargs["numba"] if "numba" in kwargs else False
+    kwargs.pop("numba", None)
+
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
+
+    if use_numba != False:
+        if num_gpus is not None:
+            assert "GPU incompatible with Numba option."
+
+        def numba_wrapper(func):
+            return make_numba_wrapper(func, use_numba, kwargs)
+        return numba_wrapper
+
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
