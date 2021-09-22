@@ -351,7 +351,7 @@ def run(args, parser):
             target_episodes=num_episodes,
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
-                args.no_render, video_dir)
+                not args.render, video_dir)
     agent.stop()
 
 

@@ -20,12 +20,13 @@ from ray.serve.common import (
     ReplicaTag,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -63,11 +64,14 @@ class ServeController:
     async def __init__(self,
                        controller_name: str,
                        http_config: HTTPOptions,
+                       checkpoint_path: str,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        controller_namespace = ray.get_runtime_context().namespace
-        self.kv_store = RayInternalKVStore(
-            namespace=f"{controller_name}-{controller_namespace}")
+        self.controller_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.kv_store = make_kv_store(
+            checkpoint_path,
+            namespace=f"{self.controller_name}-{self.controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -88,7 +92,17 @@ class ServeController:
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager, all_current_actor_names)
 
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def record_autoscaling_metrics(self, data: Dict[str, float],
+                                   send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def _dump_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_metrics_store.data
 
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
