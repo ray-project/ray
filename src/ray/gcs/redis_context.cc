@@ -140,7 +140,7 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
         auto *entry = array_entry->element[i];
         RAY_CHECK(REDIS_REPLY_STRING == entry->type)
             << "Unexcepted type: " << entry->type;
-        string_array_reply_.push_back(std::string(entry->str, entry->len));
+        string_array_reply_.emplace_back(std::string(entry->str, entry->len));
       }
       return;
     }
@@ -154,8 +154,12 @@ void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
   string_array_reply_.reserve(array_size);
   for (size_t i = 0; i < array_size; ++i) {
     auto *entry = redis_reply->element[i];
-    RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
-    string_array_reply_.push_back(std::string(entry->str, entry->len));
+    if (entry->type == REDIS_REPLY_STRING) {
+      string_array_reply_.emplace_back(std::string(entry->str, entry->len));
+    } else {
+      RAY_CHECK(REDIS_REPLY_NIL == entry->type) << "Unexcepted type: " << entry->type;
+      string_array_reply_.emplace_back();
+    }
   }
 }
 
@@ -183,11 +187,16 @@ const std::string &CallbackReply::ReadAsPubsubData() const {
 
 size_t CallbackReply::ReadAsScanArray(std::vector<std::string> *array) const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
-  *array = string_array_reply_;
+  array->clear();
+  array->reserve(string_array_reply_.size());
+  for (const auto &element : string_array_reply_) {
+    RAY_CHECK(element.has_value());
+    array->emplace_back(*element);
+  }
   return next_scan_cursor_reply_;
 }
 
-const std::vector<std::string> &CallbackReply::ReadAsStringArray() const {
+const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
   return string_array_reply_;
 }
