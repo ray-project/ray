@@ -160,6 +160,7 @@ class Trainable:
         if now is None:
             now = datetime.today()
         autofilled = dict(
+            trial_id=self.trial_id,
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),

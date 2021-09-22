@@ -403,6 +403,8 @@ class Trial:
                 self._default_result_future = ray.get(
                     self._default_result_future)
             result = self._default_result_future
+        result.setdefault("trial_id", self.trial_id)
+        result.setdefault("done", False)
         return result
 
     @last_result.setter
