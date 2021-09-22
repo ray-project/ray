@@ -9,6 +9,87 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fail_importing_actor(ray_start_regular, error_pubsub):
+    script = """
+import os
+import sys
+import tempfile
+import ray
+
+ray.init()
+temporary_python_file = '''
+def temporary_helper_function():
+   return 1
+'''
+
+f = tempfile.NamedTemporaryFile(suffix=".py")
+f.write(temporary_python_file.encode("ascii"))
+f.flush()
+directory = os.path.dirname(f.name)
+# Get the module name and strip ".py" from the end.
+module_name = os.path.basename(f.name)[:-3]
+sys.path.append(directory)
+module = __import__(module_name)
+
+# Define an actor that closes over this temporary module. This should
+# fail when it is unpickled.
+@ray.remote
+class Foo:
+    def __init__(self):
+        self.x = module.temporary_python_file()
+
+a = Foo.remote()
+"""
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+    print(out_str)
+    print(err_str)
+    assert "ModuleNotFoundError: No module named" in err_str
+    assert "RuntimeError: The actor with name Foo failed to import" in err_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fail_importing_task(ray_start_regular, error_pubsub):
+    script = """
+import os
+import sys
+import tempfile
+import ray
+
+ray.init()
+temporary_python_file = '''
+def temporary_helper_function():
+   return 1
+'''
+
+f = tempfile.NamedTemporaryFile(suffix=".py")
+f.write(temporary_python_file.encode("ascii"))
+f.flush()
+directory = os.path.dirname(f.name)
+# Get the module name and strip ".py" from the end.
+module_name = os.path.basename(f.name)[:-3]
+sys.path.append(directory)
+module = __import__(module_name)
+
+# Define an actor that closes over this temporary module. This should
+# fail when it is unpickled.
+@ray.remote
+def foo():
+    return module.temporary_python_file()
+
+ray.get(foo.remote())
+"""
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+    print(out_str)
+    print(err_str)
+    assert "ModuleNotFoundError: No module named" in err_str
+    assert "RuntimeError: The remote function failed to import" in err_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_stdout():
     script = """
 import ray
