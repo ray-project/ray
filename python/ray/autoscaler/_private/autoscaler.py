@@ -230,17 +230,29 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
-        self.terminate_nodes_to_enforce_config_constraints(now)
+        to_launch, unfulfilled = (
+            self.resource_demand_scheduler.get_nodes_to_launch(
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
+                self.load_metrics.get_resource_demand_vector(),
+                self.load_metrics.get_resource_utilization(),
+                self.load_metrics.get_pending_placement_groups(),
+                self.load_metrics.get_static_node_resources_by_ip(),
+                ensure_min_cluster_size=self.load_metrics.
+                get_resource_requests()))
+        self._report_pending_infeasible(unfulfilled)
 
-        self.launch_required_nodes()
+        if not self.provider.is_readonly():
+            self.terminate_nodes_to_enforce_config_constraints(now)
+            self.launch_required_nodes(to_launch)
 
-        if self.disable_node_updaters:
-            self.terminate_unhealthy_nodes(now)
-        else:
-            self.process_completed_updates()
-            self.update_nodes()
-            self.attempt_to_recover_unhealthy_nodes(now)
-            self.set_prometheus_updater_data()
+            if self.disable_node_updaters:
+                self.terminate_unhealthy_nodes(now)
+            else:
+                self.process_completed_updates()
+                self.update_nodes()
+                self.attempt_to_recover_unhealthy_nodes(now)
+                self.set_prometheus_updater_data()
 
         logger.info(self.info_string())
         legacy_log_info_string(self, self.workers)
@@ -315,8 +327,7 @@ class StandardAutoscaler:
         num_extra_nodes_to_terminate = (len(self.workers) - len(
             self.nodes_to_terminate) - self.config["max_workers"])
 
-        if not self.provider.is_readonly(
-        ) and num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
+        if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
             logger.warning(
                 "StandardAutoscaler: trying to terminate "
                 f"{num_extra_nodes_to_terminate} nodes, while only "
@@ -339,8 +350,6 @@ class StandardAutoscaler:
     def schedule_node_termination(self, node_id: NodeID,
                                   reason_opt: Optional[str],
                                   logger_method: Callable) -> None:
-        if self.provider.is_readonly():
-            return
         if reason_opt is None:
             raise Exception("reason should be not None.")
         reason: str = reason_opt
@@ -369,18 +378,7 @@ class StandardAutoscaler:
         self.nodes_to_terminate = []
         self.update_worker_list()
 
-    def launch_required_nodes(self):
-        to_launch, unfulfilled = (
-            self.resource_demand_scheduler.get_nodes_to_launch(
-                self.provider.non_terminated_nodes(tag_filters={}),
-                self.pending_launches.breakdown(),
-                self.load_metrics.get_resource_demand_vector(),
-                self.load_metrics.get_resource_utilization(),
-                self.load_metrics.get_pending_placement_groups(),
-                self.load_metrics.get_static_node_resources_by_ip(),
-                ensure_min_cluster_size=self.load_metrics.
-                get_resource_requests()))
-        self._report_pending_infeasible(unfulfilled)
+    def launch_required_nodes(self, to_launch):
         if to_launch:
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
@@ -969,8 +967,6 @@ class StandardAutoscaler:
         return True
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
-        if self.provider.is_readonly():
-            return
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.event_summarizer.add(
@@ -1002,8 +998,6 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def kill_workers(self):
-        if self.provider.is_readonly():
-            return
         logger.error("StandardAutoscaler: kill_workers triggered")
         nodes = self.workers()
         if nodes:

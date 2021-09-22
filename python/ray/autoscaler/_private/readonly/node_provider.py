@@ -55,13 +55,13 @@ class ReadOnlyNodeProvider(NodeProvider):
         return node_id
 
     def set_node_tags(self, node_id, tags):
-        assert False
+        raise AssertionError("Readonly node provider cannot be updated")
 
     def create_node(self, node_config, tags, count):
-        assert False
+        raise AssertionError("Readonly node provider cannot be updated")
 
     def terminate_node(self, node_id):
-        assert False
+        raise AssertionError("Readonly node provider cannot be updated")
 
     @staticmethod
     def bootstrap_config(cluster_config):
