@@ -446,23 +446,11 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    def _reduce_objectref(self, obj_ref: ObjectRef,
-                          upload_tasks: List[ObjectRef]):
-        assert False
-        manager = serialization.get_or_create_manager()
-        paths, task = ray.get(
-            manager.save_objectref.remote((obj_ref, ), self._workflow_id))
-
-        assert task
-        upload_tasks.append(task)
-
-        return _load_object_ref, (paths, self)
-
     async def _put(self,
                    paths: List[str],
                    data: Any,
-                   is_json: bool = False,
-                   update: bool = True) -> str:
+                   is_json: bool = False
+                   ) -> str:
         """
         Serialize and put an object in the object store.
 
@@ -473,46 +461,19 @@ class WorkflowStorage:
             update: If false, do not upload data when the path already exists.
         """
         key = self._storage.make_key(*paths)
-        if not update:
-            prefix = self._storage.make_key(*paths[:-1])
-            scan_result = await self._storage.scan_prefix(prefix)
-            if paths[-1] in scan_result:
-                return key
         try:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
-                # Setup our custom serializer.
-                output_buffer = io.BytesIO()
-
-                # Cloudpickle doesn't support private dispatch tables, so we
-                # extend the cloudpickler instead to avoid changing
-                # cloudpickle's global dispatch table which is shared with
-                # `ray.put`. See
-                # https://github.com/cloudpipe/cloudpickle/issues/437
-                class ObjectRefPickler(cloudpickle.CloudPickler):
-                    _object_ref_reducer = {
-                        ray.ObjectRef: lambda ref: self._reduce_objectref(
-                            ref, upload_tasks)
-                    }
-                    dispatch_table = ChainMap(
-                        _object_ref_reducer,
-                        cloudpickle.CloudPickler.dispatch_table)
-                    dispatch = dispatch_table
-
-                pickler = ObjectRefPickler(output_buffer)
-                pickler.dump(data)
-                output_buffer.seek(0)
-                value = output_buffer.read()
+                await serialization.dump_to_storage(paths, data, self._workflow_id, self._storage)
             else:
                 value = data
-
-            await self._storage.put(key, value, is_json=is_json)
-            # The serializer only kicks off the upload tasks, and returns
-            # the location they will be uploaded to in order to allow those
-            # uploads to be parallelized. We should wait for those uploads
-            # to be finished before we consider the object fully
-            # serialized.
-            await asyncio.gather(*upload_tasks)
+                outer_coro = self._storage.put(key, value, is_json=is_json)
+                # The serializer only kicks off the upload tasks, and returns
+                # the location they will be uploaded to in order to allow those
+                # uploads to be parallelized. We should wait for those uploads
+                # to be finished before we consider the object fully
+                # serialized.
+                await asyncio.gather(outer_coro, *upload_tasks)
         except Exception as e:
             raise DataSaveError from e
 
@@ -590,10 +551,6 @@ class WorkflowStorage:
 
     def _key_num_steps_with_name(self, name):
         return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
-
-    def open(self, *args, **kwargs) -> IO:
-        # TODO
-        pass
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
