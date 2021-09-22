@@ -241,9 +241,6 @@ class Monitor:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = format_readonly_node_type(
                     resource_message.node_id.hex())
-                if (hasattr(resource_message, "cluster_full_detected")
-                        and resource_message.cluster_full_detected):
-                    cluster_full = True
                 resources = resource_message.resources_total
                 for k in list(resources.keys()):
                     if k.startswith("node:"):
@@ -253,6 +250,10 @@ class Monitor:
                     "node_config": {},
                     "max_workers": 1,
                 }
+            if (hasattr(resource_message, "cluster_full_detected")
+                    and resource_message.cluster_full_detected):
+                # Aggregate this flag across all batches.
+                cluster_full = True
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)

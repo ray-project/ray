@@ -202,7 +202,7 @@ class ResourceDemandScheduler:
                 request_resources_demands = []
             return self._legacy_worker_node_to_launch(
                 nodes, launching_nodes, node_resources,
-                resource_demands + request_resources_demands)
+                resource_demands + request_resources_demands), []
 
         spread_pg_nodes_to_add, node_resources, node_type_counts = \
             self.reserve_and_allocate_spread(
