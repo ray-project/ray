@@ -1,7 +1,5 @@
-from dataclasses import dataclass
 import inspect
-from functools import wraps
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict
 
 from fastapi import Depends, FastAPI
 
@@ -56,7 +54,8 @@ class FastAPIWrapper(ASGIWrapper):
                 "their first argument.")
 
         old_self_parameter = old_parameters[0]
-        # XXX: why do we need Depends? Just passing self gives recursion depth exceeded.
+        # XXX: why do we need Depends?
+        # Just passing self gives recursion depth exceeded.
         new_self_parameter = old_self_parameter.replace(
             default=Depends(lambda: self))
         new_parameters = [new_self_parameter] + [
