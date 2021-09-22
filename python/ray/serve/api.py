@@ -823,7 +823,7 @@ class Deployment:
 
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
-        # TODO(architkulkarni): add autoscaling config?
+
         return Deployment(
             func_or_class,
             name,

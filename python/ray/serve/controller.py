@@ -97,7 +97,6 @@ class ServeController:
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
-        # self.autoscaling_manager = AutoscalingManager()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -312,8 +311,10 @@ class ServeController:
                 replica_config=replica_config,
                 deployer_job_id=deployer_job_id,
                 start_time_ms=int(time.time() * 1000))
-            # TODO: file bug.  If prev_version and version are specified,
-            # start time will be updated on any config change incl num replicas
+            # TODO(architkulkarni): When a deployment is redeployed, even if
+            # the only change was num_replicas, the start_time_ms is refreshed.
+            # This is probably not the desired behavior for an autoscaling
+            # deployment, which redeploys very often to change num_replicas.
 
             goal_id, updating = self.backend_state_manager.deploy_backend(
                 name, backend_info)
