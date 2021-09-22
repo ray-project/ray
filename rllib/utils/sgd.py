@@ -44,12 +44,15 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size, shuffle=True):
+def minibatches(samples: SampleBatch,
+                sgd_minibatch_size: int,
+                shuffle: bool = True):
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
-        samples (SampleBatch): batch of samples to split up.
-        sgd_minibatch_size (int): size of minibatches to return.
+        samples: SampleBatch to split up.
+        sgd_minibatch_size: Size of minibatches to return.
+        shuffle: Whether to shuffle the
 
     Returns:
         generator that returns mini-SampleBatches of size sgd_minibatch_size.
