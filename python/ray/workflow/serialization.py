@@ -178,14 +178,9 @@ async def dump_to_storage(paths: List[str],
                                   cloudpickle.CloudPickler.dispatch_table)
         dispatch = dispatch_table
 
-    # TODO Expose the key related APIs.
     key = storage.make_key(*paths)
 
-    # TODO Use open()
-    # with wf_storage.open(key, "w") as f:
-    #     pickler = ObjectRefPickler(f)
-    #     pickler.dump(obj)
-
+    # TODO(Alex): We should be able to do this without the extra buffer.
     with io.BytesIO() as f:
         pickler = ObjectRefPickler(f)
         pickler.dump(obj)
@@ -198,12 +193,12 @@ async def dump_to_storage(paths: List[str],
 
 @ray.remote
 def _load_ref_helper(key: str, storage: storage.Storage):
-    # TODO: Should be able to do `storage.open()` here too.
+    # TODO(Alex): We should stream the data directly into `cloudpickle.load`.
     serialized = asyncio.get_event_loop().run_until_complete(storage.get(key))
     return cloudpickle.loads(serialized)
 
 
-# TODO (Alex): We should use weakrefs here instead of leaking...
+# TODO (Alex): We should use weakrefs here instead requiring a context manager.
 _object_cache: Optional[Dict[str, ray.ObjectRef]] = None
 
 
