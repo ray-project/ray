@@ -4,10 +4,11 @@ from ray.util.sgd.v2.callbacks import SGDCallback
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.session import (load_checkpoint, save_checkpoint, report,
                                      world_rank, local_rank)
-from ray.util.sgd.v2.trainer import Trainer, SGDIterator
+from ray.util.sgd.v2.trainer import Trainer, SGDIterator, SGDWorkerGroup
 
 __all__ = [
     "BackendConfig", "CheckpointStrategy", "HorovodConfig", "load_checkpoint",
     "local_rank", "report", "save_checkpoint", "SGDCallback", "SGDIterator",
-    "TensorflowConfig", "TorchConfig", "Trainer", "world_rank"
+    "SGDWorkerGroup", "TensorflowConfig", "TorchConfig", "Trainer",
+    "world_rank"
 ]
