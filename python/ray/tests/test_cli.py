@@ -498,7 +498,6 @@ def test_ray_status_multinode():
     cluster = Cluster()
     for _ in range(4):
         cluster.add_node(num_cpus=2)
-    address = cluster.address
     runner = CliRunner()
 
     def output_ready():

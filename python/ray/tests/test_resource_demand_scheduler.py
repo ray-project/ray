@@ -2599,52 +2599,6 @@ Demands:
     assert expected.strip() == actual
 
 
-def test_info_string_no_node_type():
-    lm_summary = LoadMetricsSummary(
-        head_ip="0.0.0.0",
-        usage={
-            "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
-            "AcceleratorType:V100": (0, 2),
-            "memory": (6 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2**34),
-            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (1.0, 2.0),
-            "CPU_group_1_4a82a217aadd8326a3a49f02700ac5c2": (0.0, 1.0),
-            "CPU_group_2_4a82a217aadd8326a3a49f02700ac5c2": (1.0, 1.0),
-            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": (2**32, 2**32),
-            "memory_group_0_4a82a217aadd8326a3a49f02700ac5c2": (2**32, 2**32)
-        },
-        resource_demand=[({
-            "GPU": 0.5,
-            "memory": 300
-        }, 150), ({
-            "GPU": 0.5
-        }, 150), ({
-            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0,
-            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": 123455
-        }, 3), ({
-            "GPU_group_0_4a82a217aadd8326a3a02700ac5c2": 0.5
-        }, 100)],
-        pg_demand=[({
-            "bundles": [({
-                "CPU": 4
-            }, 5)],
-            "strategy": "PACK"
-        }, 420)],
-        request_demand=[({
-            "CPU": 16
-        }, 100)],
-        node_types=[({
-            "CPU": 16,
-            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0,
-            "CPU_group_1_4a82a217aadd8326a3a49f02700ac5c2": 1.0,
-            "CPU_group_2_4a82a217aadd8326a3a49f02700ac5c2": 1.0,
-            "memory": 2**33,
-            "memory_group_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
-            "memory_group_0_4a82a217aadd8326a3a49f02700ac5c2": 4 * 2**30,
-        }, 1)])
-
-
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
