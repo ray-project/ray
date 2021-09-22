@@ -17,7 +17,7 @@ from ray.rllib.utils.spaces.space_utils import clip_action, \
     get_base_struct_from_space, get_dummy_batch_for_space, unbatch, \
     unsquash_action
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TrainerConfigDict, Tuple, Union
+    TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -132,10 +132,12 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_actions(
             self,
-            obs_batch: Union[List[TensorType], TensorType],
+            obs_batch: Union[List[TensorStructType], TensorStructType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
+            prev_action_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
@@ -145,14 +147,10 @@ class Policy(metaclass=ABCMeta):
         """Computes actions for the current policy.
 
         Args:
-            obs_batch (Union[List[TensorType], TensorType]): Batch of
-                observations.
-            state_batches (Optional[List[TensorType]]): List of RNN state input
-                batches, if any.
-            prev_action_batch (Union[List[TensorType], TensorType]): Batch of
-                previous action values.
-            prev_reward_batch (Union[List[TensorType], TensorType]): Batch of
-                previous rewards.
+            obs_batch: Batch of observations.
+            state_batches: List of RNN state input batches, if any.
+            prev_action_batch: Batch of previous action values.
+            prev_reward_batch: Batch of previous rewards.
             info_batch (Optional[Dict[str, list]]): Batch of info objects.
             episodes (Optional[List[MultiAgentEpisode]] ): List of
                 MultiAgentEpisode, one for each obs in obs_batch. This provides
@@ -192,7 +190,7 @@ class Policy(metaclass=ABCMeta):
             timestep: Optional[int] = None,
             unsquash_actions: bool = None,
             **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+            Tuple[TensorStructType, List[TensorStructType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
 
         Args:
