@@ -17,7 +17,7 @@ def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
     for remote, local in file_mounts.items():
         if Path(local).is_file():
             cli_logger.warning(
-                f"File Mount: ({remote}:{local}) refers to a file.\n To ensure"
+                f"File Mount: ({remote}:{local}) refers to a file.\n To ensure "
                 "this mount updates properly, please use a directory.")
 
 
