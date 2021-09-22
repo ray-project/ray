@@ -348,7 +348,6 @@ def replace_symlinks_with_junctions():
         r"ray\new_dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
         r"ray\streaming": "../../streaming/python/",
-        r"ray\sgd": "util/sgd/v2",
     }
     root_dir = os.path.dirname(__file__)
     for link, default in _LINKS.items():
