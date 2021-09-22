@@ -20,7 +20,7 @@
                  << " submitted_count: " << it->second.submitted_task_ref_count          \
                  << " contained_in_owned: " << it->second.contained_in_owned.size()      \
                  << " contained_in_borrowed: "                                           \
-                 << it->second.contained_in_borrowed_ids.size()                     \
+                 << it->second.contained_in_borrowed_ids.size()                          \
                  << " contains: " << it->second.contains.size()                          \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
@@ -104,7 +104,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
     auto outer_it = object_id_refs_.find(outer_id);
     if (outer_it != object_id_refs_.end() && !outer_it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
-                    << " contained_in_borrowed: " << outer_id;
+                     << " contained_in_borrowed: " << outer_id;
       it->second.contained_in_borrowed_ids.insert(outer_id);
       outer_it->second.contains.insert(object_id);
       if (it->second.RefCount() > 0) {
@@ -746,7 +746,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     auto inserted = it->second.borrowers.insert(nested_borrower).second;
     if (inserted) {
       RAY_LOG(DEBUG) << "Adding borrower " << nested_borrower.ip_address << ":"
-                    << nested_borrower.port << " to id " << object_id;
+                     << nested_borrower.port << " to id " << object_id;
       new_borrowers.push_back(nested_borrower);
     }
   }
