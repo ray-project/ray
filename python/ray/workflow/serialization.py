@@ -85,14 +85,16 @@ class Manager:
         """
         ref, = ref_tuple
         # Use the hex as the key to avoid holding a reference to the object.
-        key = ref.hex()
+        key = (ref.hex(), workflow_id)
 
         if key not in self._uploads:
             # TODO(Alex): We should probably eventually free these refs.
             identifier_ref = common.calculate_identifier.remote(ref)
             upload_task = _put_helper.remote(identifier_ref, ref, workflow_id,
                                              self._storage)
-            self._uploads[key] = Upload(identifier_ref, upload_task)
+            self._uploads[key] = Upload(
+                identifier_ref=identifier_ref,
+                upload_task=upload_task)
             self._num_uploads += 1
 
         info = self._uploads[key]
@@ -127,7 +129,6 @@ def _put_helper(identifier: str, obj: Any, workflow_id: str,
 
 def _reduce_objectref(workflow_id: str, storage: storage.Storage,
                       obj_ref: ObjectRef, tasks: List[ObjectRef]):
-
     manager = get_or_create_manager()
     paths, task = ray.get(
         manager.save_objectref.remote((obj_ref, ), workflow_id))

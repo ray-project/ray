@@ -94,16 +94,6 @@ def _hash(obj: Any) -> bytes:
     return m.digest()
 
 
-def calculate_identifiers(object_refs: List[ObjectRef]) -> List[str]:
-    """
-    Calculate identifiers for an object ref based on the contents. (i.e. a hash
-    of the contents).
-    """
-    hashes = ray.get([_hash.remote(obj) for obj in object_refs])
-    encoded = map(base64.urlsafe_b64encode, hashes)
-    return [encoded_hash.decode("ascii") for encoded_hash in encoded]
-
-
 @ray.remote
 def calculate_identifier(obj: Any) -> str:
     """Calculate a url-safe identifier for an object."""
