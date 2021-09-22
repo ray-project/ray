@@ -132,7 +132,7 @@ void AgentManager::CreateRuntimeEnv(
   runtime_env_agent_client_->CreateRuntimeEnv(
       request,
       [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
-       callback](Status status, const rpc::CreateRuntimeEnvReply &reply) {
+       callback](const Status status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true, reply.serialized_runtime_env_context());
