@@ -118,7 +118,6 @@ else:
     # Disable extra cpp for the development versions.
     if "dev" in setup_spec.version or os.getenv(
             "RAY_DISABLE_EXTRA_CPP") == "1":
-        print("Disable extra cpp for version: {}".format(setup_spec.version))
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
