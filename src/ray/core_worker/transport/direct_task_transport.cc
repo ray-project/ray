@@ -382,15 +382,16 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
   RAY_LOG(DEBUG)
       << "Task queue is empty, and there are no stealable tasks; canceling lease request";
 
-  for (auto &raylet_and_pending_lease_request :
-       scheduling_key_entry.raylet_to_pending_lease_request) {
+  for (auto &pending_lease_request_task_and_raylet :
+       scheduling_key_entry.pending_lease_request_task_to_raylet) {
     // There is an in-flight lease request. Cancel it.
-    auto &lease_client = raylet_and_pending_lease_request.second.first;
-    auto &lease_id = raylet_and_pending_lease_request.second.second;
-    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
+    auto lease_client =
+        GetOrConnectLeaseClient(&pending_lease_request_task_and_raylet.second);
+    auto &task_id = pending_lease_request_task_and_raylet.first;
+    RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
     lease_client->CancelWorkerLease(
-        lease_id, [this, scheduling_key](const Status &status,
-                                         const rpc::CancelWorkerLeaseReply &reply) {
+        task_id, [this, scheduling_key](const Status &status,
+                                        const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
           if (status.ok() && !reply.success()) {
             // The cancellation request can fail if the raylet does not have
@@ -434,7 +435,19 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  const auto &task_queue = scheduling_key_entry.task_queue;
+
+  if (scheduling_key_entry.pending_lease_request_task_to_raylet.size() ==
+      max_pending_lease_requests_per_scheduling_category_) {
+    return;
+  }
+  RAY_CHECK(scheduling_key_entry.pending_lease_request_task_to_raylet.size() <
+            max_pending_lease_requests_per_scheduling_category_);
+
+  if (scheduling_key_entry.task_queue.size() <=
+      scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
+    // All tasks have corresponding pending leases, no need to request more
+    return;
+  }
 
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks. If the pipelines
@@ -447,6 +460,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
+  const auto &task_queue = scheduling_key_entry.task_queue;
   // Check if the task queue is empty. If that is the case, it only makes sense to
   // consider requesting a new worker if work stealing is enabled, and there is at least a
   // worker with stealable tasks. If work stealing is not enabled, or there is no tasks
@@ -465,12 +479,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     }
   }
 
-  if (scheduling_key_entry.task_queue.size() <=
-      scheduling_key_entry.raylet_to_pending_lease_request.size()) {
-    // All tasks have corresponding pending leases, no need to request more
-    return;
-  }
-
+  num_leases_requested_++;
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
@@ -482,44 +491,30 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
     raylet_address = &best_node_address;
   }
-  const NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
-
-  if (scheduling_key_entry.raylet_to_pending_lease_request.contains(raylet_id)) {
-    // There's already an outstanding lease request for this type of task.
-    return;
-  }
-
-  num_leases_requested_++;
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
-  const int64_t backlog_size =
-      task_queue.size() - scheduling_key_entry.raylet_to_pending_lease_request.size() - 1;
+  const int64_t backlog_size = task_queue.size() - 1;
 
   lease_client->RequestWorkerLease(
       resource_spec,
-      [this, scheduling_key, raylet_id](const Status &status,
-                                        const rpc::RequestWorkerLeaseReply &reply) {
+      [this, scheduling_key, task_id, raylet_address = *raylet_address](
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        auto &pending_lease_request =
-            scheduling_key_entry.raylet_to_pending_lease_request.at(raylet_id);
-        auto lease_client = std::move(pending_lease_request.first);
-        const auto task_id = pending_lease_request.second;
-        scheduling_key_entry.raylet_to_pending_lease_request.erase(raylet_id);
+        auto lease_client = GetOrConnectLeaseClient(&raylet_address);
+        scheduling_key_entry.pending_lease_request_task_to_raylet.erase(task_id);
 
         if (status.ok()) {
           if (reply.runtime_env_setup_failed()) {
             // If the runtime_env failed to be set up, we fail all of the pending
-            // tasks in the queue that don't have pending lease requests.
-            // This makes an implicit assumption that runtime_env
+            // tasks in the queue. This makes an implicit assumption that runtime_env
             // failures are not transient -- we may consider adding some retries
             // in the future.
             auto &task_queue = scheduling_key_entry.task_queue;
-            while (task_queue.size() >
-                   scheduling_key_entry.raylet_to_pending_lease_request.size()) {
+            while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
               RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
                   task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
@@ -569,10 +564,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         }
       },
       backlog_size);
-  scheduling_key_entry.raylet_to_pending_lease_request.emplace(
-      raylet_id, std::make_pair(lease_client, task_id));
-  // We may be able to request a new worker from another raylet in parallel
-  RequestNewWorkerIfNeeded(scheduling_key);
+  scheduling_key_entry.pending_lease_request_task_to_raylet.emplace(task_id,
+                                                                    *raylet_address);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
