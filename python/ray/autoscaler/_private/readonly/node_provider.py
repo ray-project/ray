@@ -2,6 +2,7 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_NAME,
                                  TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
+from ray.autoscaler._private.util import format_readonly_node_type
 
 
 class ReadOnlyNodeProvider(NodeProvider):
@@ -25,7 +26,7 @@ class ReadOnlyNodeProvider(NodeProvider):
             # could have its own unique configuration).
             nodes[node_id] = {
                 # Keep prefix in sync with node config gen in monitor.py
-                "node_type": "node_{}".format(node_id),
+                "node_type": format_readonly_node_type(node_id),
                 "ip": msg.node_manager_address,
             }
         self.nodes = nodes

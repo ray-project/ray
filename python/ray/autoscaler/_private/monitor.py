@@ -31,7 +31,7 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
-    DEBUG_AUTOSCALING_ERROR
+    DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
@@ -239,7 +239,8 @@ class Monitor:
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
-                node_type = "node_{}".format(resource_message.node_id.hex())
+                node_type = format_readonly_node_type(
+                    resource_message.node_id.hex())
                 if resource_message.cluster_full_detected:
                     cluster_full = True
                 resources = resource_message.resources_total

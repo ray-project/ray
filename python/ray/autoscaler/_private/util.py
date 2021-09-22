@@ -622,6 +622,11 @@ Demands:
     return formatted_output
 
 
+def format_readonly_node_type(node_id: str):
+    """The anonymous node type for readonly node provider nodes."""
+    return "node_{}".format(node_id)
+
+
 def format_no_node_type_string(node_type: dict):
     placement_group_resource_usage = {}
     regular_resource_usage = collections.defaultdict(float)
