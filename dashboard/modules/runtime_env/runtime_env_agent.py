@@ -18,6 +18,7 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.cgroup import CgroupManager
 from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._cgroup_manager = CgroupManager()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -84,6 +86,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                allocated_resource: dict = json.loads(serialized_allocated_resource_instances or "{}")
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
@@ -93,6 +96,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
                     runtime_env, context, logger=per_job_logger)
+                self._cgroup_manager.setup(
+                    allocated_resource, context, logger=per_job_logger)
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
