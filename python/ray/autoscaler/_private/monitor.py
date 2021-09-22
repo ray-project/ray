@@ -241,7 +241,8 @@ class Monitor:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = format_readonly_node_type(
                     resource_message.node_id.hex())
-                if resource_message.cluster_full_detected:
+                if (hasattr(resource_message, "cluster_full_detected")
+                        and resource_message.cluster_full_detected):
                     cluster_full = True
                 resources = resource_message.resources_total
                 for k in list(resources.keys()):
