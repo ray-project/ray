@@ -16,4 +16,4 @@ class CgroupManager:
               logger: Optional[logging.Logger] = default_logger):
 
         # TODO (chenk008): create allocated resource cgroup
-        logger.debug(f"Setting up cgroup with resource: {allocated_resource}")
+        logger.info(f"Setting up cgroup with resource: {allocated_resource}")
