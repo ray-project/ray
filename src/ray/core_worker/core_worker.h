@@ -469,12 +469,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] The RPC address of the worker that owns this object.
   rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
 
-  /// Get the RPC address of the worker that owns the given object.
+  /// Get the RPC object references of a list of objects.
   ///
-  /// \param[in] object_id The object ID. The object must either be owned by
-  /// us, or the caller previously added the ownership information (via
-  /// RegisterOwnershipInfoAndResolveFuture).
-  /// \param[out] The RPC address of the worker that owns this object.
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \return ObjectRefs of the object_ids IDs.
   std::vector<rpc::ObjectReference> GetObjectRefs(
       const std::vector<ObjectID> &object_ids) const;
 
