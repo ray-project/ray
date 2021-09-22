@@ -10,7 +10,6 @@ class CgroupManager:
     def __init__(self):
         pass
 
-
     def setup(self,
               allocated_resource: dict,
               context: RuntimeEnvContext,

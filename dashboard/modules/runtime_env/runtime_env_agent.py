@@ -85,7 +85,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-                allocated_resource: dict = json.loads(serialized_allocated_resource_instances or "{}")
+                allocated_resource: dict = json.loads(
+                    serialized_allocated_resource_instances or "{}")
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
@@ -144,7 +145,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env, request.serialized_allocated_resource_instances)
+                        serialized_env,
+                        request.serialized_allocated_resource_instances)
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
