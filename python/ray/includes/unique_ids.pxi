@@ -331,15 +331,16 @@ cdef class ClientActorRef(ActorID):
             return
         if client.ray.is_connected():
             try:
-                self._wait_for_id(timeout=10)
+                self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
             # print out the exception which may crash. Log a simpler message
             # instead.
             except Exception:
                 logger.info(
                     "Exception from actor creation is ignored in destructor. "
-                    "To raise the exception, use the actor reference before "
-                    "its destructor runs.")
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
             if not self.data.IsNil():
                 client.ray.call_release(self.id)
 
