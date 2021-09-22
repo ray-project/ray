@@ -18,31 +18,31 @@ from starlette.routing import Route
 import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
-from ray.serve.http import FastAPIWrapper
+from ray.serve.http import ASGIWrapper, FastAPIWrapper
 from ray.serve.http_util import make_fastapi_class_based_view
 from ray._private.test_utils import SignalActor
 
 
-@pytest.mark.parametrize("use_new_fastapi_api", [True, False])
-def test_fastapi_function(serve_instance, use_new_fastapi_api):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_function(serve_instance, use_inheritance_api):
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    if use_new_fastapi_api:
-        @serve.deployment(name="f")
+    if use_inheritance_api:
+
         class FastAPIApp(FastAPIWrapper):
             def __init__(self):
                 super().__init__(app)
     else:
-        @serve.deployment(name="f")
+
         @serve.ingress(app)
         class FastAPIApp:
             pass
 
-    FastAPIApp.deploy()
+    serve.deployment(name="f")(FastAPIApp).deploy()
 
     resp = requests.get("http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
@@ -52,55 +52,75 @@ def test_fastapi_function(serve_instance, use_new_fastapi_api):
     assert resp.json()["detail"][0]["type"] == "type_error.integer"
 
 
-@pytest.mark.parametrize("use_new_fastapi_api", [True, False])
-def test_ingress_prefix(serve_instance, use_new_fastapi_api):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_ingress_prefix(serve_instance, use_inheritance_api):
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    if use_new_fastapi_api:
-        @serve.deployment(route_prefix="/api")
+    if use_inheritance_api:
+
         class App(FastAPIWrapper):
             def __init__(self):
                 super().__init__(app)
     else:
-        @serve.deployment(route_prefix="/api")
+
         @serve.ingress(app)
         class App:
             pass
 
-    App.deploy()
+    serve.deployment(route_prefix="/api")(App).deploy()
 
     resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
 
 
-def test_class_based_view(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_class_based_view(serve_instance, use_inheritance_api):
     app = FastAPI()
 
     @app.get("/other")
     def hello():
         return "hello"
 
-    @serve.deployment(name="f")
-    @serve.ingress(app)
-    class A:
-        def __init__(self):
-            self.val = 1
+    if use_inheritance_api:
 
-        @app.get("/calc/{i}")
-        def b(self, i: int):
-            return i + self.val
+        class A(FastAPIWrapper):
+            def __init__(self):
+                self.val = 1
+                super().__init__(app)
 
-        @app.post("/calc/{i}")
-        def c(self, i: int):
-            return i - self.val
+            @FastAPIWrapper.get("/calc/{i}")
+            def b(self, i: int):
+                return i + self.val
 
-        def other(self, msg: str):
-            return msg
+            @FastAPIWrapper.post("/calc/{i}")
+            def c(self, i: int):
+                return i - self.val
 
+            def other(self, msg: str):
+                return msg
+    else:
+
+        @serve.ingress(app)
+        class A:
+            def __init__(self):
+                self.val = 1
+
+            @app.get("/calc/{i}")
+            def b(self, i: int):
+                return i + self.val
+
+            @app.post("/calc/{i}")
+            def c(self, i: int):
+                return i - self.val
+
+            def other(self, msg: str):
+                return msg
+
+    A = serve.deployment(name="f")(A)
     A.deploy()
 
     # Test HTTP calls.
@@ -143,7 +163,8 @@ def test_make_fastapi_cbv_util():
     assert "get_current_servable" in str(self_dep.call)
 
 
-def test_fastapi_features(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_features(serve_instance, use_inheritance_api):
     app = FastAPI(openapi_url="/my_api.json")
 
     @app.on_event("startup")
@@ -242,12 +263,18 @@ def test_fastapi_features(serve_instance):
 
     app.include_router(router)
 
-    @serve.deployment(name="fastapi")
-    @serve.ingress(app)
-    class Worker:
-        pass
+    if use_inheritance_api:
 
-    Worker.deploy()
+        class Worker(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+
+        @serve.ingress(app)
+        class Worker:
+            pass
+
+    serve.deployment(name="fastapi")(Worker).deploy()
 
     url = "http://localhost:8000/fastapi"
     resp = requests.get(f"{url}/")
@@ -332,7 +359,8 @@ def test_fastapi_features(serve_instance):
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
-def test_fast_api_mounted_app(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fast_api_mounted_app(serve_instance, use_inheritance_api):
     app = FastAPI()
     subapp = FastAPI()
 
@@ -342,52 +370,93 @@ def test_fast_api_mounted_app(serve_instance):
 
     app.mount("/mounted", subapp)
 
-    @serve.deployment(route_prefix="/api")
-    @serve.ingress(app)
-    class A:
-        pass
+    if use_inheritance_api:
 
-    A.deploy()
+        class A(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+    else:
+
+        @serve.ingress(app)
+        class A:
+            pass
+
+    serve.deployment(route_prefix="/api")(A).deploy()
 
     assert requests.get(
         "http://localhost:8000/api/mounted/hi").json() == "world"
 
 
-def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_init_lifespan_should_not_shutdown(serve_instance,
+                                                   use_inheritance_api):
     app = FastAPI()
 
     @app.on_event("shutdown")
     async def shutdown():
         1 / 0
 
-    @serve.deployment
-    @serve.ingress(app)
-    class A:
-        def f(self):
-            return 1
+    if use_inheritance_api:
 
+        class A(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+            def f(self):
+                return 1
+
+    else:
+
+        @serve.ingress(app)
+        class A:
+            def f(self):
+                return 1
+
+    A = serve.deployment(A)
     A.deploy()
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
     assert ray.get(A.get_handle().f.remote()) == 1
 
 
-def test_fastapi_duplicate_routes(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_duplicate_routes(serve_instance, use_inheritance_api):
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/api/v1")
-    @serve.ingress(app)
-    class App1:
-        @app.get("/")
-        def func_v1(self):
-            return "first"
+    if use_inheritance_api:
 
-    @serve.deployment(route_prefix="/api/v2")
-    @serve.ingress(app)
-    class App2:
-        @app.get("/")
-        def func_v2(self):
-            return "second"
+        class App1(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+            @FastAPIWrapper.get("/")
+            def func_v1(self):
+                return "first"
+
+        class App2(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+            @FastAPIWrapper.get("/")
+            def func_v2(self):
+                return "second"
+    else:
+
+        @serve.ingress(app)
+        class App1:
+            @app.get("/")
+            def func_v1(self):
+                return "first"
+
+        @serve.ingress(app)
+        class App2:
+            @app.get("/")
+            def func_v2(self):
+                return "second"
+
+    App1 = serve.deployment(route_prefix="/api/v1")(App1)
+    App2 = serve.deployment(route_prefix="/api/v2")(App2)
 
     @app.get("/ignored")
     def ignored():
@@ -407,18 +476,25 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
-def test_asgi_compatible(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_asgi_compatible(serve_instance, use_inheritance_api):
     async def homepage(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     app = Starlette(routes=[Route("/", homepage)])
 
-    @serve.deployment
-    @serve.ingress(app)
-    class MyApp:
-        pass
+    if use_inheritance_api:
 
-    MyApp.deploy()
+        class MyApp(ASGIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+
+        @serve.ingress(app)
+        class MyApp:
+            pass
+
+    serve.deployment(MyApp).deploy()
 
     resp = requests.get("http://localhost:8000/MyApp/")
     assert resp.json() == {"hello": "world"}
@@ -426,17 +502,29 @@ def test_asgi_compatible(serve_instance):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
-def test_doc_generation(serve_instance, route_prefix):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_doc_generation(serve_instance, route_prefix, use_inheritance_api):
     app = FastAPI()
 
-    @serve.deployment(route_prefix=route_prefix)
-    @serve.ingress(app)
-    class App:
-        @app.get("/")
-        def func1(self, arg: str):
-            return "hello"
+    if use_inheritance_api:
 
-    App.deploy()
+        class App(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+            @FastAPIWrapper.get("/")
+            def func1(self, arg: str):
+                return "hello"
+
+    else:
+
+        @serve.ingress(app)
+        class App:
+            @app.get("/")
+            def func1(self, arg: str):
+                return "hello"
+
+    serve.deployment(route_prefix=route_prefix)(App).deploy()
 
     if route_prefix is None:
         prefix = "/App"
@@ -456,18 +544,33 @@ def test_doc_generation(serve_instance, route_prefix):
     r = requests.get(f"http://localhost:8000{prefix}docs")
     assert r.status_code == 200
 
-    @serve.deployment(route_prefix=route_prefix)
-    @serve.ingress(app)
-    class App:
-        @app.get("/")
-        def func1(self, arg: str):
-            return "hello"
+    if use_inheritance_api:
 
-        @app.post("/hello")
-        def func2(self, arg: int):
-            return "hello"
+        class App(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
 
-    App.deploy()
+            @FastAPIWrapper.get("/")
+            def func1(self, arg: str):
+                return "hello"
+
+            @FastAPIWrapper.post("/hello")
+            def func2(self, arg: int):
+                return "hello"
+
+    else:
+
+        @serve.ingress(app)
+        class App:
+            @app.get("/")
+            def func1(self, arg: str):
+                return "hello"
+
+            @app.post("/hello")
+            def func2(self, arg: int):
+                return "hello"
+
+    serve.deployment(route_prefix=route_prefix)(App).deploy()
 
     r = requests.get(f"http://localhost:8000{prefix}openapi.json")
     assert r.status_code == 200
@@ -483,7 +586,8 @@ def test_doc_generation(serve_instance, route_prefix):
     assert r.status_code == 200
 
 
-def test_fastapi_multiple_headers(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_multiple_headers(serve_instance, use_inheritance_api):
     # https://fastapi.tiangolo.com/advanced/response-cookies/
     app = FastAPI()
 
@@ -493,18 +597,26 @@ def test_fastapi_multiple_headers(serve_instance):
         resp.set_cookie(key="c", value="d")
         return "hello"
 
-    @serve.deployment(name="f")
-    @serve.ingress(app)
-    class FastAPIApp:
-        pass
+    if use_inheritance_api:
 
-    FastAPIApp.deploy()
+        class FastAPIApp(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+
+        @serve.ingress(app)
+        class FastAPIApp:
+            pass
+
+    serve.deployment(name="f")(FastAPIApp).deploy()
 
     resp = requests.get("http://localhost:8000/f")
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
 
 
-def test_fastapi_nested_field_in_response_model(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_nested_field_in_response_model(serve_instance,
+                                                use_inheritance_api):
     # https://github.com/ray-project/ray/issues/16757
     class TestModel(BaseModel):
         a: str
@@ -517,16 +629,27 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
         test_model = TestModel(a="a", b=["b"])
         return test_model
 
-    @serve.deployment(route_prefix="/")
-    @serve.ingress(app)
-    class TestDeployment:
-        # https://github.com/ray-project/ray/issues/17363
-        @app.get("/inner", response_model=TestModel)
-        def test_endpoint_2(self):
-            test_model = TestModel(a="a", b=["b"])
-            return test_model
+    # https://github.com/ray-project/ray/issues/17363
+    if use_inheritance_api:
 
-    TestDeployment.deploy()
+        class TestDeployment(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
+            @app.get("/inner", response_model=TestModel)
+            def test_endpoint_2(self):
+                test_model = TestModel(a="a", b=["b"])
+                return test_model
+    else:
+
+        @serve.ingress(app)
+        class TestDeployment:
+            @app.get("/inner", response_model=TestModel)
+            def test_endpoint_2(self):
+                test_model = TestModel(a="a", b=["b"])
+                return test_model
+
+    serve.deployment(route_prefix="/")(TestDeployment).deploy()
 
     resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"a": "a", "b": ["b"]}
@@ -535,7 +658,9 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
     assert resp.json() == {"a": "a", "b": ["b"]}
 
 
-def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapiwrapper_constructor_before_startup_hooks(
+        serve_instance, use_inheritance_api):
     """
     Tests that the class constructor is called before the startup hooks
     are run in FastAPIWrapper. SignalActor event is set from a startup hook
@@ -550,28 +675,46 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     def startup_event():
         ray.get(signal.send.remote())
 
-    @serve.deployment(route_prefix="/")
-    @serve.ingress(app)
-    class TestDeployment:
-        def __init__(self):
-            self.test_passed = False
-            try:
-                ray.get(signal.wait.remote(), timeout=.1)
+    if use_inheritance_api:
+
+        class TestDeployment(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+
                 self.test_passed = False
-            except GetTimeoutError:
-                self.test_passed = True
+                try:
+                    ray.get(signal.wait.remote(), timeout=.1)
+                    self.test_passed = False
+                except GetTimeoutError:
+                    self.test_passed = True
 
-        @app.get("/")
-        def root(self):
-            return self.test_passed
+            @app.get("/")
+            def root(self):
+                return self.test_passed
+    else:
 
-    TestDeployment.deploy()
+        @serve.ingress(app)
+        class TestDeployment:
+            def __init__(self):
+                self.test_passed = False
+                try:
+                    ray.get(signal.wait.remote(), timeout=.1)
+                    self.test_passed = False
+                except GetTimeoutError:
+                    self.test_passed = True
+
+            @app.get("/")
+            def root(self):
+                return self.test_passed
+
+    serve.deployment(route_prefix="/")(TestDeployment).deploy()
     resp = requests.get("http://localhost:8000/")
     assert resp.json()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_fastapi_shutdown_hook(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_shutdown_hook(serve_instance, use_inheritance_api):
     # https://github.com/ray-project/ray/issues/18349
     signal = SignalActor.remote()
 
@@ -581,31 +724,54 @@ def test_fastapi_shutdown_hook(serve_instance):
     def call_signal():
         signal.send.remote()
 
-    @serve.deployment
-    @serve.ingress(app)
-    class A:
-        pass
+    if use_inheritance_api:
 
+        class A(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
+    else:
+
+        @serve.ingress(app)
+        class A:
+            pass
+
+    A = serve.deployment(A)
     A.deploy()
     A.delete()
     ray.get(signal.wait.remote(), timeout=20)
 
 
-def test_fastapi_method_redefinition(serve_instance):
+@pytest.mark.parametrize("use_inheritance_api", [True, False])
+def test_fastapi_method_redefinition(serve_instance, use_inheritance_api):
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/a")
-    @serve.ingress(app)
-    class A:
-        @app.get("/")
-        def method(self):
-            return "hi get"
+    if use_inheritance_api:
 
-        @app.post("/")  # noqa: F811 method redefinition
-        def method(self):
-            return "hi post"
+        class A(FastAPIWrapper):
+            def __init__(self):
+                super().__init__(app)
 
-    A.deploy()
+            @app.get("/")
+            def method(self):
+                return "hi get"
+
+            @app.post("/")  # noqa: F811
+            def method(self):
+                return "hi post"
+
+    else:
+
+        @serve.ingress(app)
+        class A:
+            @app.get("/")
+            def method(self):
+                return "hi get"
+
+            @app.post("/")  # noqa: F811
+            def method(self):
+                return "hi post"
+
+    serve.deployment(route_prefix="/a")(A).deploy()
     assert requests.get("http://localhost:8000/a/").json() == "hi get"
     assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
