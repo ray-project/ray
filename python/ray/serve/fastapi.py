@@ -45,16 +45,18 @@ class FastAPIWrapper:
         # startup and shutdown event.
         self._serve_asgi_lifespan = LifespanOn(
             Config(self._app, lifespan="on"))
+
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
 
+    async def _async_setup(self):
+        """Runs FastAPI startup hooks, will be run at replica startup."""
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging
-        # XXX: fix this, no await in __init__
-        # with LoggingContext(
-                # self._serve_asgi_lifespan.logger,
-                # level=logging.WARNING):
-            # await self._serve_asgi_lifespan.startup()
+        with LoggingContext(
+                self._serve_asgi_lifespan.logger,
+                level=logging.WARNING):
+            await self._serve_asgi_lifespan.startup()
 
     def _add_method_route_to_app(self, method: Callable):
         # This block just adds a default values to the self parameters so that

@@ -568,7 +568,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
         class ASGIAppWrapper(cls):
-            async def __init__(self, *args, **kwargs):
+            def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
                 self._serve_app = frozen_app
@@ -579,6 +579,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     Config(self._serve_app, lifespan="on"))
                 # Replace uvicorn logger with our own.
                 self._serve_asgi_lifespan.logger = logger
+
+            async def _async_setup(self):
+            """Runs FastAPI startup hooks, will be run at replica startup."""
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(

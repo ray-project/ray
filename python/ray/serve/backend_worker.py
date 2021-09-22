@@ -71,8 +71,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             else:
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
-                _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args)
+                _callable = backend(*init_args)
+                if hasattr(_callable, "_async_setup"):
+                    await _callable._async_setup()
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
