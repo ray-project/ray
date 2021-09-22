@@ -661,11 +661,7 @@ def test_deep_nested_refs(shutdown_only):
     while isinstance(r, ray.ObjectRef):
         print(i, r)
         i += 1
-        try:
-            r = ray.get(r)
-        except ray.exceptions.ReferenceCountingAssertionError:
-            # TODO(swang): https://github.com/ray-project/ray/issues/18751.
-            break
+        r = ray.get(r)
 
 
 if __name__ == "__main__":
