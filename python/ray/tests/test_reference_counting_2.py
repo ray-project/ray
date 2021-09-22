@@ -664,6 +664,44 @@ def test_deep_nested_refs(shutdown_only):
         r = ray.get(r)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_forward_nested_ref(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def nested_ref():
+        return ray.put(1)
+
+    @ray.remote
+    def nested_nested_ref():
+        return nested_ref.remote()
+
+    @ray.remote
+    class Borrower:
+        def __init__(self):
+            return
+
+        def pass_ref(self, middle_ref):
+            self.inner_ref = ray.get(middle_ref)
+
+        def check_ref(self):
+            ray.get(self.inner_ref)
+
+    @ray.remote
+    def pass_nested_ref(borrower, outer_ref):
+        ray.get(borrower.pass_ref.remote(outer_ref[0]))
+
+    b = Borrower.remote()
+    outer_ref = nested_nested_ref.remote()
+    x = pass_nested_ref.remote(b, [outer_ref])
+    del outer_ref
+    ray.get(x)
+
+    for _ in range(3):
+        ray.get(b.check_ref.remote())
+        time.sleep(1)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

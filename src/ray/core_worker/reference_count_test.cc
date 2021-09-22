@@ -2501,6 +2501,7 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
 }
 
+// Matches test_reference_counting_2.py::test_forward_nested_ref.
 TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
   auto borrower1 = std::make_shared<MockWorkerClient>("1");
   auto borrower2 = std::make_shared<MockWorkerClient>("2");
