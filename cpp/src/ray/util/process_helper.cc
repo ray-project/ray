@@ -47,7 +47,7 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
                                  const int32_t dashboard_port) {
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
-                                    redis_password, "--include-dashboard", "false"});
+                                    redis_password});
   if (num_cpus >= 0) {
     cmdargs.emplace_back("--num-cpus");
     cmdargs.emplace_back(std::to_string(num_cpus));
@@ -71,6 +71,9 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
       cmdargs.emplace_back("--dashboard-port");
       cmdargs.emplace_back(std::to_string(dashboard_port));
     }
+  } else {
+    cmdargs.emplace_back("--include-dashboard");
+    cmdargs.emplace_back("false");
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
