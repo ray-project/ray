@@ -108,7 +108,6 @@ def test_e2e_basic_scale_up_down(serve_instance):
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote("A"))
         running_replicas = replicas.get([ReplicaState.RUNNING])
-        print(running_replicas)
         return len(running_replicas)
 
     wait_for_condition(lambda: get_num_running_replicas() >= 2)

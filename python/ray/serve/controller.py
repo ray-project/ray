@@ -157,7 +157,8 @@ class ServeController:
                     self.autoscaling_metrics_store.window_average(
                         replica_tag,
                         time.time() - autoscaling_config.look_back_period_s))
-                current_num_ongoing_requests.append(num_ongoing_requests)
+                if num_ongoing_requests is not None:
+                    current_num_ongoing_requests.append(num_ongoing_requests)
 
             if len(current_num_ongoing_requests) == 0:
                 continue
