@@ -1399,13 +1399,12 @@ py_test(
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["team:ml", "evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+py_test(
+    name = "evaluation/tests/test_trajectory_view_api",
+    tags = ["team:ml", "evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+)
 
 
 # --------------------------------------------------------------------
@@ -1461,7 +1460,7 @@ py_test(
 py_test(
     name = "test_preprocessors",
     tags = ["team:ml", "models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
@@ -2658,6 +2657,24 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/pettingzoo_env.py"],
+)
+
+py_test(
+    name = "examples/preprocessing_disabled_tf",
+    main = "examples/preprocessing_disabled.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/preprocessing_disabled.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/preprocessing_disabled_torch",
+    main = "examples/preprocessing_disabled.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/preprocessing_disabled.py"],
+    args = ["--framework=torch", "--stop-iters=2"]
 )
 
 py_test(

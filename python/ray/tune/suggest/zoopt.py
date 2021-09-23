@@ -277,14 +277,18 @@ class ZOOptSearch(Searcher):
         del self._live_trial_mapping[trial_id]
 
     def save(self, checkpoint_path: str):
-        trials_object = self.optimizer
-        with open(checkpoint_path, "wb") as output:
-            pickle.dump(trials_object, output)
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as input:
-            trials_object = pickle.load(input)
-        self.optimizer = trials_object
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        if not isinstance(save_object, dict):
+            # backwards compatibility
+            # Deprecate: 1.8
+            self.optimizer = save_object
+        self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict,
