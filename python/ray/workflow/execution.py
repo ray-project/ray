@@ -50,7 +50,6 @@ def run(entry_workflow: Workflow,
         #  - virtual actor tasks: it's dynamic tasks, so we always add
         #  - it's a new workflow
         # TODO (yic): follow up with force rerun
-        print("========= workflow id: ", workflow_id)
         if entry_workflow.data.step_type != StepType.FUNCTION or not wf_exists:
             commit_step(ws, "", entry_workflow, None)
         workflow_manager = get_or_create_management_actor()
