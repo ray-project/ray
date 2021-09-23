@@ -541,5 +541,47 @@ def test_local_store_recovery():
     crash()
 
 
+def test_output():
+    driver_script = """
+from fastapi import FastAPI
+import requests
+
+from ray import serve
+
+app = FastAPI()
+serve.start()
+
+@serve.deployment
+@serve.ingress(app)
+class A:
+    @app.get("/")
+    def say_hi(self):
+        return "hello"
+
+A.deploy()
+
+resp = requests.get("http://localhost:8000/A")
+resp.raise_for_status()
+
+A.delete()
+serve.shutdown()
+"""
+    expected_output = [
+        "View the Ray dashboard",
+        "Starting HTTP proxy with name ",
+        "Started Serve instance in namespace",
+        "Started server process",
+        "Updating deployment 'A'",
+        "Adding 1 replicas to deployment 'A'",
+        "Deployment 'A' is ready at ",
+        "Removing 1 replicas from deployment 'A'",
+    ]
+
+    output = run_string_as_driver(driver_script).strip().splitlines()
+    assert len(output) == len(expected_output), "\n".join(output)
+    for out_line, expect_fragment in zip(output, expected_output):
+        assert expect_fragment in out_line, "\n".join(output)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
