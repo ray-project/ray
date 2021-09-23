@@ -204,9 +204,7 @@ format_files() {
     fi
 }
 
-# Format all files, and print the diff to stdout for travis.
-# Mypy is run only on files specified in the array MYPY_FILES.
-format_all() {
+format_all_scripts() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
 
@@ -224,16 +222,6 @@ format_all() {
         flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
     fi
 
-    echo "$(date)" "clang-format...."
-    if command -v clang-format >/dev/null; then
-      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
-    fi
-
-    echo "$(date)" "format java...."
-    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
-    fi
-
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
       non_shell_files=($(git ls-files -- ':(exclude)*.sh'))
@@ -246,6 +234,23 @@ format_all() {
         shellcheck_scripts "${shell_files[@]}"
       fi
     fi
+}
+
+# Format all files, and print the diff to stdout for travis.
+# Mypy is run only on files specified in the array MYPY_FILES.
+format_all() {
+    format_all_scripts "${@}"
+
+    echo "$(date)" "clang-format...."
+    if command -v clang-format >/dev/null; then
+      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+    fi
+
+    echo "$(date)" "format java...."
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+    fi
+
     echo "$(date)" "done!"
 }
 
@@ -307,8 +312,12 @@ format_changed() {
 # arg to use this option.
 if [ "${1-}" == '--files' ]; then
     format_files "${@:2}"
-    # If `--all` is passed, then any further arguments are ignored and the
-    # entire python directory is formatted.
+# If `--all` or `--scripts` are passed, then any further arguments are ignored.
+# Format the entire python directory and other scripts.
+elif [ "${1-}" == '--all-scripts' ]; then
+    format_all_scripts "${@}"
+    if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
+# Format the all Python, C++, Java and other script files.
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
