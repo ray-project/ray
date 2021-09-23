@@ -284,7 +284,7 @@ def context_from_client_id(client_id: str) -> ManagedContext:
         ctx = _all_contexts.get(client_id)
         if ctx is None:
             raise ValueError(
-                f"Client {client_id} does not exist. It may have shut down.")
+                f"Client {client_id} does not exist. It may have been shut down.")
         return ManagedContext(ctx._conn_info, ctx)
 
 
