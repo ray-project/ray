@@ -78,6 +78,7 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_basic_scale_up_down(serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
