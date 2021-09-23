@@ -99,3 +99,8 @@ sgd.world_rank
 ~~~~~~~~~~~~~~
 
 .. autofunction::  ray.sgd.world_rank
+
+sgd.local_rank
+~~~~~~~~~~~~~~
+
+.. autofunction:: ray.sgd.local_rank
