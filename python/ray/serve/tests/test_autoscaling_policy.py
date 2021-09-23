@@ -1,6 +1,10 @@
-import ray
-from ray import serve
+import sys
 import time
+import pytest
+
+import ray
+
+from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve.backend_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
