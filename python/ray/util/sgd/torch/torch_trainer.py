@@ -10,14 +10,27 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import PlacementGroupFactory, Trainable
-from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
+from ray.util.annotations import PublicAPI
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
     RemoteWorkerGroup, DeactivatedWorkerGroup
 from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
 from ray.util.sgd.data import Dataset
+
+try:
+    from ray.tune import Trainable
+    from ray.tune import PlacementGroupFactory
+    from ray.tune.utils.util import merge_dicts
+    TUNE_INSTALLED = True
+except ImportError:
+    TUNE_INSTALLED = False
+    Trainable = PlacementGroupFactory = object
+
+    def noop():
+        return
+
+    merge_dicts = noop
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +48,7 @@ def _remind_gpu_usage(use_gpu):
                     "enable GPU usage. ")
 
 
+@PublicAPI(stability="beta")
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
@@ -650,6 +664,9 @@ class TorchTrainer:
                 training epoch for each tune iteration.
 
         """
+        if not TUNE_INSTALLED:
+            raise RuntimeError("Please install `ray[tune]` to use the Tune "
+                               "integration.")
         if override_tune_step is not None:
             callback_args = inspect.signature(override_tune_step)
             if not len(callback_args.parameters) == 2:

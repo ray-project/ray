@@ -17,7 +17,7 @@ T = TypeVar("T")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor``, ``ArrowBlockAccessor``, and ``TensorBlockAccessor``.
-Block = Union[List[T], np.ndarray, "pyarrow.Table"]
+Block = Union[List[T], np.ndarray, "pyarrow.Table", bytes]
 
 
 @DeveloperAPI
@@ -109,6 +109,10 @@ class BlockAccessor(Generic[T]):
             schema=self.schema(),
             input_files=input_files)
 
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        """Zip this block with another block of the same type and size."""
+        raise NotImplementedError
+
     @staticmethod
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
@@ -124,6 +128,10 @@ class BlockAccessor(Generic[T]):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
+        elif isinstance(block, bytes):
+            from ray.data.impl.arrow_block import \
+                ArrowBlockAccessor
+            return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data.impl.simple_block import \
                 SimpleBlockAccessor

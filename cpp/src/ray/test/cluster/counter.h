@@ -21,9 +21,9 @@
 /// a class of user code
 class Counter {
  public:
-  int count;
-  Counter(int init);
+  Counter(int init, bool with_exception = false);
   static Counter *FactoryCreate();
+  static Counter *FactoryCreateException();
   static Counter *FactoryCreate(int init);
   static Counter *FactoryCreate(int init1, int init2);
 
@@ -33,6 +33,13 @@ class Counter {
   uint64_t GetPid();
   void ExceptionFunc() { throw std::invalid_argument("error"); }
   static bool IsProcessAlive(uint64_t pid);
+
+  bool CheckRestartInActorCreationTask();
+  bool CheckRestartInActorTask();
+
+ private:
+  int count;
+  bool is_restared = false;
 };
 
 class CountDownLatch {

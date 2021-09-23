@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { Provider } from "react-redux";
 import { HashRouter, Route, Switch } from "react-router-dom";
 import Dashboard from "./pages/dashboard/Dashboard";
+import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import { getNodeList } from "./service/node";
 import { store } from "./store";
@@ -86,6 +87,7 @@ const App = () => {
                       <Route component={Job} exact path="/job" />
                       <Route component={Node} exact path="/node" />
                       <Route component={Actors} exact path="/actors" />
+                      <Route component={Events} exact path="/events" />
                       <Route
                         render={(props) => (
                           <Logs {...props} theme={theme as "light" | "dark"} />

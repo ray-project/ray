@@ -41,7 +41,8 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status, AsyncCreateActor,
-              (const TaskSpecification &task_spec, const StatusCallback &callback),
+              (const TaskSpecification &task_spec,
+               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
   MOCK_METHOD(Status, AsyncSubscribeAll,
               ((const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
@@ -185,8 +186,8 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               ((const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe),
                const StatusCallback &done),
               (override));
-  // MOCK_METHOD(boost::optional<rpc::GcsNodeInfo>, Get, (const NodeID &node_id, bool
-  // filter_dead_nodes), (const, override));
+  MOCK_METHOD(absl::optional<rpc::GcsNodeInfo>, Get,
+              (const NodeID &node_id, bool filter_dead_nodes), (const, override));
   MOCK_METHOD((const std::unordered_map<NodeID, rpc::GcsNodeInfo> &), GetAll, (),
               (const, override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
