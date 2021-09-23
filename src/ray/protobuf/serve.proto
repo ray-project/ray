@@ -36,14 +36,12 @@ message AutoscalingConfig {
 
   // The frequency of how long does each replica sending metrics to autoscaler.
   double metrics_interval_s = 4;
-  // The interval (in seconds) of autoscaler evaluating metrics and performing scaling
-  // decision.
-  double loop_period_s = 5;
+
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
-  double look_back_period_s = 6;
+  double look_back_period_s = 5;
 
   // The multiplicative "gain" factor to limit scaling decisions.
-  double smoothing_factor = 7;
+  double smoothing_factor = 6;
 }
 
 // Configuration options for a backend, to be set by the user.

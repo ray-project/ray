@@ -1,3 +1,8 @@
+import ray
+from ray import serve
+import time
+from ray._private.test_utils import wait_for_condition
+from ray.serve.backend_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 
@@ -71,3 +76,44 @@ class TestCalculateDesiredNumReplicas:
             autoscaling_config=config,
             current_num_ongoing_requests=num_ongoing_requests)
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
+
+
+def test_e2e_basic_scale_up(serve_instance):
+    """Send 100 requests and check that we scale from 1 replica to 2."""
+
+    @serve.deployment(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "look_back_period_s": 0.2
+        },
+        max_concurrent_queries=1000,
+        version="v1")
+    class A:
+        def __call__(self):
+            time.sleep(1)
+
+    # We will send over a lot of queries. This will make sure replicas are
+    # killed quickly during cleanup.
+    A._config.experimental_graceful_shutdown_timeout_s = 1
+
+    A.deploy()
+    handle = A.get_handle()
+    [handle.remote() for _ in range(100)]
+
+    controller = serve_instance._controller
+
+    def at_least_two_replicas_are_running():
+        replicas = ray.get(
+            controller._dump_backend_states_for_testing.remote("A"))
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+        return len(running_replicas) >= 2
+
+    wait_for_condition(at_least_two_replicas_are_running)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

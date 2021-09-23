@@ -59,7 +59,8 @@ def test_e2e(serve_instance):
             "min_replicas": 1,
             "max_replicas": 1
         },
-        max_concurrent_queries=1000, version="v1")
+        max_concurrent_queries=1000,
+        version="v1")
     class A:
         def __call__(self):
             time.sleep(0.5)

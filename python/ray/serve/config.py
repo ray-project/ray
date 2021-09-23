@@ -24,8 +24,10 @@ class AutoscalingConfig(BaseModel):
     # Private options below
 
     # Metrics scraping options
+
+    # How often to scrape for metrics
     metrics_interval_s: float = 10.0
-    loop_period_s: float = 30.0
+    # Time window to average over for metrics.
     look_back_period_s: float = 30.0
 
     # Internal autoscaling configuration options
@@ -34,6 +36,7 @@ class AutoscalingConfig(BaseModel):
     smoothing_factor: float = 1.0
 
     # TODO(architkulkarni): implement below
+    # loop_period_s = 30 # How frequently to make autoscaling decisions
     # How long to wait before scaling down replicas
     # downscale_delay_s: float = 600.0
     # How long to wait before scaling up replicas

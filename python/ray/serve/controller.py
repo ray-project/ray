@@ -107,6 +107,10 @@ class ServeController:
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_metrics_store.data
 
+    def _dump_backend_states_for_testing(self, deployment_name):
+        return self.backend_state_manager._backend_states[
+            deployment_name]._replicas
+
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
 
@@ -132,16 +136,20 @@ class ServeController:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
-    async def update_autoscaling(self) -> None:
+    async def autoscale(self) -> None:
+        """Redeploy autoscaling deployments with calculated num_replicas."""
         for deployment_name, (backend_info,
                               route_prefix) in self.list_deployments().items():
             backend_config = backend_info.backend_config
             autoscaling_config = backend_config.autoscaling_config
+
             if autoscaling_config is None:
                 continue
+
             replicas = self.backend_state_manager._backend_states[
                 deployment_name]._replicas
             running_replicas = replicas.get([ReplicaState.RUNNING])
+
             current_num_ongoing_requests = []
             for replica in running_replicas:
                 replica_tag = replica.replica_tag
@@ -150,25 +158,18 @@ class ServeController:
                         replica_tag,
                         time.time() - autoscaling_config.look_back_period_s))
                 current_num_ongoing_requests.append(num_ongoing_requests)
+
             if len(current_num_ongoing_requests) == 0:
-                print("length of list of num requests is zero")
                 continue
-            print("current ongoing num requests: ",
-                  current_num_ongoing_requests)
+
             new_backend_config = backend_config.copy()
             new_backend_config.num_replicas = calculate_desired_num_replicas(
                 autoscaling_config, current_num_ongoing_requests)
-            print("desired num replicas: ", new_backend_config.num_replicas)
-            print("Metrics dump:  ",
-                  self._dump_autoscaling_metrics_for_testing())
-            # continue #TODO: remove
+
             replica_config = backend_info.replica_config
             deployer_job_id = backend_info.deployer_job_id
             backend_config_proto_bytes = new_backend_config.to_proto_bytes()
-            # TODO: Only allow autoscaling for versioned deployments for now
-            # TODO: Weird behavior: when spamming a new deployment, the
-            # num ongoing requests goes from 0, to 0.5, to 0.66, to 1, to
-            # (huge) (15-20ish)
+
             goal_id, updating = await self.deploy(
                 deployment_name,
                 backend_config_proto_bytes,
@@ -180,12 +181,10 @@ class ServeController:
 
     async def run_control_loop(self) -> None:
         while True:
-            # try:
-            await self.update_autoscaling()
-            # TODO: see if you can move inside the async lock,
-            # incase nested locking with the same lock is okay.
-            # except Exception:
-            #    logger.exception("Exception while running autoscaling.")
+            try:
+                await self.autoscale()
+            except Exception:
+                logger.exception("Exception while autoscaling deployments.")
             async with self.write_lock:
                 try:
                     self.http_state.update()
