@@ -5,7 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.RayServeException;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.BackendLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
@@ -13,19 +13,19 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes)
+  public static DeploymentConfig parseDeploymentConfig(byte[] DeploymentConfigBytes)
       throws InvalidProtocolBufferException {
 
-    // Get a builder from BackendConfig(bytes) or create a new one.
-    BackendConfig.Builder builder = null;
-    if (backendConfigBytes == null) {
-      builder = BackendConfig.newBuilder();
+    // Get a builder from DeploymentConfig(bytes) or create a new one.
+    DeploymentConfig.Builder builder = null;
+    if (DeploymentConfigBytes == null) {
+      builder = DeploymentConfig.newBuilder();
     } else {
-      BackendConfig backendConfig = BackendConfig.parseFrom(backendConfigBytes);
-      if (backendConfig == null) {
-        builder = BackendConfig.newBuilder();
+      DeploymentConfig DeploymentConfig = DeploymentConfig.parseFrom(DeploymentConfigBytes);
+      if (DeploymentConfig == null) {
+        builder = DeploymentConfig.newBuilder();
       } else {
-        builder = BackendConfig.newBuilder(backendConfig);
+        builder = DeploymentConfig.newBuilder(DeploymentConfig);
       }
     }
 
@@ -59,11 +59,11 @@ public class ServeProtoUtil {
     return builder.build();
   }
 
-  public static Object parseUserConfig(BackendConfig backendConfig) {
-    if (backendConfig.getUserConfig() == null || backendConfig.getUserConfig().size() == 0) {
+  public static Object parseUserConfig(DeploymentConfig DeploymentConfig) {
+    if (DeploymentConfig.getUserConfig() == null || DeploymentConfig.getUserConfig().size() == 0) {
       return null;
     }
-    return MessagePackSerializer.decode(backendConfig.getUserConfig().toByteArray(), Object.class);
+    return MessagePackSerializer.decode(DeploymentConfig.getUserConfig().toByteArray(), Object.class);
   }
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)

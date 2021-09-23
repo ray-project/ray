@@ -6,8 +6,8 @@ from typing import Any, Dict, Iterable, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendTag
-from ray.serve.config import BackendConfig
+from ray.serve.common import DeploymentTag
+from ray.serve.config import DeploymentConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -78,9 +78,10 @@ class ReplicaSet:
             "deployment": self.backend_tag
         })
 
-    def set_max_concurrent_queries(self, backend_config_bytes: bytes):
-        backend_config = BackendConfig.from_proto_bytes(backend_config_bytes)
-        new_value: int = backend_config.max_concurrent_queries
+    def set_max_concurrent_queries(self, deployment_config_bytes: bytes):
+        deployment_config = DeploymentConfig.from_proto_bytes(
+            deployment_config_bytes)
+        new_value: int = deployment_config.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(
@@ -179,7 +180,7 @@ class Router:
     def __init__(
             self,
             controller_handle: ActorHandle,
-            backend_tag: BackendTag,
+            backend_tag: DeploymentTag,
             event_loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: choose backend, and assign replica.
@@ -200,7 +201,7 @@ class Router:
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
+                (LongPollNamespace.deployment_configS, backend_tag): self.
                 _replica_set.set_max_concurrent_queries,
                 (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
                 _replica_set.update_worker_replicas,

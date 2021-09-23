@@ -11,16 +11,16 @@ public class Serve {
   /**
    * Set replica information to global context.
    *
-   * @param backendTag backend tag
+   * @param DeploymentTag backend tag
    * @param replicaTag replica tag
    * @param controllerName the controller actor's name
    * @param servableObject the servable object of the specified replica.
    */
   public static void setInternalReplicaContext(
-      String backendTag, String replicaTag, String controllerName, Object servableObject) {
+      String DeploymentTag, String replicaTag, String controllerName, Object servableObject) {
     // TODO singleton.
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(backendTag, replicaTag, controllerName, servableObject);
+        new ReplicaContext(DeploymentTag, replicaTag, controllerName, servableObject);
   }
 
   /**

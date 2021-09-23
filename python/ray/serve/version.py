@@ -4,7 +4,7 @@ from ray.serve.utils import get_random_letters
 from typing import Any, Optional
 
 
-class BackendVersion:
+class DeploymentVersion:
     def __init__(self,
                  code_version: Optional[str],
                  user_config: Optional[Any] = None):
@@ -58,5 +58,5 @@ class BackendVersion:
 
 class VersionedReplica(ABC):
     @property
-    def version(self) -> BackendVersion:
+    def version(self) -> DeploymentVersion:
         pass

@@ -7,9 +7,9 @@ public class KeyTypeTest {
 
   @Test
   public void test() {
-    KeyType k1 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "k1");
-    KeyType k2 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "k1");
-    KeyType k3 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, null);
+    KeyType k1 = new KeyType(LongPollNamespace.deployment_configS, "k1");
+    KeyType k2 = new KeyType(LongPollNamespace.deployment_configS, "k1");
+    KeyType k3 = new KeyType(LongPollNamespace.deployment_configS, null);
     KeyType k4 = new KeyType(LongPollNamespace.REPLICA_HANDLES, "k4");
 
     Assert.assertEquals(k1, k1);

@@ -6,7 +6,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -22,20 +22,20 @@ public class RayServeWrappedReplica {
 
   @SuppressWarnings("rawtypes")
   public RayServeWrappedReplica(
-      String backendTag,
+      String DeploymentTag,
       String replicaTag,
       String backendDef,
       byte[] initArgsbytes,
-      byte[] backendConfigBytes,
+      byte[] DeploymentConfigBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
-    // Parse BackendConfig.
-    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigBytes);
+    // Parse DeploymentConfig.
+    DeploymentConfig DeploymentConfig = ServeProtoUtil.parseDeploymentConfig(DeploymentConfigBytes);
 
     // Parse init args.
-    Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
+    Object[] initArgs = parseInitArgs(initArgsbytes, DeploymentConfig);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(backendDef);
@@ -49,20 +49,20 @@ public class RayServeWrappedReplica {
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
     // the instance that this backend is running in.
-    Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, callable);
+    Serve.setInternalReplicaContext(DeploymentTag, replicaTag, controllerName, callable);
 
     // Construct worker replica.
-    backend = new RayServeReplica(callable, backendConfig, optional.get());
+    backend = new RayServeReplica(callable, DeploymentConfig, optional.get());
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
+  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig DeploymentConfig)
       throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
     }
 
-    if (!backendConfig.getIsCrossLanguage()) {
+    if (!DeploymentConfig.getIsCrossLanguage()) {
       // If the construction request is from Java API, deserialize initArgsbytes to Object[]
       // directly.
       return MessagePackSerializer.decode(initArgsbytes, Object[].class);

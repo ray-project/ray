@@ -1,28 +1,28 @@
 import pytest
 from pydantic import ValidationError
 
-from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
+from ray.serve.config import (DeploymentConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
 
 
-def test_backend_config_validation():
+def test_deployment_config_validation():
     # Test unknown key.
     with pytest.raises(ValidationError):
-        BackendConfig(unknown_key=-1)
+        DeploymentConfig(unknown_key=-1)
 
     # Test num_replicas validation.
-    BackendConfig(num_replicas=1)
+    DeploymentConfig(num_replicas=1)
     with pytest.raises(ValidationError, match="type_error"):
-        BackendConfig(num_replicas="hello")
+        DeploymentConfig(num_replicas="hello")
     with pytest.raises(ValidationError, match="value_error"):
-        BackendConfig(num_replicas=-1)
+        DeploymentConfig(num_replicas=-1)
 
     # Test dynamic default for max_concurrent_queries.
-    assert BackendConfig().max_concurrent_queries == 100
+    assert DeploymentConfig().max_concurrent_queries == 100
 
 
-def test_backend_config_update():
-    b = BackendConfig(num_replicas=1, max_concurrent_queries=1)
+def test_deployment_config_update():
+    b = DeploymentConfig(num_replicas=1, max_concurrent_queries=1)
 
     # Test updating a key works.
     b.num_replicas = 2
@@ -105,12 +105,12 @@ def test_http_options():
 
 def test_with_proto():
     # Test roundtrip
-    config = BackendConfig(num_replicas=100, max_concurrent_queries=16)
-    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+    config = DeploymentConfig(num_replicas=100, max_concurrent_queries=16)
+    assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
     # Test user_config object
-    config = BackendConfig(user_config={"python": ("native", ["objects"])})
-    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+    config = DeploymentConfig(user_config={"python": ("native", ["objects"])})
+    assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
 if __name__ == "__main__":

@@ -5,9 +5,9 @@ from typing import List, Optional
 from uuid import UUID
 
 from ray.actor import ActorClass
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import DeploymentConfig, ReplicaConfig
 
-BackendTag = str
+DeploymentTag = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
@@ -21,16 +21,16 @@ class EndpointInfo:
     route: Optional[str] = None
 
 
-class BackendInfo:
+class DeploymentInfo:
     def __init__(self,
-                 backend_config: BackendConfig,
+                 deployment_config: DeploymentConfig,
                  replica_config: ReplicaConfig,
                  start_time_ms: int,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None,
                  end_time_ms: Optional[int] = None):
-        self.backend_config = backend_config
+        self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
         self.start_time_ms = start_time_ms
@@ -43,7 +43,7 @@ class BackendInfo:
 
 @dataclass
 class ReplicaName:
-    deployment_tag: BackendTag
+    deployment_tag: DeploymentTag
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"

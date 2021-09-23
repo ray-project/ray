@@ -10,7 +10,7 @@ import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
@@ -31,11 +31,11 @@ public class RayServeReplica {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayServeReplica.class);
 
-  private String backendTag;
+  private String DeploymentTag;
 
   private String replicaTag;
 
-  private BackendConfig config;
+  private DeploymentConfig config;
 
   private AtomicInteger numOngoingRequests = new AtomicInteger();
 
@@ -56,17 +56,17 @@ public class RayServeReplica {
   private LongPollClient longPollClient;
 
   public RayServeReplica(
-      Object callable, BackendConfig backendConfig, BaseActorHandle actorHandle) {
-    this.backendTag = Serve.getReplicaContext().getBackendTag();
+      Object callable, DeploymentConfig DeploymentConfig, BaseActorHandle actorHandle) {
+    this.DeploymentTag = Serve.getReplicaContext().getDeploymentTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
-    this.config = backendConfig;
-    this.reconfigure(ServeProtoUtil.parseUserConfig(backendConfig));
+    this.config = DeploymentConfig;
+    this.reconfigure(ServeProtoUtil.parseUserConfig(DeploymentConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
-        newConfig -> updateBackendConfigs(newConfig));
+        new KeyType(LongPollNamespace.deployment_configS, DeploymentTag),
+        newConfig -> updateDeploymentConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
     registerMetrics();
@@ -83,7 +83,7 @@ public class RayServeReplica {
             .name("serve_backend_request_counter")
             .description("The number of queries that have been processed in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
             .register();
 
     errorCounter =
@@ -91,7 +91,7 @@ public class RayServeReplica {
             .name("serve_backend_error_counter")
             .description("The number of exceptions that have occurred in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
             .register();
 
     restartCounter =
@@ -99,7 +99,7 @@ public class RayServeReplica {
             .name("serve_backend_replica_starts")
             .description("The number of times this replica has been restarted due to failure.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
             .register();
 
     processingLatencyTracker =
@@ -108,7 +108,7 @@ public class RayServeReplica {
             .description("The latency for queries to be processed.")
             .unit("")
             .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
             .register();
 
     numProcessingItems =
@@ -116,7 +116,7 @@ public class RayServeReplica {
             .name("serve_replica_processing_queries")
             .description("The current number of queries being processed.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
             .register();
 
     metricsRegistered = true;
@@ -249,11 +249,11 @@ public class RayServeReplica {
       throw new RayServeException(
           LogUtil.format(
               "user_config specified but backend {} missing {} method",
-              backendTag,
+              DeploymentTag,
               Constants.BACKEND_RECONFIGURE_METHOD));
     } catch (Throwable e) {
       throw new RayServeException(
-          LogUtil.format("Backend {} failed to reconfigure user_config {}", backendTag, userConfig),
+          LogUtil.format("Backend {} failed to reconfigure user_config {}", DeploymentTag, userConfig),
           e);
     }
   }
@@ -263,9 +263,9 @@ public class RayServeReplica {
    *
    * @param newConfig the new configuration of backend
    */
-  private void updateBackendConfigs(Object newConfig) {
-    config = (BackendConfig) newConfig;
-    reconfigure(((BackendConfig) newConfig).getUserConfig());
+  private void updateDeploymentConfigs(Object newConfig) {
+    config = (DeploymentConfig) newConfig;
+    reconfigure(((DeploymentConfig) newConfig).getUserConfig());
   }
 
   private void reportMetrics(Runnable runnable) {

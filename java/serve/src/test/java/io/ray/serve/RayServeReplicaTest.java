@@ -4,7 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.BackendLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
@@ -23,31 +23,31 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String backendTag = "b_tag";
+      String DeploymentTag = "b_tag";
       String replicaTag = "r_tag";
 
       ActorHandle<ReplicaContext> controllerHandle =
-          Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
+          Ray.actor(ReplicaContext::new, DeploymentTag, replicaTag, controllerName, new Object())
               .setName(controllerName)
               .remote();
 
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
+      DeploymentConfig.Builder DeploymentConfigBuilder = DeploymentConfig.newBuilder();
+      DeploymentConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
 
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
+      byte[] DeploymentConfigBytes = DeploymentConfigBuilder.build().toByteArray();
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {DeploymentTag, replicaTag, controllerName, new Object()};
 
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  DeploymentTag,
                   replicaTag,
                   "io.ray.serve.ReplicaContext",
                   initArgsBytes,
-                  backendConfigBytes,
+                  DeploymentConfigBytes,
                   controllerName)
               .remote();
 
@@ -55,7 +55,7 @@ public class RayServeReplicaTest {
 
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId("RayServeReplicaTest");
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentTag");
 
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
@@ -67,7 +67,7 @@ public class RayServeReplicaTest {
                   requestWrapper.build().toByteArray())
               .remote();
 
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), DeploymentTag);
     } finally {
       if (!inited) {
         Ray.shutdown();
