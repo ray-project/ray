@@ -246,11 +246,18 @@ class MockActorCreator : public ActorCreatorInterface {
   }
 
   void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       gcs::StatusCallback callback) override {}
+                                       gcs::StatusCallback callback) override {
+    callbacks.push_back(callback);
+  }
 
-  bool IsActorInRegistering(const ActorID &actor_id) const override { return false; }
+  bool IsActorInRegistering(const ActorID &actor_id) const override {
+    return actor_pending;
+  }
 
   ~MockActorCreator() {}
+
+  std::list<gcs::StatusCallback> callbacks;
+  bool actor_pending = false;
 };
 
 class MockLeasePolicy : public LeasePolicyInterface {
@@ -306,6 +313,77 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
+}
+
+TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
+  // Actor dependency resolved first.
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  TaskSpecification task;
+  ObjectID obj = ObjectID::FromRandom();
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
+
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  task.GetMutableMessage().add_args()->add_nested_inlined_refs()->set_object_id(
+      actor_handle_id.Binary());
+
+  int num_resolved = 0;
+  actor_creator.actor_pending = true;
+  resolver.ResolveDependencies(task, [&](Status) { num_resolved++; });
+  ASSERT_EQ(num_resolved, 0);
+  ASSERT_EQ(resolver.NumPendingTasks(), 1);
+
+  for (const auto &cb : actor_creator.callbacks) {
+    cb(Status());
+  }
+  ASSERT_EQ(num_resolved, 0);
+
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  ASSERT_TRUE(store->Put(data, obj));
+  ASSERT_EQ(num_resolved, 1);
+
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
+}
+
+TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
+  // Object dependency resolved first.
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
+  TaskSpecification task;
+  ObjectID obj = ObjectID::FromRandom();
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
+
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  task.GetMutableMessage().add_args()->add_nested_inlined_refs()->set_object_id(
+      actor_handle_id.Binary());
+
+  int num_resolved = 0;
+  actor_creator.actor_pending = true;
+  resolver.ResolveDependencies(task, [&](Status) { num_resolved++; });
+  ASSERT_EQ(num_resolved, 0);
+  ASSERT_EQ(resolver.NumPendingTasks(), 1);
+
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+  ASSERT_EQ(num_resolved, 0);
+  ASSERT_TRUE(store->Put(data, obj));
+
+  for (const auto &cb : actor_creator.callbacks) {
+    cb(Status());
+  }
+  ASSERT_EQ(num_resolved, 1);
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {

@@ -139,11 +139,13 @@ void LocalDependencyResolver::ResolveDependencies(
 
   for (const auto &actor_id : state->actor_dependencies) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [state, on_complete](Status status) {
+        actor_id, [this, state, on_complete](Status status) {
           if (!status.ok()) {
             state->status = status;
           }
-          if (--state->actor_dependencies_remaining == 0) {
+          if (--state->actor_dependencies_remaining == 0 &&
+              state->obj_dependencies_remaining == 0) {
+            num_pending_--;
             on_complete(state->status);
           }
         });
