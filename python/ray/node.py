@@ -355,11 +355,15 @@ class Node:
         if not self._resource_spec:
             env_resources = {}
             cpu_info = get_cpu_info()
-            enable_avx2 = os.getenv("ENABLE_AVX2", "false")
-            if ray_constants.AVX2_INSTRUCTION_SET in cpu_info["flags"] \
-                    and enable_avx2 == "true":
-                env_resources[ray_constants.AVX2_INSTRUCTION_SET] \
-                        = ray_constants.NUM_OF_AVX2_RESOURCE
+            required_cpu_instruction_str = \
+                os.getenv(
+                    "CPU_INSTRUCTION_SET", ray_constants.CPU_INSTRUCTION_SET)
+            required_cpu_instruction_set = \
+                [x.strip() for x in required_cpu_instruction_str.split(",")]
+            for required_ins in required_cpu_instruction_set:
+                if required_ins in cpu_info["flags"]:
+                    env_resources[required_ins] = \
+                        ray_constants.NUM_OF_AVX2_RESOURCE
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:

@@ -641,29 +641,34 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-def test_resources_with_avx2(shutdown_only):
+def test_cpu_instruction(shutdown_only):
     ray.init()
 
     @ray.remote
     class ResourceActor():
-        def check_avx2(self):
+        def check_resource(self, res):
             cpu_info = get_cpu_info()
-            enable_avx2 = os.getenv("ENABLE_AVX2", "false")
-            return "avx2" in cpu_info["flags"] and (enable_avx2 == "true")
+            return res in cpu_info["flags"]
 
     driver_cpu_info = get_cpu_info()
-    enable_avx2 = os.getenv("ENABLE_AVX2", "false")
+    required_cpu_instruction_str = os.getenv("CPU_INSTRUCTION_SET", "avx2")
+    required_instruction_set = \
+        [x.strip() for x in required_cpu_instruction_str.split(",")]
     logging.info(driver_cpu_info)
-    if "avx2" in driver_cpu_info["flags"] and enable_avx2 == "true":
-        logging.info("This actor has 'avx2' instruction set.")
-        actor = ResourceActor.options(resources={"avx2": 1.0}).remote()
-        result = actor.check_avx2.remote()
-        assert ray.get(result)
-    else:
-        logging.info("This actor does't have 'avx2' instruction set.")
-        actor = ResourceActor.remote()
-        result = actor.check_avx2.remote()
-        assert not ray.get(result)
+    for required_ins in required_instruction_set:
+        if required_ins in driver_cpu_info["flags"]:
+            logging.info(f"This actor has {required_ins} instruction set.")
+            actor = ResourceActor.options(resources={
+                    required_ins: 1.0
+                }).remote()
+            result = actor.check_resource.remote(required_ins)
+            assert ray.get(result)
+        else:
+            logging.info(
+                f"This actor does't have {required_ins} instruction set.")
+            actor = ResourceActor.remote()
+            result = actor.check_resource.remote(required_ins)
+            assert not ray.get(result)
 
 
 if __name__ == "__main__":
