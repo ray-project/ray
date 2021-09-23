@@ -137,7 +137,7 @@ class ServeController:
         return self.http_state.get_http_proxy_handles()
 
     async def autoscale(self) -> None:
-        """Redeploy autoscaling deployments with calculated num_replicas."""
+        """Update autoscaling deployments with calculated num_replicas."""
         for deployment_name, (backend_info,
                               route_prefix) in self.list_deployments().items():
             backend_config = backend_info.backend_config
