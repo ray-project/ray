@@ -13,7 +13,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 
 from ray import cloudpickle as cloudpickle
-
+from ray.rllib.utils.annotations import Deprecated
 
 class AutoscalingConfig(BaseModel):
     # Publicly exposed options
@@ -47,6 +47,12 @@ class AutoscalingConfig(BaseModel):
 
     # TODO(architkulkarni): Add reasonable defaults
     # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
+
+@Deprecated(error=True)
+class BackendConfig:
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "BackendConfig is deprecated, please use DeployementConfig")
 
 
 class DeploymentConfig(BaseModel):
