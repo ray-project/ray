@@ -106,7 +106,7 @@ def test_e2e_basic_scale_up(serve_instance):
 
     def at_least_two_replicas_are_running():
         replicas = ray.get(
-            controller._dump_backend_states_for_testing.remote("A"))
+            controller._dump_replica_states_for_testing.remote("A"))
         running_replicas = replicas.get([ReplicaState.RUNNING])
         return len(running_replicas) >= 2
 

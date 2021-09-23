@@ -107,7 +107,7 @@ class ServeController:
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_metrics_store.data
 
-    def _dump_backend_states_for_testing(self, deployment_name):
+    def _dump_replica_states_for_testing(self, deployment_name):
         return self.backend_state_manager._backend_states[
             deployment_name]._replicas
 
