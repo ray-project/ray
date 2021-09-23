@@ -13,15 +13,15 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  public static DeploymentConfig parseDeploymentConfig(byte[] DeploymentConfigBytes)
+  public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes)
       throws InvalidProtocolBufferException {
 
     // Get a builder from DeploymentConfig(bytes) or create a new one.
     DeploymentConfig.Builder builder = null;
-    if (DeploymentConfigBytes == null) {
+    if (deploymentConfigBytes == null) {
       builder = DeploymentConfig.newBuilder();
     } else {
-      DeploymentConfig deploymentConfig = DeploymentConfig.parseFrom(DeploymentConfigBytes);
+      DeploymentConfig deploymentConfig = DeploymentConfig.parseFrom(deploymentConfigBytes);
       if (deploymentConfig == null) {
         builder = DeploymentConfig.newBuilder();
       } else {

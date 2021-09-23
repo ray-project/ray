@@ -686,7 +686,7 @@ class DeploymentState:
 
     def _notify_deployment_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.deployment_configS, self._name),
+            (LongPollNamespace.DEPLOYMENT_CONFIGS, self._name),
             self._target_info.deployment_config.to_proto_bytes(),
         )
 

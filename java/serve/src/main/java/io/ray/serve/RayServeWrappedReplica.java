@@ -18,28 +18,28 @@ import org.apache.commons.lang3.StringUtils;
 /** Replica class wrapping the provided class. Note that Java function is not supported now. */
 public class RayServeWrappedReplica {
 
-  private RayServeReplica backend;
+  private RayServeReplica deployment;
 
   @SuppressWarnings("rawtypes")
   public RayServeWrappedReplica(
-      String DeploymentTag,
+      String deploymentTag,
       String replicaTag,
-      String backendDef,
+      String deploymentDef,
       byte[] initArgsbytes,
-      byte[] DeploymentConfigBytes,
+      byte[] deploymentConfigBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
     // Parse DeploymentConfig.
-    DeploymentConfig DeploymentConfig = ServeProtoUtil.parseDeploymentConfig(DeploymentConfigBytes);
+    DeploymentConfig deploymentConfig = ServeProtoUtil.parseDeploymentConfig(deploymentConfigBytes);
 
     // Parse init args.
-    Object[] initArgs = parseInitArgs(initArgsbytes, DeploymentConfig);
+    Object[] initArgs = parseInitArgs(initArgsbytes, deploymentConfig);
 
-    // Instantiate the object defined by backendDef.
-    Class backendClass = Class.forName(backendDef);
-    Object callable = ReflectUtil.getConstructor(backendClass, initArgs).newInstance(initArgs);
+    // Instantiate the object defined by deploymentDef.
+    Class deploymentClass = Class.forName(deploymentDef);
+    Object callable = ReflectUtil.getConstructor(deploymentClass, initArgs).newInstance(initArgs);
 
     // Get the controller by controllerName.
     Preconditions.checkArgument(
@@ -47,22 +47,22 @@ public class RayServeWrappedReplica {
     Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
-    // Set the controller name so that Serve.connect() in the user's backend code will connect to
-    // the instance that this backend is running in.
-    Serve.setInternalReplicaContext(DeploymentTag, replicaTag, controllerName, callable);
+    // Set the controller name so that Serve.connect() in the user's deployment code will connect to
+    // the instance that this deployment is running in.
+    Serve.setInternalReplicaContext(deploymentTag, replicaTag, controllerName, callable);
 
     // Construct worker replica.
-    backend = new RayServeReplica(callable, DeploymentConfig, optional.get());
+    deployment = new RayServeReplica(callable, deploymentConfig, optional.get());
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig DeploymentConfig)
+  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig deploymentConfig)
       throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
     }
 
-    if (!DeploymentConfig.getIsCrossLanguage()) {
+    if (!deploymentConfig.getIsCrossLanguage()) {
       // If the construction request is from Java API, deserialize initArgsbytes to Object[]
       // directly.
       return MessagePackSerializer.decode(initArgsbytes, Object[].class);
@@ -78,7 +78,7 @@ public class RayServeWrappedReplica {
    * @param requestMetadata the real type is byte[] if this invocation is cross-language. Otherwise,
    *     the real type is {@link io.ray.serve.generated.RequestMetadata}.
    * @param requestArgs The input parameters of the specified method of the object defined by
-   *     backendDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
+   *     deploymentDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
    *     this invocation is cross-language. Otherwise, the real type is Object[].
    * @return the result of request being processed
    * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
@@ -86,7 +86,7 @@ public class RayServeWrappedReplica {
   public Object handleRequest(Object requestMetadata, Object requestArgs)
       throws InvalidProtocolBufferException {
     boolean isCrossLanguage = requestMetadata instanceof byte[];
-    return backend.handleRequest(
+    return deployment.handleRequest(
         new Query(
             isCrossLanguage
                 ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
@@ -103,6 +103,6 @@ public class RayServeWrappedReplica {
 
   /** Wait until there is no request in processing. It is used for stopping replica gracefully. */
   public void drainPendingQueries() {
-    backend.drainPendingQueries();
+    deployment.drainPendingQueries();
   }
 }

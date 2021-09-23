@@ -170,7 +170,7 @@ class RayServeReplica:
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.deployment_configS, self.deployment_tag): self.  # noqa: E501
+                (LongPollNamespace.DEPLOYMENT_CONFIGS, self.deployment_tag): self.  # noqa: E501
                 _update_deployment_configs,
             },
             call_in_event_loop=self.loop,

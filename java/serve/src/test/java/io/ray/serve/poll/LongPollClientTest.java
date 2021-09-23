@@ -10,7 +10,7 @@ public class LongPollClientTest {
   @Test
   public void test() throws Throwable {
 
-    KeyType keyType = new KeyType(LongPollNamespace.deployment_configS, "DeploymentTag");
+    KeyType keyType = new KeyType(LongPollNamespace.DEPLOYMENT_CONFIGS, "deploymentTag");
     int[] a = new int[] {0};
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(keyType, (object) -> a[0] = (Integer) object);

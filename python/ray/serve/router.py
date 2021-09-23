@@ -201,7 +201,7 @@ class Router:
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.deployment_configS, backend_tag): self.
+                (LongPollNamespace.DEPLOYMENT_CONFIGS, backend_tag): self.
                 _replica_set.set_max_concurrent_queries,
                 (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
                 _replica_set.update_worker_replicas,

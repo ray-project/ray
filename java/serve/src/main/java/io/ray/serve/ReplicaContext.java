@@ -3,7 +3,7 @@ package io.ray.serve;
 /** Stores data for Serve API calls from within the user's backend code. */
 public class ReplicaContext {
 
-  private String DeploymentTag;
+  private String deploymentTag;
 
   private String replicaTag;
 
@@ -12,8 +12,8 @@ public class ReplicaContext {
   private Object servableObject;
 
   public ReplicaContext(
-      String DeploymentTag, String replicaTag, String controllerName, Object servableObject) {
-    this.DeploymentTag = DeploymentTag;
+      String deploymentTag, String replicaTag, String controllerName, Object servableObject) {
+    this.deploymentTag = deploymentTag;
     this.replicaTag = replicaTag;
     this.internalControllerName = controllerName;
     this.servableObject = servableObject;
@@ -23,8 +23,8 @@ public class ReplicaContext {
     return DeploymentTag;
   }
 
-  public void setDeploymentTag(String DeploymentTag) {
-    this.DeploymentTag = DeploymentTag;
+  public void setDeploymentTag(String deploymentTag) {
+    this.deploymentTag = deploymentTag;
   }
 
   public String getReplicaTag() {

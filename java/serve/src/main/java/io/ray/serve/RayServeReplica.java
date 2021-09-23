@@ -31,7 +31,7 @@ public class RayServeReplica {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayServeReplica.class);
 
-  private String DeploymentTag;
+  private String deploymentTag;
 
   private String replicaTag;
 
@@ -56,16 +56,16 @@ public class RayServeReplica {
   private LongPollClient longPollClient;
 
   public RayServeReplica(
-      Object callable, DeploymentConfig DeploymentConfig, BaseActorHandle actorHandle) {
-    this.DeploymentTag = Serve.getReplicaContext().getDeploymentTag();
+      Object callable, DeploymentConfig deploymentConfig, BaseActorHandle actorHandle) {
+    this.deploymentTag = Serve.getReplicaContext().getDeploymentTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
-    this.config = DeploymentConfig;
-    this.reconfigure(ServeProtoUtil.parseUserConfig(DeploymentConfig));
+    this.config = deploymentConfig;
+    this.reconfigure(ServeProtoUtil.parseUserConfig(deploymentConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.DEPLOYMENT_CONFIGS, DeploymentTag),
+        new KeyType(LongPollNamespace.DEPLOYMENT_CONFIGS, deploymentTag),
         newConfig -> updateDeploymentConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
@@ -83,7 +83,7 @@ public class RayServeReplica {
             .name("serve_backend_request_counter")
             .description("The number of queries that have been processed in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
             .register();
 
     errorCounter =
@@ -91,7 +91,7 @@ public class RayServeReplica {
             .name("serve_backend_error_counter")
             .description("The number of exceptions that have occurred in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
             .register();
 
     restartCounter =
@@ -99,7 +99,7 @@ public class RayServeReplica {
             .name("serve_backend_replica_starts")
             .description("The number of times this replica has been restarted due to failure.")
             .unit("")
-            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
             .register();
 
     processingLatencyTracker =
@@ -108,7 +108,7 @@ public class RayServeReplica {
             .description("The latency for queries to be processed.")
             .unit("")
             .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
-            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
             .register();
 
     numProcessingItems =
@@ -116,7 +116,7 @@ public class RayServeReplica {
             .name("serve_replica_processing_queries")
             .description("The current number of queries being processed.")
             .unit("")
-            .tags(ImmutableMap.of("backend", DeploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
             .register();
 
     metricsRegistered = true;
@@ -249,12 +249,12 @@ public class RayServeReplica {
       throw new RayServeException(
           LogUtil.format(
               "user_config specified but backend {} missing {} method",
-              DeploymentTag,
+              deploymentTag,
               Constants.BACKEND_RECONFIGURE_METHOD));
     } catch (Throwable e) {
       throw new RayServeException(
           LogUtil.format(
-              "Backend {} failed to reconfigure user_config {}", DeploymentTag, userConfig),
+              "Backend {} failed to reconfigure user_config {}", deploymentTag, userConfig),
           e);
     }
   }
