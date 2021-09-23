@@ -314,6 +314,9 @@ class ThreadPrivate {
 
 class ExponentialBackOff {
  public:
+  ExponentialBackOff() = default;
+  ExponentialBackOff(const ExponentialBackOff&) = default;
+  ExponentialBackOff(ExponentialBackOff&&) = default;
   ExponentialBackOff(double initial_value,
                      double multiplier,
                      double max_value = 0.0)
@@ -335,6 +338,7 @@ class ExponentialBackOff {
   void Reset() {
     curr_value_ = initial_value_;
   }
+
  private:
   double curr_value_;
   double initial_value_;

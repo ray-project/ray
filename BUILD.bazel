@@ -553,6 +553,7 @@ cc_library(
         ":pubsub_lib",
         ":raylet_client_lib",
         ":worker_rpc",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
