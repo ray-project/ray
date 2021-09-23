@@ -185,31 +185,49 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy_mapping_fn=None,
             num_envs=1,
         )
-        # Add the next action to the view reqs of the policy.
+        # Add the next action (a') and 2nd next action (a'') to the view
+        # requirements of the policy.
         # This should be visible then in postprocessing and train batches.
         # Switch off for action computations (can't be there as we don't know
-        # the next action already at action computation time).
+        # the next actions already at action computation time).
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "next_actions"] = ViewRequirement(
                 SampleBatch.ACTIONS,
                 shift=1,
                 space=action_space,
                 used_for_compute_actions=False)
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
+            "2nd_next_actions"] = ViewRequirement(
+                SampleBatch.ACTIONS,
+                shift=2,
+                space=action_space,
+                used_for_compute_actions=False)
+
         # Make sure, we have DONEs as well.
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"] = ViewRequirement()
         batch = rollout_worker_w_api.sample()
         self.assertTrue("next_actions" in batch)
+        self.assertTrue("2nd_next_actions" in batch)
         expected_a_ = None  # expected next action
+        expected_a__ = None  # expected 2nd next action
         for i in range(len(batch["actions"])):
-            a, d, a_ = batch["actions"][i], batch["dones"][i], \
-                       batch["next_actions"][i]
-            if not d and expected_a_ is not None:
-                check(a, expected_a_)
-            elif d:
+            a, d, a_, a__ = \
+                batch["actions"][i], batch["dones"][i], \
+                batch["next_actions"][i], batch["2nd_next_actions"][i]
+            # Episode done: next action and 2nd next action should be 0.
+            if d:
                 check(a_, 0)
+                check(a__, 0)
                 expected_a_ = None
+                expected_a__ = None
                 continue
+            # Episode is not done and we have an expected next-a.
+            if expected_a_ is not None:
+                check(a, expected_a_)
+            if expected_a__ is not None:
+                check(a_, expected_a__)
+            expected_a__ = a__
             expected_a_ = a_
 
     def test_traj_view_lstm_functionality(self):
