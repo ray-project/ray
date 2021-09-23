@@ -367,6 +367,9 @@ message DataRequest {
     PrepRuntimeEnvRequest prep_runtime_env = 7;
     ConnectionCleanupRequest connection_cleanup = 8;
     AcknowledgeRequest acknowledge = 9;
+    ClientTask task = 10;
+    TerminateRequest terminate = 11;
+    ClientListNamedActorsRequest list_named_actors = 12;
   }
 }
 
@@ -381,7 +384,13 @@ message DataResponse {
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
     ConnectionCleanupResponse connection_cleanup = 8;
+    ClientTaskTicket task_ticket = 10;
+    TerminateResponse terminate = 11;
+    ClientListNamedActorsResponse list_named_actors = 12;
   }
+  // tag 9 is skipped, since there is no AcknowledgeResponse
+  reserved 9;
+  reserved "acknowledge";
 }
 
 service RayletDataStreamer {

@@ -167,8 +167,20 @@ cdef class ClientObjectRef(ObjectRef):
             # call_release in this case, since the client should have already
             # disconnected at this point.
             return
-        if client.ray.is_connected() and not self.data.IsNil():
-            client.ray.call_release(self.id)
+        if client.ray.is_connected():
+            try:
+                self._wait_for_id()
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception in ObjectRef is ignored in destructor. "
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
+            if not self.data.IsNil():
+                client.ray.call_release(self.id)
 
     cdef CObjectID native(self):
         self._wait_for_id()
@@ -249,9 +261,9 @@ cdef class ClientObjectRef(ObjectRef):
         self.data = CObjectID.FromBinary(<c_string>id)
         client.ray.call_retain(id)
 
-    cdef inline _wait_for_id(self):
+    cdef inline _wait_for_id(self, timeout=None):
         if self._id_future:
             with self._mutex:
                 if self._id_future:
-                    self._set_id(self._id_future.result())
+                    self._set_id(self._id_future.result(timeout=timeout))
                     self._id_future = None
