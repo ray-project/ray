@@ -11,8 +11,10 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
+from concurrent.futures import Future
 import tempfile
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import (Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING,
+                    Union)
 
 import grpc
 
@@ -53,10 +55,6 @@ MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
 MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
-
-# If the number of tasks scheduled on the client side since the connection
-# began exceeds this value, a warning should be raised
-TASK_WARNING_THRESHOLD = 1000
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -139,9 +137,7 @@ class Worker:
 
         self.closed = False
 
-        # Track these values to raise a warning if many tasks are being
-        # scheduled
-        self.total_num_tasks_scheduled = 0
+        # Track this value to raise a warning if a lot of data are transferred.
         self.total_outbound_message_size_bytes = 0
 
         # Used to create unique IDs for RPCs to the RayletServicer
@@ -373,17 +369,17 @@ class Worker:
         req = ray_client_pb2.GetRequest(
             ids=[r.id for r in ref], timeout=timeout)
         try:
-            data = self.data_client.GetObject(req)
+            resp = self._call_stub("GetObject", req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
-        if not data.valid:
+        if not resp.valid:
             try:
-                err = cloudpickle.loads(data.error)
+                err = cloudpickle.loads(resp.error)
             except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(data.error))
+                logger.exception("Failed to deserialize {}".format(resp.error))
                 raise
             raise err
-        return loads_from_server(data.data)
+        return loads_from_server(resp.data)
 
     def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
@@ -458,7 +454,7 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
+    def call_remote(self, instance, *args, **kwargs) -> List[Future]:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
@@ -468,38 +464,47 @@ class Worker:
         return self._call_schedule_for_task(task, instance._num_returns())
 
     def _call_schedule_for_task(self, task: ray_client_pb2.ClientTask,
-                                num_returns: int) -> List[bytes]:
+                                num_returns: int) -> List[Future]:
         logger.debug("Scheduling %s" % task)
         task.client_id = self._client_id
-        metadata = self._add_ids_to_metadata(self.metadata)
         if num_returns is None:
             num_returns = 1
 
-        try:
-            ticket = self._call_stub("Schedule", task, metadata=metadata)
-        except grpc.RpcError as e:
-            raise decode_exception(e)
+        id_futures = [Future() for _ in range(num_returns)]
 
-        if not ticket.valid:
-            try:
-                raise cloudpickle.loads(ticket.error)
-            except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(
-                    ticket.error))
-                raise
-        self.total_num_tasks_scheduled += 1
+        def populate_ids(
+                resp: Union[ray_client_pb2.DataResponse, Exception]) -> None:
+            if isinstance(resp, Exception):
+                if isinstance(resp, grpc.RpcError):
+                    resp = decode_exception(resp)
+                for future in id_futures:
+                    future.set_exception(resp)
+                return
+
+            ticket = resp.task_ticket
+            if not ticket.valid:
+                try:
+                    ex = cloudpickle.loads(ticket.error)
+                except (pickle.UnpicklingError, TypeError) as e_new:
+                    ex = e_new
+                for future in id_futures:
+                    future.set_exception(ex)
+                return
+
+            if len(ticket.return_ids) != num_returns:
+                exc = ValueError(
+                    f"Expected {num_returns} returns but received "
+                    f"{len(ticket.return_ids)}")
+                for future, raw_id in zip(id_futures, ticket.return_ids):
+                    future.set_exception(exc)
+                return
+
+            for future, raw_id in zip(id_futures, ticket.return_ids):
+                future.set_result(raw_id)
+
+        self.data_client.Schedule(task, populate_ids)
+
         self.total_outbound_message_size_bytes += task.ByteSize()
-        if self.total_num_tasks_scheduled > TASK_WARNING_THRESHOLD and \
-                log_once("client_communication_overhead_warning"):
-            warnings.warn(
-                f"More than {TASK_WARNING_THRESHOLD} remote tasks have been "
-                "scheduled. This can be slow on Ray Client due to "
-                "communication overhead over the network. If you're running "
-                "many fine-grained tasks, consider running them in a single "
-                "remote function. See the section on \"Too fine-grained "
-                "tasks\" in the Ray Design Patterns document for more "
-                f"details: {DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK}",
-                UserWarning)
         if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD \
                 and log_once("client_communication_overhead_warning"):
             warnings.warn(
@@ -516,10 +521,7 @@ class Worker:
                 "unserializable object\" section of the Ray Design Patterns "
                 "document, available here: "
                 f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}", UserWarning)
-        if num_returns != len(ticket.return_ids):
-            raise TypeError("Unexpected number of returned values. Expected "
-                            f"{num_returns} actual {ticket.return_ids}")
-        return ticket.return_ids
+        return id_futures
 
     def call_release(self, id: bytes) -> None:
         if self.closed:
@@ -555,9 +557,15 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
-        ids = self._call_schedule_for_task(task, num_returns=1)
-        assert len(ids) == 1
-        return ClientActorHandle(ClientActorRef(ids[0]))
+        futures = self._call_schedule_for_task(task, 1)
+        assert len(futures) == 1
+        handle = ClientActorHandle(ClientActorRef(futures[0]))
+        # `actor_ref.is_nil()` waits until the underlying ID is resolved.
+        # This is needed because `get_actor` is often used to check the
+        # existence of an actor.
+        if handle.actor_ref.is_nil():
+            raise ValueError(f"ActorID for {name} is empty")
+        return handle
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
@@ -567,11 +575,10 @@ class Worker:
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
+        term = ray_client_pb2.TerminateRequest(actor=term_actor)
+        term.client_id = self._client_id
         try:
-            term = ray_client_pb2.TerminateRequest(actor=term_actor)
-            term.client_id = self._client_id
-            metadata = self._add_ids_to_metadata(self.metadata)
-            self._call_stub("Terminate", term, metadata=metadata)
+            self.data_client.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
@@ -585,19 +592,18 @@ class Worker:
         term_object.id = obj.id
         term_object.force = force
         term_object.recursive = recursive
+        term = ray_client_pb2.TerminateRequest(task_object=term_object)
+        term.client_id = self._client_id
         try:
-            term = ray_client_pb2.TerminateRequest(task_object=term_object)
-            term.client_id = self._client_id
-            metadata = self._add_ids_to_metadata(self.metadata)
-            self._call_stub("Terminate", term, metadata=metadata)
+            self.data_client.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e)
 
     def get_cluster_info(self,
-                         type: ray_client_pb2.ClusterInfoType.TypeEnum,
+                         req_type: ray_client_pb2.ClusterInfoType.TypeEnum,
                          timeout: Optional[float] = None):
         req = ray_client_pb2.ClusterInfoRequest()
-        req.type = type
+        req.type = req_type
         resp = self.server.ClusterInfo(
             req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
@@ -638,9 +644,7 @@ class Worker:
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(
             all_namespaces=all_namespaces)
-        return json.loads(
-            self._call_stub("ListNamedActors", req,
-                            metadata=self.metadata).actors_json)
+        return json.loads(self.data_client.ListNamedActors(req).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:

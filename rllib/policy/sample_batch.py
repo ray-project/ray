@@ -688,9 +688,6 @@ class SampleBatch(dict):
         if isinstance(key, slice):
             return self._slice(key)
 
-        if not hasattr(self, key) and key in self:
-            self.accessed_keys.add(key)
-
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":
             if log_once("SampleBatch['is_training']"):
@@ -699,6 +696,9 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
+
+        if not hasattr(self, key) and key in self:
+            self.accessed_keys.add(key)
 
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
@@ -719,6 +719,16 @@ class SampleBatch(dict):
         # `added_keys` and first item is already set).
         if not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
+            return
+
+        # Backward compatibility for when "input-dicts" were used.
+        if key == "is_training":
+            if log_once("SampleBatch['is_training']"):
+                deprecation_warning(
+                    old="SampleBatch['is_training']",
+                    new="SampleBatch.is_training",
+                    error=False)
+            self.is_training = item
             return
 
         if key not in self:

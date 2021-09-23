@@ -1,6 +1,5 @@
 import itertools
 import math
-import os
 from typing import TypeVar, List, Optional, Dict, Any
 
 import numpy as np
@@ -11,40 +10,37 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
 
-def simple_shuffle(input_blocks: BlockList[T],
-                   output_num_blocks: int,
-                   *,
-                   random_shuffle: bool = False,
-                   random_seed: Optional[int] = None,
-                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
-                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None
-                   ) -> BlockList[T]:
-    # Check for spread resource labels in environment variable, and use
-    # the given labels for round-robin resource-based scheduling.
-    shuffle_spread_custom_resource_labels = os.getenv(
-        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS", None)
-    if shuffle_spread_custom_resource_labels is not None:
-        shuffle_spread_custom_resource_labels = (
-            shuffle_spread_custom_resource_labels.split(","))
-        round_robin_resource_provider = itertools.cycle(
-            map(lambda resource: {resource: 0.001},
-                shuffle_spread_custom_resource_labels))
-    else:
-        # If no round-robin resource provider given, yield an empty
-        # dictionary.
-        round_robin_resource_provider = itertools.repeat({})
-    # Create separate resource iterators for the map and reduce stages.
-    map_resource_iter, reduce_resource_iter = itertools.tee(
-        round_robin_resource_provider, 2)
+def simple_shuffle(
+        input_blocks: BlockList[T],
+        output_num_blocks: int,
+        *,
+        random_shuffle: bool = False,
+        random_seed: Optional[int] = None,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        _spread_resource_prefix: Optional[str] = None) -> BlockList[T]:
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
         reduce_ray_remote_args = {}
     input_num_blocks = len(input_blocks)
+    if _spread_resource_prefix is not None:
+        # Use given spread resource prefix for round-robin resource-based
+        # scheduling.
+        nodes = ray.nodes()
+        map_resource_iter = _get_spread_resources_iter(
+            nodes, _spread_resource_prefix, map_ray_remote_args)
+        reduce_resource_iter = _get_spread_resources_iter(
+            nodes, _spread_resource_prefix, reduce_ray_remote_args)
+    else:
+        # If no spread resource prefix given, yield an empty dictionary.
+        map_resource_iter, reduce_resource_iter = itertools.tee(
+            itertools.repeat({}), 2)
 
     shuffle_map = cached_remote_fn(_shuffle_map)
     shuffle_reduce = cached_remote_fn(_shuffle_reduce)

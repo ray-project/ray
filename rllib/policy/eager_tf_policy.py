@@ -20,7 +20,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -324,7 +324,8 @@ def build_eager_tf_policy(
                     optimizers)
             # TODO: (sven) Allow tf policy to have more than 1 optimizer.
             #  Just like torch Policy does.
-            self._optimizer = optimizers[0] if optimizers else None
+            self._optimizer: LocalOptimizer = \
+                optimizers[0] if optimizers else None
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -420,8 +421,6 @@ def build_eager_tf_policy(
                             **kwargs):
 
             self._is_training = False
-            self._is_recurrent = \
-                state_batches is not None and state_batches != []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -474,6 +473,8 @@ def build_eager_tf_policy(
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
+            self._is_recurrent = state_batches is not None and \
+                state_batches != []
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
