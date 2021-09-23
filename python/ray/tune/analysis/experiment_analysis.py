@@ -127,7 +127,7 @@ class Analysis:
         Args:
             metric (str): Key for trial info to order on.
                 If None, uses last result.
-            mode (None}str): One of [None, "min", "max"].
+            mode (None|str): One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
