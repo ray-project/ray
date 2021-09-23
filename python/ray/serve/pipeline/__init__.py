@@ -1,5 +1,6 @@
 import ray
 
+
 class Sequential:
     def __init__(self, *stages):
         for stage in stages:

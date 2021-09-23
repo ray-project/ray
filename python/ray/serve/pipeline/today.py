@@ -2,7 +2,6 @@ from typing import Dict
 
 import ray
 from ray import serve
-
 """
 This iteration uses the existing APIs in Ray Serve.
 
@@ -16,9 +15,11 @@ Problems:
 
 serve.start()
 
+
 @serve.deployment(route_prefix=None, version="frozen")
 def preprocess(*args):
     return "preprocess"
+
 
 @serve.deployment(route_prefix=None, version="frozen")
 class Model1:
@@ -28,6 +29,7 @@ class Model1:
     def __call__(self, prev: str):
         return prev + f"|Model1:{self._uri}"
 
+
 @serve.deployment(route_prefix=None, version="frozen")
 class Model2:
     def reconfigure(self, uri: str):
@@ -35,6 +37,7 @@ class Model2:
 
     def __call__(self, prev: str):
         return prev + f"|Model2:{self._uri}"
+
 
 @serve.deployment(route_prefix="/pipeline", version="1")
 class MyDriverDeployment:
@@ -48,6 +51,7 @@ class MyDriverDeployment:
         ref2 = await self.model_1_handle.remote(ref1)
         ref3 = await self.model_2_handle.remote(ref2)
         return await ref3
+
 
 # Deploy and get handle.
 preprocess.deploy()

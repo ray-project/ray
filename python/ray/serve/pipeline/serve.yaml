@@ -1,0 +1,14 @@
+runtime_env:
+  - working_dir: "git://branch"
+deployments:
+  - classpath: "my_module.MyClass"
+  - num_replicas: 100
+  - child_deployments:
+    - classpath: "my_module.MyOtherClass"
+      num_replicas: 10
+      runtime_env:
+        - working_dir: "git://branch"
+    - classpath: "my_module.MyOtherClass"
+      num_replicas: 10
+      runtime_env:
+        - working_dir: "git://branch"

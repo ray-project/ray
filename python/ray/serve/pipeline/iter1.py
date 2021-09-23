@@ -3,7 +3,6 @@ from typing import Dict
 import ray
 from ray import serve
 from ray.serve import pipeline
-
 """
 This iteration uses the existing APIs in Ray Serve for *deployment*, but adds
 a convenience library for orchestrating the dataflow.
@@ -17,9 +16,11 @@ Problems:
 
 serve.start()
 
+
 @serve.deployment(route_prefix=None, version="frozen")
 def preprocess(*args):
     return "preprocess"
+
 
 @serve.deployment(route_prefix=None, version="frozen")
 class Model1:
@@ -29,6 +30,7 @@ class Model1:
     def __call__(self, prev: str):
         return prev + f"|Model1:{self._uri}"
 
+
 @serve.deployment(route_prefix=None, version="frozen")
 class Model2:
     def reconfigure(self, uri: str):
@@ -37,6 +39,7 @@ class Model2:
     def __call__(self, prev: str):
         return prev + f"|Model2:{self._uri}"
 
+
 @serve.deployment(route_prefix="/pipeline", version="1")
 class MyDriverDeployment:
     def __init__(self):
@@ -44,6 +47,7 @@ class MyDriverDeployment:
 
     async def __call__(self, *args):
         return await self._pipeline.remote()
+
 
 # Deploy and get handle.
 preprocess.deploy()

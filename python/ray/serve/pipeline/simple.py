@@ -42,14 +42,21 @@ class Model2:
 
 @serve.deployment(route_prefix="/pipeline")
 class MyDriverDeployment:
-    def __init__(self, pipeline_handle):
+    def __init__(self, handles=None):
+        self._pipeline = pipeline.Sequential(*handles)
         self._pipeline_handle = pipeline_handle
 
     async def __call__(self, *args):
         return await self._pipeline_handle.remote()
 
 
-# Deploy and get handle.
+MyDriverDeployment.options(
+        version="new_version",
+        child_deployments=[preprocess.options(num_replicas=5), Model1, Model2}],
+).deploy()
+
+serve.get_deployment("MyDriverDeployment").child_deployments[0].num_replicas
+
 with serve.DeploymentGroup("my_pipeline", version="frozen"):
     preprocess.deploy()
     Model1.options(user_config="uri1.0").deploy()
@@ -66,20 +73,3 @@ with serve.DeploymentGroup("my_pipeline", version="frozen"):
 handle = MyDriverDeployment.get_handle()
 output1 = ray.get(handle.remote())
 assert output1 == "preprocess|Model1:uri1.0|Model2:uri2.0", output1
-
-# Update URIs for model1 and model2:
-with serve.DeploymentGroup("my_pipeline", version="frozen"):
-    preprocess.deploy()
-    Model1.options(user_config="uri1.1").deploy()
-    Model2.options(user_config="uri2.1").deploy()
-
-    pipeline = pipeline.Sequential(
-        preprocess,
-        Model1,
-        Model2,
-    )
-
-    MyDriverDeployment.deploy(pipeline)
-
-output2 = ray.get(handle.remote())
-assert output2 == "preprocess|Model1:uri1.1|Model2:uri2.1", output2

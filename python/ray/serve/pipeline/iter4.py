@@ -68,18 +68,21 @@ output1 = ray.get(handle.remote())
 assert output1 == "preprocess|Model1:uri1.0|Model2:uri2.0", output1
 
 # Update URIs for model1 and model2:
-with serve.DeploymentGroup("my_pipeline", version="frozen"):
-    preprocess.deploy()
-    Model1.options(user_config="uri1.1").deploy()
-    Model2.options(user_config="uri2.1").deploy()
+group = serve.DeploymentGroup("my_pipeline", version="frozen")
 
-    pipeline = pipeline.Sequential(
-        preprocess,
-        Model1,
-        Model2,
-    )
+group.add(preprocess)
+group.add(Model1.options(user_config="uri1.1"))
+group.add(Model2.options(user_config="uri2.1"))
 
-    MyDriverDeployment.deploy(pipeline)
+pipeline = pipeline.Sequential(
+    preprocess,
+    Model1,
+    Model2,
+)
+
+group.add(MyDriverDeployment.options(init_args=(pipeline,)))
+
+group.deploy()
 
 output2 = ray.get(handle.remote())
 assert output2 == "preprocess|Model1:uri1.1|Model2:uri2.1", output2
