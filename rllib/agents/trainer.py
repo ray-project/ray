@@ -1486,6 +1486,7 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @classmethod
+    @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
