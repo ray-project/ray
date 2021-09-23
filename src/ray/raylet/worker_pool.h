@@ -479,11 +479,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
-    /// Reverse index from RuntimeEnvHash (which identifies a starting worker)
-    /// to a task that can only run on that dedicated worker. This is used for
-    /// actor creation tasks that require dynamic worker creation options,
-    /// while the worker is still starting.
-    absl::flat_hash_map<RuntimeEnvHash, TaskID> starting_dedicated_workers_to_tasks;
     /// A map from runtime env hash to tasks that require that runtime env.
     /// The runtime envs for tasks in this map have been successfully created,
     /// and the tasks are now waiting for a worker to start. Note that this map

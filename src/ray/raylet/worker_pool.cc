@@ -582,7 +582,9 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   } else {
     // All task/actor workers should have a runtime env hash computed from
     // their job ID and (optionally) custom runtime environment.
-    RAY_CHECK(worker->GetRuntimeEnvHash());
+    RAY_CHECK(worker->GetRuntimeEnvHash())
+        << "Received registration from a worker that the raylet did not start, PID "
+        << shim_process.GetId();
   }
 
   // This is a workaround to finish driver registration after all initial workers are
@@ -780,14 +782,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (waiting_tasks.empty()) {
     state.waiting_tasks_by_env_hash.erase(runtime_env_hash);
   } else {
-    if (state.starting_workers_by_env_hash.count(runtime_env_hash) == 0) {
-      // Still have tasks queued, but no other worker is starting. Trigger the
-      // error so the PopWorker client tries again.
-      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
-      // startup concurrency maxed out or job not started.
-      TriggerAsyncCallbacksForFailedWorkerStart(state, runtime_env_hash,
-                                                PopWorkerStatus::WorkerTimedOut);
-    }
+    // We still have tasks queued. If there are no other workers starting,
+    // trigger an error so the PopWorker client tries again.
+    // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+    // startup concurrency maxed out or job not started.
+    TriggerAsyncCallbacksForFailedWorkerStart(state, runtime_env_hash,
+                                              PopWorkerStatus::WorkerTimedOut);
   }
 
   if (!worker_used) {
@@ -1334,6 +1334,14 @@ std::string WorkerPool::DebugString() const {
            << entry.second.restore_io_worker_state.pending_io_tasks.size();
     result << "\n- num util functions queued: "
            << entry.second.util_io_worker_state.pending_io_tasks.size();
+    result << "\n- num starting workers (runtime env hash: num workers): ";
+    for (const auto &pair : entry.second.starting_workers_by_env_hash) {
+      result << "\n  - " << pair.first << ": " << pair.second;
+    }
+    result << "\n- num tasks waiting for workers (runtime env hash: num tasks): ";
+    for (const auto &pair : entry.second.waiting_tasks_by_env_hash) {
+      result << "\n  - " << pair.first << ": " << pair.second;
+    }
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
