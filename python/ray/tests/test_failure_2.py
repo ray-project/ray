@@ -13,7 +13,6 @@ import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
-from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
