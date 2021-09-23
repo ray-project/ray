@@ -258,7 +258,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
         rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
-  ~MockWorkerClient() {
+  ~MockWorkerClient() override {
     if (!failed_) {
       AssertNoLeaks();
     }

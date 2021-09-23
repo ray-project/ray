@@ -20,7 +20,7 @@
                  << " submitted_count: " << it->second.submitted_task_ref_count          \
                  << " contained_in_owned: " << it->second.contained_in_owned.size()      \
                  << " contained_in_borrowed: "                                           \
-                 << it->second.contained_in_borrowed_ids.size()                          \
+                 << (it)->second.contained_in_borrowed_ids.size()                        \
                  << " contains: " << it->second.contains.size()                          \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
