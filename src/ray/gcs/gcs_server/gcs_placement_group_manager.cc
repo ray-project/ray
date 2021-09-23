@@ -255,7 +255,6 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
-  exp_backoff_.Reset();
   // Mark the scheduling done firstly.
   MarkSchedulingDone();
   auto placement_group_id = placement_group->GetPlacementGroupID();
@@ -401,7 +400,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   }
 
   // Remove a placement group from a pending list if exists.
-  RemoveFromPendingQueue(pg_id);
+  RemoveFromPendingQueue(placement_group_id);
 
   // Remove a placement group from infeasible queue if exists.
   auto pending_it = std::find_if(
