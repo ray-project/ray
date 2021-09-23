@@ -65,7 +65,7 @@ tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "7.0.0"
+  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
 else
     echo "WARNING: clang-format is not installed!"
 fi
