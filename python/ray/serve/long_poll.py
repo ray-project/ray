@@ -16,7 +16,7 @@ class LongPollNamespace(Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
     REPLICA_HANDLES = auto()
-    deployment_configS = auto()
+    DEPLOYMENT_CONFIGS = auto()
     ROUTE_TABLE = auto()
 
 

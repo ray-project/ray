@@ -6,7 +6,7 @@ public enum LongPollNamespace {
 
   TRAFFIC_POLICIES,
 
-  deployment_configS,
+  DEPLOYMENT_CONFIGS,
 
   ROUTE_TABLE
 }

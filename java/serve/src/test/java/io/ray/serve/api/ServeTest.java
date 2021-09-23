@@ -23,15 +23,15 @@ public class ServeTest {
     }
 
     // Test context setting and getting.
-    String DeploymentTag = "DeploymentTag";
+    String deploymentTag = "deploymentTag";
     String replicaTag = "replicaTag";
     String controllerName = "controllerName";
     Object servableObject = new Object();
-    Serve.setInternalReplicaContext(DeploymentTag, replicaTag, controllerName, servableObject);
+    Serve.setInternalReplicaContext(deploymentTag, replicaTag, controllerName, servableObject);
 
     replicaContext = Serve.getReplicaContext();
     Assert.assertNotNull(replicaContext, "no replica context");
-    Assert.assertEquals(replicaContext.getDeploymentTag(), DeploymentTag);
+    Assert.assertEquals(replicaContext.getDeploymentTag(), deploymentTag);
     Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
     Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
 

@@ -65,7 +65,7 @@ public class RayServeReplica {
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.deployment_configS, DeploymentTag),
+        new KeyType(LongPollNamespace.DEPLOYMENT_CONFIGS, DeploymentTag),
         newConfig -> updateDeploymentConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();

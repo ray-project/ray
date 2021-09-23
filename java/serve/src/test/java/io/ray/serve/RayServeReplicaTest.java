@@ -23,7 +23,7 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String DeploymentTag = "b_tag";
+      String DeploymentTag = "d_tag";
       String replicaTag = "r_tag";
 
       ActorHandle<ReplicaContext> controllerHandle =
