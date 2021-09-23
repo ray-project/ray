@@ -49,6 +49,7 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
                 SampleBatch.DONES: ViewRequirement(),
+                SampleBatch.UNROLL_ID: ViewRequirement(),
             },
             **self.model.view_requirements)
 
@@ -110,7 +111,9 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
                 # Repeat the incoming state every n time steps (usually max seq
                 # len).
                 batch_repeat_value=self.config["model"]["max_seq_len"],
-                space=self.state_space)
+                space=self.state_space),
+            "state_out_0": ViewRequirement(
+                space=self.state_space, used_for_compute_actions=False),
         }
 
         self.view_requirements = dict(super()._get_default_view_requirements(),
