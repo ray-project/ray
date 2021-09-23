@@ -639,6 +639,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
     ray.get(results)
 
+
 def test_resources_with_avx2():
     ray.init()
 
@@ -646,11 +647,13 @@ def test_resources_with_avx2():
     class ResourceActor():
         def check_avx2(self):
             cpu_info = get_cpu_info()
-            return 'avx2' in cpu_info["flags"]
+            enable_avx2 = os.getenv("ENABLE_AVX2", "false")
+            return 'avx2' in cpu_info["flags"] and (enable_avx2 == "true")
 
     driver_cpu_info = get_cpu_info()
+    enable_avx2 = os.getenv("ENABLE_AVX2", "false")
     print(driver_cpu_info)
-    if 'avx2' in driver_cpu_info["flags"]:
+    if 'avx2' in driver_cpu_info["flags"] and enable_avx2 == "true":
         print("This actor has 'avx2' instruction set.")
         actor = ResourceActor.options(resources={"avx2": 1.0}).remote()
         result = actor.check_avx2.remote()
