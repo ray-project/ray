@@ -659,7 +659,9 @@ class Dataset(Generic[T]):
         """Zip this dataset with the elements of another.
 
         The datasets must have identical num rows, block types, and block sizes
-        (e.g., one was produced from a ``.map()`` of another).
+        (e.g., one was produced from a ``.map()`` of another). For Arrow
+        blocks, the schema will be concatenated, and any duplicate column
+        names disambiguated with _1, _2, etc. suffixes.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -667,10 +669,9 @@ class Dataset(Generic[T]):
             other: The dataset to zip with on the right hand side.
 
         Examples:
-            >>> ds1 = ray.data.range(5)
-            >>> ds2 = ray.data.range(5).map(lambda x: x + 1)
-            >>> ds.take()
-            [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
+            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
 
         Returns:
             A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
@@ -681,6 +682,7 @@ class Dataset(Generic[T]):
         blocks2 = other.get_blocks()
 
         if len(blocks1) != len(blocks2):
+            # TODO(ekl) consider supporting if num_rows are equal.
             raise ValueError(
                 "Cannot zip dataset of different num blocks: {} vs {}".format(
                     len(blocks1), len(blocks2)))
