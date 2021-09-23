@@ -147,6 +147,10 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
+.. tip
+
+   Run `pip install ray[data]` to get started!
+
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
 .. code-block:: python
