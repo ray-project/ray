@@ -39,14 +39,9 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-<<<<<<< HEAD
-    std::vector<ObjectID> *return_ids, const BundleID &bundle_id,
+    const BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     int64_t depth, const std::string &serialized_runtime_env,
-=======
-    const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
->>>>>>> b5ccee6ad3bf2b4b2fdc6966ddfea965e027030d
     const std::unordered_map<std::string, std::string> &override_environment_variables,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
@@ -1672,7 +1667,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, return_ids,
+                      constrained_resources, required_resources,
                       placement_options, placement_group_capture_child_tasks,
                       debugger_breakpoint, depth, task_options.serialized_runtime_env,
                       override_environment_variables);
@@ -1734,7 +1729,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(
       builder, job_id, actor_creation_task_id, task_name,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, 1, new_resource, new_placement_resources, &return_ids,
+      function, args, 1, new_resource, new_placement_resources,
       actor_creation_options.placement_options,
       actor_creation_options.placement_group_capture_child_tasks,
       /*debugger_breakpoint=*/"", depth, actor_creation_options.serialized_runtime_env,
@@ -1922,7 +1917,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   BuildCommonTaskSpec(
       builder, actor_handle->CreationJobID(), actor_task_id, task_name,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, num_returns, task_options.resources, required_resources, return_ids,
+      function, args, num_returns, task_options.resources, required_resources,
       std::make_pair(PlacementGroupID::Nil(), -1),
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint=*/"", depth, "{}", /* serialized_runtime_env */
