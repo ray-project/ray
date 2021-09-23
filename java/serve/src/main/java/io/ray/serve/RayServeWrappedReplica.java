@@ -14,9 +14,13 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Replica class wrapping the provided class. Note that Java function is not supported now. */
 public class RayServeWrappedReplica {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayServeWrappedReplica.class);
 
   private RayServeReplica backend;
 
@@ -36,6 +40,7 @@ public class RayServeWrappedReplica {
 
     // Parse init args.
     Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
+    LOGGER.error("init Args length "+initArgs.length);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(backendDef);
@@ -44,7 +49,7 @@ public class RayServeWrappedReplica {
     // Get the controller by controllerName.
     Preconditions.checkArgument(
         StringUtils.isNotBlank(controllerName), "Must provide a valid controllerName");
-    Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
+    Optional<BaseActorHandle> optional = Ray.getGlobalActor(controllerName, "serve");
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
@@ -53,6 +58,7 @@ public class RayServeWrappedReplica {
 
     // Construct worker replica.
     backend = new RayServeReplica(callable, backendConfig, optional.get());
+    LOGGER.error("Finish init!");
   }
 
   private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)

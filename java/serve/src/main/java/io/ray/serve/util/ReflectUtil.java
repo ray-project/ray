@@ -26,7 +26,13 @@ public class ReflectUtil {
     }
     parameterTypes = new Class[parameters.length];
     for (int i = 0; i < parameters.length; i++) {
-      parameterTypes[i] = parameters[i].getClass();
+      if (parameters[i] == null) {
+        // Treat null object as generic object because
+        // null.getClass() results in NullPointerException.
+        parameterTypes[i] = Object.class;
+      } else {
+        parameterTypes[i] = parameters[i].getClass();
+      }
     }
     return parameterTypes;
   }

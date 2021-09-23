@@ -29,7 +29,7 @@ public class MessagePackSerializer {
   // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
   private static final int MESSAGE_PACK_OFFSET = 9;
 
-  // Pakcers indexed by its corresponding Java class object.
+  // Packers indexed by its corresponding Java class object.
   private static Map<Class<?>, TypePacker> packers = new HashMap<>();
   // Unpackers indexed by its corresponding MessagePack ValueType.
   private static Map<ValueType, TypeUnpacker> unpackers = new HashMap<>();

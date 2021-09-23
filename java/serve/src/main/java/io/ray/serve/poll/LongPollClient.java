@@ -68,7 +68,7 @@ public class LongPollClient {
       LOGGER.warn("LongPollClient only support Python controller now.");
       return;
     }
-    pollThread.start();
+//    pollThread.start();
   }
 
   /** Poll the update. */

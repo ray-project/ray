@@ -95,3 +95,11 @@ message RequestMetadata {
 message RequestWrapper {
   bytes body = 1;
 }
+
+message ReplicaConfig {
+  //TODO
+  string func_or_class_name = 1;
+  bytes serialized_backend_def = 2;
+  bytes serialized_init_args = 3;
+  string ray_actor_options_json = 4;
+}

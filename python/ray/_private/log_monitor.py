@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
+# Java worker groups are job id and pid
+JAVA_LOG_PATTERN = re.compile(".*java-worker-(\d+)-(\d+).log")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -152,9 +154,12 @@ class LogMonitor:
         # runtime_env setup process is logged here
         runtime_env_setup_paths = glob.glob(
             f"{self.logs_dir}/runtime_env*.log")
+        # Java worker for cross language stack
+        java_file_paths = glob.glob(f"{self.logs_dir}/java-worker*[.log]")
         total_files = 0
-        for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths + runtime_env_setup_paths):
+        for file_path in (
+                log_file_paths + raylet_err_paths + gcs_err_path +
+                monitor_log_paths + runtime_env_setup_paths + java_file_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -172,6 +177,12 @@ class LogMonitor:
                         file_path)
                     if runtime_env_job_match:
                         job_id = runtime_env_job_match.group(1)
+
+                if "java-worker" in file_path:
+                    java_worker_job_match = JAVA_LOG_PATTERN.match(file_path)
+                    if java_worker_job_match:
+                        job_id = java_worker_job_match.group(1)
+                        worker_pid = java_worker_job_match.group(2)
 
                 is_err_file = file_path.endswith("err")
 

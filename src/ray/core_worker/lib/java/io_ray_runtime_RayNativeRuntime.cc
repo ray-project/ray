@@ -279,14 +279,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
-                                                                  jstring actor_name,
-                                                                  jboolean global) {
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(
+    JNIEnv *env, jclass, jstring actor_name, jboolean global, jstring actor_namespace) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetFullName(global, native_actor_name);
 
   const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
-      full_name, /*ray_namespace=*/"");
+      full_name, /*ray_namespace=*/JavaStringToNativeString(env, actor_namespace));
   const auto status = pair.second;
   if (status.IsNotFound()) {
     return IdToJavaByteArray<ActorID>(env, ActorID::Nil());
