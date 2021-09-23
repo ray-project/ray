@@ -43,6 +43,7 @@ py_test(
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
 )
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/v2/tests directory.
 # Please keep these sorted alphabetically.
