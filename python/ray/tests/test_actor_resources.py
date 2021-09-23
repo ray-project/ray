@@ -1,4 +1,5 @@
 import collections
+import logging
 import os
 import pytest
 try:
@@ -640,7 +641,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-def test_resources_with_avx2():
+def test_resources_with_avx2(shutdown_only):
     ray.init()
 
     @ray.remote
@@ -648,18 +649,18 @@ def test_resources_with_avx2():
         def check_avx2(self):
             cpu_info = get_cpu_info()
             enable_avx2 = os.getenv("ENABLE_AVX2", "false")
-            return 'avx2' in cpu_info["flags"] and (enable_avx2 == "true")
+            return "avx2" in cpu_info["flags"] and (enable_avx2 == "true")
 
     driver_cpu_info = get_cpu_info()
     enable_avx2 = os.getenv("ENABLE_AVX2", "false")
-    print(driver_cpu_info)
-    if 'avx2' in driver_cpu_info["flags"] and enable_avx2 == "true":
-        print("This actor has 'avx2' instruction set.")
+    logging.info(driver_cpu_info)
+    if "avx2" in driver_cpu_info["flags"] and enable_avx2 == "true":
+        logging.info("This actor has 'avx2' instruction set.")
         actor = ResourceActor.options(resources={"avx2": 1.0}).remote()
         result = actor.check_avx2.remote()
         assert ray.get(result)
     else:
-        print("This actor does't have 'avx2' instruction set.")
+        logging.info("This actor does't have 'avx2' instruction set.")
         actor = ResourceActor.remote()
         result = actor.check_avx2.remote()
         assert not ray.get(result)
