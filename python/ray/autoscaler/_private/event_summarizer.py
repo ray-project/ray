@@ -7,8 +7,9 @@ class EventSummarizer:
 
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}
-        self.messages: List[str] = []
-        # Tracks TTL of messages. A message will not be re-posted once it is
+        # Messages to send in next summary batch.
+        self.messages_to_send: List[str] = []
+        # Tracks TTL of messages. A message will not be re-sent once it is
         # added here, until its TTL expires.
         self.throttled_messages: Dict[str, float] = {}
 
@@ -42,22 +43,22 @@ class EventSummarizer:
         """
         if key not in self.throttled_messages:
             self.throttled_messages[key] = time.time() + interval_s
-            self.messages.append(message)
+            self.messages_to_send.append(message)
 
     def summary(self) -> List[str]:
         """Generate the aggregated log summary of all added events."""
         out = []
         for template, quantity in self.events_by_key.items():
             out.append(template.format(quantity))
-        out.extend(self.messages)
+        out.extend(self.messages_to_send)
         return out
 
     def clear(self) -> None:
         """Clear the events added."""
         self.events_by_key.clear()
-        self.messages.clear()
+        self.messages_to_send.clear()
         # Expire any messages that have reached their TTL. This allows them
-        # to be posted again.
+        # to be sent again.
         for k, t in list(self.throttled_messages.items()):
             if time.time() > t:
                 del self.throttled_messages[k]

@@ -28,7 +28,6 @@ from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.readonly.node_provider import \
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
