@@ -165,7 +165,8 @@ def test_zip(ray_start_regular_shared):
 
 def test_zip_arrow(ray_start_regular_shared):
     ds1 = ray.data.range_arrow(5).map(lambda r: {"id": r["value"]})
-    ds2 = ray.data.range_arrow(5).map(lambda r: {"a": r["value"] + 1, "b": r["value"] + 2})
+    ds2 = ray.data.range_arrow(5).map(
+        lambda r: {"a": r["value"] + 1, "b": r["value"] + 2})
     ds = ds1.zip(ds2)
     assert "{id: int64, a: int64, b: int64}" in str(ds)
     assert ds.count() == 5
