@@ -48,13 +48,9 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-ABSL_FLAG(std::string, ray_include_dashboard, "",
-          "Boolean flag indicating whether or not to start the Ray dashboard.");
-
-ABSL_FLAG(std::string, ray_dashboard_host, "",
-          "The host to bind the dashboard server to.");
-
-ABSL_FLAG(int32_t, ray_dashboard_port, -1, "The ip address for this node.");
+ABSL_FLAG(std::string, ray_head_args, "absl::flags dummy default value",
+          "The command line args appended to the setup script of head node. Run 'ray "
+          "start --help' for details.");
 
 namespace ray {
 namespace internal {
@@ -70,21 +66,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
-  if (config.num_cpus >= 0) {
-    num_cpus = config.num_cpus;
-  }
-  if (config.num_gpus >= 0) {
-    num_gpus = config.num_gpus;
-  }
-  if (!config.resources.empty()) {
-    resources = config.resources;
-  }
-  include_dashboard = config.include_dashboard;
-  if (!config.dashboard_host.empty()) {
-    dashboard_host = config.dashboard_host;
-  }
-  if (config.dashboard_port >= 0) {
-    dashboard_port = config.dashboard_port;
+  if (!config.head_args.empty()) {
+    head_args = config.head_args;
   }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
@@ -122,16 +105,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
-    if (!FLAGS_ray_include_dashboard.CurrentValue().empty()) {
-      include_dashboard = FLAGS_ray_include_dashboard.CurrentValue() == "true" ||
-                          FLAGS_ray_include_dashboard.CurrentValue() == "1";
-    }
-    if (!FLAGS_ray_dashboard_host.CurrentValue().empty()) {
-      dashboard_host = FLAGS_ray_dashboard_host.CurrentValue();
-    }
-    auto flags_dashboard_port = absl::GetFlag<int32_t>(FLAGS_ray_dashboard_port);
-    if (flags_dashboard_port >= 0) {
-      dashboard_port = flags_dashboard_port;
+    if (FLAGS_ray_head_args.CurrentValue() != FLAGS_ray_head_args.DefaultValue()) {
+      std::vector<std::string> args =
+          absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
+      head_args.insert(head_args.end(), args.begin(), args.end());
     }
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
@@ -158,12 +135,6 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
         absolute_path.emplace_back(boost::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;
-    }
-    if (dashboard_host != "127.0.0.1" && dashboard_host != "localhost" &&
-        dashboard_host != "0.0.0.0") {
-      RAY_LOG(FATAL) << "Invaild dashboard host: " << dashboard_host
-                     << ", it should either be localhost (127.0.0.1) or 0.0.0.0 "
-                        "(available from all interfaces).";
     }
   }
 };

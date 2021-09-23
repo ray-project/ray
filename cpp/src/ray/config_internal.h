@@ -53,17 +53,7 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
-  int num_cpus = -1;
-
-  int num_gpus = -1;
-
-  std::unordered_map<std::string, int> resources;
-
-  bool include_dashboard = false;
-
-  std::string dashboard_host = "127.0.0.1";
-
-  int dashboard_port = -1;
+  std::vector<std::string> head_args = {};
 
   static ConfigInternal &Instance() {
     static ConfigInternal config;
