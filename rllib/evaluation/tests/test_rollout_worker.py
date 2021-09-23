@@ -135,8 +135,6 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_global_vars_update(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",
