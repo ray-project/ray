@@ -13,11 +13,11 @@
 // limitations under the License.
 
 #pragma once
-#include <utility>
 #include <optional>
+#include <utility>
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/btree_map.h"
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
@@ -211,8 +211,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff,
-                                      bool is_feasible);
+                                      ExponentialBackOff backoff, bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -283,7 +282,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Push a placement group to pending queue
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
                          std::optional<ExponentialBackOff> exp_backer = std::nullopt);
-  void RemoveFromPendingQueue(const PlacementGroupID& pg_id);
+  void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
@@ -333,7 +332,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.
   absl::btree_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>> pending_placement_groups_;
+                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+      pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.
   std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
@@ -372,7 +372,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
 };
 
 }  // namespace gcs

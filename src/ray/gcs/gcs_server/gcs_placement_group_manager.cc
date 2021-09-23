@@ -221,8 +221,7 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
-    std::shared_ptr<GcsPlacementGroup> placement_group,
-    ExponentialBackOff backoff,
+    std::shared_ptr<GcsPlacementGroup> placement_group, ExponentialBackOff backoff,
     bool is_feasible) {
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
@@ -297,7 +296,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
     // Nothing to schedule
-    if(iter->first > absl::GetCurrentTimeNanos()) {
+    if (iter->first > absl::GetCurrentTimeNanos()) {
       break;
     }
     auto [backoff, placement_group] = std::move(iter->second);
@@ -309,8 +308,10 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       MarkSchedulingStarted(placement_group_id);
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
           placement_group,
-          [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
-            OnPlacementGroupCreationFailed(std::move(placement_group), backoff, is_insfeasble);
+          [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
+                          bool is_insfeasble) {
+            OnPlacementGroupCreationFailed(std::move(placement_group), backoff,
+                                           is_insfeasble);
           },
           [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
             OnPlacementGroupCreationSuccess(std::move(placement_group));
@@ -572,9 +573,10 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
   }
 }
 
-void GcsPlacementGroupManager::AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg, std::optional<ExponentialBackOff> exp_backer) {
+void GcsPlacementGroupManager::AddToPendingQueue(
+    std::shared_ptr<GcsPlacementGroup> pg, std::optional<ExponentialBackOff> exp_backer) {
   auto now = absl::GetCurrentTimeNanos();
-  if(!exp_backer) {
+  if (!exp_backer) {
     exp_backer = ExponentialBackOff(
         1000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
         RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
@@ -582,17 +584,17 @@ void GcsPlacementGroupManager::AddToPendingQueue(std::shared_ptr<GcsPlacementGro
   } else {
     now += static_cast<int64_t>(exp_backer->Next());
   }
-  auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(*exp_backer, std::move(pg));
+  auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(
+      *exp_backer, std::move(pg));
   pending_placement_groups_.emplace(now, val);
 }
 
-void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID& pg_id) {
-  auto it = std::find_if(
-      pending_placement_groups_.begin(), pending_placement_groups_.end(),
-      [&pg_id](const auto& val) {
-        return val.second.second->GetPlacementGroupID() == pg_id;
-      });
-  if(it != pending_placement_groups_.end()) {
+void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg_id) {
+  auto it = std::find_if(pending_placement_groups_.begin(),
+                         pending_placement_groups_.end(), [&pg_id](const auto &val) {
+                           return val.second.second->GetPlacementGroupID() == pg_id;
+                         });
+  if (it != pending_placement_groups_.end()) {
     pending_placement_groups_.erase(it);
   }
 }
@@ -628,7 +630,7 @@ void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
   // Move all the infeasible placement groups to the pending queue so that we can
   // reschedule them.
   if (infeasible_placement_groups_.size() > 0) {
-    for(auto& pg : infeasible_placement_groups_) {
+    for (auto &pg : infeasible_placement_groups_) {
       AddToPendingQueue(std::move(pg));
     }
     infeasible_placement_groups_.clear();

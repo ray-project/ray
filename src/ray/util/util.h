@@ -315,11 +315,9 @@ class ThreadPrivate {
 class ExponentialBackOff {
  public:
   ExponentialBackOff() = default;
-  ExponentialBackOff(const ExponentialBackOff&) = default;
-  ExponentialBackOff(ExponentialBackOff&&) = default;
-  ExponentialBackOff(double initial_value,
-                     double multiplier,
-                     double max_value = 0.0)
+  ExponentialBackOff(const ExponentialBackOff &) = default;
+  ExponentialBackOff(ExponentialBackOff &&) = default;
+  ExponentialBackOff(double initial_value, double multiplier, double max_value = 0.0)
       : curr_value_(initial_value),
         initial_value_(initial_value),
         max_value_(max_value),
@@ -335,16 +333,13 @@ class ExponentialBackOff {
     return curr_value_;
   }
 
-  void Reset() {
-    curr_value_ = initial_value_;
-  }
+  void Reset() { curr_value_ = initial_value_; }
 
  private:
   double curr_value_;
   double initial_value_;
   double max_value_;
   double multiplier_;
-
 };
 
 }  // namespace ray
