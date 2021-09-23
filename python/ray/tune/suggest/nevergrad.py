@@ -270,7 +270,7 @@ class NevergradSearch(Searcher):
         if result:
             self._process_result(trial_id, result)
 
-        self._live_trial_mapping.pop(trial_id)
+        self._live_trial_mapping.pop(trial_id, None)
 
     def _process_result(self, trial_id: str, result: Dict):
         ng_trial_info = self._live_trial_mapping[trial_id]
@@ -278,7 +278,7 @@ class NevergradSearch(Searcher):
                                  self._metric_op * result[self._metric])
 
     def save(self, checkpoint_path: str):
-        trials_object = (self._nevergrad_opt, self._parameters)
+        trials_object = (self._nevergrad_opt, self._parameters, self._live_trial_mapping)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
@@ -287,6 +287,7 @@ class NevergradSearch(Searcher):
             trials_object = pickle.load(inputFile)
         self._nevergrad_opt = trials_object[0]
         self._parameters = trials_object[1]
+        self._live_trial_mapping = trials_object[2]
 
     @staticmethod
     def convert_search_space(spec: Dict) -> Parameter:
