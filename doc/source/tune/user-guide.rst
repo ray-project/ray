@@ -271,8 +271,6 @@ runtimes).
         search_alg=tune.suggest.BasicVariantGenerator(),
         num_samples=10)
 
-Setting random seeds for searchers
-""""""""""""""""""""""""""""""""""
 Some searchers use their own random states to sample new configurations.
 These searchers usually accept a ``seed`` parameter that can be passed on
 initialization. Other searchers use Numpy's ``np.random`` interface -
