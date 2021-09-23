@@ -922,14 +922,6 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers";
   }
-  auto it = object_id_refs_.find(object_id);
-  if (it != object_id_refs_.end()) {
-    // We should only have called this callback once our local ref count for
-    // the object was zero. Also, we should have stripped all distributed ref
-    // count information and returned it to the owner. Therefore, it should be
-    // okay to delete the object, if it wasn't already deleted.
-    RAY_CHECK(it->second.OutOfScope(lineage_pinning_enabled_));
-  }
 
   // Send the owner information about any new borrowers.
   rpc::PubMessage pub_message;
