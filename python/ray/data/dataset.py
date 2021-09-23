@@ -323,11 +323,13 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def random_shuffle(self,
-                       *,
-                       seed: Optional[int] = None,
-                       num_blocks: Optional[int] = None,
-                       _move: Optional[bool] = False) -> "Dataset[T]":
+    def random_shuffle(
+            self,
+            *,
+            seed: Optional[int] = None,
+            num_blocks: Optional[int] = None,
+            _move: Optional[bool] = False,
+            _spread_resource_prefix: Optional[str] = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -356,7 +358,8 @@ class Dataset(Generic[T]):
             self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
-            random_seed=seed)
+            random_seed=seed,
+            _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks)
 
     def _move_blocks(self):
@@ -651,6 +654,57 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
         return Dataset(sort_impl(self._blocks, key, descending))
+
+    def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
+        """Zip this dataset with the elements of another.
+
+        The datasets must have identical num rows, block types, and block sizes
+        (e.g., one was produced from a ``.map()`` of another). For Arrow
+        blocks, the schema will be concatenated, and any duplicate column
+        names disambiguated with _1, _2, etc. suffixes.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            other: The dataset to zip with on the right hand side.
+
+        Examples:
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
+            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+
+        Returns:
+            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
+            comes from the first dataset and v comes from the second.
+        """
+
+        blocks1 = self.get_blocks()
+        blocks2 = other.get_blocks()
+
+        if len(blocks1) != len(blocks2):
+            # TODO(ekl) consider supporting if num_rows are equal.
+            raise ValueError(
+                "Cannot zip dataset of different num blocks: {} vs {}".format(
+                    len(blocks1), len(blocks2)))
+
+        def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            b1 = BlockAccessor.for_block(block1)
+            result = b1.zip(block2)
+            br = BlockAccessor.for_block(result)
+            return result, br.get_metadata(input_files=[])
+
+        do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
+
+        blocks = []
+        metadata = []
+        for b1, b2 in zip(blocks1, blocks2):
+            res, meta = do_zip_fn.remote(b1, b2)
+            blocks.append(res)
+            metadata.append(meta)
+
+        # TODO(ekl) it might be nice to have a progress bar here.
+        metadata = ray.get(metadata)
+        return Dataset(BlockList(blocks, metadata))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.

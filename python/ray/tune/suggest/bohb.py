@@ -3,6 +3,9 @@
 import copy
 import logging
 import math
+# use cloudpickle instead of pickle to make BOHB obj
+# pickleable
+import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -48,8 +51,8 @@ class TuneBOHB(Searcher):
             Parameters will be sampled from this space which will be used
             to run trials.
         bohb_config (dict): configuration for HpBandSter BOHB algorithm
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
+        max_concurrent (int): Deprecated. Use
+            ``tune.suggest.ConcurrencyLimiter()``.
         metric (str): The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -74,7 +77,7 @@ class TuneBOHB(Searcher):
             "activation": tune.choice(["relu", "tanh"])
         }
 
-        algo = TuneBOHB(max_concurrent=4, metric="mean_loss", mode="min")
+        algo = TuneBOHB(metric="mean_loss", mode="min")
         bohb = HyperBandForBOHB(
             time_attr="training_iteration",
             metric="mean_loss",
@@ -99,7 +102,7 @@ class TuneBOHB(Searcher):
                 name="activation", choices=["relu", "tanh"]))
 
         algo = TuneBOHB(
-            config_space, max_concurrent=4, metric="mean_loss", mode="min")
+            config_space, metric="mean_loss", mode="min")
         bohb = HyperBandForBOHB(
             time_attr="training_iteration",
             metric="mean_loss",
@@ -113,7 +116,7 @@ class TuneBOHB(Searcher):
                  space: Optional[Union[
                      Dict, "ConfigSpace.ConfigurationSpace"]] = None,
                  bohb_config: Optional[Dict] = None,
-                 max_concurrent: int = 10,
+                 max_concurrent: Optional[int] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
@@ -144,7 +147,8 @@ class TuneBOHB(Searcher):
 
         self._points_to_evaluate = points_to_evaluate
 
-        super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
+        super(TuneBOHB, self).__init__(
+            metric=self._metric, mode=mode, max_concurrent=max_concurrent)
 
         if self._space:
             self._setup_bohb()
@@ -195,16 +199,14 @@ class TuneBOHB(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if len(self.running) < self._max_concurrent:
-            if self._points_to_evaluate:
-                config = self._points_to_evaluate.pop(0)
-            else:
-                # This parameter is not used in hpbandster implementation.
-                config, info = self.bohber.get_config(None)
-            self.trial_to_params[trial_id] = copy.deepcopy(config)
-            self.running.add(trial_id)
-            return unflatten_list_dict(config)
-        return None
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+        else:
+            # This parameter is not used in hpbandster implementation.
+            config, _ = self.bohber.get_config(None)
+        self.trial_to_params[trial_id] = copy.deepcopy(config)
+        self.running.add(trial_id)
+        return unflatten_list_dict(config)
 
     def on_trial_result(self, trial_id: str, result: Dict):
         if trial_id not in self.paused:
@@ -328,3 +330,13 @@ class TuneBOHB(Searcher):
             cs.add_hyperparameter(value)
 
         return cs
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            cloudpickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = cloudpickle.load(inputFile)
+        self.__dict__.update(save_object)
