@@ -802,8 +802,7 @@ class Policy(metaclass=ABCMeta):
                 if key not in self.view_requirements and \
                         key != SampleBatch.SEQ_LENS:
                     self.view_requirements[key] = ViewRequirement(
-                        used_for_compute_actions=False,
-                    )
+                        used_for_compute_actions=False)
             if self._loss:
                 # Tag those only needed for post-processing (with some
                 # exceptions).
