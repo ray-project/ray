@@ -128,90 +128,94 @@ class Worker : public WorkerInterface {
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
-  rpc::WorkerType GetWorkerType() const;
-  void MarkDead();
-  bool IsDead() const;
-  void MarkBlocked();
-  void MarkUnblocked();
-  bool IsBlocked() const;
+  rpc::WorkerType GetWorkerType() const override;
+  void MarkDead() override;
+  bool IsDead() const override override;
+  void MarkBlocked() override;
+  void MarkUnblocked() override;
+  bool IsBlocked() const override;
   /// Return the worker's ID.
-  WorkerID WorkerId() const;
+  WorkerID WorkerId() const override;
   /// Return the worker process.
-  Process GetProcess() const;
-  void SetProcess(Process proc);
+  Process GetProcess() const override;
+  void SetProcess(Process proc) override;
   /// Return this worker shim process.
-  Process GetShimProcess() const;
-  void SetShimProcess(Process proc);
-  Language GetLanguage() const;
-  const std::string IpAddress() const;
+  Process GetShimProcess() const override;
+  void SetShimProcess(Process proc) override;
+  Language GetLanguage() const override;
+  const std::string IpAddress() const override;
   /// Connect this worker's gRPC client.
-  void Connect(int port);
+  void Connect(int port) override;
   /// Testing-only
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
-  int Port() const;
-  int AssignedPort() const;
-  void SetAssignedPort(int port);
-  void AssignTaskId(const TaskID &task_id);
-  const TaskID &GetAssignedTaskId() const;
-  bool AddBlockedTaskId(const TaskID &task_id);
-  bool RemoveBlockedTaskId(const TaskID &task_id);
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  const JobID &GetAssignedJobId() const;
-  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override;
-  RuntimeEnvHash GetRuntimeEnvHash() const override;
-  void AssignActorId(const ActorID &actor_id);
-  const ActorID &GetActorId() const;
-  void MarkDetachedActor();
-  bool IsDetachedActor() const;
-  const std::shared_ptr<ClientConnection> Connection() const;
-  void SetOwnerAddress(const rpc::Address &address);
-  const rpc::Address &GetOwnerAddress() const;
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override;
+  int Port() const override;
+  int AssignedPort() const override;
+  void SetAssignedPort(int port) override;
+  void AssignTaskId(const TaskID &task_id) override;
+  const TaskID &GetAssignedTaskId() const override;
+  bool AddBlockedTaskId(const TaskID &task_id) override;
+  bool RemoveBlockedTaskId(const TaskID &task_id) override;
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const override;
+  const JobID &GetAssignedJobId() const override;
+  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override override;
+  RuntimeEnvHash GetRuntimeEnvHash() const override override;
+  void AssignActorId(const ActorID &actor_id) override;
+  const ActorID &GetActorId() const override;
+  void MarkDetachedActor() override;
+  bool IsDetachedActor() const override;
+  const std::shared_ptr<ClientConnection> Connection() const override;
+  void SetOwnerAddress(const rpc::Address &address) override;
+  const rpc::Address &GetOwnerAddress() const override;
 
-  const ResourceIdSet &GetLifetimeResourceIds() const;
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
-  void ResetLifetimeResourceIds();
+  const ResourceIdSet &GetLifetimeResourceIds() const override;
+  void SetLifetimeResourceIds(ResourceIdSet &resource_ids) override;
+  void ResetLifetimeResourceIds() override;
 
-  const ResourceIdSet &GetTaskResourceIds() const;
-  void SetTaskResourceIds(ResourceIdSet &resource_ids);
-  void ResetTaskResourceIds();
-  ResourceIdSet ReleaseTaskCpuResources();
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
+  const ResourceIdSet &GetTaskResourceIds() const override;
+  void SetTaskResourceIds(ResourceIdSet &resource_ids) override;
+  void ResetTaskResourceIds() override;
+  ResourceIdSet ReleaseTaskCpuResources() override;
+  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) override;
 
-  void DirectActorCallArgWaitComplete(int64_t tag);
+  void DirectActorCallArgWaitComplete(int64_t tag) override;
 
-  const BundleID &GetBundleId() const;
-  void SetBundleId(const BundleID &bundle_id);
+  const BundleID &GetBundleId() const override;
+  void SetBundleId(const BundleID &bundle_id) override;
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
     return allocated_instances_;
   };
 
-  void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
+  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
     return lifetime_allocated_instances_;
   };
 
-  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
+  void ClearLifetimeAllocatedInstances() override {
+    lifetime_allocated_instances_ = nullptr;
+  };
 
-  RayTask &GetAssignedTask() { return assigned_task_; };
+  RayTask &GetAssignedTask() override { return assigned_task_; };
 
-  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const RayTask &assigned_task) override {
+    assigned_task_ = assigned_task;
+  };
 
-  bool IsRegistered() { return rpc_client_ != nullptr; }
+  bool IsRegistered() override { return rpc_client_ != nullptr; }
 
-  rpc::CoreWorkerClientInterface *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() override {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
