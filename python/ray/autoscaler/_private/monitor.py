@@ -26,7 +26,6 @@ from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
-    ReadOnlyNodeProvider
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.readonly.node_provider import \
