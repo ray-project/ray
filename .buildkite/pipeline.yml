@@ -135,7 +135,7 @@
 - label: ":cpp: Tests"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - CC=clang bazel test --config=ci $(./scripts/bazel_export_options)
+    - bazel test --config=ci --config=llvm $(./scripts/bazel_export_options)
       --build_tests_only
       --test_tag_filters=-flaky
       -- //:all -rllib/... -core_worker_test
@@ -143,7 +143,7 @@
 - label: ":cpp: Tests (ASAN)"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - CC=clang bazel test --config=ci --config=asan --config=asan-clang $(./scripts/bazel_export_options)
+    - bazel test --config=ci --config=asan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
       --test_tag_filters=-flaky
@@ -161,13 +161,13 @@
 - label: ":cpp: Tests (TSAN)"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - CC=clang bazel test --config=ci --config=tsan $(./scripts/bazel_export_options)
+    - bazel test --config=ci --config=tsan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
       --test_tag_filters=-flaky
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_server_test -//:global_state_accessor_test
+      -//:gcs_server_rpc_test -//:gcs_server_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
 
 - label: ":serverless: Dashboard + Serve Tests"

@@ -1,5 +1,6 @@
 import logging
 from concurrent import futures
+import gc
 import grpc
 import base64
 from collections import defaultdict
@@ -273,6 +274,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with self.state_lock:
             self._release_objects(client_id)
             self._release_actors(client_id)
+        # NOTE: Try to actually dereference the object and actor refs.
+        # Otherwise dereferencing will happen later, which may run concurrently
+        # with ray.shutdown() and will crash the process. The crash is a bug
+        # that should be fixed eventually.
+        gc.collect()
 
     def _can_remove_actor_ref(self, actor_id_bytes):
         no_owner = not any(actor_id_bytes in actor_list

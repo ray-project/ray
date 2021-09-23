@@ -1,7 +1,7 @@
 from typing import List
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.framework import TensorType, TensorStructType
+from ray.rllib.utils.typing import TensorType, TensorStructType
 
 
 @PublicAPI

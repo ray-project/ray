@@ -3,12 +3,14 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 import os
+import subprocess
 import sys
 import socket
 from typing import Optional
-import pydantic
+from tempfile import mkstemp
 
 import pytest
+import pydantic
 import requests
 
 import ray
@@ -511,6 +513,39 @@ A.deploy()"""
     run_string_as_driver(
         driver_template.format(
             address=address, namespace="test_namespace2", port=8001))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_local_store_recovery():
+    _, tmp_path = mkstemp()
+
+    @serve.deployment
+    def hello(_):
+        return "hello"
+
+    def check():
+        try:
+            resp = requests.get("http://localhost:8000/hello")
+            assert resp.text == "hello"
+            return True
+        except Exception:
+            return False
+
+    def crash():
+        subprocess.call(["ray", "stop", "--force"])
+        ray.shutdown()
+        serve.shutdown()
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    assert check()
+    crash()
+
+    # Simulate a crash
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    wait_for_condition(check)
+    crash()
 
 
 if __name__ == "__main__":

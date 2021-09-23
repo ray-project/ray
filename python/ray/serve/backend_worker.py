@@ -355,7 +355,8 @@ class RayServeReplica:
         # We set the del method to noop after succssifully calling it so the
         # destructor is called only once.
         try:
-            self.callable.__del__()
+            if hasattr(self.callable, "__del__"):
+                self.callable.__del__()
         except Exception:
             logger.exception("Exception during graceful shutdown of replica.")
         finally:

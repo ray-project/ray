@@ -3,13 +3,17 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray._private.signature import get_signature, extract_signature
+from ray._private.utils import check_oversized_function
 
+import concurrent
 from dataclasses import dataclass
 import grpc
 import os
 import uuid
 import inspect
-from ray.util.inspect import is_cython, is_function_or_method
+from ray.util.inspect import is_cython, is_class_method,\
+    is_function_or_method, is_static_method
 import json
 import logging
 import threading
@@ -100,6 +104,7 @@ class ClientRemoteFunc(ClientStub):
         self._lock = threading.Lock()
         self._func = f
         self._name = f.__name__
+        self._signature = get_signature(f)
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
@@ -109,6 +114,9 @@ class ClientRemoteFunc(ClientStub):
                         f"Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
+        # Check if supplied parameters match the function signature. Same case
+        # at the other callsites.
+        self._signature.bind(*args, **kwargs)
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def options(self, **kwargs):
@@ -136,8 +144,13 @@ class ClientRemoteFunc(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                self._ref = ray.put(
-                    self._func, client_ref_id=self._client_side_ref.id)
+                data = ray.worker._dumps_from_client(self._func)
+                # Check pickled size before sending it to server, which is more
+                # efficient and can be done synchronously inside remote() call.
+                check_oversized_function(data, self._name, "remote function",
+                                         None)
+                self._ref = ray.worker._put_pickled(
+                    data, client_ref_id=self._client_side_ref.id)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
@@ -147,6 +160,11 @@ class ClientRemoteFunc(ClientStub):
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
         return task
+
+    def _num_returns(self) -> int:
+        if not self._options:
+            return None
+        return self._options.get("num_returns")
 
 
 class ClientActorClass(ClientStub):
@@ -164,6 +182,9 @@ class ClientActorClass(ClientStub):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
+        self._init_signature = inspect.Signature(
+            parameters=extract_signature(
+                actor_cls.__init__, ignore_first=True))
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
@@ -179,14 +200,19 @@ class ClientActorClass(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
-                self._ref = ray.put(
-                    self.actor_cls, client_ref_id=self._client_side_ref.id)
+                data = ray.worker._dumps_from_client(self.actor_cls)
+                # Check pickled size before sending it to server, which is more
+                # efficient and can be done synchronously inside remote() call.
+                check_oversized_function(data, self._name, "actor", None)
+                self._ref = ray.worker._put_pickled(
+                    data, client_ref_id=self._client_side_ref.id)
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
+        self._init_signature.bind(*args, **kwargs)
         # Actually instantiate the actor
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), actor_class=self)
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
+        return ClientActorHandle(ClientActorRef(futures[0]), actor_class=self)
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -215,6 +241,10 @@ class ClientActorClass(ClientStub):
         set_task_options(task, self._options, "baseline_options")
         return task
 
+    @staticmethod
+    def _num_returns() -> int:
+        return 1
+
 
 class ClientActorHandle(ClientStub):
     """Client-side stub for instantiated actor.
@@ -234,39 +264,64 @@ class ClientActorHandle(ClientStub):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
         if actor_class is not None:
-            self._dir = list(
-                dict(
-                    inspect.getmembers(actor_class.actor_cls,
-                                       is_function_or_method)).keys())
+            self._method_num_returns = {}
+            self._method_signatures = {}
+            for method_name, method_obj in inspect.getmembers(
+                    actor_class.actor_cls, is_function_or_method):
+                self._method_num_returns[method_name] = getattr(
+                    method_obj, "__ray_num_returns__", None)
+                self._method_signatures[method_name] = inspect.Signature(
+                    parameters=extract_signature(
+                        method_obj,
+                        ignore_first=(not (
+                            is_class_method(method_obj) or is_static_method(
+                                actor_class.actor_cls, method_name)))))
+        else:
+            self._method_num_returns = None
+            self._method_signatures = None
 
     def __dir__(self) -> List[str]:
-        if self._dir is not None:
-            return self._dir
+        if self._method_num_returns is not None:
+            return self._method_num_returns.keys()
         if ray.is_connected():
-
-            @ray.remote(num_cpus=0)
-            def get_dir(x):
-                return dir(x)
-
-            self._dir = ray.get(get_dir.remote(self))
-            return self._dir
+            self._init_class_info()
+            return self._method_num_returns.keys()
         return super().__dir__()
 
+    # For compatibility with core worker ActorHandle._actor_id which returns
+    # ActorID
     @property
-    def _actor_id(self):
-        return self.actor_ref.id
+    def _actor_id(self) -> ClientActorRef:
+        return self.actor_ref
 
     def __getattr__(self, key):
-        return ClientRemoteMethod(self, key)
+        if self._method_num_returns is None:
+            self._init_class_info()
+        return ClientRemoteMethod(self, key, self._method_num_returns.get(key),
+                                  self._method_signatures.get(key))
 
     def __repr__(self):
         return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())
+
+    def _init_class_info(self):
+        # TODO: fetch Ray method decorators
+        @ray.remote(num_cpus=0)
+        def get_class_info(x):
+            return x._ray_method_num_returns, x._ray_method_signatures
+
+        self._method_num_returns, method_parameters = ray.get(
+            get_class_info.remote(self))
+
+        self._method_signatures = {}
+        for method, parameters in method_parameters.items():
+            self._method_signatures[method] = inspect.Signature(
+                parameters=parameters)
 
 
 class ClientRemoteMethod(ClientStub):
     """A stub for a method on a remote actor.
 
-    Can be annotated with exection options.
+    Can be annotated with execution options.
 
     Args:
         actor_handle: A reference to the ClientActorHandle that generated
@@ -274,9 +329,12 @@ class ClientRemoteMethod(ClientStub):
         method_name: The name of this method
     """
 
-    def __init__(self, actor_handle: ClientActorHandle, method_name: str):
+    def __init__(self, actor_handle: ClientActorHandle, method_name: str,
+                 num_returns: int, signature: inspect.Signature):
         self._actor_handle = actor_handle
         self._method_name = method_name
+        self._method_num_returns = num_returns
+        self._signature = signature
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
@@ -284,11 +342,12 @@ class ClientRemoteMethod(ClientStub):
                         f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
+        self._signature.bind(*args, **kwargs)
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (self._method_name,
-                                               self._actor_handle)
+        return "ClientRemoteMethod(%s, %s, %s)" % (
+            self._method_name, self._actor_handle, self._method_num_returns)
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -307,33 +366,45 @@ class ClientRemoteMethod(ClientStub):
         task.payload_id = self._actor_handle.actor_ref.id
         return task
 
+    def _num_returns(self) -> int:
+        return self._method_num_returns
+
 
 class OptionWrapper:
     def __init__(self, stub: ClientStub, options: Optional[Dict[str, Any]]):
-        self.remote_stub = stub
-        self.options = validate_options(options)
+        self._remote_stub = stub
+        self._options = validate_options(options)
 
     def remote(self, *args, **kwargs):
+        self._remote_stub._signature.bind(*args, **kwargs)
         return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __getattr__(self, key):
-        return getattr(self.remote_stub, key)
+        return getattr(self._remote_stub, key)
 
     def _prepare_client_task(self):
-        task = self.remote_stub._prepare_client_task()
-        set_task_options(task, self.options)
+        task = self._remote_stub._prepare_client_task()
+        set_task_options(task, self._options)
         return task
+
+    def _num_returns(self) -> int:
+        if self._options:
+            num = self._options.get("num_returns")
+            if num is not None:
+                return num
+        return self._remote_stub._num_returns()
 
 
 class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
-        ref_ids = ray.call_remote(self, *args, **kwargs)
-        assert len(ref_ids) == 1
+        self._remote_stub._init_signature.bind(*args, **kwargs)
+        futures = ray.call_remote(self, *args, **kwargs)
+        assert len(futures) == 1
         actor_class = None
-        if isinstance(self.remote_stub, ClientActorClass):
-            actor_class = self.remote_stub
+        if isinstance(self._remote_stub, ClientActorClass):
+            actor_class = self._remote_stub
         return ClientActorHandle(
-            ClientActorRef(ref_ids[0]), actor_class=actor_class)
+            ClientActorRef(futures[0]), actor_class=actor_class)
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
@@ -353,13 +424,13 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     getattr(task, field).json_options = options_str
 
 
-def return_refs(ids: List[bytes]
+def return_refs(futures: List[concurrent.futures.Future]
                 ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
-    if len(ids) == 1:
-        return ClientObjectRef(ids[0])
-    if len(ids) == 0:
+    if not futures:
         return None
-    return [ClientObjectRef(id) for id in ids]
+    if len(futures) == 1:
+        return ClientObjectRef(futures[0])
+    return [ClientObjectRef(fut) for fut in futures]
 
 
 class InProgressSentinel:
