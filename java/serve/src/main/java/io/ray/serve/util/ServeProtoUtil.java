@@ -6,7 +6,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.DeploymentConfig;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import org.apache.commons.lang3.StringUtils;
@@ -21,11 +21,11 @@ public class ServeProtoUtil {
     if (DeploymentConfigBytes == null) {
       builder = DeploymentConfig.newBuilder();
     } else {
-      DeploymentConfig DeploymentConfig = DeploymentConfig.parseFrom(DeploymentConfigBytes);
-      if (DeploymentConfig == null) {
+      DeploymentConfig deploymentConfig = DeploymentConfig.parseFrom(DeploymentConfigBytes);
+      if (deploymentConfig == null) {
         builder = DeploymentConfig.newBuilder();
       } else {
-        builder = DeploymentConfig.newBuilder(DeploymentConfig);
+        builder = DeploymentConfig.newBuilder(deploymentConfig);
       }
     }
 
@@ -48,22 +48,22 @@ public class ServeProtoUtil {
       builder.setExperimentalGracefulShutdownTimeoutS(20);
     }
 
-    if (builder.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
+    if (builder.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
               "Unrecognized backend language {}. Backend language must be in {}.",
-              builder.getBackendLanguageValue(),
-              Lists.newArrayList(BackendLanguage.values())));
+              builder.getDeploymentLanguageValue(),
+              Lists.newArrayList(DeploymentLanguage.values())));
     }
 
     return builder.build();
   }
 
-  public static Object parseUserConfig(DeploymentConfig DeploymentConfig) {
-    if (DeploymentConfig.getUserConfig() == null || DeploymentConfig.getUserConfig().size() == 0) {
+  public static Object parseUserConfig(DeploymentConfig deploymentConfig) {
+    if (deploymentConfig.getUserConfig() == null || deploymentConfig.getUserConfig().size() == 0) {
       return null;
     }
-    return MessagePackSerializer.decode(DeploymentConfig.getUserConfig().toByteArray(), Object.class);
+    return MessagePackSerializer.decode(deploymentConfig.getUserConfig().toByteArray(), Object.class);
   }
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)

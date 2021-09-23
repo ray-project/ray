@@ -5,7 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.DeploymentConfig;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
@@ -32,7 +32,7 @@ public class RayServeReplicaTest {
               .remote();
 
       DeploymentConfig.Builder DeploymentConfigBuilder = DeploymentConfig.newBuilder();
-      DeploymentConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
+      DeploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       byte[] DeploymentConfigBytes = DeploymentConfigBuilder.build().toByteArray();
 
