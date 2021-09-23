@@ -1336,11 +1336,11 @@ std::string WorkerPool::DebugString() const {
            << entry.second.util_io_worker_state.pending_io_tasks.size();
     result << "\n- num starting workers (runtime env hash: num workers): ";
     for (const auto &pair : entry.second.starting_workers_by_env_hash) {
-      result << "\n  - " << pair.first << ": " << pair.second;
+      result << "\n  - " << pair.first << ": " << pair.second.size();
     }
     result << "\n- num tasks waiting for workers (runtime env hash: num tasks): ";
     for (const auto &pair : entry.second.waiting_tasks_by_env_hash) {
-      result << "\n  - " << pair.first << ": " << pair.second;
+      result << "\n  - " << pair.first << ": " << pair.second.size();
     }
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
