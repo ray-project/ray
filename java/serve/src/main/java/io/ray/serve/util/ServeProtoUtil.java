@@ -63,7 +63,8 @@ public class ServeProtoUtil {
     if (deploymentConfig.getUserConfig() == null || deploymentConfig.getUserConfig().size() == 0) {
       return null;
     }
-    return MessagePackSerializer.decode(deploymentConfig.getUserConfig().toByteArray(), Object.class);
+    return MessagePackSerializer.decode(
+        deploymentConfig.getUserConfig().toByteArray(), Object.class);
   }
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)
