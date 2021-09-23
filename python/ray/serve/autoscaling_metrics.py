@@ -98,6 +98,9 @@ class InMemoryMetricsStore:
             do_compact(bool): whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
+        Returns:
+            The average of all the datapoints for the key on and after time
+            window_start_timestamp_s, or None if there are no such points.
         """
         datapoints = self.data[key]
 
