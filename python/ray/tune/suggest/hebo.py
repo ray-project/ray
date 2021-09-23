@@ -40,7 +40,7 @@ class HEBOSearch(Searcher):
 
     .. code-block:: bash
 
-        pip install HEBO scipy==1.5.4
+        pip install "scipy<1.7.0" "pymoo<0.5.0" "HEBO==0.1.0"
 
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
