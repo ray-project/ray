@@ -15,6 +15,7 @@ from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray import cloudpickle as cloudpickle
 from ray.rllib.utils.annotations import Deprecated
 
+
 class AutoscalingConfig(BaseModel):
     # Publicly exposed options
     min_replicas: int
@@ -47,6 +48,7 @@ class AutoscalingConfig(BaseModel):
 
     # TODO(architkulkarni): Add reasonable defaults
     # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
+
 
 @Deprecated(error=True)
 class BackendConfig:
