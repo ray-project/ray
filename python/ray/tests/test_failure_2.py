@@ -20,60 +20,6 @@ from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      Semaphore, wait_for_condition)
 
 
-def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-
-    @ray.remote(num_gpus=1)
-    def f():
-        pass
-
-    @ray.remote(resources={"Custom": 1})
-    class Foo:
-        pass
-
-    # This task is infeasible.
-    f.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # This actor placement task is infeasible.
-    Foo.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # Placement group cannot be made, but no warnings should occur.
-    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
-    pg.ready()
-    f.options(placement_group=pg).remote()
-
-    errors = get_error_message(
-        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
-    assert len(errors) == 0, errors
-
-
-def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
-    # Check that we cannot place an actor on a 0 CPU machine and that we get an
-    # infeasibility warning (even though the actor creation task itself
-    # requires no CPUs).
-
-    ray.init(num_cpus=0)
-    p = init_error_pubsub()
-
-    @ray.remote
-    class Foo:
-        pass
-
-    # The actor creation should be infeasible.
-    Foo.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-    p.close()
-
-
 def test_warning_for_too_many_actors(shutdown_only):
     # Check that if we run a workload which requires too many workers to be
     # started that we will receive a warning.
