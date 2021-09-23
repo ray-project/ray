@@ -37,8 +37,9 @@ class RayConfig {
   // Only searching the top level under a directory.
   std::vector<std::string> code_search_path;
 
-  // The command line args appended to the setup script of head node. Run 'ray start
-  // --help' for details.
+  // The command line args to be appended as parameters of the `ray start` command. It
+  // takes effect only if Ray head is started by a driver. Run `ray start --help` for
+  // details.
   std::vector<std::string> head_args = {};
 
   /* The following are unstable parameters and their use is discouraged. */

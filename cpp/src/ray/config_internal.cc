@@ -48,9 +48,10 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-ABSL_FLAG(std::string, ray_head_args, "absl::flags dummy default value",
-          "The command line args appended to the setup script of head node. Run 'ray "
-          "start --help' for details.");
+ABSL_FLAG(std::string, ray_head_args, "",
+          "The command line args to be appended as parameters of the `ray start` "
+          "command. It takes effect only if Ray head is started by a driver. Run `ray "
+          "start --help` for details.");
 
 namespace ray {
 namespace internal {
@@ -105,7 +106,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
-    if (FLAGS_ray_head_args.CurrentValue() != FLAGS_ray_head_args.DefaultValue()) {
+    if (!FLAGS_ray_head_args.CurrentValue().empty()) {
       std::vector<std::string> args =
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       head_args.insert(head_args.end(), args.begin(), args.end());
