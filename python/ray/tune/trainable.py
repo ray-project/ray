@@ -76,7 +76,8 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        disable_ipython()
+        if self.is_actor():
+            disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -179,6 +180,14 @@ class Trainable:
             autofilled.setdefault(EPISODES_TOTAL, self._episodes_total)
             autofilled.setdefault(TRAINING_ITERATION, self._iteration)
         return autofilled
+
+    def is_actor(self):
+        try:
+            actor_id = ray.worker.global_worker.actor_id
+            return actor_id != actor_id.nil()
+        except Exception:
+            # If global_worker is not instantiated, we're not in an actor
+            return False
 
     def train_buffered(self,
                        buffer_time_s: float,

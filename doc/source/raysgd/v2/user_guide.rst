@@ -83,6 +83,30 @@ training.
                                  sampler=DistributedSampler(dataset))
 
 
+    **Step 3:** Set the proper CUDA device if you are using GPUs.
+
+    If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
+
+    This involves 3 steps:
+    1. Use the local rank to set the default CUDA device for the worker.
+    2. Move the model to the default CUDA device (or a specific CUDA device).
+    3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
+
+    .. code-block:: python
+
+        def train_func():
+            device = torch.device(f"cuda:{sgd.local_rank()}" if
+                          torch.cuda.is_available() else "cpu")
+            torch.cuda.set_device(device)
+
+            # Create model.
+            model = NeuralNetwork()
+            model = model.to(device)
+            model = DistributedDataParallel(
+                model,
+                device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None)
+
+
   .. group-tab:: TensorFlow
 
     .. note::
@@ -189,7 +213,7 @@ configurations. As an example:
 
 .. code-block:: python
 
-    from ray.util.sgd.v2 import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         results = []
@@ -316,8 +340,8 @@ You can plug all of these into RaySGD with the following interface:
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import SGDCallback, Trainer
+    from ray import sgd
+    from sgd import SGDCallback, Trainer
     from typing import List, Dict
 
     class PrintingCallback(SGDCallback):
@@ -371,7 +395,7 @@ A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
-    from ray.util.sgd.v2 import SGDCallback
+    from ray.sgd import SGDCallback
 
     class PrintingCallback(SGDCallback):
         def handle_result(self, results: List[Dict], **info):
@@ -398,8 +422,8 @@ Here is an example:
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import SGDCallback, Trainer
+    from ray import sgd
+    from ray.sgd import SGDCallback, Trainer
     from typing import List, Dict
 
     import torch
@@ -453,8 +477,8 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import Trainer
+    from ray import sgd
+    from sgd import Trainer
 
     def train_func(config):
         model = 0 # This should be replaced with a real model.
@@ -495,8 +519,8 @@ As an example, to disable writing checkpoints to disk:
 .. code-block:: python
     :emphasize-lines: 8,12
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import CheckpointStrategy, Trainer
+    from ray import sgd
+    from sgd import CheckpointStrategy, Trainer
 
     def train_func():
         for epoch in range(3):
@@ -526,8 +550,8 @@ Checkpoints can be loaded into the training function in 2 steps:
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import Trainer
+    from ray import sgd
+    from sgd import Trainer
 
     def train_func(config):
         checkpoint = sgd.load_checkpoint() or {}
@@ -638,8 +662,8 @@ produce an object ("Trainable") that will be passed to Ray Tune.
 
 .. code-block:: python
 
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import Trainer
+    from ray import sgd
+    from sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
@@ -680,8 +704,8 @@ A couple caveats:
 .. code-block:: python
 
     from ray import tune
-    from ray.util.sgd import v2 as sgd
-    from ray.util.sgd.v2 import Trainer
+    from ray import sgd
+    from sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
