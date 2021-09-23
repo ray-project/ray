@@ -187,6 +187,7 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
+    import pyarrow as pa
     from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
         _resolve_filesystem_and_path
 
@@ -200,10 +201,10 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
-        err_msg = f"The filesystem passed must either conform to "
-                            f"pyarrow.fs.FileSystem, or "
-                            f"fsspec.spec.AbstractFileSystem. The provided "
-                            f"filesystem was: {filesystem}"
+        err_msg = f"The filesystem passed must either conform to " \
+                  f"pyarrow.fs.FileSystem, or " \
+                  f"fsspec.spec.AbstractFileSystem. The provided " \
+                  f"filesystem was: {filesystem}"
         try:
             import fsspec
         except ModuleNotFoundError:
