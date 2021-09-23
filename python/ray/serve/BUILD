@@ -121,7 +121,7 @@ py_test(
 )
 
 py_test(
-    name = "test_backend_state",
+    name = "test_deployment_state",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
