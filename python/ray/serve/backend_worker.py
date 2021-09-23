@@ -90,7 +90,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                                            backend_config.user_config, version,
                                            is_function, controller_handle)
 
-            # asyncio.Event to be used to signal replica enterred shutdown phase.
+            # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
 
         @ray.method(num_returns=2)
