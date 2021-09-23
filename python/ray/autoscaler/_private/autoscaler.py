@@ -84,6 +84,7 @@ class StandardAutoscaler:
 
     def __init__(
             self,
+            # TODO(ekl): require config reader to be a callable always.
             config_reader: Union[str, Callable[[], dict]],
             load_metrics: LoadMetrics,
             max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
@@ -233,6 +234,7 @@ class StandardAutoscaler:
         if not self.provider.is_readonly():
             self.terminate_nodes_to_enforce_config_constraints(now)
 
+        # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
                 self.provider.non_terminated_nodes(tag_filters={}),
@@ -380,7 +382,7 @@ class StandardAutoscaler:
         self.nodes_to_terminate = []
         self.update_worker_list()
 
-    def launch_required_nodes(self, to_launch):
+    def launch_required_nodes(self, to_launch: Dict[NodeType, int]) -> None:
         if to_launch:
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
@@ -470,11 +472,19 @@ class StandardAutoscaler:
                 num_recovering += 1
         self.prom_metrics.recovering_nodes.set(num_recovering)
 
-    def _report_pending_infeasible(self, resources: List[ResourceDict]):
-        """Emit event messages for infeasible or unschedulable tasks."""
+    def _report_pending_infeasible(self, unfulfilled: List[ResourceDict]):
+        """Emit event messages for infeasible or unschedulable tasks.
+
+        This adds messages to the event summarizer for warning on infeasible
+        or "cluster full" resource requests.
+
+        Args:
+            unfulfilled: List of resource demands that would be unfulfilled
+                even after full scale-up.
+        """
         pending = []
         infeasible = []
-        for bundle in resources:
+        for bundle in unfulfilled:
             placement_group = any("_group_" in k for k in bundle)
             if placement_group:
                 continue

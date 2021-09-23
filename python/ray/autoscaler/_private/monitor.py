@@ -26,8 +26,10 @@ from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.load_metrics import LoadMetrics
+    ReadOnlyNodeProvider
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.readonly.node_provider import \
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
@@ -271,7 +273,12 @@ class Monitor:
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
             if use_node_id_as_ip:
-                ip = resource_message.node_id.hex()
+                peloton_id = total_resources.get("NODE_ID_AS_RESOURCE")
+                # Legacy support https://github.com/ray-project/ray/pull/17312
+                if peloton_id is not None:
+                    ip = str(int(peloton_id))
+                else:
+                    ip = resource_message.node_id.hex()
             else:
                 ip = resource_message.node_manager_address
             self.load_metrics.update(ip, total_resources, available_resources,

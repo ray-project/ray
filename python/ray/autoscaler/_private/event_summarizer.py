@@ -8,6 +8,8 @@ class EventSummarizer:
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}
         self.messages: List[str] = []
+        # Tracks TTL of messages. A message will not be re-posted once it is
+        # added here, until its TTL expires.
         self.key_ttl: Dict[str, float] = {}
 
     def add(self, template: str, *, quantity: Any,
@@ -54,6 +56,8 @@ class EventSummarizer:
         """Clear the events added."""
         self.events_by_key.clear()
         self.messages.clear()
+        # Expire any messages that have reached their TTL. This allows them
+        # to be posted again.
         for k, t in list(self.key_ttl.items()):
             if time.time() > t:
                 del self.key_ttl[k]
