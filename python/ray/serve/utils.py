@@ -144,7 +144,6 @@ def get_all_node_ids():
     Returns a list of ('node_id-index', 'node_id') tuples (the latter can be
     used as a resource requirement for actor placements).
     """
-    1 / 0
     node_ids = []
     # We need to use the node_id and index here because we could
     # have multiple virtual nodes on the same host. In that case
