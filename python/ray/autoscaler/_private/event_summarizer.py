@@ -10,7 +10,7 @@ class EventSummarizer:
         self.messages: List[str] = []
         # Tracks TTL of messages. A message will not be re-posted once it is
         # added here, until its TTL expires.
-        self.key_ttl: Dict[str, float] = {}
+        self.throttled_messages: Dict[str, float] = {}
 
     def add(self, template: str, *, quantity: Any,
             aggregate: Callable[[Any, Any], Any]) -> None:
@@ -40,8 +40,8 @@ class EventSummarizer:
             key (str): The key to use to deduplicate the message.
             interval_s (int): Throttling interval in seconds.
         """
-        if key not in self.key_ttl:
-            self.key_ttl[key] = time.time() + interval_s
+        if key not in self.throttled_messages:
+            self.throttled_messages[key] = time.time() + interval_s
             self.messages.append(message)
 
     def summary(self) -> List[str]:
@@ -58,6 +58,6 @@ class EventSummarizer:
         self.messages.clear()
         # Expire any messages that have reached their TTL. This allows them
         # to be posted again.
-        for k, t in list(self.key_ttl.items()):
+        for k, t in list(self.throttled_messages.items()):
             if time.time() > t:
-                del self.key_ttl[k]
+                del self.throttled_messages[k]

@@ -87,7 +87,7 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
-# Readonly proivder config (e.g., for laptop mode, manually setup clusters).
+# Readonly provider config (e.g., for laptop mode, manually setup clusters).
 BASE_READONLY_CONFIG = {
     "cluster_name": "default",
     "max_workers": 0,
@@ -103,7 +103,7 @@ BASE_READONLY_CONFIG = {
         "ray.head.default": {
             "resources": {},
             "node_config": {},
-            "max_workers": 1
+            "max_workers": 0
         }
     },
     "head_node_type": "ray.head.default",
