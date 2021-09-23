@@ -289,7 +289,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// use this to check whether we should run the dispatch loop again. Running
   /// the dispatch loop can be expensive because it could require iterating
   /// over every task in the dispatch queue.
-  size_t num_tasks_waiting_for_dispatch_ = 0;
+  int64_t num_tasks_waiting_for_dispatch_ = 0;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
