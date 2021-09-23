@@ -135,14 +135,23 @@ def test_get_list(ray_start_regular_shared):
         assert ray.get([]) == []
         assert ray.get([f.remote()]) == ["OK"]
 
+        get_count = 0
+        get_stub = ray.worker.server.GetObject
+
+        # ray.get() uses unary-unary RPC. Mock the server handler to count
+        # the number of requests received.
+        def get(req, metadata=None):
+            nonlocal get_count
+            get_count += 1
+            return get_stub(req, metadata=metadata)
+
+        ray.worker.server.GetObject = get
+
         refs = [f.remote() for _ in range(100)]
-        with ray.worker.data_client.lock:
-            req_id_before = ray.worker.data_client._req_id
         assert ray.get(refs) == ["OK" for _ in range(100)]
+
         # Only 1 RPC should be sent.
-        with ray.worker.data_client.lock:
-            assert ray.worker.data_client._req_id == req_id_before + 1, \
-                ray.worker.data_client._req_id
+        assert get_count == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -331,15 +340,26 @@ def test_basic_actor(ray_start_regular_shared):
 
             def say_hello(self, whom):
                 self.count += 1
-                return ("Hello " + whom, self.count)
+                return "Hello " + whom, self.count
+
+            @ray.method(num_returns=2)
+            def say_hi(self, whom):
+                self.count += 1
+                return "Hi " + whom, self.count
 
         actor = HelloActor.remote()
         s, count = ray.get(actor.say_hello.remote("you"))
         assert s == "Hello you"
         assert count == 1
-        s, count = ray.get(actor.say_hello.remote("world"))
+
+        ref = actor.say_hello.remote("world")
+        s, count = ray.get(ref)
         assert s == "Hello world"
         assert count == 2
+
+        r1, r2 = actor.say_hi.remote("ray")
+        assert ray.get(r1) == "Hi ray"
+        assert ray.get(r2) == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -454,8 +474,25 @@ def test_stdout_log_stream(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-        with pytest.raises(ValueError):
+        with pytest.raises(
+                ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_invalid_task(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote(runtime_env="invalid value")
+        def f():
+            return 1
+
+        # No exception on making the remote call.
+        ref = f.remote()
+
+        # Exception during scheduling will be raised on ray.get()
+        with pytest.raises(Exception):
+            ray.get(ref)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -500,6 +537,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             def get(self):
                 return self.x
 
+            @ray.method(num_returns=2)
+            def half(self):
+                return self.x / 2, self.x / 2
+
         # Create the actor
         actor = Accumulator.options(name="test_acc").remote()
 
@@ -523,6 +564,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
+
+        h1, h2 = ray.get(detatched_actor.half.remote())
+        assert h1 == 3
+        assert h2 == 3
 
 
 def test_error_serialization(ray_start_regular_shared):

@@ -470,6 +470,10 @@ message CreateActorRequest {
 
 message CreateActorReply {
   GcsStatus status = 1;
+  // Address where the actor was created.
+  Address actor_address = 2;
+  // Info about any refs that the created actor is borrowing.
+  repeated ObjectReferenceCount borrowed_refs = 3;
 }
 
 message RegisterActorRequest {

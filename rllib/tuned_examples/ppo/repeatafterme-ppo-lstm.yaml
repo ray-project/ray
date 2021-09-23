@@ -1,4 +1,5 @@
 repeat-after-me-ppo-w-lstm:
+    # Default case: Discrete(2) observations/actions.
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
     run: PPO
     stop:
@@ -7,6 +8,7 @@ repeat-after-me-ppo-w-lstm:
     config:
         # Works for both torch and tf.
         framework: tf
+        # Make env partially observable.
         env_config:
           config:
             repeat_delay: 2

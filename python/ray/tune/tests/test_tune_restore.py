@@ -28,7 +28,7 @@ from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
+from ray.tune.suggest.optuna import OptunaSearch
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
@@ -574,8 +574,8 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min",
             random_state_seed=5,
             n_initial_points=1,
-            max_concurrent=1000  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -627,13 +627,12 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer,
-            ["width", "height"],
+            optimizer, ["width", "height"],
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
             points_to_evaluate=previously_run_params,
             evaluated_rewards=known_rewards)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -651,18 +650,18 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             parameter_names,
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
 class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         from optuna.samplers import TPESampler
-        space = [
-            ot_param.suggest_uniform("width", 0, 20),
-            ot_param.suggest_uniform("height", -100, 100)
-        ]
+        space = OptunaSearch.convert_search_space({
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
 
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
@@ -703,8 +702,8 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             optimizer,
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
     @unittest.skip("Skip because this doesn't seem to work.")
@@ -790,10 +789,10 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
-            max_concurrent=1,
             metric="loss",
             mode="min",
             points_to_evaluate=points)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
         return search_alg, cost
 
     def testWarmStart(self):

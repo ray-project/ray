@@ -28,7 +28,8 @@ GcsActorScheduler::GcsActorScheduler(
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+        schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
@@ -359,7 +360,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                             << " on worker " << worker->GetWorkerID() << " at node "
                             << actor->GetNodeID()
                             << ", job id = " << actor->GetActorID().JobId();
-              schedule_success_handler_(actor);
+              schedule_success_handler_(actor, reply);
             } else {
               RetryCreatingActorOnWorker(actor, worker);
             }

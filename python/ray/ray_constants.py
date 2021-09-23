@@ -67,6 +67,9 @@ DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
+# Wait 30 seconds for client to reconnect after unexpected disconnection
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 FUNCTION_SIZE_WARN_THRESHOLD = 10**7
@@ -129,7 +132,6 @@ REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
 FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
 CHECKPOINT_PUSH_ERROR = "checkpoint"
-REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
@@ -243,9 +245,6 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # The default password to prevent redis port scanning attack.
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
-
-# The default module path to a Python function that sets up the worker env.
-DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"

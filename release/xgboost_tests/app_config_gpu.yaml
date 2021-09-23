@@ -6,7 +6,7 @@ debian_packages:
 python:
   pip_packages:
     - pytest
-    - xgboost_ray
+    - xgboost_ray[default]
     - petastorm
   conda_packages: []
 

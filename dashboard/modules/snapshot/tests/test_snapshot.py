@@ -14,8 +14,8 @@ from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
 )
-from ray.new_dashboard import dashboard
-from ray.new_dashboard.tests.conftest import *  # noqa
+from ray.dashboard import dashboard
+from ray.dashboard.tests.conftest import *  # noqa
 
 
 def test_snapshot(ray_start_with_dashboard):
