@@ -78,8 +78,8 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
-def test_e2e_basic_scale_up(serve_instance):
-    """Send 100 requests and check that we scale from 1 replica to 2."""
+def test_e2e_basic_scale_up_down(serve_instance):
+    """Send 100 requests and check that we autoscale up, and then back down."""
 
     @serve.deployment(
         _autoscaling_config={
@@ -104,13 +104,17 @@ def test_e2e_basic_scale_up(serve_instance):
 
     controller = serve_instance._controller
 
-    def at_least_two_replicas_are_running():
+    def get_num_running_replicas():
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote("A"))
         running_replicas = replicas.get([ReplicaState.RUNNING])
-        return len(running_replicas) >= 2
+        print(running_replicas)
+        return len(running_replicas)
 
-    wait_for_condition(at_least_two_replicas_are_running)
+    wait_for_condition(lambda: get_num_running_replicas() >= 2)
+
+    # As the queue is drained, we should scale back down.
+    wait_for_condition(lambda: get_num_running_replicas() <= 1)
 
 
 if __name__ == "__main__":
