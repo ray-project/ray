@@ -34,7 +34,7 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
-using RuntimeEnvHash = size_t;
+using RuntimeEnvHash = int64_t;
 
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
