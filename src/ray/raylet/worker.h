@@ -68,7 +68,7 @@ class WorkerInterface {
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) = 0;
-  virtual RuntimeEnvHash GetRuntimeEnvHash() const = 0;
+  [[nodiscard]] virtual RuntimeEnvHash GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual void MarkDetachedActor() = 0;
@@ -157,8 +157,8 @@ class Worker : public WorkerInterface {
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
-  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash);
-  RuntimeEnvHash GetRuntimeEnvHash() const;
+  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override;
+  RuntimeEnvHash GetRuntimeEnvHash() const override;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
   void MarkDetachedActor();

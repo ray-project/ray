@@ -964,7 +964,7 @@ void WorkerPool::TriggerAsyncCallbacksForFailedWorkerStart(
     auto &task = waiting_tasks.back();
     RAY_LOG(DEBUG) << "Failing PopWorker for task " << task.task_id << " with error "
                    << static_cast<int>(status);
-    PopWorkerCallbackAsync(std::move(task.callback), nullptr, status);
+    PopWorkerCallbackAsync(task.callback, nullptr, status);
     waiting_tasks.pop_back();
   }
   if (waiting_tasks.empty()) {
@@ -1032,7 +1032,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   auto start_worker_process_fn = [this, allocated_instances_serialized_json](
                                      const TaskSpecification &task_spec,
                                      RuntimeEnvHash runtime_env_hash, State &state,
-                                     std::vector<std::string> dynamic_options,
+                                     const std::vector<std::string> &dynamic_options,
                                      const std::string &serialized_runtime_env,
                                      const std::string &serialized_runtime_env_context) {
     size_t num_target_workers = state.waiting_tasks_by_env_hash[runtime_env_hash].size();

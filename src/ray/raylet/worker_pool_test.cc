@@ -243,7 +243,7 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   // Create workers for processes and push them to worker pool.
-  std::shared_ptr<WorkerInterface> StartWorker(Process proc) {
+  std::shared_ptr<WorkerInterface> StartWorker(const Process &proc) {
     auto processes = GetProcesses();
     auto it = processes.find(proc);
     RAY_CHECK(it != processes.end());
@@ -254,7 +254,7 @@ class WorkerPoolMock : public WorkerPool {
 
     bool is_java = false;
     // Parses runtime env hash to make sure the pushed workers can be popped out.
-    for (auto command_args : it->second) {
+    for (const auto &command_args : it->second) {
       auto pos = command_args.find("java");
       if (pos != std::string::npos) {
         is_java = true;
@@ -1224,7 +1224,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  auto runtime_env = "{\"uris\": \"XXX\"}";
+  auto runtime_env = R"({"uris": "XXX"})";
   auto actor_dynamic_option = "XXX=YYY";
   const auto actor_creation_task_spec =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
@@ -1241,7 +1241,7 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
                                    worker_with_runtime_env = nullptr,
                                    default_worker = nullptr;
   auto callback = [=](bool *flag, std::shared_ptr<WorkerInterface> *assigned_worker) {
-    return [=](const std::shared_ptr<WorkerInterface> worker,
+    return [=](const std::shared_ptr<WorkerInterface> &worker,
                PopWorkerStatus status) -> bool {
       RAY_CHECK(worker != nullptr);
       RAY_CHECK(status == PopWorkerStatus::OK);
@@ -1270,8 +1270,8 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_TRUE(worker_with_runtime_env_started);
   ASSERT_TRUE(default_worker_started);
 
-  auto check_str_in_command = [&](std::shared_ptr<WorkerInterface> worker,
-                                  std::string str) -> bool {
+  auto check_str_in_command = [&](const std::shared_ptr<WorkerInterface> &worker,
+                                  const std::string &str) -> bool {
     auto command = worker_pool_->worker_commands_by_proc_[worker->GetShimProcess()];
     for (const auto &arg : command) {
       RAY_LOG(INFO) << arg;
@@ -1312,7 +1312,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   std::shared_ptr<WorkerInterface> worker1 = nullptr, worker2 = nullptr,
                                    worker3 = nullptr;
   auto callback = [=](bool *flag, std::shared_ptr<WorkerInterface> *assigned_worker) {
-    return [=](const std::shared_ptr<WorkerInterface> worker,
+    return [=](const std::shared_ptr<WorkerInterface> &worker,
                PopWorkerStatus status) -> bool {
       RAY_CHECK(worker != nullptr);
       RAY_CHECK(status == PopWorkerStatus::OK);
@@ -1335,8 +1335,8 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   ASSERT_FALSE(flag2);
   ASSERT_TRUE(flag3);
 
-  auto check_str_in_command = [&](std::shared_ptr<WorkerInterface> worker,
-                                  std::string str) -> bool {
+  auto check_str_in_command = [&](const std::shared_ptr<WorkerInterface> &worker,
+                                  const std::string &str) -> bool {
     auto command = worker_pool_->worker_commands_by_proc_[worker->GetShimProcess()];
     for (const auto &arg : command) {
       if (arg.find(str) != std::string::npos) {
