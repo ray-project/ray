@@ -82,7 +82,8 @@ async def test_replica_set(ray_instance):
         asyncio.get_event_loop(),
     )
     workers = [MockWorker.remote() for _ in range(2)]
-    rs.set_max_concurrent_queries(BackendConfig(max_concurrent_queries=1))
+    rs.set_max_concurrent_queries(
+        BackendConfig(max_concurrent_queries=1).to_proto_bytes())
     rs.update_worker_replicas(workers)
 
     # Send two queries. They should go through the router but blocked by signal

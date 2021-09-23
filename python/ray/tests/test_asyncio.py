@@ -303,6 +303,8 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     # Test we report unhandled exceptions.
     ray.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
+    # NOTE: Unhandled exception is from waiting for the value of x1's ObjectID
+    # in x1's destructor, and receiving an exception from f() instead.
     del x1
     wait_for_condition(lambda: num_exceptions == 1)
 

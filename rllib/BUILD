@@ -1890,7 +1890,7 @@ py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
     tags = ["team:ml", "examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
 )
@@ -1899,7 +1899,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:ml", "examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )

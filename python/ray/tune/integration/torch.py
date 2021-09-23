@@ -188,7 +188,7 @@ def DistributedTrainableCreator(func: Callable,
         analysis = tune.run(trainable_cls)
     """
     if use_gpu:
-        raise ValueError(
+        raise DeprecationWarning(
             "use_gpu is deprecated. Use 'num_gpus_per_worker' instead.")
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:

@@ -4,7 +4,6 @@ import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,20 +117,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      */
     public Builder setMaxRestarts(int maxRestarts) {
       this.maxRestarts = maxRestarts;
-      return this;
-    }
-
-    /**
-     * Set the JVM options for the Java worker that this actor is running in.
-     *
-     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
-     *
-     * @param jvmOptions JVM options for the Java worker that this actor is running in.
-     * @return self
-     * @deprecated Use {@link #setJvmOptions(List)} instead.
-     */
-    public Builder setJvmOptions(String jvmOptions) {
-      this.jvmOptions = Arrays.asList(jvmOptions.split(" +"));
       return this;
     }
 
