@@ -19,8 +19,14 @@ class HTTPState:
     called with a lock held.
     """
 
-    def __init__(self, controller_name: str, detached: bool,
-                 config: HTTPOptions):
+    def __init__(
+            self,
+            controller_name: str,
+            detached: bool,
+            config: HTTPOptions,
+            # Used by unit testing
+            _start_proxies_on_init: bool = True,
+    ):
         self._controller_name = controller_name
         self._controller_namespace = ray.serve.api._get_controller_namespace(
             detached)
@@ -29,7 +35,8 @@ class HTTPState:
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
 
         # Will populate self.proxy_actors with existing actors.
-        self._start_proxies_if_needed()
+        if _start_proxies_on_init:
+            self._start_proxies_if_needed()
 
     def shutdown(self) -> None:
         for proxy in self.get_http_proxy_handles().values():
@@ -71,7 +78,7 @@ class HTTPState:
 
             # Seed the random state so sample is deterministic.
             # i.e. it will always return the same set of nodes.
-            random.seed(0)
+            random.seed(self._config.fixed_number_selection_seed)
             return random.sample(sorted(target_nodes), k=num_replicas)
 
         return target_nodes
