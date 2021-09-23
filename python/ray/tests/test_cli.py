@@ -204,9 +204,8 @@ def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
 
     if result.exception is not None:
-        print(result.output)
         raise result.exception from None
-
+    print(result.output)
     expected = r" *\n".join(expected_lines) + "\n?"
     if re.fullmatch(expected, result.output) is None:
         _debug_check_line_by_line(result, expected_lines)
@@ -273,36 +272,6 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
             "--log-style=pretty", "--log-color", "False"
         ])
         _check_output_via_pattern("test_ray_up.txt", result)
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
-    reason=("Mac builds don't provide proper locale support"))
-@mock_ec2
-@mock_iam
-def test_ray_up_no_head_max_workers(configure_lang, _unlink_test_ssh_key,
-                                    configure_aws):
-    def commands_mock(command, stdin):
-        # if we want to have e.g. some commands fail,
-        # we can have overrides happen here.
-        # unfortunately, cutting out SSH prefixes and such
-        # is, to put it lightly, non-trivial
-        if "uptime" in command:
-            return PopenBehaviour(stdout=b"MOCKED uptime")
-        if "rsync" in command:
-            return PopenBehaviour(stdout=b"MOCKED rsync")
-        if "ray" in command:
-            return PopenBehaviour(stdout=b"MOCKED ray")
-        return PopenBehaviour(stdout=b"MOCKED GENERIC")
-
-    with _setup_popen_mock(commands_mock):
-        # config cache does not work with mocks
-        runner = CliRunner()
-        result = runner.invoke(scripts.up, [
-            MISSING_MAX_WORKER_CONFIG_PATH, "--no-config-cache", "-y",
-            "--log-style=pretty", "--log-color", "False"
-        ])
-        _check_output_via_pattern("test_ray_up_no_max_worker.txt", result)
 
 
 @pytest.mark.skipif(

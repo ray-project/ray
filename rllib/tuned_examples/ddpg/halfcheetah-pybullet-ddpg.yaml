@@ -1,0 +1,42 @@
+# Note: HalfCheetahBulletEnv-v0 is not the same as MuJoCo's HalfCheetah-v0.
+ddpg-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: -300.0
+        timesteps_total: 200000
+    config:
+        actor_hiddens: [256, 256]
+        critic_hiddens: [256, 256]
+        n_step: 3
+        model: {}
+        gamma: 0.99
+        env_config: {}
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 10000
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+        timesteps_per_iteration: 1000
+        target_network_update_freq: 0
+        tau: 0.001
+        buffer_size: 15000
+        prioritized_replay: true
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: false
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: true
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        rollout_fragment_length: 1
+        train_batch_size: 48
+        num_workers: 0
+        num_gpus: 1
+        num_gpus_per_worker: 0
+        worker_side_prioritization: false

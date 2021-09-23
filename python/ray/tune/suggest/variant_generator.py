@@ -253,10 +253,18 @@ def get_preset_variants(spec: Dict,
                 f"this path to the `config` variable passed to `tune.run()`."
             ) from exc
 
-        if domain and not domain.is_valid(val):
-            logger.warning(
-                f"Pre-set value `{val}` is not within valid values of "
-                f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+        if domain:
+            if isinstance(domain, Domain):
+                if not domain.is_valid(val):
+                    logger.warning(
+                        f"Pre-set value `{val}` is not within valid values of "
+                        f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+            else:
+                # domain is actually a fixed value
+                if domain != val:
+                    logger.warning(
+                        f"Pre-set value `{val}` is not equal to the value of "
+                        f"parameter `{'/'.join(path)}`: {domain}")
         assign_value(spec["config"], path, val)
 
     return _generate_variants(spec, constant_grid_search=constant_grid_search)

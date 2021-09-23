@@ -10,8 +10,8 @@ from ray.rllib.utils import force_list, merge_dicts
 
 
 def from_config(cls, config=None, **kwargs):
-    """
-    Uses the given config to create an object.
+    """Uses the given config to create an object.
+
     If `config` is a dict, an optional "type" key can be used as a
     "constructor hint" to specify a certain class of the object.
     If `config` is not a dict, `config`'s value is used directly as this
@@ -37,7 +37,7 @@ def from_config(cls, config=None, **kwargs):
 
     Args:
         cls (class): The class to build an instance for (from `config`).
-        config (Optional[dict,str]): The config dict or type-string or
+        config (Optional[dict, str]): The config dict or type-string or
             filename.
 
     Keyword Args:
@@ -143,17 +143,27 @@ def from_config(cls, config=None, **kwargs):
             else:
                 return obj
 
-            # Test for absolute module.class specifier.
+            # Test for absolute module.class path specifier.
             if type_.find(".") != -1:
                 module_name, function_name = type_.rsplit(".", 1)
                 try:
                     module = importlib.import_module(module_name)
                     constructor = getattr(module, function_name)
-                except (ModuleNotFoundError, ImportError):
+                # Module not found.
+                except (ModuleNotFoundError, ImportError, AttributeError):
                     pass
+
             # If constructor still not found, try attaching cls' module,
             # then look for type_ in there.
             if constructor is None:
+                if isinstance(cls, str):
+                    # Module found, but doesn't have the specified
+                    # c'tor/function.
+                    raise ValueError(
+                        f"Full classpath specifier ({type_}) must be a valid "
+                        "full [module].[class] string! E.g.: "
+                        "`my.cool.module.MyCoolClass`.")
+
                 try:
                     module = importlib.import_module(cls.__module__)
                     constructor = getattr(module, type_)
@@ -166,12 +176,12 @@ def from_config(cls, config=None, **kwargs):
                         constructor = getattr(module, type_)
                     except (ModuleNotFoundError, ImportError, AttributeError):
                         pass
+
             if constructor is None:
                 raise ValueError(
-                    "String specifier ({}) in `from_config` must be a "
-                    "filename, a module+class, a class within '{}', or a key "
-                    "into {}.__type_registry__!".format(
-                        type_, cls.__module__, cls.__name__))
+                    f"String specifier ({type_}) must be a valid filename, "
+                    f"a [module].[class], a class within '{cls.__module__}', "
+                    f"or a key into {cls.__name__}.__type_registry__!")
 
     if not constructor:
         raise TypeError(

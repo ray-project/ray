@@ -29,22 +29,25 @@
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
-                                                bool detached, const std::string &name,
-                                                const rpc::Address &owner_address) {
+  static TaskSpecification GenActorCreationTask(
+      const JobID &job_id, int max_restarts, bool detached, const std::string &name,
+      const rpc::Address &owner_address,
+      std::unordered_map<std::string, double> required_resources =
+          std::unordered_map<std::string, double>(),
+      std::unordered_map<std::string, double> required_placement_resources =
+          std::unordered_map<std::string, double>()) {
     TaskSpecBuilder builder;
-    rpc::Address empty_address;
-    ray::FunctionDescriptor empty_descriptor =
-        ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
-    auto resource = std::unordered_map<std::string, double>();
-    builder.SetCommonTaskSpec(task_id, name + ":" + empty_descriptor->CallString(),
-                              Language::PYTHON, empty_descriptor, job_id, TaskID::Nil(),
-                              0, TaskID::Nil(), owner_address, 1, resource, resource,
+    FunctionDescriptor function_descriptor;
+    function_descriptor = FunctionDescriptorBuilder::BuildPython("", "", "", "");
+    builder.SetCommonTaskSpec(task_id, name + ":" + function_descriptor->CallString(),
+                              Language::PYTHON, function_descriptor, job_id,
+                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
+                              required_resources, required_placement_resources,
                               std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
-    builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts, /*max_task_retries=*/0,
-                                     {}, 1, detached, name);
+    builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts,
+                                     /*max_task_retries=*/0, {}, 1, detached, name);
     return builder.Build();
   }
 

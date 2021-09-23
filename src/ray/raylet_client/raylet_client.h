@@ -348,14 +348,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param resource_name Name of the resource to be set
-  /// \param capacity Capacity of the resource
-  /// \param node_id NodeID where the resource is to be set
-  /// \return ray::Status
-  ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &node_id);
-
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
   /// \param callback Callback that will be called after raylet completes the
@@ -452,6 +444,9 @@ class RayletClient : public RayletClientInterface {
 
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_{0};
+
+ protected:
+  RayletClient() {}
 };
 
 }  // namespace raylet

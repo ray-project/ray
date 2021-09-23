@@ -29,7 +29,7 @@ def ray_client_instance(scope="module"):
 
 @pytest.fixture
 def serve_with_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
+    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
     assert ray.util.client.ray.is_connected()
 
     yield
@@ -40,11 +40,11 @@ def serve_with_client(ray_client_instance):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
 def test_ray_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
+    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
 
     start = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -52,11 +52,9 @@ serve.start(detached=True)
 """.format(ray_client_instance)
     run_string_as_driver(start)
 
-    serve.connect()
-
     deploy = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -68,13 +66,12 @@ f.deploy()
 """.format(ray_client_instance)
     run_string_as_driver(deploy)
 
-    assert "test1" in serve.list_backends()
-    assert "test1" in serve.list_endpoints()
+    assert "test1" in serve.list_deployments()
     assert requests.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -82,12 +79,11 @@ serve.get_deployment("test1").delete()
 """.format(ray_client_instance)
     run_string_as_driver(delete)
 
-    assert "test1" not in serve.list_backends()
-    assert "test1" not in serve.list_endpoints()
+    assert "test1" not in serve.list_deployments()
 
     fastapi = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 from fastapi import FastAPI

@@ -1,4 +1,3 @@
-import time
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -71,9 +70,7 @@ class PlacementGroup:
             f"{len(self.bundle_cache)}")
 
         return bundle_reservation_check.options(
-            placement_group=self,
-            placement_group_bundle_index=0,
-            resources={
+            placement_group=self, resources={
                 "bundle": 0.001
             }).remote(self)
 
@@ -156,26 +153,11 @@ def _call_placement_group_ready(pg_id: PlacementGroupID,
 
 @client_mode_wrap
 def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
-    # Since creating placement group is async, it is
-    # possible table is not ready yet. To avoid the
-    # problem, we should keep trying with timeout.
-    TIMEOUT_SECOND = 30
-    WAIT_INTERVAL = 0.05
-    timeout_cnt = 0
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    while timeout_cnt < int(TIMEOUT_SECOND / WAIT_INTERVAL):
-        pg_info = ray.state.state.placement_group_table(pg_id)
-        if pg_info:
-            return list(pg_info["bundles"].values())
-        time.sleep(WAIT_INTERVAL)
-        timeout_cnt += 1
-
-    raise RuntimeError(
-        "Couldn't get the bundle information of placement group id "
-        f"{id} in {TIMEOUT_SECOND} seconds. It is likely "
-        "because GCS server is too busy.")
+    return list(
+        ray.state.state.placement_group_table(pg_id)["bundles"].values())
 
 
 @PublicAPI

@@ -648,6 +648,65 @@ def test_zero_cpu_scheduling(shutdown_only):
     assert len(not_ready) == 0
 
 
+def build_cluster(num_cpu_nodes, num_gpu_nodes):
+    cluster = ray.cluster_utils.Cluster()
+    gpu_ids = [
+        cluster.add_node(num_cpus=2, num_gpus=1).unique_id
+        for _ in range(num_gpu_nodes)
+    ]
+    cpu_ids = [
+        cluster.add_node(num_cpus=1).unique_id for _ in range(num_cpu_nodes)
+    ]
+    cluster.wait_for_nodes()
+    return cluster, cpu_ids, gpu_ids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_gpu(monkeypatch):
+    monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")
+    n = 5
+
+    cluster, cpu_node_ids, gpu_node_ids = build_cluster(n, n)
+    try:
+        ray.init(address=cluster.address)
+
+        @ray.remote(num_cpus=1)
+        class Actor1:
+            def __init__(self):
+                pass
+
+            def get_location(self):
+                return ray.worker.global_worker.node.unique_id
+
+        @ray.remote
+        def task_cpu(num_cpus=0.5):
+            time.sleep(10)
+            return ray.worker.global_worker.node.unique_id
+
+        @ray.remote(num_returns=2, num_gpus=0.5)
+        def launcher():
+            a = Actor1.remote()
+            task_results = [task_cpu.remote() for _ in range(n)]
+            actor_results = [a.get_location.remote() for _ in range(n)]
+            return ray.get(task_results + actor_results
+                           ), ray.worker.global_worker.node.unique_id
+
+        r = launcher.remote()
+
+        ids, launcher_id = ray.get(r)
+
+        assert launcher_id in gpu_node_ids, \
+            "expected launcher task to be scheduled on GPU nodes"
+
+        for node_id in ids:
+            assert node_id in cpu_node_ids, \
+                "expected non-GPU tasks/actors to be scheduled on" \
+                "non-GPU nodes."
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

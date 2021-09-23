@@ -4,7 +4,7 @@ import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check_compute_single_action, \
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 
 
@@ -23,10 +23,17 @@ class TestDDPPO(unittest.TestCase):
         config["num_gpus_per_worker"] = 0
         num_iterations = 2
 
-        for _ in framework_iterator(config, "torch"):
+        for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+                # Make sure, weights on all workers are the same (including
+                # local one).
+                weights = trainer.workers.foreach_worker(
+                    lambda w: w.get_weights())
+                for w in weights[1:]:
+                    check(w, weights[0])
+
             check_compute_single_action(trainer)
             trainer.stop()
 

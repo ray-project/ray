@@ -243,6 +243,66 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
   ASSERT_EQ(to_schedule, remote_node);
 }
 
+TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
+  StringIdMap map;
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
+
+  {
+    // The local node is better, but it has GPUs, the request is
+    // non GPU, and the remote node does not have GPUs, thus
+    // we should schedule on remote node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        ResourceMapToResourceRequest(map, {{"CPU", 1}}, false), local_node, nodes, 0.51,
+        false, true, true);
+    ASSERT_EQ(to_schedule, remote_node);
+  }
+  {
+    // A GPU request should be scheduled on a GPU node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"GPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, local_node);
+  }
+  {
+    // A CPU request can be be scheduled on a CPU node.
+    const ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, remote_node);
+  }
+  {
+    // A mixed CPU/GPU request should be scheduled on a GPU node.
+    const ResourceRequest req =
+        ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
+    const int to_schedule = raylet_scheduling_policy::HybridPolicy(
+        req, local_node, nodes, 0.51, false, true, true);
+    ASSERT_EQ(to_schedule, local_node);
+  }
+}
+
+TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
+  // Schedule on remote node, even though the request is CPU only, because
+  // we can not schedule on CPU nodes.
+  StringIdMap map;
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(0, 10, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(1, 1, 0, 0, 1, 1));
+
+  const int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes,
+                                                                 0.51, false, true, true);
+  ASSERT_EQ(to_schedule, remote_node);
+}
+
 TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
   // The local node is available but disqualified.
   StringIdMap map;

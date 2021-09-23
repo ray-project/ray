@@ -195,8 +195,10 @@ double ResourceSet::GetNumCpusDouble() const {
 }
 
 std::string format_resource(std::string resource_name, double quantity) {
-  if (resource_name == "object_store_memory" || resource_name == "memory") {
-    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
+  if (resource_name == "object_store_memory" ||
+      resource_name.find(kMemory_ResourceLabel) == 0) {
+    // The memory resources (in 50MiB unit) are converted to GiB
+    return std::to_string(quantity * 50 / 1024) + " GiB";
   }
   return std::to_string(quantity);
 }

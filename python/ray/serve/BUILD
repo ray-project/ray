@@ -3,20 +3,13 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
+    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
 
 py_test(
     name = "test_api",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_api_new",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -64,6 +57,14 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_metrics",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_metrics",
     size = "small",
     srcs = serve_tests_srcs,
@@ -88,6 +89,14 @@ py_test(
 )
 
 py_test(
+    name = "test_constructor_failure",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_ray_client",
     size = "small",
     srcs = serve_tests_srcs,
@@ -105,14 +114,6 @@ py_test(
 
 py_test(
     name = "test_backend_state",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -214,14 +215,6 @@ py_test(
 )
 
 py_test(
-    name = "test_imported_backend",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_fastapi",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -245,6 +238,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_autoscaling_policy",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -255,6 +256,14 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_controller_recovery",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -321,13 +330,3 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
-
-# Disable the deployment tutorial test because it requires
-# ray start --head in the background
-# py_test(
-    #name = "tutorial_deploy",
-    #size = "small",
-    #srcs = glob(["examples/doc/*.py"]),
-    #tags = ["exclusive", "team:serve"],
-    #deps = [":serve_lib"]
-# )

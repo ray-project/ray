@@ -21,6 +21,11 @@ using PlasmaStoreMessageHandler = std::function<ray::Status(
 class ClientInterface {
  public:
   virtual ~ClientInterface() {}
+
+  virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
+  virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) = 0;
+  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -29,10 +34,17 @@ class Client : public ray::ClientConnection, public ClientInterface {
   static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,
                                         ray::local_stream_socket &&socket);
 
-  ray::Status SendFd(MEMFD_TYPE fd);
+  ray::Status SendFd(MEMFD_TYPE fd) override;
 
-  /// Object ids that are used by this client.
-  std::unordered_set<ray::ObjectID> object_ids;
+  const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
+
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) override {
+    object_ids.insert(object_id);
+  }
+
+  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
+    object_ids.erase(object_id);
+  }
 
   std::string name = "anonymous_client";
 
@@ -41,6 +53,9 @@ class Client : public ray::ClientConnection, public ClientInterface {
   /// File descriptors that are used by this client.
   /// TODO(ekl) we should also clean up old fds that are removed.
   absl::flat_hash_set<MEMFD_TYPE> used_fds_;
+
+  /// Object ids that are used by this client.
+  std::unordered_set<ray::ObjectID> object_ids;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

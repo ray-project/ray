@@ -72,6 +72,8 @@ class ClusterResourceSchedulerInterface {
   /// fields used.
   virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
+  virtual double GetLocalAvailableCpus() const = 0;
+
   /// Populate a UpdateResourcesRequest. This is inteneded to update the
   /// resource totals on a node when a custom resource is created or deleted
   /// (e.g. during the placement group lifecycle).

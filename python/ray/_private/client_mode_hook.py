@@ -9,6 +9,10 @@ RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 # Global setting of whether client mode is enabled. This default to OFF,
 # but is enabled upon ray.client(...).connect() or in tests.
 is_client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+
+# When RAY_CLIENT_MODE == 1, we treat it as default enabled client mode
+# This is useful for testing
+is_client_mode_enabled_by_default = is_client_mode_enabled
 os.environ.update({"RAY_CLIENT_MODE": "0"})
 
 # Local setting of whether to ignore client hook conversion. This defaults
@@ -78,14 +82,22 @@ def client_mode_hook(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if client_mode_should_convert():
-            return getattr(ray, func.__name__)(*args, **kwargs)
+            # Legacy code
+            # we only convert init function if RAY_CLIENT_MODE=1
+            if func.__name__ != "init" or is_client_mode_enabled_by_default:
+                return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
 
     return wrapper
 
 
 def client_mode_should_convert():
-    return is_client_mode_enabled and _get_client_hook_status_on_thread()
+    # This is for testing with RAY_CLIENT_MODE.
+    # When RAY_CLIENT_MODE=1, it means that for all the tests
+    # will run with client mode.
+    # is_client_mode_enabled will be set to be off when client is off
+    return (is_client_mode_enabled or is_client_mode_enabled_by_default) and \
+      _get_client_hook_status_on_thread()
 
 
 def client_mode_wrap(func):
@@ -139,7 +151,7 @@ def client_mode_convert_actor(actor_cls, in_args, in_kwargs, **kwargs):
     The common case for this decorator is for instantiating an ActorClass
     transparently as a ClientActorClass. This happens in circumstances where
     the ActorClass is declared early, in a library and only then is Ray used in
-    client mode -- nescessitating a conversion.
+    client mode -- necessitating a conversion.
     """
     from ray.util.client import ray
 

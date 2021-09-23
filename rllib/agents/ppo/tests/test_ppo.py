@@ -132,42 +132,6 @@ class TestPPO(unittest.TestCase):
                         include_state=lstm)
                     trainer.stop()
 
-    def test_ppo_fake_multi_gpu_learning(self):
-        """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        # Mimic tuned_example for PPO CartPole.
-        config["num_workers"] = 1
-        config["lr"] = 0.0003
-        config["observation_filter"] = "MeanStdFilter"
-        config["num_sgd_iter"] = 6
-        config["vf_loss_coeff"] = 0.01
-        config["model"]["fcnet_hiddens"] = [32]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["vf_share_layers"] = True
-
-        # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
-
-        # Double batch size (2 GPUs).
-        config["train_batch_size"] = 8000
-
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-                if results["episode_reward_mean"] > 65.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
-            trainer.stop()
-
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -336,7 +300,7 @@ class TestPPO(unittest.TestCase):
                 policy_sess = policy.get_session()
                 k, e, pl, v, tl = policy_sess.run(
                     [
-                        policy._mean_kl,
+                        policy._mean_kl_loss,
                         policy._mean_entropy,
                         policy._mean_policy_loss,
                         policy._mean_vf_loss,
@@ -350,7 +314,7 @@ class TestPPO(unittest.TestCase):
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
             else:
-                check(policy._mean_kl, kl)
+                check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)

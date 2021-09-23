@@ -69,9 +69,9 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         is_multidiscrete = False
         output_hidden_shape = 1
 
-    def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+    def _make_time_major(*args, **kwargs):
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kwargs)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -85,8 +85,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     values_time_major = _make_time_major(values)
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = torch.reshape(mask, [-1])
         mask = _make_time_major(mask, drop_last=policy.config["vtrace"])
         num_valid = torch.sum(mask)
@@ -212,7 +212,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._value_targets = value_targets
@@ -252,7 +253,7 @@ def stats(policy: Policy, train_batch: SampleBatch):
         stats_dict.update({"var_IS": is_stat_var})
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy._mean_kl})
+        stats_dict.update({"kl": policy._mean_kl_loss})
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict

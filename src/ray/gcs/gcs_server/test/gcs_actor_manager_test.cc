@@ -222,7 +222,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
       create_actor_request,
-      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor) {
+      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
+                         const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -234,7 +235,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -251,7 +252,8 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -268,7 +270,7 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 }
@@ -282,7 +284,8 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -296,7 +299,7 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   auto node_id = NodeID::FromBinary(address.raylet_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -324,7 +327,8 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -337,7 +341,7 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -369,7 +373,8 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -383,7 +388,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto address = RandomAddress();
   auto node_id = NodeID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -400,7 +405,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto node_id2 = NodeID::FromRandom();
   address.set_raylet_id(node_id2.Binary());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
@@ -432,7 +437,8 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -446,7 +452,7 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto address = RandomAddress();
   auto node_id = NodeID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -477,7 +483,8 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -489,7 +496,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 
@@ -578,7 +585,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
       registered_actor_1->GetActorTableData().task_spec());
 
   Status status = gcs_actor_manager_->CreateActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1,
+      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -591,7 +599,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   auto node_id = NodeID::FromBinary(address.raylet_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
 
   // Remove worker and then check that the actor is dead.
@@ -607,8 +615,9 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetActorTableData().task_spec());
 
-  status = gcs_actor_manager_->CreateActor(request2,
-                                           [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->CreateActor(
+      request2,
+      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -624,7 +633,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
       registered_actor_1->GetActorTableData().task_spec());
 
   Status status = gcs_actor_manager_->CreateActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1,
+      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -636,7 +646,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   auto address = RandomAddress();
   auto node_id = NodeID::FromBinary(address.raylet_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
 
   // Remove node and then check that the actor is dead.
@@ -652,8 +662,9 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetActorTableData().task_spec());
 
-  status = gcs_actor_manager_->CreateActor(request2,
-                                           [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->CreateActor(
+      request2,
+      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -670,7 +681,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
       registered_actor_1->GetActorTableData().task_spec());
 
   Status status = gcs_actor_manager_->CreateActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1,
+      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -683,7 +695,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   auto node_id = NodeID::FromBinary(address.raylet_id());
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
 
   // Remove worker and then check that the actor is dead. The actor should be
@@ -713,7 +725,8 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -727,7 +740,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
 
   // Check that the actor is in state `DEAD`.
   actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 }
 
@@ -742,7 +755,8 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -780,7 +794,8 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                  const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(std::move(actor));
       }));
   // Make sure the actor is scheduling.
@@ -791,7 +806,7 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
 
   actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
@@ -869,7 +884,8 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
+                                               const rpc::PushTaskReply &reply) {
         finished_actors.emplace_back(actor);
       }));
   auto actor = mock_actor_scheduler_->actors.back();
@@ -877,7 +893,7 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
 
   auto address = RandomAddress();
   actor->UpdateAddress(address);
-  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
 

@@ -181,8 +181,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, \
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
-    # String comparison.
-    elif hasattr(x, "dtype") and x.dtype == np.object:
+    # String/byte comparisons.
+    elif hasattr(x, "dtype") and \
+            (x.dtype == np.object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -287,14 +288,14 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
 def check_compute_single_action(trainer,
                                 include_state=False,
                                 include_prev_action_reward=False):
-    """Tests different combinations of arguments for trainer.compute_action.
+    """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
         trainer (Trainer): The Trainer object to test.
         include_state (bool): Whether to include the initial state of the
-            Policy's Model in the `compute_action` call.
+            Policy's Model in the `compute_single_action` call.
         include_prev_action_reward (bool): Whether to include the prev-action
-            and -reward in the `compute_action` call.
+            and -reward in the `compute_single_action` call.
 
     Raises:
         ValueError: If anything unexpected happens.
@@ -309,7 +310,7 @@ def check_compute_single_action(trainer,
 
     for what in [pol, trainer]:
         if what is trainer:
-            method_to_test = trainer.compute_action
+            method_to_test = trainer.compute_single_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
             worker_set = getattr(trainer, "workers",
@@ -334,12 +335,6 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
-                # Framestacking w/ traj. view API.
-                framestacks = pol.config["model"].get("num_framestacks",
-                                                      "auto")
-                if isinstance(framestacks, int) and framestacks > 1:
-                    obs = np.stack(
-                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
@@ -377,14 +372,21 @@ def check_compute_single_action(trainer,
                         "({})!".format(action, what, action_space))
 
 
-def run_learning_tests_from_yaml(yaml_files: List[str],
-                                 max_num_repeats: int = 2) -> Dict[str, Any]:
+def run_learning_tests_from_yaml(
+        yaml_files: List[str],
+        *,
+        max_num_repeats: int = 2,
+        smoke_test: bool = False,
+) -> Dict[str, Any]:
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
         yaml_files (List[str]): List of yaml file names.
         max_num_repeats (int): How many times should we repeat a failed
             experiment?
+        smoke_test (bool): Whether this is just a smoke-test. If True,
+            set time_total_s to 5min and don't early out due to rewards
+            or timesteps reached.
     """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:
@@ -406,30 +408,64 @@ def run_learning_tests_from_yaml(yaml_files: List[str],
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            e["config"]["framework"] = "tf"
-            # We also stop early, once we reach the desired reward.
-            e["stop"]["episode_reward_mean"] = \
-                e["pass_criteria"]["episode_reward_mean"]
+            # If framework explicitly given, only test for that framework.
+            # Some algos do not have both versions available.
+            if "framework" in e["config"]:
+                frameworks = [e["config"]["framework"]]
+            else:
+                frameworks = ["tf", "torch"]
+                e["config"]["framework"] = "tf"
 
+            e["stop"] = e["stop"] or {}
+            e["pass_criteria"] = e["pass_criteria"] or {}
+
+            # For smoke-tests, we just run for n min.
+            if smoke_test:
+                # 0sec for each(!) experiment/trial.
+                # This is such that if there are many experiments/trials
+                # in a test (e.g. rllib_learning_test), each one can at least
+                # create its trainer and run a first iteration.
+                e["stop"]["time_total_s"] = 0
+            else:
+                # We also stop early, once we reach the desired reward.
+                min_reward = e.get("pass_criteria",
+                                   {}).get("episode_reward_mean")
+                if min_reward is not None:
+                    e["stop"]["episode_reward_mean"] = min_reward
+
+            keys = []
             # Generate the torch copy of the experiment.
-            e_torch = copy.deepcopy(e)
-            e_torch["config"]["framework"] = "torch"
-            k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
-            k_torch = re.sub("-tf-", "-torch-", k_tf)
-            experiments[k_tf] = e
-            experiments[k_torch] = e_torch
-            # Generate `checks` dict.
-            for k_ in [k_tf, k_torch]:
+            if len(frameworks) == 2:
+                e_torch = copy.deepcopy(e)
+                e_torch["config"]["framework"] = "torch"
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                keys.append(re.sub("-tf-", "-torch-", keys[0]))
+                experiments[keys[0]] = e
+                experiments[keys[1]] = e_torch
+            # tf-only.
+            elif frameworks[0] == "tf":
+                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
+                experiments[keys[0]] = e
+            # torch-only.
+            else:
+                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
+                experiments[keys[0]] = e
+
+            # Generate `checks` dict for all experiments (tf and/or torch).
+            for k_ in keys:
+                e = experiments[k_]
                 checks[k_] = {
-                    "min_reward": e["pass_criteria"]["episode_reward_mean"],
-                    "min_timesteps": e["pass_criteria"]["timesteps_total"],
-                    "time_total_s": e["stop"]["time_total_s"],
+                    "min_reward": e["pass_criteria"].get(
+                        "episode_reward_mean"),
+                    "min_throughput": e["pass_criteria"].get(
+                        "timesteps_total", 0.0) /
+                    (e["stop"].get("time_total_s", 1.0) or 1.0),
+                    "time_total_s": e["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
                 }
-            # This key would break tune.
-            del e["pass_criteria"]
-            del e_torch["pass_criteria"]
+                # This key would break tune.
+                e.pop("pass_criteria", None)
 
     # Print out the actual config.
     print("== Test config ==")
@@ -456,28 +492,79 @@ def run_learning_tests_from_yaml(yaml_files: List[str],
         trials = run_experiments(experiments_to_run, resume=False, verbose=2)
         all_trials.extend(trials)
 
-        # Check each trial for whether we passed.
+        # Check each experiment for whether it passed.
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
-        for t in trials:
-            experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
+        for experiment in experiments_to_run.copy():
+            print(f"Analyzing experiment {experiment} ...")
+            # Collect all trials within this experiment (some experiments may
+            # have num_samples or grid_searches defined).
+            trials_for_experiment = []
+            for t in trials:
+                trial_exp = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
+                if trial_exp == experiment:
+                    trials_for_experiment.append(t)
+            print(f" ... Trials: {trials_for_experiment}.")
 
-            if t.status == "ERROR":
+            # If we have evaluation workers, use their rewards.
+            # This is useful for offline learning tests, where
+            # we evaluate against an actual environment.
+            check_eval = experiments[experiment]["config"].get(
+                "evaluation_interval", None) is not None
+
+            # Error: Increase failure count and repeat.
+            if any(t.status == "ERROR" for t in trials_for_experiment):
+                print(" ... ERROR.")
                 checks[experiment]["failures"] += 1
+            # Smoke-tests always succeed.
+            elif smoke_test:
+                print(" ... SMOKE TEST (mark ok).")
+                checks[experiment]["passed"] = True
+                del experiments_to_run[experiment]
+            # Experiment finished: Check reward achieved and timesteps done
+            # (throughput).
             else:
-                desired_reward = checks[experiment]["min_reward"]
-                desired_timesteps = checks[experiment]["min_timesteps"]
-
-                throughput = t.last_result["timesteps_total"] / \
-                    t.last_result["time_total_s"]
-
-                desired_throughput = \
-                    desired_timesteps / t.stopping_criterion["time_total_s"]
-
-                if t.last_result["episode_reward_mean"] < desired_reward or \
-                        desired_throughput and throughput < desired_throughput:
-                    checks[experiment]["failures"] += 1
+                if check_eval:
+                    episode_reward_mean = np.mean([
+                        t.last_result["evaluation"]["episode_reward_mean"]
+                        for t in trials_for_experiment
+                    ])
                 else:
+                    episode_reward_mean = np.mean([
+                        t.last_result["episode_reward_mean"]
+                        for t in trials_for_experiment
+                    ])
+                desired_reward = checks[experiment]["min_reward"]
+
+                timesteps_total = np.mean([
+                    t.last_result["timesteps_total"]
+                    for t in trials_for_experiment
+                ])
+                total_time_s = np.mean([
+                    t.last_result["time_total_s"]
+                    for t in trials_for_experiment
+                ])
+
+                throughput = timesteps_total / (total_time_s or 1.0)
+                desired_throughput = None
+                # TODO(Jun): Stop checking throughput for now.
+                # desired_throughput = checks[experiment]["min_throughput"]
+
+                print(f" ... Desired reward={desired_reward}; "
+                      f"desired throughput={desired_throughput}")
+
+                # We failed to reach desired reward or the desired throughput.
+                if (desired_reward and
+                    episode_reward_mean < desired_reward) or \
+                    (desired_throughput and
+                     throughput < desired_throughput):
+                    print(" ... Not successful: Actual "
+                          f"reward={episode_reward_mean}; "
+                          f"actual throughput={throughput}")
+                    checks[experiment]["failures"] += 1
+                # We succeeded!
+                else:
+                    print(" ... Successful: (mark ok).")
                     checks[experiment]["passed"] = True
                     del experiments_to_run[experiment]
 

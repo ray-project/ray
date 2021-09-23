@@ -1,4 +1,3 @@
-import copy
 import unittest
 
 import ray
@@ -34,7 +33,7 @@ class TestIMPALA(unittest.TestCase):
             for lstm in [False, True]:
                 local_cfg["num_aggregation_workers"] = 0 if not lstm else 1
                 local_cfg["model"]["use_lstm"] = lstm
-                print("lstm={} aggregation-worker={}".format(
+                print("lstm={} aggregation-workers={}".format(
                     lstm, local_cfg["num_aggregation_workers"]))
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
@@ -78,32 +77,6 @@ class TestIMPALA(unittest.TestCase):
                 assert get_lr(r2) < get_lr(r1), (r1, r2)
             finally:
                 trainer.stop()
-
-    def test_impala_fake_multi_gpu_learning(self):
-        """Test whether IMPALATrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(impala.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["_fake_gpus"] = True
-        config["num_gpus"] = 2
-
-        config["train_batch_size"] *= 2
-
-        # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = impala.ImpalaTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-                if results["episode_reward_mean"] > 55.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "IMPALA multi-GPU (with fake-GPUs) did not learn CartPole!"
-            trainer.stop()
 
 
 if __name__ == "__main__":
