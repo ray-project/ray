@@ -110,7 +110,9 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
                 # Repeat the incoming state every n time steps (usually max seq
                 # len).
                 batch_repeat_value=self.config["model"]["max_seq_len"],
-                space=self.state_space)
+                space=self.state_space),
+            "state_out_0": ViewRequirement(
+                space=self.state_space, used_for_compute_actions=False),
         }
 
         self.view_requirements = dict(super()._get_default_view_requirements(),
