@@ -187,10 +187,17 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_actions: bool = None,
+            clip_action: Optional[bool] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            unsquash_actions: bool = None,
+            unsquash_action: Optional[bool] = None,
+            input_dict: Optional[SampleBatch] = None,
+
+            # Deprecated args:
+            clip_actions=None,
+            unsquash_actions=None,
+
+            # Kwars placeholder for future compatibility.
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -202,7 +209,7 @@ class Policy(metaclass=ABCMeta):
             prev_action (Optional[TensorType]): Previous action value, if any.
             prev_reward (Optional[TensorType]): Previous reward, if any.
             info (dict): Info object, if any.
-            episode (Optional[MultiAgentEpisode]): this provides access to all
+            episode (Optional[MultiAgentEpisode]): This provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
             unsquash_actions (bool): Should actions be unsquashed according to
@@ -224,13 +231,26 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
-        # If policy works in normalized space, we should unsquash the action.
-        # Use value of config.normalize_actions, if None.
-        unsquash_actions = \
-            unsquash_actions if unsquash_actions is not None \
-            else self.config["normalize_actions"]
-        clip_actions = clip_actions if clip_actions is not None else \
-            self.config["clip_actions"]
+        if clip_actions != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Policy.compute_single_action(`clip_actions`=...)",
+                new="Policy.compute_single_action(`clip_action`=...)",
+                error=False)
+            clip_action = clip_actions
+        if unsquash_action != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Policy.compute_single_action(`unsquash_actions`=...)",
+                new="Policy.compute_single_action(`unsquash_action`=...)",
+                error=False)
+            unsquash_action = unsquash_actions
+
+        ## If policy works in normalized space, we should unsquash the action.
+        ## Use value of config.normalize_actions, if None.
+        #unsquash_action = \
+        #    unsquash_action if unsquash_action is not None \
+        #    else self.config["normalize_actions"]
+        #clip_action = clip_action if clip_action is not None else \
+        #    self.config["clip_actions"]
 
         prev_action_batch = None
         prev_reward_batch = None
@@ -260,7 +280,8 @@ class Policy(metaclass=ABCMeta):
             info_batch=info_batch,
             episodes=episodes,
             explore=explore,
-            timestep=timestep)
+            timestep=timestep,
+        )
 
         # Some policies don't return a tuple, but always just a single action.
         # E.g. ES and ARS.
@@ -277,11 +298,11 @@ class Policy(metaclass=ABCMeta):
 
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
-        if unsquash_actions:
+        if unsquash_action:
             single_action = unsquash_action(single_action,
                                             self.action_space_struct)
         # Clip, according to env's action space.
-        elif clip_actions:
+        elif clip_action:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
 
@@ -296,6 +317,8 @@ class Policy(metaclass=ABCMeta):
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
+            unsquash_actions: Optional[bool] = None,
+            clip_actions: Optional[bool] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -304,14 +327,25 @@ class Policy(metaclass=ABCMeta):
         to construct the input_dict for the Model.
 
         Args:
-            input_dict (SampleBatch): A SampleBatch containing the Tensors
+            input_dict: A SampleBatch containing the Tensors
                 to compute actions. `input_dict` already abides to the
                 Policy's as well as the Model's view requirements and can
                 thus be passed to the Model as-is.
-            explore (bool): Whether to pick an exploitation or exploration
+            explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            timestep (Optional[int]): The current (sampling) time step.
-            kwargs: forward compatibility placeholder
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            unsquash_actions: Should actions be unsquashed according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["normalize_actions"].
+            clip_actions: Should actions be clipped according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["clip_actions"].
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
 
         Returns:
             Tuple:
@@ -337,6 +371,8 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep,
             episodes=episodes,
+            unsquash_actions=unsquash_actions,
+            clip_actions=clip_actions,
             **kwargs,
         )
 
