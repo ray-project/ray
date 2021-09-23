@@ -123,7 +123,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),
-      get_ray_namespace_(get_ray_namespace) {
+      get_ray_namespace_(get_ray_namespace),
+      exp_backoff_(RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
+                   RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
+                   RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms()) {
   Tick();
 }
 
@@ -256,6 +259,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
+  exp_backoff_.Reset();
   // Mark the scheduling done firstly.
   MarkSchedulingDone();
   auto placement_group_id = placement_group->GetPlacementGroupID();
@@ -575,7 +579,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
-                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+                static_cast<uint64_t>(exp_backoff_.Next()));
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {

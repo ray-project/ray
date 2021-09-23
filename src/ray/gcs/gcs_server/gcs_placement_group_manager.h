@@ -366,6 +366,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  // Exponential backoff counter
+  ExponentialBackOff exp_backoff_;
 };
 
 }  // namespace gcs

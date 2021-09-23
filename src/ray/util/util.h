@@ -312,4 +312,35 @@ class ThreadPrivate {
   mutable std::mutex mutex_;
 };
 
+class ExponentialBackOff {
+ public:
+  ExponentialBackOff(double initial_value,
+                     double multiplier,
+                     double max_value = 0.0)
+      : curr_value_(initial_value),
+        initial_value_(initial_value),
+        max_value_(max_value),
+        multiplier_(multiplier) {
+    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
+  }
+
+  size_t Next() {
+    curr_value_ = curr_value_ * multiplier_;
+    if (max_value_ != 0.0) {
+      curr_value_ = std::min(curr_value_, max_value_);
+    }
+    return curr_value_;
+  }
+
+  void Reset() {
+    curr_value_ = initial_value_;
+  }
+ private:
+  double curr_value_;
+  double initial_value_;
+  double max_value_;
+  double multiplier_;
+
+};
+
 }  // namespace ray

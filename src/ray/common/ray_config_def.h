@@ -236,8 +236,10 @@ RAY_CONFIG(uint64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
-/// Duration to wait between retries for creating placement group in gcs server.
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Exponential backoff params for gcs to retry creating a placement group
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
+RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
