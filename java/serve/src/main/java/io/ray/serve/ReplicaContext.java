@@ -20,7 +20,7 @@ public class ReplicaContext {
   }
 
   public String getDeploymentTag() {
-    return DeploymentTag;
+    return deploymentTag;
   }
 
   public void setDeploymentTag(String deploymentTag) {
