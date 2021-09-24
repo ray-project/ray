@@ -18,12 +18,12 @@
 //
 // The format is used to avoid code duplication.
 // It can be included multiple times in ray_config.h, and each inclusion
-// could use a different definition of the RAY_PROCESS_FLAG macro.
-// Macro definition format: RAY_PROCESS_FLAG(type, name, default_value).
+// could use a different definition of the RAY_INTERNAL_FLAG macro.
+// Macro definition format: RAY_INTERNAL_FLAG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
 /// Ray Job ID.
-RAY_PROCESS_FLAG(std::string, JOB_ID, "")
+RAY_INTERNAL_FLAG(std::string, JOB_ID, "")
 
 /// Raylet process ID.
-RAY_PROCESS_FLAG(std::string, RAYLET_PID, "")
+RAY_INTERNAL_FLAG(std::string, RAYLET_PID, "")

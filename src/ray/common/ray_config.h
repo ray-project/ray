@@ -64,15 +64,15 @@ class RayConfig {
 
 #include "ray/common/ray_config_def.h"
 
-/// -----------Include ray_process_flag_def.h to define internal flags-------
-/// RAY_PROCESS_FLAG defines RayConfig fields similar to the RAY_CONFIG macro.
-/// The difference is that RAY_PROCESS_FLAG is intended for Ray internal
+/// -----------Include ray_internal_flag_def.h to define internal flags-------
+/// RAY_INTERNAL_FLAG defines RayConfig fields similar to the RAY_CONFIG macro.
+/// The difference is that RAY_INTERNAL_FLAG is intended for Ray internal
 /// settings that users should not modify.
-#define RAY_PROCESS_FLAG RAY_CONFIG
+#define RAY_INTERNAL_FLAG RAY_CONFIG
 
-#include "ray/common/ray_process_flag_def.h"
+#include "ray/common/ray_internal_flag_def.h"
 
-#undef RAY_PROCESS_FLAG
+#undef RAY_INTERNAL_FLAG
 #undef RAY_CONFIG
 
  public:
