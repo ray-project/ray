@@ -1533,7 +1533,8 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
             logger.warning(msg + " (NOT OK)")
             raise EnvError(
                 f"Env's `observation_space` {env.observation_space} does not "
-                f"contain returned observation after a reset ({dummy_obs})!")
+                f"contain returned observation after a reset ({dummy_obs}; "
+                f"dtype={dummy_obs.dtype})!")
 
     # Log that everything is ok.
     logger.info(msg + " (ok)")
