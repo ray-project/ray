@@ -13,8 +13,8 @@ MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
 
 if not os.environ.get("CI"):
-    # This flag turns on the local development that links against current Ray
-    # packages and falls back all the dependencies to the current Python site.
+    # This flag allows for local testing of runtime env conda/pip functionality
+    # without needing a built Ray wheel.  It links to the current Python site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
