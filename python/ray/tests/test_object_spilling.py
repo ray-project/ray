@@ -387,7 +387,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux", reason="Failing on Windows/macOS.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only,
@@ -440,9 +440,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(obj.shape)
         del obj
 
-    # In CI, Mac.metal suffers from EBS code start problem. Increase
-    # the timeout to 90.
-    timeout_seconds = 90 if platform.system() == "Darwin" else 30
+    timeout_seconds = 30
     duration = datetime.now() - start
     assert duration <= timedelta(
         seconds=timeout_seconds

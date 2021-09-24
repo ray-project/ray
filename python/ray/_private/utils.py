@@ -602,7 +602,8 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_function(pickled, name, obj_type, worker):
+def check_oversized_function(pickled: bytes, name: str, obj_type: str,
+                             worker: "ray.Worker") -> None:
     """Send a warning message if the pickled function is too large.
 
     Args:
@@ -610,7 +611,8 @@ def check_oversized_function(pickled, name, obj_type, worker):
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
             'remote function', or 'actor'.
-        worker: the worker used to send warning message.
+        worker: the worker used to send warning message. message will be logged
+            locally if None.
     """
     length = len(pickled)
     if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
@@ -622,11 +624,12 @@ def check_oversized_function(pickled, name, obj_type, worker):
             "array or other object in scope. Tip: use ray.put() to put large "
             "objects in the Ray object store.").format(obj_type, name,
                                                        length // (1024 * 1024))
-        push_error_to_driver(
-            worker,
-            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-            "Warning: " + warning_message,
-            job_id=worker.current_job_id)
+        if worker:
+            push_error_to_driver(
+                worker,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                "Warning: " + warning_message,
+                job_id=worker.current_job_id)
     else:
         error = (
             "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"

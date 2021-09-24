@@ -8,12 +8,28 @@ import time
 from unittest.mock import patch
 
 import grpc
+
 import ray
-from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
-from ray._private.test_utils import run_string_as_driver
 import ray.util.client.server.proxier as proxier
+from ray._private.test_utils import run_string_as_driver
+
+
+def start_ray_and_proxy_manager(n_ports=2):
+    agent_port = random.choice(range(50000, 55000))
+    ray_instance = ray.init(_redis_password="test")
+    agent_port = ray.worker.global_worker.node.metrics_agent_port
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"],
+        redis_password="test",
+        runtime_env_agent_port=agent_port)
+    free_ports = random.choices(range(45000, 45100), k=n_ports)
+    pm._free_ports = free_ports.copy()
+
+    return pm, free_ports
 
 
 @pytest.mark.skipif(
@@ -28,15 +44,9 @@ def test_proxy_manager_lifecycle(shutdown_only):
     3. The SpecificServer destructs itself when no client connects.
     4. The ProxyManager returns the port of the destructed SpecificServer.
     """
-    ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
-    pm = proxier.ProxyManager(
-        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
-    # NOTE: We use different ports between runs because sometimes the port is
-    # not released, introducing flakiness.
-    port_one, port_two = random.choices(range(45000, 45100), k=2)
-    pm._free_ports = [port_one, port_two]
+    pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
     pm.create_specific_server(client)
@@ -45,19 +55,19 @@ def test_proxy_manager_lifecycle(shutdown_only):
     grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
 
     proc = pm._get_server_for_client(client)
-    assert proc.port == port_one, f"Free Ports are: [{port_one}, {port_two}]"
+    assert proc.port == free_ports[0], f"Free Ports are: {free_ports}"
 
     log_files_path = os.path.join(pm.node.get_session_dir_path(), "logs",
                                   "ray_client_server*")
     files = glob(log_files_path)
-    assert any(str(port_one) in f for f in files)
+    assert any(str(free_ports[0]) in f for f in files)
 
     proc.process_handle_future.result().process.wait(10)
     # Wait for reconcile loop
     time.sleep(2)
 
     assert len(pm._free_ports) == 2
-    assert pm._get_unused_port() == port_two
+    assert pm._get_unused_port() == free_ports[1]
 
 
 @pytest.mark.skipif(
@@ -66,14 +76,11 @@ def test_proxy_manager_lifecycle(shutdown_only):
 def test_proxy_manager_bad_startup(shutdown_only):
     """
     Test that when a SpecificServer fails to start (because of a bad JobConfig)
-    that it is properly GC'd
+    that it is properly GC'd.
     """
-    ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     proxier.CHECK_CHANNEL_TIMEOUT_S = 1
-    pm = proxier.ProxyManager(
-        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
-    pm._free_ports = [46000, 46001]
+    pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
     pm.create_specific_server(client)
@@ -156,16 +163,14 @@ def test_delay_in_rewriting_environment(shutdown_only):
     proxier.LOGSTREAM_RETRIES = 3
     proxier.LOGSTREAM_RETRY_INTERVAL_SEC = 1
     ray_instance = ray.init()
-
-    def delay_in_rewrite(input: JobConfig):
-        import time
-        time.sleep(6)
-        return input
-
     server = proxier.serve_proxier(
         "localhost:25010",
         ray_instance["redis_address"],
         session_dir=ray_instance["session_dir"])
+
+    def delay_in_rewrite(_input: JobConfig):
+        time.sleep(6)
+        return _input
 
     with patch.object(proxier, "ray_client_server_env_prep", delay_in_rewrite):
         run_string_as_driver(check_connection)
@@ -195,20 +200,43 @@ def test_startup_error_yields_clean_result(shutdown_only):
     clear error on the *client side*.
     """
     ray_instance = ray.init()
-
-    def raise_not_rewrite(input: JobConfig):
-        raise RuntimeError("WEIRD_ERROR")
-
     server = proxier.serve_proxier(
         "localhost:25030",
         ray_instance["redis_address"],
         session_dir=ray_instance["session_dir"])
+
+    def raise_not_rewrite(input: JobConfig):
+        raise RuntimeError("WEIRD_ERROR")
 
     with patch.object(proxier, "ray_client_server_env_prep",
                       raise_not_rewrite):
         run_string_as_driver(get_error)
 
     server.stop(0)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 25031 "
+        "--port 0 --redis-password=password"
+    ],
+    indirect=True)
+def test_runtime_install_error_message(call_ray_start):
+    """
+    Check that an error while preparing the runtime environment for the client
+    server yields an actionable, clear error on the *client side*.
+    """
+    with pytest.raises(ConnectionAbortedError) as excinfo:
+        ray.client("localhost:25031").env({
+            "pip": ["ray-this-doesnt-exist"]
+        }).connect()
+    assert ("No matching distribution found for ray-this-doesnt-exist" in str(
+        excinfo.value)), str(excinfo.value)
+
+    ray.util.disconnect()
 
 
 def test_prepare_runtime_init_req_fails():
@@ -292,18 +320,12 @@ def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
     goes through it.
     """
 
-    ray_instance = ray.init(_redis_password="test")
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     # The timeout has likely been set to 1 in an earlier test. Increase timeout
     # to wait for the channel to become ready.
     proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
-    pm = proxier.ProxyManager(
-        ray_instance["redis_address"],
-        session_dir=ray_instance["session_dir"],
-        redis_password="test")
-    port_one, port_two = random.choices(range(45000, 45100), k=2)
-    pm._free_ports = [port_one, port_two]
+    pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
     task_servicer = proxier.RayletServicerProxy(None, pm)

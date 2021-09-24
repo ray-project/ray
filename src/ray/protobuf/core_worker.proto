@@ -329,14 +329,6 @@ message ExitReply {
   bool success = 1;
 }
 
-message RunOnUtilWorkerRequest {
-  string request = 1;
-  repeated string args = 2;
-}
-
-message RunOnUtilWorkerReply {
-}
-
 message AssignObjectOwnerRequest {
   // The ID of added object.
   bytes object_id = 1;
@@ -404,8 +396,6 @@ service CoreWorkerService {
   rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-  // Run a request on io worker
-  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.

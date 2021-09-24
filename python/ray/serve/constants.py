@@ -13,11 +13,19 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Controller checkpoint path
+DEFAULT_CHECKPOINT_PATH = "ray://"
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
+
+# Upon controller failure and recovery with running actor names,
+# we will update replica handles that halt all traffic to the cluster.
+# This constant indicates grace period to avoid controller thrashing.
+CONTROLLER_STARTUP_GRACE_PERIOD_S = 5
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60

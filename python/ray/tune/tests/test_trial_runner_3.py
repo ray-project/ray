@@ -32,6 +32,7 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 

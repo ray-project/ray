@@ -65,7 +65,6 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
-UTIL_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -937,7 +936,7 @@ def init(
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
-        # later in the connect
+        # later in the connect.
         working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
@@ -1295,8 +1294,7 @@ def connect(node,
         node.redis_address, redis_password=node.redis_password)
 
     # Initialize some fields.
-    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE,
-                UTIL_WORKER_MODE):
+    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1393,10 +1391,12 @@ def connect(node,
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environmen will be prepared
+    # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        working_dir_pkg.upload_runtime_env_package_if_needed(job_config)
+        manager = working_dir_pkg.WorkingDirManager(
+            worker.node.get_runtime_env_dir_path())
+        manager.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1406,7 +1406,7 @@ def connect(node,
                        " and will be removed in the future.")
 
     # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped)
         worker.import_thread.start()
