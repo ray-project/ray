@@ -1,6 +1,6 @@
+import functools
 import gym
 import numpy as np
-import tree  # pip install dm_tree
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -10,6 +10,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_torch, TensorType
+from ray.rllib.utils.tf_ops import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -90,15 +91,12 @@ class StochasticSampling(Exploration):
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
 
-        def logp_false_fn():
-            batch_size = tf.shape(tree.flatten(action)[0])[0]
-            return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
-
         logp = tf.cond(
             tf.math.logical_and(
                 explore, tf.convert_to_tensor(ts >= self.random_timesteps)),
             true_fn=lambda: action_dist.sampled_action_logp(),
-            false_fn=logp_false_fn)
+            false_fn=functools.partial(zero_logps_from_actions,
+                                       deterministic_actions))
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:

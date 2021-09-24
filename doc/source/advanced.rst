@@ -49,7 +49,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
+    # Also available via `from ray._private.test_utils import SignalActor`
     import ray
     import asyncio
 
@@ -425,12 +425,16 @@ To get information about the current available resource capacity of your cluster
 
 .. _runtime-environments:
 
-Runtime Environments (Experimental)
+Runtime Environments
 -----------------------------------
 
 .. note::
 
-    Runtime environments are currently an experimental feature and under active development. The API is subject to change.
+    This API is in beta and may change before becoming stable.
+
+.. note::
+
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
@@ -492,11 +496,11 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
 - ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
-  or (3) the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
-  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
+  - Example: ``{"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}``
 
   - Example: ``"./environment.yml"``
 
@@ -508,14 +512,14 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
-The runtime env is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
 For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
 The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ``runtime_env["env_vars"]`` dict of the parent.
 This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
 
-Here are some examples of runtime envs combining multiple options:
+Here are some examples of runtime environments combining multiple options:
 
 ..
   TODO(architkulkarni): run working_dir doc example in CI

@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 MB = 1024 * 1024
 

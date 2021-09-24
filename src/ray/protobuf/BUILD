@@ -95,6 +95,25 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "test_service_proto",
+    srcs = ["test_service.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "test_service_cc_proto",
+    deps = [":test_service_proto"],
+)
+
+python_grpc_compile(
+    name = "test_service_py_proto",
+    deps = [":test_service_proto"],
+)
+
+proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
     deps = [":common_proto"],
@@ -225,4 +244,15 @@ python_grpc_compile(
 cc_proto_library(
     name = "runtime_env_agent_cc_proto",
     deps = [":runtime_env_agent_proto"],
+)
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
 )

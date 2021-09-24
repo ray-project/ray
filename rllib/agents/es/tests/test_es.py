@@ -25,14 +25,15 @@ class TestES(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            plain_config = config.copy()
-            trainer = es.ESTrainer(config=plain_config, env="CartPole-v0")
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
+            for env in ["CartPole-v0", "Pendulum-v0"]:
+                plain_config = config.copy()
+                trainer = es.ESTrainer(config=plain_config, env=env)
+                for i in range(num_iterations):
+                    results = trainer.train()
+                    print(results)
 
-            check_compute_single_action(trainer)
-            trainer.stop()
+                check_compute_single_action(trainer)
+                trainer.stop()
         ray.shutdown()
 
 

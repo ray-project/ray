@@ -21,16 +21,6 @@
 
 namespace plasma {
 
-ObjectTableEntry::ObjectTableEntry(Allocation allocation)
+LocalObject::LocalObject(Allocation allocation)
     : allocation(std::move(allocation)), ref_count(0) {}
-
-ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
-                                      const ObjectID &object_id) {
-  auto it = store_info->objects.find(object_id);
-  if (it == store_info->objects.end()) {
-    return nullptr;
-  }
-  return it->second.get();
-}
-
 }  // namespace plasma

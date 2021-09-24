@@ -15,6 +15,7 @@
 #include "ray/core_worker/context.h"
 
 namespace ray {
+namespace core {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
@@ -254,4 +255,5 @@ WorkerThreadContext &WorkerContext::GetThreadContext() {
   return *thread_context_;
 }
 
+}  // namespace core
 }  // namespace ray

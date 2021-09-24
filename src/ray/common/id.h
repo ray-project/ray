@@ -298,6 +298,9 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
 
+  static bool IsActorID(const ObjectID &object_id);
+  static ActorID ToActorID(const ObjectID &object_id);
+
   MSGPACK_DEFINE(id_);
 
  private:
@@ -392,8 +395,7 @@ T BaseID<T>::FromRandom() {
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data " << binary << " of size "
-      << binary.size();
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;

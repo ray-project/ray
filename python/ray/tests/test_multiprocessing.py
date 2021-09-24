@@ -8,7 +8,7 @@ from collections import defaultdict
 import queue
 
 import ray
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError
 
 

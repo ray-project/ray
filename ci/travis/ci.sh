@@ -142,7 +142,6 @@ test_python() {
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
-      -python/ray/serve:test_backend_worker # memory error
       -python/ray/serve:test_controller_crashes # timeout
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
@@ -162,6 +161,7 @@ test_python() {
       -python/ray/tests:test_failure
       -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
+      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -175,6 +175,9 @@ test_python() {
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
+      -python/ray/tests:test_placement_group_2
+      -python/ray/tests:test_placement_group_3
+      -python/ray/tests:test_placement_group_mini_integration
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
@@ -199,15 +202,18 @@ test_python() {
 }
 
 test_cpp() {
+  # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
+  # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
+  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
-    --test_arg=--ray-redis-password="1234"
-  # run the cpp example
-  cd cpp/example && bazel --nosystem_rc --nohome_rc run //:example
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
+    --test_arg=--ray_redis_password="1234"
 
+  # run the cpp example
+  cd cpp/example && bash run.sh
 }
 
 test_wheels() {
@@ -240,7 +246,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/new_dashboard/client
+      cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
@@ -295,7 +301,18 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+
+  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
+    bazel build "${target}"
+  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
+    # bazel build --config asan "${target}"
+    echo "Not needed"
+  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
+    bazel build --config debug "${target}"
+  else
+    echo "Invalid config given"
+    exit 1
+  fi
 }
 
 
@@ -330,6 +347,7 @@ build_wheels() {
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
+        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
 
@@ -352,7 +370,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -391,7 +409,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
     if [ -z "${BUILDKITE-}" ]; then
@@ -427,6 +445,15 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
+  if command -v clang-tidy > /dev/null; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
+    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+  else
+    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
+  fi
+
   # Run script linting
   lint_scripts
 
@@ -442,6 +469,12 @@ _lint() {
 
     # lint copyright
     lint_copyright
+
+    # lint test script
+    pushd "${WORKSPACE_DIR}"
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+    popd
   fi
 }
 

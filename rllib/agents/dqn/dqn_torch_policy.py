@@ -130,7 +130,7 @@ def build_q_model_and_distribution(
         policy: Policy, obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -141,7 +141,7 @@ def build_q_model_and_distribution(
     Returns:
         (q_model, TorchCategorical)
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
@@ -179,7 +179,7 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -244,7 +244,8 @@ def build_q_losses(policy: Policy, model, _,
     # Target Q-network evaluation.
     q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        policy.target_models[model],
+        {"obs": train_batch[SampleBatch.NEXT_OBS]},
         explore=False,
         is_training=True)
 
@@ -252,9 +253,8 @@ def build_q_losses(policy: Policy, model, _,
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
-        torch.where(q_t > FLOAT_MIN, q_t,
-                    torch.tensor(0.0, device=policy.device)) *
-        one_hot_selection, 1)
+        torch.where(q_t > FLOAT_MIN, q_t, torch.tensor(0.0, device=q_t.device))
+        * one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
 
@@ -272,7 +272,7 @@ def build_q_losses(policy: Policy, model, _,
                                                  policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -281,7 +281,7 @@ def build_q_losses(policy: Policy, model, _,
             torch.argmax(q_tp1, 1), policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -308,7 +308,6 @@ def adam_optimizer(policy: Policy,
     # can define our optimizers using the correct CUDA variables.
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
-        policy.target_q_func_vars = policy.target_q_model.variables()
 
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
@@ -329,10 +328,7 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Move target net to device (this is done automatically for the
-    # policy.model, but not for any other models the policy has).
-    policy.target_q_model = policy.target_q_model.to(policy.device)
+    TargetNetworkMixin.__init__(policy)
 
 
 def compute_q_values(policy: Policy,

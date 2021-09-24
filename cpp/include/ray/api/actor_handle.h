@@ -18,10 +18,6 @@
 #include <ray/api/ray_runtime_holder.h>
 
 namespace ray {
-namespace api {
-
-template <typename ActorType, typename ReturnType, typename... Args>
-using ActorFunc = ReturnType (ActorType::*)(Args...);
 
 /// A handle to an actor which can be used to invoke a remote actor method, with the
 /// `Call` method.
@@ -39,7 +35,10 @@ class ActorHandle {
 
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
-  ActorTaskCaller<F> Task(F actor_func);
+  ray::internal::ActorTaskCaller<F> Task(F actor_func);
+
+  void Kill();
+  void Kill(bool no_restart);
 
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
@@ -64,15 +63,24 @@ const std::string &ActorHandle<ActorType>::ID() const {
 
 template <typename ActorType>
 template <typename F>
-ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+ray::internal::ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   using Self = boost::callable_traits::class_of_t<F>;
   static_assert(
       std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
       "class types must be same");
-  RemoteFunctionHolder remote_func_holder(actor_func);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
-                            std::move(remote_func_holder));
+  ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
+  return ray::internal::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
+                                           std::move(remote_func_holder));
 }
 
-}  // namespace api
+template <typename ActorType>
+void ActorHandle<ActorType>::Kill() {
+  ray::internal::GetRayRuntime()->KillActor(id_, true);
+}
+
+template <typename ActorType>
+void ActorHandle<ActorType>::Kill(bool no_restart) {
+  ray::internal::GetRayRuntime()->KillActor(id_, no_restart);
+}
+
 }  // namespace ray

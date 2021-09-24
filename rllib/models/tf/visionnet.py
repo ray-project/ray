@@ -5,7 +5,6 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
@@ -44,17 +43,9 @@ class VisionNetwork(TFModelV2):
 
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
-        self.traj_view_framestacking = False
 
-        # Perform Atari framestacking via traj. view API.
-        if model_config.get("num_framestacks") != "auto" and \
-                model_config.get("num_framestacks", 0) > 1:
-            input_shape = obs_space.shape + (model_config["num_framestacks"], )
-            self.data_format = "channels_first"
-            self.traj_view_framestacking = True
-        else:
-            input_shape = obs_space.shape
-            self.data_format = "channels_last"
+        input_shape = obs_space.shape
+        self.data_format = "channels_last"
 
         inputs = tf.keras.layers.Input(shape=input_shape, name="observations")
         last_layer = inputs
@@ -93,7 +84,10 @@ class VisionNetwork(TFModelV2):
             layer_sizes = post_fcnet_hiddens[:-1] + ([num_outputs]
                                                      if post_fcnet_hiddens else
                                                      [])
+            feature_out = last_layer
+
             for i, out_size in enumerate(layer_sizes):
+                feature_out = last_layer
                 last_layer = tf.keras.layers.Dense(
                     out_size,
                     name="post_fcnet_{}".format(i),
@@ -126,6 +120,7 @@ class VisionNetwork(TFModelV2):
                     # Add (optional) post-fc-stack after last Conv2D layer.
                     for i, out_size in enumerate(post_fcnet_hiddens[1:] +
                                                  [num_outputs]):
+                        feature_out = last_layer
                         last_layer = tf.keras.layers.Dense(
                             out_size,
                             name="post_fcnet_{}".format(i + 1),
@@ -134,6 +129,7 @@ class VisionNetwork(TFModelV2):
                             kernel_initializer=normc_initializer(1.0))(
                                 last_layer)
                 else:
+                    feature_out = last_layer
                     last_cnn = last_layer = tf.keras.layers.Conv2D(
                         num_outputs, [1, 1],
                         activation=None,
@@ -164,19 +160,20 @@ class VisionNetwork(TFModelV2):
                         name="post_fcnet_{}".format(i),
                         activation=post_fcnet_activation,
                         kernel_initializer=normc_initializer(1.0))(last_layer)
+                feature_out = last_layer
                 self.num_outputs = last_layer.shape[1]
         logits_out = last_layer
 
         # Build the value layers
         if vf_share_layers:
             if not self.last_layer_is_flattened:
-                last_layer = tf.keras.layers.Lambda(
-                    lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
+                feature_out = tf.keras.layers.Lambda(
+                    lambda x: tf.squeeze(x, axis=[1, 2]))(feature_out)
             value_out = tf.keras.layers.Dense(
                 1,
                 name="value_out",
                 activation=None,
-                kernel_initializer=normc_initializer(0.01))(last_layer)
+                kernel_initializer=normc_initializer(0.01))(feature_out)
         else:
             # build a parallel set of hidden layers for the value net
             last_layer = inputs
@@ -210,20 +207,6 @@ class VisionNetwork(TFModelV2):
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [logits_out, value_out])
-
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = model_config["num_framestacks"] - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-                used_for_compute_actions=False,
-            )
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -281,18 +264,8 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
         post_fcnet_activation = get_activation_fn(
             post_fcnet_activation, framework="tf")
 
-        self.traj_view_framestacking = False
-
-        # Perform Atari framestacking via traj. view API.
-        num_framestacks = kwargs.get("num_framestacks")
-        if num_framestacks != "auto" and num_framestacks and \
-                num_framestacks > 1:
-            input_shape = input_space.shape + (num_framestacks, )
-            self.data_format = "channels_first"
-            self.traj_view_framestacking = True
-        else:
-            input_shape = input_space.shape
-            self.data_format = "channels_last"
+        input_shape = input_space.shape
+        self.data_format = "channels_last"
 
         inputs = tf.keras.layers.Input(shape=input_shape, name="observations")
         last_layer = inputs
@@ -447,20 +420,6 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [logits_out, value_out])
-
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = num_framestacks - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-                used_for_compute_actions=False,
-            )
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):

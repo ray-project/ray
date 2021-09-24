@@ -7,7 +7,7 @@ py_test(
  size = "small",
  srcs = ["simple_example.py"],
  deps = [":lgbm_lib"],
- tags = ["exclusive"],
+ tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -15,7 +15,7 @@ py_test(
  size="small",
  srcs = ["simple_tune.py"],
  deps = [":lgbm_lib"],
- tags = ["exclusive"]
+ tags = ["team:ml", "exclusive"]
 )
 
 py_test(
@@ -23,7 +23,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_client.py"],
     deps = [":lgbm_lib"],
-    tags = ["exclusive", "client"]
+    tags = ["team:ml", "exclusive", "client"]
 )
 
 # This is a dummy test dependency that causes the above tests to be

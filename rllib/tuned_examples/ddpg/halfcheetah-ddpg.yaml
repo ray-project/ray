@@ -40,7 +40,7 @@ halfcheetah-ddpg:
         # === Optimization ===
         actor_lr: 0.001
         critic_lr: 0.001
-        use_huber: False
+        use_huber: false
         huber_threshold: 1.0
         l2_reg: 0.000001
         learning_starts: 500
@@ -50,7 +50,7 @@ halfcheetah-ddpg:
         # === Parallelism ===
         num_workers: 0
         num_gpus_per_worker: 0
-        worker_side_prioritization: False
+        worker_side_prioritization: false
 
         # === Evaluation ===
         evaluation_interval: 5

@@ -23,13 +23,14 @@
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const ray::FunctionDescriptor &function_descriptor);
+                                const FunctionDescriptor &function_descriptor);
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
@@ -63,8 +64,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  bool ReplyPushTask(Status status = Status::OK(), bool exit = false,
-                     bool stolen = false) {
+  bool ReplyPushTask(Status status = Status::OK(), bool exit = false, bool stolen = false,
+                     bool is_application_level_error = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -75,6 +76,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     if (stolen) {
       reply.set_task_stolen(true);
+    }
+    if (is_application_level_error) {
+      reply.set_is_application_level_error(true);
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -100,6 +104,11 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
+  bool RetryTaskIfPossible(const TaskID &task_id) override {
+    num_task_retries_attempted++;
+    return false;
+  }
+
   bool PendingTaskFailed(
       const TaskID &task_id, rpc::ErrorType error_type, Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
@@ -114,8 +123,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
-                             rpc::ErrorType error_type,
+  void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
                              const std::shared_ptr<rpc::RayException>
                                  &creation_task_exception = nullptr) override {}
 
@@ -130,12 +138,13 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
   int num_contained_ids = 0;
+  int num_task_retries_attempted = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                           bool disconnect_worker) override {
+  Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                      bool disconnect_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
@@ -145,7 +154,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override {
     num_workers_requested += 1;
@@ -225,10 +234,21 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   };
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            gcs::StatusCallback callback) override {
     return Status::OK();
   }
+
+  Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
+    return Status::OK();
+  }
+
+  void AsyncWaitForActorRegisterFinish(const ActorID &,
+                                       gcs::StatusCallback callback) override {}
+
+  bool IsActorInRegistering(const ActorID &actor_id) const override { return false; }
 
   ~MockActorCreator() {}
 };
@@ -279,10 +299,11 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   TaskSpecification task;
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
@@ -290,17 +311,18 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
@@ -311,7 +333,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -322,7 +345,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
@@ -336,7 +359,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
@@ -344,7 +368,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
@@ -364,7 +388,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
+  MockActorCreator actor_creator;
+  LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   ObjectID obj3 = ObjectID::FromRandom();
@@ -373,7 +398,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
@@ -391,7 +416,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 }
 
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const ray::FunctionDescriptor &function_descriptor) {
+                                const FunctionDescriptor &function_descriptor) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
@@ -403,8 +428,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  FunctionDescriptor empty_descriptor =
+      FunctionDescriptorBuilder::BuildPython("", "", "", "");
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
@@ -439,6 +464,54 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          lease_policy, store, task_finisher,
+                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  TaskSpecification task = BuildEmptyTaskSpec();
+  task.GetMutableMessage().set_retry_exceptions(true);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate an application-level error.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  task.GetMutableMessage().set_retry_exceptions(false);
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  // Simulate an application-level error.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, false, true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 2);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
@@ -996,10 +1069,10 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
-  ray::FunctionDescriptor descriptor1 =
-      ray::FunctionDescriptorBuilder::BuildPython("a", "", "", "");
-  ray::FunctionDescriptor descriptor2 =
-      ray::FunctionDescriptorBuilder::BuildPython("b", "", "", "");
+  FunctionDescriptor descriptor1 =
+      FunctionDescriptorBuilder::BuildPython("a", "", "", "");
+  FunctionDescriptor descriptor2 =
+      FunctionDescriptorBuilder::BuildPython("b", "", "", "");
 
   // Tasks with different resources should request different worker leases.
   RAY_LOG(INFO) << "Test different resources";
@@ -1026,7 +1099,7 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(plasma_data, plasma1));
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
@@ -1984,6 +2057,7 @@ TEST(DirectTaskTransportTest, TestNoWorkerRequestedIfStealingUnavailable) {
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

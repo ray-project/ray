@@ -19,7 +19,7 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   RAY_LOG(INFO) << "Start load library " << lib_path;
@@ -165,5 +165,5 @@ const EntryFuntion &FunctionHelper::GetExecutableMemberFunctions(
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

@@ -3,7 +3,6 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
 
 @pytest.mark.parametrize(

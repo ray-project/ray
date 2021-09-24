@@ -14,9 +14,24 @@
 
 #include "counter.h"
 
-Counter::Counter(int init) { count = init; }
+#ifdef _WIN32
+#include "windows.h"
+#else
+#include "signal.h"
+#include "unistd.h"
+#endif
+
+Counter::Counter(int init, bool with_exception) {
+  if (with_exception) {
+    throw std::invalid_argument("creation error");
+  }
+  count = init;
+  is_restared = ray::WasCurrentActorRestarted();
+}
 
 Counter *Counter::FactoryCreate() { return new Counter(0); }
+
+Counter *Counter::FactoryCreateException() { return new Counter(0, true); }
 
 Counter *Counter::FactoryCreate(int init) { return new Counter(init); }
 
@@ -34,5 +49,44 @@ int Counter::Add(int x) {
   return count;
 }
 
-RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
-           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
+int Counter::Exit() {
+  ray::ExitActor();
+  return 1;
+}
+
+bool Counter::IsProcessAlive(uint64_t pid) {
+#ifdef _WIN32
+  auto process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (process == NULL) {
+    return false;
+  }
+
+  CloseHandle(process);
+  return true;
+#else
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  return true;
+#endif
+}
+
+uint64_t Counter::GetPid() {
+#ifdef _WIN32
+  return GetCurrentProcessId();
+#else
+  return getpid();
+#endif
+}
+
+bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
+
+bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
+
+RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), Counter::FactoryCreateException,
+           RAY_FUNC(Counter::FactoryCreate, int),
+           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
+           &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc,
+           &Counter::CheckRestartInActorCreationTask, &Counter::CheckRestartInActorTask);
+
+RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);

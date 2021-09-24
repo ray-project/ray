@@ -29,7 +29,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
     NODE_KIND_WORKER, STATUS_UNINITIALIZED, TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.node_provider import NodeProvider
-from ray.test_utils import RayTestTimeoutException
+from ray._private.test_utils import RayTestTimeoutException
 import pytest
 
 
@@ -204,6 +204,10 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
+        # Don't assume that node providers can retrieve tags from
+        # terminated nodes.
+        if self.is_terminated(node_id):
+            raise Exception(f"The node with id {node_id} has been terminated!")
         with self.lock:
             return self.mock_nodes[node_id].tags
 
@@ -313,8 +317,6 @@ MOCK_DEFAULT_CONFIG = {
     },
     "available_node_types": {
         "ray.head.default": {
-            "min_workers": 0,
-            "max_workers": 0,
             "resources": {},
             "node_config": {
                 "head_default_prop": 4
@@ -1855,7 +1857,8 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        for node_id in autoscaler.workers():
+        autoscaler.update_worker_list()
+        for node_id in autoscaler.workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -2113,7 +2116,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Terminating 1 nodes of type "
+        assert ("Removing 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
 
@@ -2682,6 +2685,18 @@ MemAvailable:   33000000 kB
             TAG_RAY_NODE_STATUS: "update-failed"
         }, 1)
 
+        # `_allow_uninitialized_state` should return the head node
+        # in the `update-failed` state.
+        allow_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert allow_failed == 0
+
         # Node 1 is okay.
         self.provider.create_node({}, {
             TAG_RAY_CLUSTER_NAME: "default",
@@ -2697,6 +2712,18 @@ MemAvailable:   33000000 kB
             _provider=self.provider)
 
         assert node == 1
+
+        # `_allow_uninitialized_state` should return the up-to-date head node
+        # if it is present.
+        optionally_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert optionally_failed == 1
 
     def testNodeTerminatedDuringUpdate(self):
         """
@@ -2794,7 +2821,8 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        assert 0 not in autoscaler.workers(), "Node zero still non-terminated."
+        autoscaler.update_worker_list()
+        assert 0 not in autoscaler.workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -2822,7 +2850,8 @@ MemAvailable:   33000000 kB
         # Should get two new nodes after the next update.
         autoscaler.update()
         self.waitForNodes(2)
-        assert set(autoscaler.workers()) == {2, 3},\
+        autoscaler.update_worker_list()
+        assert set(autoscaler.workers) == {2, 3},\
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1
@@ -2856,6 +2885,14 @@ MemAvailable:   33000000 kB
 
         self.waitFor(
             metrics_incremented, fail_msg="Expected metrics to update")
+
+    def testDefaultMinMaxWorkers(self):
+        config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        config = prepare_config(config)
+        node_types = config["available_node_types"]
+        head_node_config = node_types["ray.head.default"]
+        assert head_node_config["min_workers"] == 0
+        assert head_node_config["max_workers"] == 0
 
 
 if __name__ == "__main__":

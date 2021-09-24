@@ -42,11 +42,17 @@ if __name__ == "__main__":
     # Register env
     register_env("pistonball",
                  lambda config: PettingZooEnv(env_creator(config)))
+    env = PettingZooEnv(env_creator(config))
+    observation_space = env.observation_space
+    action_space = env.action_space
+    del env
 
     # Configuration for multiagent setup with policy sharing:
     config["multiagent"] = {
         # Setup a single, shared policy for all agents.
-        "policies": {"av"},
+        "policies": {
+            "av": (None, observation_space, action_space, {})
+        },
         # Map all agents to that policy.
         "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
     }

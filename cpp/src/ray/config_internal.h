@@ -19,7 +19,9 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
-namespace api {
+namespace internal {
+
+using ray::core::WorkerType;
 
 enum class RunMode { SINGLE_PROCESS, CLUSTER };
 
@@ -51,12 +53,14 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  std::vector<std::string> head_args = {};
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
   };
 
-  void Init(RayConfig &config, int *argc, char ***argv);
+  void Init(RayConfig &config, int argc, char **argv);
 
   void SetRedisAddress(const std::string address);
 
@@ -68,5 +72,5 @@ class ConfigInternal {
   ConfigInternal(){};
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

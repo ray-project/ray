@@ -148,13 +148,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const PubsubCommandBatchRequest &request,
       const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
-  virtual void AddObjectLocationOwner(
-      const AddObjectLocationOwnerRequest &request,
-      const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
-
-  virtual void RemoveObjectLocationOwner(
-      const RemoveObjectLocationOwnerRequest &request,
-      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {}
+  virtual void UpdateObjectLocationBatch(
+      const UpdateObjectLocationBatchRequest &request,
+      const ClientCallback<UpdateObjectLocationBatchReply> &callback) {}
 
   virtual void GetObjectLocationsOwner(
       const GetObjectLocationsOwnerRequest &request,
@@ -191,9 +187,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
                              const ClientCallback<AddSpilledUrlReply> &callback) {}
 
-  virtual void RunOnUtilWorker(const RunOnUtilWorkerRequest &request,
-                               const ClientCallback<RunOnUtilWorkerReply> &callback) {}
-
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
@@ -204,6 +197,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void AssignObjectOwner(const AssignObjectOwnerRequest &request,
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
+
+  /// Returns the max acked sequence number, useful for checking on progress.
+  virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
   virtual ~CoreWorkerClientInterface(){};
 };
@@ -243,10 +239,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubCommandBatch, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
-                         override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_,
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, UpdateObjectLocationBatch, grpc_client_,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
@@ -263,8 +256,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, DeleteSpilledObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
-
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RunOnUtilWorker, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
@@ -345,6 +336,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     if (!send_queue_.empty()) {
       RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
     }
+  }
+
+  /// Returns the max acked sequence number, useful for checking on progress.
+  int64_t ClientProcessedUpToSeqno() override {
+    absl::MutexLock lock(&mutex_);
+    return max_finished_seq_no_;
   }
 
  private:

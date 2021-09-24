@@ -26,6 +26,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 class TrackedBuffer;
 
@@ -215,4 +216,5 @@ class CoreWorkerPlasmaStoreProvider {
   std::shared_ptr<BufferTracker> buffer_tracker_;
 };
 
+}  // namespace core
 }  // namespace ray

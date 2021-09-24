@@ -1,4 +1,5 @@
 import asyncio
+import random
 from typing import Dict, List, Tuple
 
 import ray
@@ -18,15 +19,24 @@ class HTTPState:
     called with a lock held.
     """
 
-    def __init__(self, controller_name: str, detached: bool,
-                 config: HTTPOptions):
+    def __init__(
+            self,
+            controller_name: str,
+            detached: bool,
+            config: HTTPOptions,
+            # Used by unit testing
+            _start_proxies_on_init: bool = True,
+    ):
         self._controller_name = controller_name
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached)
         self._detached = detached
         self._config = config
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
 
         # Will populate self.proxy_actors with existing actors.
-        self._start_proxies_if_needed()
+        if _start_proxies_on_init:
+            self._start_proxies_if_needed()
 
     def shutdown(self) -> None:
         for proxy in self.get_http_proxy_handles().values():
@@ -52,9 +62,24 @@ class HTTPState:
 
         if location == DeploymentMode.HeadOnly:
             head_node_resource_key = get_current_node_resource_key()
-            target_nodes = [(node_id, node_resource)
-                            for node_id, node_resource in target_nodes
-                            if node_resource == head_node_resource_key][:1]
+            return [(node_id, node_resource)
+                    for node_id, node_resource in target_nodes
+                    if node_resource == head_node_resource_key][:1]
+
+        if location == DeploymentMode.FixedNumber:
+            num_replicas = self._config.fixed_number_replicas
+            if num_replicas > len(target_nodes):
+                logger.warning(
+                    "You specified fixed_number_replicas="
+                    f"{num_replicas} but there are only "
+                    f"{len(target_nodes)} total nodes. Serve will start one "
+                    "HTTP proxy per node.")
+                num_replicas = len(target_nodes)
+
+            # Seed the random state so sample is deterministic.
+            # i.e. it will always return the same set of nodes.
+            random.seed(self._config.fixed_number_selection_seed)
+            return random.sample(sorted(target_nodes), k=num_replicas)
 
         return target_nodes
 
@@ -67,7 +92,8 @@ class HTTPState:
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name,
                                      node_id)
             try:
-                proxy = ray.get_actor(name)
+                proxy = ray.get_actor(
+                    name, namespace=self._controller_namespace)
             except ValueError:
                 logger.info("Starting HTTP proxy with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(
@@ -87,6 +113,7 @@ class HTTPState:
                     self._config.host,
                     self._config.port,
                     controller_name=self._controller_name,
+                    controller_namespace=self._controller_namespace,
                     http_middlewares=self._config.middlewares)
 
             self._proxy_actors[node_id] = proxy

@@ -20,6 +20,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
                            const std::string &call_site) {
@@ -181,8 +182,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
@@ -218,8 +219,8 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
     }
   }
@@ -439,4 +440,5 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   return Status::OK();
 }
 
+}  // namespace core
 }  // namespace ray

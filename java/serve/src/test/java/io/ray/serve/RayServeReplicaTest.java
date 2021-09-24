@@ -3,6 +3,12 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.generated.RequestWrapper;
+import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -10,10 +16,9 @@ public class RayServeReplicaTest {
 
   @SuppressWarnings("unused")
   @Test
-  public void test() {
+  public void test() throws IOException {
 
     boolean inited = Ray.isInitialized();
-
     Ray.init();
 
     try {
@@ -26,26 +31,40 @@ public class RayServeReplicaTest {
               .setName(controllerName)
               .remote();
 
-      BackendConfig backendConfig = new BackendConfig();
+      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
+      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
+
+      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
+
+      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+
+      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
+
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   backendTag,
                   replicaTag,
                   "io.ray.serve.ReplicaContext",
-                  new Object[] {backendTag, replicaTag, controllerName, new Object()},
-                  backendConfig,
+                  initArgsBytes,
+                  backendConfigBytes,
                   controllerName)
               .remote();
 
       backendHandle.task(RayServeWrappedReplica::ready).remote();
 
-      RequestMetadata requestMetadata = new RequestMetadata();
+      RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId("RayServeReplicaTest");
       requestMetadata.setCallMethod("getBackendTag");
+
+      RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
+
       ObjectRef<Object> resultRef =
           backendHandle
-              .task(RayServeWrappedReplica::handle_request, requestMetadata, (Object[]) null)
+              .task(
+                  RayServeWrappedReplica::handleRequest,
+                  requestMetadata.build().toByteArray(),
+                  requestWrapper.build().toByteArray())
               .remote();
 
       Assert.assertEquals((String) resultRef.get(), backendTag);

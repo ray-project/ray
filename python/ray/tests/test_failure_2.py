@@ -16,8 +16,8 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import (init_error_pubsub, get_error_message, Semaphore,
-                            wait_for_condition)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     Semaphore, wait_for_condition)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
@@ -283,7 +283,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(object_ref)
     thread.join()
 
@@ -307,7 +307,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)
 
     @ray.remote

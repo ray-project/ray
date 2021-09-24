@@ -11,6 +11,7 @@ from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 import pytorch_lightning as ptl
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.memory import recursive_detach
+from ray.util.annotations import Deprecated
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.constants import NUM_STEPS, SCHEDULER_STEP_BATCH, \
     SCHEDULER_STEP_EPOCH
@@ -25,6 +26,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
     """A subclass of TrainingOperator created from a PTL ``LightningModule``.

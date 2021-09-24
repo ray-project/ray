@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def test_serve_forceful_shutdown(serve_instance):

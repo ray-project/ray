@@ -20,7 +20,7 @@
 #include "object_store.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class NativeObjectStore : public ObjectStore {
  public:
@@ -40,7 +40,9 @@ class NativeObjectStore : public ObjectStore {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
                                                         int timeout_ms);
+  void CheckException(const std::string &meta_str,
+                      const std::shared_ptr<Buffer> &data_buffer);
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

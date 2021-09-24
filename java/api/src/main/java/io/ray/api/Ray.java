@@ -1,7 +1,6 @@
 package io.ray.api;
 
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
@@ -66,6 +65,21 @@ public final class Ray extends RayCall {
    */
   public static <T> ObjectRef<T> put(T obj) {
     return internal().put(obj);
+  }
+
+  /**
+   * Store an object in the object store and assign its ownership to owner. This function is
+   * experimental.
+   *
+   * @param obj The Java object to be stored.
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
+   * @return A ObjectRef instance that represents the in-store object.
+   */
+  public static <T> ObjectRef<T> put(T obj, BaseActorHandle owner) {
+    return internal().put(obj, owner);
   }
 
   /**
@@ -150,6 +164,7 @@ public final class Ray extends RayCall {
    * @param name The name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
    *     Optional.empty()
+   * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return internal().getActor(name, false);
@@ -164,6 +179,7 @@ public final class Ray extends RayCall {
    * @param name The global name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
    *     Optional.empty()
+   * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
     return internal().getActor(name, true);
@@ -222,30 +238,6 @@ public final class Ray extends RayCall {
           "Ray has not been started yet. You can start Ray with 'Ray.init()'");
     }
     return runtime;
-  }
-
-  /**
-   * Update the resource for the specified client. Set the resource for the specific node.
-   *
-   * @deprecated Consider using placement groups instead
-   *     (docs.ray.io/en/master/placement-group.html). You can also specify resources at Ray start
-   *     time with the 'resources' field in the cluster autoscaler.
-   */
-  @Deprecated
-  public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
-    internal().setResource(resourceName, capacity, nodeId);
-  }
-
-  /**
-   * Set the resource for local node.
-   *
-   * @deprecated Consider using placement groups instead
-   *     (docs.ray.io/en/master/placement-group.html). You can also specify resources at Ray start
-   *     time with the 'resources' field in the cluster autoscaler.
-   */
-  @Deprecated
-  public static void setResource(String resourceName, double capacity) {
-    internal().setResource(resourceName, capacity, UniqueId.NIL);
   }
 
   /** Get the runtime context. */

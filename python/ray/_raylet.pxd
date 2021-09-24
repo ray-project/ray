@@ -77,12 +77,21 @@ cdef class BaseID:
 cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
+        c_string owner_addr
         # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
+        c_string call_site_data
 
     cdef CObjectID native(self)
+
+cdef class ClientObjectRef(ObjectRef):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -90,6 +99,13 @@ cdef class ActorID(BaseID):
     cdef CActorID native(self)
 
     cdef size_t hash(self)
+
+cdef class ClientActorRef(ActorID):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class CoreWorker:
     cdef:
@@ -106,7 +122,8 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
-                            owner_address=*)
+                            owner_address=*,
+                            c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,

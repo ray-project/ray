@@ -22,14 +22,16 @@
 namespace ray {
 namespace streaming {
 
+using ray::core::RayFunction;
+
 /// Send buffer internal
 /// \param[in] buffer buffer to be sent.
 /// \param[in] function the function descriptor of peer's function.
 /// \param[in] return_num return value number of the call.
 /// \param[out] return_ids return ids from SubmitActorTask.
-void SendInternal(const ActorID &peer_actor_id, std::shared_ptr<LocalMemoryBuffer> buffer,
-                  RayFunction &function, int return_num,
-                  std::vector<ObjectID> &return_ids);
+std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
+                                               std::shared_ptr<LocalMemoryBuffer> buffer,
+                                               RayFunction &function, int return_num);
 
 }  // namespace streaming
 }  // namespace ray

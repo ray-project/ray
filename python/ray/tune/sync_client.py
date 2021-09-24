@@ -8,6 +8,7 @@ import types
 from shlex import quote
 
 from ray.tune.error import TuneError
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,7 @@ def get_cloud_sync_client(remote_path):
                               delete_template)
 
 
+@PublicAPI(stability="beta")
 class SyncClient:
     """Client interface for interacting with remote storage options."""
 
