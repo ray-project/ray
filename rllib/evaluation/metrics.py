@@ -9,8 +9,8 @@ from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:

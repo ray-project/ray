@@ -5,31 +5,12 @@ import logging
 from collections import defaultdict
 import random
 
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
+    LEARNER_STATS_KEY
 
 logger = logging.getLogger(__name__)
-
-
-def averaged(kv, axis=None):
-    """Average the value lists of a dictionary.
-
-    For non-scalar values, we simply pick the first value.
-
-    Args:
-        kv (dict): dictionary with values that are lists of floats.
-
-    Returns:
-        dictionary with single averaged float as values.
-    """
-    out = {}
-    for k, v in kv.items():
-        if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v, axis=axis)
-        else:
-            out[k] = v[0]
-    return out
 
 
 def standardized(array):
@@ -107,7 +88,8 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
-    fetches = defaultdict(dict)
+    learner_info_builder = LearnerInfoBuilder(num_devices=1)
+    #fetches = defaultdict(dict)
     for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
@@ -122,17 +104,12 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
 
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
-                batch_fetches = (local_worker.learn_on_batch(
+                results = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
-                for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
-                    learner_stats[k].append(v)
-                for k, v in batch_fetches.get("model", {}).items():
-                    model_stats[k].append(v)
-                for k, v in batch_fetches.get("custom_metrics", {}).items():
-                    custom_callbacks_stats[k].append(v)
-        fetches[policy_id][LEARNER_STATS_KEY] = averaged(learner_stats)
-        fetches[policy_id]["model"] = averaged(model_stats)
-        fetches[policy_id]["custom_metrics"] = averaged(custom_callbacks_stats)
-    return fetches
+                learner_info_builder.add_learn_on_batch_results(
+                    policy_id, results)
+
+    learner_info = learner_info_builder.finalize()
+    return learner_info

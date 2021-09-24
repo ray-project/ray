@@ -2,8 +2,8 @@ import queue
 import threading
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 

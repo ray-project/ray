@@ -25,7 +25,8 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     MultiGPUTrainOneStep
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 

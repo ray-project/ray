@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
@@ -19,6 +19,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices

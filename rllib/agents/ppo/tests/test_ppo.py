@@ -14,8 +14,8 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
@@ -105,7 +105,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config):
-            for env in ["FrozenLake-v0", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v0"]:#, "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))

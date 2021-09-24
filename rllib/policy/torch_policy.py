@@ -14,13 +14,14 @@ import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
@@ -643,13 +644,12 @@ class TorchPolicy(Policy):
         self.apply_gradients(_directStepOptimizerSingleton)
 
         batch_fetches = {}
-        batch_fetches[LEARNER_STATS_KEY] = {}
         for i, batch in enumerate(device_batches):
-            batch_fetches[LEARNER_STATS_KEY][
-                f"tower_{i}"] = self.extra_grad_info(batch)
+            batch_fetches[f"tower_{i}"] = {
+                LEARNER_STATS_KEY: self.extra_grad_info(batch)
+            }
 
-        batch_fetches = merge_dicts(batch_fetches,
-                                    self.extra_compute_grad_fetches())
+        batch_fetches.update(self.extra_compute_grad_fetches())
 
         return batch_fetches
 

@@ -19,9 +19,9 @@ from ray import tune
 from ray.rllib.examples.models.custom_loss_model import CustomLossModel, \
     TorchCustomLossModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
 tf1, tf, tfv = try_import_tf()
 
