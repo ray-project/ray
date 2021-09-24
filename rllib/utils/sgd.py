@@ -1,19 +1,17 @@
 """Utils for minibatch SGD across multiple RLlib policies."""
 
-import numpy as np
 import logging
-from collections import defaultdict
+import numpy as np
 import random
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
 
 
-def standardized(array):
+def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
     Args:
@@ -89,7 +87,6 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
     learner_info_builder = LearnerInfoBuilder(num_devices=1)
-    #fetches = defaultdict(dict)
     for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
@@ -98,10 +95,6 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
 
-        learner_stats = defaultdict(list)
-        model_stats = defaultdict(list)
-        custom_callbacks_stats = defaultdict(list)
-
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
                 results = (local_worker.learn_on_batch(
@@ -109,7 +102,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
                 learner_info_builder.add_learn_on_batch_results(
-                    policy_id, results)
+                    results, policy_id)
 
     learner_info = learner_info_builder.finalize()
     return learner_info

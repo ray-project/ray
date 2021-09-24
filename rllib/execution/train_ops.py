@@ -1,22 +1,21 @@
 import logging
 import numpy as np
 import math
-import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
-    LAST_TARGET_UPDATE_TS, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    LAST_TARGET_UPDATE_TS, LEARN_ON_BATCH_TIMER, \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
+    LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
@@ -197,7 +196,7 @@ class MultiGPUTrainOneStep:
                             buffer_index=0)
 
                         learner_info_builder.add_learn_on_batch_results(
-                            policy_id, results)
+                            results, policy_id)
 
             # Tower reduce and finalize results.
             learner_info = learner_info_builder.finalize()
@@ -246,7 +245,12 @@ class ComputeGradients:
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(samples)
-        metrics.info[LEARNER_INFO] = get_learner_stats(info)
+        # RolloutWorker.compute_gradients returns pure single agent stats
+        # in a non-multi agent setup.
+        if isinstance(samples, MultiAgentBatch):
+            metrics.info[LEARNER_INFO] = info
+        else:
+            metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
         return grad, samples.count
 
 

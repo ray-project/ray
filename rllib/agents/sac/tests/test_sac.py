@@ -21,7 +21,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
@@ -116,6 +116,7 @@ class TestSAC(unittest.TestCase):
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
+                    check_train_results(results)
                     print(results)
                 check_compute_single_action(trainer)
 

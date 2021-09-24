@@ -26,10 +26,11 @@ from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
