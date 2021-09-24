@@ -663,7 +663,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
         arr1 = np.load(s3.open(file_path1))
         arr2 = np.load(s3.open(file_path2))
-    np.testing.assert_equal(np.concatenate((arr1, arr2)), ds.take())
+    assert ds.count() == 10
+    assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
