@@ -24,6 +24,7 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
+from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
@@ -1077,6 +1078,43 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
+
+    def testReadonlyNodeProvider(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = ReadOnlyNodeProvider(config_path, "readonly")
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(0)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+
+        # Reflect updates to the readonly provider.
+        self.provider._set_nodes([
+            ("foo1", "1.1.1.1"),
+            ("foo2", "1.1.1.1"),
+            ("foo3", "1.1.1.1"),
+        ])
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(3)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert mock_metrics.stopped_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+        events = autoscaler.event_summarizer.summary()
+        assert not events, events
 
     def ScaleUpHelper(self, disable_node_updaters):
         config = copy.deepcopy(SMALL_CLUSTER)

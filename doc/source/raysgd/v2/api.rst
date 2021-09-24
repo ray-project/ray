@@ -8,7 +8,7 @@ RaySGD API
 Trainer
 -------
 
-.. autoclass:: ray.util.sgd.v2.Trainer
+.. autoclass:: ray.sgd.Trainer
     :members:
 
 Training Function Utilities
@@ -17,57 +17,62 @@ Training Function Utilities
 sgd.report
 ~~~~~~~~~~
 
-.. autofunction::  ray.util.sgd.v2.report
+.. autofunction::  ray.sgs.report
 
 sgd.load_checkpoint
 ~~~~~~~~~~~~~~~~~~~
 
-.. autofunction::  ray.util.sgd.v2.load_checkpoint
+.. autofunction::  ray.sgd.load_checkpoint
 
 sgd.save_checkpoint
 ~~~~~~~~~~~~~~~~~~~
 
-.. autofunction::  ray.util.sgd.v2.save_checkpoint
+.. autofunction::  ray.sgd.save_checkpoint
 
 sgd.world_rank
 ~~~~~~~~~~~~~~
 
-.. autofunction::  ray.util.sgd.v2.world_rank
+.. autofunction::  ray.sgd.world_rank
+
+sgd.local_rank
+~~~~~~~~~~~~~~
+
+.. autofunction:: ray.sgd.local_rank
 
 .. _sgd-api-backend-config:
 
 BackendConfig
 -------------
 
-.. autoclass:: ray.util.sgd.v2.BackendConfig
+.. autoclass:: ray.sgd.BackendConfig
 
 .. _sgd-api-torch-config:
 
 TorchConfig
 ~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.TorchConfig
+.. autoclass:: ray.sgd.TorchConfig
 
 .. _sgd-api-tensorflow-config:
 
 TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.TensorflowConfig
+.. autoclass:: ray.sgd.TensorflowConfig
 
 .. _sgd-api-horovod-config:
 
 HorovodConfig
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.HorovodConfig
+.. autoclass:: ray.sgd.HorovodConfig
 
 .. _sgd-api-callback:
 
 SGDCallback
 -----------
 
-.. autoclass:: ray.util.sgd.v2.SGDCallback
+.. autoclass:: ray.sgd.SGDCallback
     :members:
 
 .. _sgd-api-json-logger-callback:
@@ -75,21 +80,21 @@ SGDCallback
 JsonLoggerCallback
 ~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.callbacks.JsonLoggerCallback
+.. autoclass:: ray.sgd.JsonLoggerCallback
 
 .. _sgd-api-tbx-logger-callback:
 
 TBXLoggerCallback
 ~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.callbacks.TBXLoggerCallback
+.. autoclass:: ray.sgd.TBXLoggerCallback
 
 .. _sgd-api-checkpoint-strategy:
 
 CheckpointStrategy
 ------------------
 
-.. autoclass:: ray.util.sgd.v2.CheckpointStrategy
+.. autoclass:: ray.sgd.CheckpointStrategy
 
 Advanced APIs
 -------------
@@ -98,8 +103,7 @@ Advanced APIs
 
 SGDIterator
 ~~~~~~~~~~~
-
-.. autoclass:: ray.util.sgd.v2.SGDIterator
+.. autoclass:: ray.sgd.SGDIterator
     :members:
 
 .. _sgd-api-worker-group:
@@ -107,5 +111,5 @@ SGDIterator
 SGDWorkerGroup
 ~~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.v2.SGDWorkerGroup
+.. autoclass:: ray.sgd.SGDWorkerGroup
     :members:

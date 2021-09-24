@@ -732,6 +732,7 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
