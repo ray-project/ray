@@ -284,7 +284,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
  private:
   /// Try to create placement group after a short time.
-  void RetryCreatingPlacementGroup(uint32_t delay_ms);
+  void RetryCreatingPlacementGroup();
 
   /// Mark the manager that there's a placement group scheduling going on.
   void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {

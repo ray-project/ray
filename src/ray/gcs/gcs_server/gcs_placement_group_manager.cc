@@ -270,7 +270,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
 
-        RetryCreatingPlacementGroup(0);
+        SchedulePendingPlacementGroups();
 
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
@@ -580,8 +580,8 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
   }
 }
 
-void GcsPlacementGroupManager::RetryCreatingPlacementGroup(uint32_t delay_ms) {
-  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); }, delay_ms);
+void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
+  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); }, RayConfig::instance().gcs_create_placement_group_retry_interval_ms);
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
@@ -604,7 +604,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
     }
   }
 
-  RetryCreatingPlacementGroup(0);
+  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
@@ -672,7 +672,7 @@ void GcsPlacementGroupManager::Tick() {
   // To avoid scheduling exhaution in some race conditions.
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
-  RetryCreatingPlacementGroup(0);
+  SchedulePendingPlacementGroups();
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
@@ -734,7 +734,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   // Notify raylets to release unused bundles.
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
-  RetryCreatingPlacementGroup(0);
+  SchedulePendingPlacementGroups();
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
