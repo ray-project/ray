@@ -317,8 +317,8 @@ class ExponentialBackOff {
   ExponentialBackOff() = default;
   ExponentialBackOff(const ExponentialBackOff &) = default;
   ExponentialBackOff(ExponentialBackOff &&) = default;
-  ExponentialBackOff& operator=(const ExponentialBackOff&) = default;
-  ExponentialBackOff& operator=(ExponentialBackOff&&) = default;
+  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
+  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
   ExponentialBackOff(double initial_value, double multiplier, double max_value = 0.0)
       : curr_value_(initial_value),
         initial_value_(initial_value),
