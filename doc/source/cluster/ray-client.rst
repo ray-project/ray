@@ -99,7 +99,47 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 
    #....
 
+Connect to multiple ray clusters
+--------------------------------
 
+Ray client gives a way to connect to multiple ray clusters in one python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+.. code-block:: python
+
+    import ray
+    ray.init("ray://<head_node_host_cluster>:10001")
+    cli1 = ray.init("ray://<head_node_host_cluster_1>:10001", allow_multiple=True)
+    cli2 = ray.init("ray://<head_node_host_cluster_2>:10001", allow_multiple=True)
+    obj = ray.put("obj")
+
+    with cli1:
+        obj1 = ray.put("obj1")
+
+    with cli2:
+        obj2 = ray.put("obj2")
+
+    with cli1:
+        assert ray.get(obj1) == "obj1"
+        try:
+            ray.get(obj2) # this will throw exception
+        except:
+            print("failed to get object which doesn't belong to this cluster")
+
+    with cli2:
+        assert ray.get(obj2) == "obj2"
+        try:
+            ray.get(obj1) # this will throw exception
+        except:
+            print("failed to get object which doesn't belong to this cluster")
+    assert "obj" == ray.get(obj)
+    cli1.disconnect()
+    cli2.disconnect()
+
+
+When using ray multi-client, there are some different behaviors need to pay attention to:
+
+* The client won't be disconnected automatically. User need to call ``disconnect`` to close the connection.
+* We can't access the object reference doesn't belong to the current cluster.
+* ``ray.init`` without ``allow_multiple`` will create a default global ray client. This will be used by default.
 
 Things to know
 --------------
