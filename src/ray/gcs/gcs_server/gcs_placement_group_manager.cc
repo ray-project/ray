@@ -298,7 +298,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (iter->first > absl::GetCurrentTimeNanos()) {
       break;
     }
-    auto [backoff, placement_group] = std::move(iter->second);
+    auto backoff = iter->second.first;
+    auto placement_group = std::move(iter->second.second);
     pending_placement_groups_.erase(iter);
 
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
@@ -584,7 +585,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     now += static_cast<int64_t>(exp_backer->Next());
   }
   auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(
-      *exp_backer, std::move(pg));
+      std::move(*exp_backer), std::move(pg));
   pending_placement_groups_.emplace(now, val);
 }
 
