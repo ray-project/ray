@@ -237,7 +237,8 @@ places where you'll have to set random seeds:
    algorithms are the same.
 
 2. In the trainable (if required). Neural networks are usually initialized
-   with random numbers. Thus you'll want to make sure to set a seed here
+   with random numbers, and many classical ML algorithms, like GBDTs, make use of
+   randomness. Thus you'll want to make sure to set a seed here
    so that the initialization is always the same.
 
 Here is an example that will always produce the same result (except for trial
