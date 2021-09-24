@@ -1,4 +1,3 @@
-
 import os
 import sys
 import json
@@ -16,6 +15,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.tests.conftest import *  # noqa
+
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
@@ -129,6 +129,7 @@ my_func_deleted.delete()
     assert len(metadata["replicaTag"]) > 0
 
     my_func_nondetached.delete()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -75,5 +75,6 @@ ray.get(a.ping.remote())
     assert data["data"]["snapshot"]["rayCommit"] == ray.__commit__
     assert data["data"]["snapshot"]["rayVersion"] == ray.__version__
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
