@@ -32,7 +32,7 @@ tabulate
 uvicorn
 werkzeug
 git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
-git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
+git+git://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray[default]
 git+git://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize

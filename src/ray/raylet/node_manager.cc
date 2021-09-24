@@ -284,7 +284,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        return DeleteLocalURI(uri, cb);
+        if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+          return cb(true);
+        }
+        return agent_manager_->DeleteURIs({uri}, cb);
       }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -477,8 +480,11 @@ ray::Status NodeManager::RegisterGcs() {
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
-          RAY_LOG(INFO) << DebugString() << "\n\n";
+          std::stringstream debug_msg;
+          debug_msg << "Event stats:\n\n"
+                    << io_service_.StatsString() << "\n\n"
+                    << DebugString() << "\n\n";
+          RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -548,6 +554,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
+    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
@@ -562,7 +569,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
 
@@ -1038,8 +1045,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER &&
-        worker_type != rpc::WorkerType::UTIL_WORKER)) ||
+        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -1071,8 +1077,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
-      worker_type == rpc::WorkerType::RESTORE_WORKER ||
-      worker_type == rpc::WorkerType::UTIL_WORKER) {
+      worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status =
         worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, send_reply_callback);
@@ -1138,12 +1143,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushRestoreWorker(worker);
-    return;
-  }
-
-  if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
-    // Return the worker to the idle pool.
-    worker_pool_.PushUtilWorker(worker);
     return;
   }
 
@@ -1237,7 +1236,6 @@ void NodeManager::DisconnectClient(
                       << " Worker port: " << worker->Port()
                       << " Worker PID: " << worker->GetProcess().GetId();
         std::string error_message_str = error_message.str();
-        RAY_LOG(INFO) << error_message_str;
         RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
                 .WithField("worker_id", worker->WorkerId().Hex())
                 .WithField("node_id", self_node_id_.Hex())
@@ -1282,67 +1280,6 @@ void NodeManager::DisconnectClient(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
-}
-
-void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
-  // TODO: Add caching layer for performance
-  if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
-    return cb(true);
-  }
-  auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
-  // Format of URI must be: scheme://path
-  std::string sep = "://";
-  auto pos = uri.find(sep);
-  if (pos == std::string::npos || pos + sep.size() == uri.size()) {
-    RAY_LOG(ERROR) << "Invalid uri: " << uri;
-    cb(true);
-  }
-
-  auto from_path =
-      resource_path / boost::filesystem::path(uri.substr(pos + sep.size())).stem();
-  if (!boost::filesystem::exists(from_path)) {
-    RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
-    cb(true);
-  }
-  std::string deleting_suffix(".deleting");
-  auto to_path = from_path;
-  to_path += deleting_suffix;
-  int suffix_num = 0;
-  // This is for a rare case, where one request is under processing,
-  // but get a new one here.
-  while (boost::filesystem::exists(to_path)) {
-    to_path = from_path;
-    to_path += deleting_suffix;
-    to_path += "." + std::to_string(suffix_num);
-    ++suffix_num;
-  }
-  boost::system::error_code ec;
-  boost::filesystem::rename(from_path, to_path, ec);
-  if (ec.value() != 0) {
-    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
-                  << " because of error " << ec.message();
-    cb(false);
-  }
-
-  std::string to_path_str = to_path.string();
-  // We put actual deleting job in a worker is because deleting big file
-  // will block the thread for a while.
-  worker_pool_.PopUtilWorker(
-      [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
-        rpc::RunOnUtilWorkerRequest req;
-        // TODO(yic): Move this to another file to make it formal
-        req.set_request("DEL_FILE");
-        *req.add_args() = to_path_str;
-        io_worker->rpc_client()->RunOnUtilWorker(
-            req, [this, io_worker, cb](const ray::Status &status,
-                                       const rpc::RunOnUtilWorkerReply &) {
-              worker_pool_.PushUtilWorker(io_worker);
-              if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to execute job in io_worker " << status;
-              }
-              cb(status.ok());
-            });
-      });
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1600,7 +1537,48 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+  if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
+        task.GetTaskSpecification().IsActorCreationTask())) {
+    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+    return;
+  }
+
+  auto send_reply_callback_wrapper = [this, actor_id, reply, send_reply_callback](
+                                         Status status, std::function<void()> success,
+                                         std::function<void()> failure) {
+    if (!reply->rejected()) {
+      send_reply_callback(status, success, failure);
+      return;
+    }
+
+    // If the reqiured resource and normal task resource exceed available resource,
+    // reject it.
+    ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
+    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                   << " actor_id = " << actor_id
+                   << ", normal_task_resources = " << normal_task_resources.ToString()
+                   << ", local_resoruce_view = "
+                   << cluster_resource_scheduler_->GetLocalResourceViewString();
+    auto resources_data = reply->mutable_resources_data();
+    resources_data->set_node_id(self_node_id_.Binary());
+    resources_data->set_resources_normal_task_changed(true);
+    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                       normal_task_resources.GetResourceMap().end()};
+    resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+
+    send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+  };
+
+  // If resources are not enough due to normal tasks' preemption, return a rejection with
+  // normal task resource usages.
+  if (!cluster_task_manager_->IsLocallySchedulable(task)) {
+    reply->set_rejected(true);
+    send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+    return;
+  }
+
+  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1731,6 +1709,10 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
 void NodeManager::MarkObjectsAsFailed(
     const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
     const JobID &job_id) {
+  // TODO(swang): Ideally we should return the error directly to the client
+  // that needs this object instead of storing the object in plasma, which is
+  // not guaranteed to succeed. This avoids hanging the client if plasma is not
+  // reachable.
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());

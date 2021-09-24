@@ -259,6 +259,7 @@ message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
   string ray_init_kwargs = 2;
+  int32 reconnect_grace_period = 3;
 }
 
 message InitResponse {
@@ -339,6 +340,20 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
+message ConnectionCleanupRequest {
+  // Explicitly request that connection is cleaned up for graceful shutdown
+}
+
+message ConnectionCleanupResponse {
+  // Acknowledge cleanup request
+}
+
+message AcknowledgeRequest {
+  // Used to acknowledge that all requests up to the given req_id have been
+  // received
+  int32 req_id = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -350,6 +365,11 @@ message DataRequest {
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
+    ConnectionCleanupRequest connection_cleanup = 8;
+    AcknowledgeRequest acknowledge = 9;
+    ClientTask task = 10;
+    TerminateRequest terminate = 11;
+    ClientListNamedActorsRequest list_named_actors = 12;
   }
 }
 
@@ -363,7 +383,14 @@ message DataResponse {
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
+    ConnectionCleanupResponse connection_cleanup = 8;
+    ClientTaskTicket task_ticket = 10;
+    TerminateResponse terminate = 11;
+    ClientListNamedActorsResponse list_named_actors = 12;
   }
+  // tag 9 is skipped, since there is no AcknowledgeResponse
+  reserved 9;
+  reserved "acknowledge";
 }
 
 service RayletDataStreamer {

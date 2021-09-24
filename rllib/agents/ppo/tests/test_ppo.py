@@ -300,7 +300,7 @@ class TestPPO(unittest.TestCase):
                 policy_sess = policy.get_session()
                 k, e, pl, v, tl = policy_sess.run(
                     [
-                        policy._mean_kl,
+                        policy._mean_kl_loss,
                         policy._mean_entropy,
                         policy._mean_policy_loss,
                         policy._mean_vf_loss,
@@ -314,7 +314,7 @@ class TestPPO(unittest.TestCase):
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
             else:
-                check(policy._mean_kl, kl)
+                check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
