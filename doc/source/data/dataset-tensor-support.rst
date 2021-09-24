@@ -150,7 +150,7 @@ Now that the tensor column is properly typed and in a ``Dataset``, we can perfor
 
     # Arrow and Pandas is now aware of this tensor column, so we can do the
     # typical DataFrame operations on this column.
-    ds = ds.map_batches(lambda x: 2 * (x + 1), format="pandas")
+    ds = ds.map_batches(lambda x: 2 * (x + 1), batch_format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
     print(ds)
     # -> Dataset(

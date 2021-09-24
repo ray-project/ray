@@ -7,7 +7,8 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.extensions import TensorArray
 
 
 class NumpyDatasource(FileBasedDatasource):
@@ -21,17 +22,21 @@ class NumpyDatasource(FileBasedDatasource):
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+        import pyarrow as pa
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
         buf = BytesIO()
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return np.load(buf)
+        return pa.Table.from_pydict({
+            "value": TensorArray(np.load(buf, allow_pickle=True))
+        })
 
     def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
-                     **writer_args):
-        np.save(f, block.to_arrow())
+                     column: str, **writer_args):
+        value = block.to_numpy(column)
+        np.save(f, value)
 
     def _file_format(self):
         return "npy"
