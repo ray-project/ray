@@ -33,6 +33,13 @@ class NodeProvider:
         self._internal_ip_cache: Dict[str, str] = {}
         self._external_ip_cache: Dict[str, str] = {}
 
+    def is_readonly(self) -> bool:
+        """Returns whether this provider is readonly.
+
+        Readonly node providers do not allow nodes to be created or terminated.
+        """
+        return False
+
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
