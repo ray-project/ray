@@ -49,6 +49,14 @@ py_test(
 )
 
 py_test(
+    name = "test_http_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "small",
     srcs = serve_tests_srcs,

@@ -34,21 +34,6 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
-@pytest.fixture
-def enable_shuffle_spread():
-    os.environ[
-        "RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
-    yield
-    del os.environ["RAY_DATASETS_SHUFFLE_SPREAD_CUSTOM_RESOURCE_LABELS"]
-
-
-@pytest.fixture
-def enable_read_spread():
-    os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"] = "bar,baz"
-    yield
-    del os.environ["RAY_DATASETS_READ_SPREAD_CUSTOM_RESOURCE_LABELS"]
-
-
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
@@ -166,6 +151,34 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert ds.count() == 5
     ds = maybe_pipeline(ds0, pipelined)
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+def test_zip(ray_start_regular_shared):
+    ds1 = ray.data.range(5)
+    ds2 = ray.data.range(5).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.schema() == tuple
+    assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+    with pytest.raises(ValueError):
+        ds.zip(ray.data.range(3))
+
+
+def test_zip_arrow(ray_start_regular_shared):
+    ds1 = ray.data.range_arrow(5).map(lambda r: {"id": r["value"]})
+    ds2 = ray.data.range_arrow(5).map(
+        lambda r: {"a": r["value"] + 1, "b": r["value"] + 2})
+    ds = ds1.zip(ds2)
+    assert "{id: int64, a: int64, b: int64}" in str(ds)
+    assert ds.count() == 5
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"id": 0, "a": 1, "b": 2}
+
+    # Test duplicate column names.
+    ds = ds1.zip(ds1).zip(ds1)
+    assert ds.count() == 5
+    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 
 
 def test_batch_tensors(ray_start_regular_shared):
@@ -2404,13 +2417,14 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1 != r2, (r1, r2)
 
 
-def test_random_shuffle_spread(ray_start_cluster, enable_shuffle_spread):
+def test_random_shuffle_spread(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
         _system_config={"max_direct_call_object_size": 0})
-    cluster.add_node(resources={"bar": 100})
-    cluster.add_node(resources={"baz": 100})
+    cluster.add_node(resources={"bar:1": 100})
+    cluster.add_node(resources={"bar:2": 100})
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
 
@@ -2418,26 +2432,28 @@ def test_random_shuffle_spread(ray_start_cluster, enable_shuffle_spread):
     def get_node_id():
         return ray.get_runtime_context().node_id.hex()
 
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
-    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    ds = ray.data.range(
+        100, parallelism=2).random_shuffle(_spread_resource_prefix="bar:")
     blocks = ds.get_blocks()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
     locations = []
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {bar_node_id, baz_node_id}
+    assert set(locations) == {node1_id, node2_id}
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path, enable_read_spread):
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
         _system_config={"max_direct_call_object_size": 0})
-    cluster.add_node(resources={"bar": 100})
-    cluster.add_node(resources={"baz": 100})
+    cluster.add_node(resources={"bar:1": 100})
+    cluster.add_node(resources={"bar:2": 100})
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
 
@@ -2445,8 +2461,8 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, enable_read_spread):
     def get_node_id():
         return ray.get_runtime_context().node_id.hex()
 
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
-    baz_node_id = ray.get(get_node_id.options(resources={"baz": 1}).remote())
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
     data_path = str(tmp_path)
     df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
@@ -2459,7 +2475,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, enable_read_spread):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    ds = ray.data.read_parquet(data_path)
+    ds = ray.data.read_parquet(data_path, _spread_resource_prefix="bar:")
 
     # Force reads.
     blocks = ds.get_blocks()
@@ -2470,7 +2486,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, enable_read_spread):
     locations = []
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {bar_node_id, baz_node_id}
+    assert set(locations) == {node1_id, node2_id}
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
