@@ -32,7 +32,8 @@ def get_qualname(f):
 
 
 def ensure_ray_initialized():
-    ray.worker.global_worker.check_connected()
+    if not ray.is_initialized():
+        ray.client().connect()
 
 
 @dataclass
