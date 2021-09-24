@@ -17,7 +17,7 @@ Training Function Utilities
 sgd.report
 ~~~~~~~~~~
 
-.. autofunction::  ray.sgs.report
+.. autofunction::  ray.sgd.report
 
 sgd.load_checkpoint
 ~~~~~~~~~~~~~~~~~~~
