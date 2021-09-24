@@ -17,7 +17,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.commons.lang3.StringUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
@@ -52,6 +51,7 @@ public class RayConfig {
     public final String loggerName;
     public final String fileName;
     public final String pattern;
+
     public LoggerConf(String loggerName, String fileName, String pattern) {
       this.loggerName = loggerName;
       this.fileName = fileName;
@@ -179,7 +179,7 @@ public class RayConfig {
         final String name = loggerConfig.getString("name");
         final String fileName = loggerConfig.getString("file-name");
         final String pattern =
-          loggerConfig.hasPath("pattern") ? loggerConfig.getString("pattern") : "";
+            loggerConfig.hasPath("pattern") ? loggerConfig.getString("pattern") : "";
         loggers.add(new LoggerConf(name, fileName, pattern));
       }
     }

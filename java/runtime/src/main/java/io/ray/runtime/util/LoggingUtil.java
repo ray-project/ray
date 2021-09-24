@@ -76,86 +76,83 @@ public class LoggingUtil {
       globalConfigBuilder.setConfigurationName("DefaultLogger");
 
       /// Setup root logger for Java worker.
-      RootLoggerComponentBuilder rootLoggerBuilder =
-        globalConfigBuilder.newAsyncRootLogger(level);
+      RootLoggerComponentBuilder rootLoggerBuilder = globalConfigBuilder.newAsyncRootLogger(level);
       rootLoggerBuilder.addAttribute("RingBufferSize", "1048576");
       final String javaWorkerLogName = "JavaWorkerLogToRollingFile";
       setupLogger(
-        globalConfigBuilder,
-        rayConfig.logDir,
-        new RayConfig.LoggerConf(
-          javaWorkerLogName,
-          "java-worker-" + jobIdHex + "-" + SystemUtil.pid(),
-          config.getString("ray.logging.pattern")),
-        maxFileSize,
-        maxBackupFiles);
+          globalConfigBuilder,
+          rayConfig.logDir,
+          new RayConfig.LoggerConf(
+              javaWorkerLogName,
+              "java-worker-" + jobIdHex + "-" + SystemUtil.pid(),
+              config.getString("ray.logging.pattern")),
+          maxFileSize,
+          maxBackupFiles);
       rootLoggerBuilder.add(globalConfigBuilder.newAppenderRef(javaWorkerLogName));
       globalConfigBuilder.add(rootLoggerBuilder);
       /// Setup user loggers.
       for (RayConfig.LoggerConf conf : rayConfig.loggers) {
         final String logPattern =
-          StringUtils.isEmpty(conf.pattern)
-            ? config.getString("ray.logging.pattern")
-            : conf.pattern;
+            StringUtils.isEmpty(conf.pattern)
+                ? config.getString("ray.logging.pattern")
+                : conf.pattern;
         setupUserLogger(
-          globalConfigBuilder,
-          rayConfig.logDir,
-          new RayConfig.LoggerConf(conf.loggerName, conf.fileName, logPattern),
-          maxFileSize,
-          maxBackupFiles);
+            globalConfigBuilder,
+            rayConfig.logDir,
+            new RayConfig.LoggerConf(conf.loggerName, conf.fileName, logPattern),
+            maxFileSize,
+            maxBackupFiles);
       }
       Configurator.reconfigure(globalConfigBuilder.build());
-
     }
   }
 
   private static void setupUserLogger(
-    ConfigurationBuilder<BuiltConfiguration> globalConfigBuilder,
-    String logDir,
-    RayConfig.LoggerConf userLoggerConf,
-    String maxFileSize,
-    String maxBackupFiles) {
+      ConfigurationBuilder<BuiltConfiguration> globalConfigBuilder,
+      String logDir,
+      RayConfig.LoggerConf userLoggerConf,
+      String maxFileSize,
+      String maxBackupFiles) {
     LoggerComponentBuilder userLoggerBuilder =
-      globalConfigBuilder.newAsyncLogger(userLoggerConf.loggerName);
+        globalConfigBuilder.newAsyncLogger(userLoggerConf.loggerName);
     setupLogger(globalConfigBuilder, logDir, userLoggerConf, maxFileSize, maxBackupFiles);
     userLoggerBuilder.add(globalConfigBuilder.newAppenderRef(userLoggerConf.loggerName));
     globalConfigBuilder.add(userLoggerBuilder);
   }
 
   private static void setupLogger(
-    ConfigurationBuilder<BuiltConfiguration> globalConfigBuilder,
-    String logDir,
-    RayConfig.LoggerConf userLoggerConf,
-    String maxFileSize,
-    String maxBackupFiles) {
+      ConfigurationBuilder<BuiltConfiguration> globalConfigBuilder,
+      String logDir,
+      RayConfig.LoggerConf userLoggerConf,
+      String maxFileSize,
+      String maxBackupFiles) {
     LayoutComponentBuilder layoutBuilder =
-      globalConfigBuilder
-        .newLayout("PatternLayout")
-        .addAttribute("pattern", userLoggerConf.pattern);
+        globalConfigBuilder
+            .newLayout("PatternLayout")
+            .addAttribute("pattern", userLoggerConf.pattern);
     ComponentBuilder userLoggerTriggeringPolicy =
-      globalConfigBuilder
-        .newComponent("Policies")
-        .addComponent(
-          globalConfigBuilder
-            .newComponent("SizeBasedTriggeringPolicy")
-            .addAttribute("size", maxFileSize));
+        globalConfigBuilder
+            .newComponent("Policies")
+            .addComponent(
+                globalConfigBuilder
+                    .newComponent("SizeBasedTriggeringPolicy")
+                    .addAttribute("size", maxFileSize));
     ComponentBuilder userLoggerRolloverStrategy =
-      globalConfigBuilder
-        .newComponent("DefaultRolloverStrategy")
-        .addAttribute("max", maxBackupFiles);
+        globalConfigBuilder
+            .newComponent("DefaultRolloverStrategy")
+            .addAttribute("max", maxBackupFiles);
     final String logFileName =
-      userLoggerConf.fileName.replace("%p", String.valueOf(SystemUtil.pid()));
+        userLoggerConf.fileName.replace("%p", String.valueOf(SystemUtil.pid()));
     final String logPath = logDir + "/" + logFileName + ".log";
     final String rotatedLogPath = logDir + "/" + logFileName + ".%i.log";
     AppenderComponentBuilder userLoggerAppenderBuilder =
-      globalConfigBuilder
-        .newAppender(userLoggerConf.loggerName, "RollingFile")
-        .addAttribute("filePattern", rotatedLogPath)
-        .add(layoutBuilder)
-        .addComponent(userLoggerTriggeringPolicy)
-        .addComponent(userLoggerRolloverStrategy)
-        .addAttribute("fileName", logPath);
+        globalConfigBuilder
+            .newAppender(userLoggerConf.loggerName, "RollingFile")
+            .addAttribute("filePattern", rotatedLogPath)
+            .add(layoutBuilder)
+            .addComponent(userLoggerTriggeringPolicy)
+            .addComponent(userLoggerRolloverStrategy)
+            .addAttribute("fileName", logPath);
     globalConfigBuilder.add(userLoggerAppenderBuilder);
   }
-
 }

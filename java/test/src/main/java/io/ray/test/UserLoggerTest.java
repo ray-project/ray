@@ -28,13 +28,13 @@ public class UserLoggerTest extends BaseTest {
   public void setupJobConfig() {
     System.setProperty("ray.job.jvm-options.0", "-Dray.logging.loggers.0.name=test_user_logger1");
     System.setProperty(
-      "ray.job.jvm-options.1", "-Dray.logging.loggers.0.file-name=test_user_logger-1-%p");
+        "ray.job.jvm-options.1", "-Dray.logging.loggers.0.file-name=test_user_logger-1-%p");
     System.setProperty(
-      "ray.job.jvm-options.2",
-      "-Dray.logging.loggers.0.pattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %p %c{1} [%t]: %m%n");
+        "ray.job.jvm-options.2",
+        "-Dray.logging.loggers.0.pattern=%d{yyyy-MM-dd HH:mm:ss,SSS} %p %c{1} [%t]: %m%n");
     System.setProperty("ray.job.jvm-options.3", "-Dray.logging.loggers.1.name=test_user_logger2");
     System.setProperty(
-      "ray.job.jvm-options.4", "-Dray.logging.loggers.1.file-name=test_user_logger-2-%p");
+        "ray.job.jvm-options.4", "-Dray.logging.loggers.1.file-name=test_user_logger-2-%p");
   }
 
   private static class ActorWithUserLogger {
@@ -54,11 +54,11 @@ public class UserLoggerTest extends BaseTest {
 
   private void testUserLogger(int pid, String indexStr) throws IOException {
     File userLoggerFile =
-      new File(
-        CURR_LOG_DIR
-          + "/test_user_logger-%i-%p.log"
-          .replace("%i", indexStr)
-          .replace("%p", String.valueOf(pid)));
+        new File(
+            CURR_LOG_DIR
+                + "/test_user_logger-%i-%p.log"
+                    .replace("%i", indexStr)
+                    .replace("%p", String.valueOf(pid)));
     Assert.assertTrue(userLoggerFile.exists());
     BufferedReader reader = new BufferedReader(new FileReader(userLoggerFile));
     String context = reader.readLine();
