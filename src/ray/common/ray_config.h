@@ -69,11 +69,12 @@ class RayConfig {
 /// RAY_PROCESS_FLAG defines RayConfig fields similar to the RAY_CONFIG macro.
 /// The difference is that RAY_PROCESS_FLAG is intended for Ray internal
 /// settings that users should not modify.
-# define RAY_PROCESS_FLAG RAY_CONFIG
+#define RAY_PROCESS_FLAG RAY_CONFIG
 #include "ray/common/ray_process_flag_def.h"
+/// -------------------------------------------------------------------------
+
 #undef RAY_PROCESS_FLAG
 #undef RAY_CONFIG
-/// -------------------------------------------------------------------------
 
  public:
   static RayConfig &instance();
@@ -83,7 +84,7 @@ class RayConfig {
  private:
   template <typename T>
   T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
-    auto value = getenv(name.c_str());
+    auto value = std::getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
     } else {
