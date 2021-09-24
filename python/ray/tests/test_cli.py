@@ -491,6 +491,7 @@ def test_ray_status():
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
     _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+    ray.shutdown()
 
 
 def test_ray_status_multinode():
@@ -509,6 +510,8 @@ def test_ray_status_multinode():
 
     result = runner.invoke(scripts.status, [])
     _check_output_via_pattern("test_ray_status_multinode.txt", result)
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
