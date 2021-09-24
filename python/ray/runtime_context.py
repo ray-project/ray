@@ -1,10 +1,12 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class RuntimeContext(object):
     """A class used for getting runtime context."""
 
@@ -14,8 +16,6 @@ class RuntimeContext(object):
 
     def get(self):
         """Get a dictionary of the current context.
-
-
 
         Returns:
             dict: Dictionary of the current context.
@@ -159,10 +159,24 @@ class RuntimeContext(object):
         """
         return self.worker.runtime_env
 
+    @property
+    def current_actor(self):
+        """Get the current actor handle of this actor itsself.
+
+        Returns:
+            The handle of current actor.
+        """
+        if self.actor_id is None:
+            raise RuntimeError("This method is only available in an actor.")
+        worker = self.worker
+        worker.check_connected()
+        return worker.core_worker.get_actor_handle(self.actor_id)
+
 
 _runtime_context = None
 
 
+@PublicAPI(stability="beta")
 @client_mode_hook
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.

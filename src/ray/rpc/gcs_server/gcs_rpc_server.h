@@ -23,37 +23,48 @@
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER)
+#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER)
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER)
+#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER)
+#define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(NodeResourceInfoGcsService, HANDLER)
+#define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER)    \
+  RPC_SERVICE_HANDLER(NodeResourceInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER)
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER)
+#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define STATS_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(StatsGcsService, HANDLER)
+#define STATS_SERVICE_RPC_HANDLER(HANDLER)      \
+  RPC_SERVICE_HANDLER(StatsGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
+#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
+#define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER)    \
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER)
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER)     \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -166,13 +177,22 @@ class ActorInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(ListNamedActors);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(KillActorViaGcs);
+    /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
+    /// distributed deadlock.
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
+
+    /// Others need back pressure.
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        GetActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        GetNamedActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        ListNamedActors, RayConfig::instance().gcs_max_active_rpcs_per_handler());
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        GetAllActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        KillActorViaGcs, RayConfig::instance().gcs_max_active_rpcs_per_handler());
   }
 
  private:
@@ -299,6 +319,8 @@ class HeartbeatInfoGcsServiceHandler {
   virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
                                      ReportHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleCheckAlive(const CheckAliveRequest &request, CheckAliveReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
 };
 /// The `GrpcService` for `HeartbeatInfoGcsService`.
 class HeartbeatInfoGrpcService : public GrpcService {
@@ -316,6 +338,7 @@ class HeartbeatInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     HEARTBEAT_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
+    HEARTBEAT_INFO_SERVICE_RPC_HANDLER(CheckAlive);
   }
 
  private:

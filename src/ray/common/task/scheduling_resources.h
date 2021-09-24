@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <string>
@@ -20,6 +34,7 @@ const std::string kCPU_ResourceLabel = "CPU";
 const std::string kGPU_ResourceLabel = "GPU";
 const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
 const std::string kMemory_ResourceLabel = "memory";
+const std::string kBundle_ResourceLabel = "bundle";
 
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
@@ -510,6 +525,8 @@ class SchedulingResources {
   /// Resources used by normal tasks.
   ResourceSet resources_normal_tasks_;
 };
+
+std::string format_resource(std::string resource_name, double quantity);
 
 }  // namespace ray
 

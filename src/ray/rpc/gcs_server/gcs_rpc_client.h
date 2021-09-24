@@ -199,6 +199,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
                              heartbeat_info_grpc_client_, )
 
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
+                             heartbeat_info_grpc_client_, )
+
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
                              object_info_grpc_client_, )

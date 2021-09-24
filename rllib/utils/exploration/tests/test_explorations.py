@@ -58,18 +58,19 @@ def do_test_explorations(run,
             # Make sure actions drawn are different
             # (around some mean value), given constant observations.
             actions = []
-            for _ in range(100):
+            for _ in range(500):
                 actions.append(
                     trainer.compute_single_action(
                         observation=dummy_obs,
                         explore=True,
                         prev_action=prev_a,
-                        prev_reward=1.0 if prev_a is not None else None))
+                        prev_reward=1.0 if prev_a is not None else None,
+                    ))
             check(
                 np.mean(actions),
                 expected_mean_action
                 if expected_mean_action is not None else 0.5,
-                atol=0.3)
+                atol=0.4)
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
 
@@ -129,7 +130,7 @@ class TestExplorations(unittest.TestCase):
         do_test_explorations(
             impala.ImpalaTrainer,
             "CartPole-v0",
-            impala.DEFAULT_CONFIG,
+            dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0))
 

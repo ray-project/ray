@@ -1,6 +1,6 @@
 import math
-from typing import Optional, Type
 
+from ray.util.iter import LocalIterator
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
@@ -8,11 +8,10 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
-    ApplyGradients, TrainTFMultiGPU, TrainOneStep
+    ApplyGradients, MultiGPUTrainOneStep, TrainOneStep
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.policy import Policy
 
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
@@ -31,8 +30,8 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 
 
 def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the A2C algorithm. Defines the distributed
     dataflow.
 
     Args:
@@ -66,7 +65,7 @@ def execution_plan(workers: WorkerSet,
         if config["simple_optimizer"]:
             train_step_op = TrainOneStep(workers)
         else:
-            train_step_op = TrainTFMultiGPU(
+            train_step_op = MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,

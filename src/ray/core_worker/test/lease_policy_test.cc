@@ -18,6 +18,7 @@
 #include "ray/common/task/task_spec.h"
 
 namespace ray {
+namespace core {
 
 TaskSpecification CreateFakeTask(std::vector<ObjectID> deps) {
   TaskSpecification spec;
@@ -208,4 +209,5 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
 }
 
+}  // namespace core
 }  // namespace ray

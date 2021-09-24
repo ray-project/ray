@@ -61,8 +61,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     }
   }
 
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
+  auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
       bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
 
@@ -106,10 +105,14 @@ void NewPlacementGroupResourceManager::CommitBundle(
   for (const auto &resource : bundle_spec.GetFormattedResources()) {
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
-    const auto &instances =
-        task_resource_instances.Get(original_resource_name, string_id_map);
-
-    cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
+    if (original_resource_name != kBundle_ResourceLabel) {
+      const auto &instances =
+          task_resource_instances.Get(original_resource_name, string_id_map);
+      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
+    } else {
+      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name,
+                                                             {resource.second});
+    }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
   update_resources_(cluster_resource_scheduler_->GetResourceTotals());
@@ -136,8 +139,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
+  auto resource_instances = std::make_shared<TaskResourceInstances>();
   cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
                                                           resource_instances);
 

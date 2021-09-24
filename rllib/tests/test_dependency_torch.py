@@ -6,7 +6,6 @@ import sys
 if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
-    os.environ["TUNE_TEST_NO_TORCH_IMPORT"] = "1"
 
     from ray.rllib.agents.a3c import A2CTrainer
     assert "torch" not in sys.modules, \
@@ -32,6 +31,5 @@ if __name__ == "__main__":
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]
-    del os.environ["TUNE_TEST_NO_TORCH_IMPORT"]
 
     print("ok")

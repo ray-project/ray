@@ -183,53 +183,11 @@ class RedisContext {
                  const std::string &password, bool enable_sync_conn = true,
                  bool enable_async_conn = true, bool enable_subscribe_conn = true);
 
-  /// Run an operation on some table key synchronously.
-  ///
-  /// \param command The command to run. This must match a registered Ray Redis
-  /// command. These are strings of the format "RAY.TABLE_*".
-  /// \param id The table key to run the operation at.
-  /// \param data The data to add to the table key, if any.
-  /// \param length The length of the data to be added, if data is provided.
-  /// \param prefix The prefix of table key.
-  /// \param pubsub_channel The channel that update operations to the table
-  /// should be published on.
-  /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
-  /// at which the data must be appended. For all other commands, set to
-  /// -1 for unused. If set, then data must be provided.
-  /// \return The reply from redis.
-  template <typename ID>
-  std::shared_ptr<CallbackReply> RunSync(const std::string &command, const ID &id,
-                                         const void *data, size_t length,
-                                         const TablePrefix prefix,
-                                         const TablePubsub pubsub_channel,
-                                         int log_length = -1);
-
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \return CallbackReply(The reply from redis).
   std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
-
-  /// Run an operation on some table key.
-  ///
-  /// \param command The command to run. This must match a registered Ray Redis
-  /// command. These are strings of the format "RAY.TABLE_*".
-  /// \param id The table key to run the operation at.
-  /// \param data The data to add to the table key, if any.
-  /// \param length The length of the data to be added, if data is provided.
-  /// \param prefix The prefix of table key.
-  /// \param pubsub_channel The channel that update operations to the table
-  /// should be published on.
-  /// \param redisCallback The Redis callback function.
-  /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
-  /// at which the data must be appended. For all other commands, set to
-  /// -1 for unused. If set, then data must be provided.
-  /// \return Status.
-  template <typename ID>
-  Status RunAsync(const std::string &command, const ID &id, const void *data,
-                  size_t length, const TablePrefix prefix,
-                  const TablePubsub pubsub_channel, RedisCallback redisCallback,
-                  int log_length = -1);
 
   /// Run an arbitrary Redis command without a callback.
   ///
@@ -319,73 +277,6 @@ class RedisContext {
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
-
-template <typename ID>
-Status RedisContext::RunAsync(const std::string &command, const ID &id, const void *data,
-                              size_t length, const TablePrefix prefix,
-                              const TablePubsub pubsub_channel,
-                              RedisCallback redisCallback, int log_length) {
-  RAY_CHECK(redis_async_context_);
-  int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redisCallback, false, io_service_);
-  Status status = Status::OK();
-  if (length > 0) {
-    if (log_length >= 0) {
-      std::string redis_command = command + " %d %d %b %b %d";
-      status = redis_async_context_->RedisAsyncCommand(
-          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.Data(), id.Size(), data, length, log_length);
-    } else {
-      std::string redis_command = command + " %d %d %b %b";
-      status = redis_async_context_->RedisAsyncCommand(
-          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-          pubsub_channel, id.Data(), id.Size(), data, length);
-    }
-  } else {
-    RAY_CHECK(log_length == -1);
-    std::string redis_command = command + " %d %d %b";
-    status = redis_async_context_->RedisAsyncCommand(
-        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
-        pubsub_channel, id.Data(), id.Size());
-  }
-  return status;
-}
-
-template <typename ID>
-std::shared_ptr<CallbackReply> RedisContext::RunSync(
-    const std::string &command, const ID &id, const void *data, size_t length,
-    const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
-  RAY_CHECK(context_);
-  void *redis_reply = nullptr;
-  if (length > 0) {
-    if (log_length >= 0) {
-      std::string redis_command = command + " %d %d %b %b %d";
-      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
-                                 id.Data(), id.Size(), data, length, log_length);
-    } else {
-      std::string redis_command = command + " %d %d %b %b";
-      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
-                                 id.Data(), id.Size(), data, length);
-    }
-  } else {
-    RAY_CHECK(log_length == -1);
-    std::string redis_command = command + " %d %d %b";
-    redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
-                               id.Data(), id.Size());
-  }
-  if (redis_reply == nullptr) {
-    RAY_LOG(INFO) << "Run redis command failed , err is " << GetRedisError(context_);
-    return nullptr;
-  } else {
-    std::shared_ptr<CallbackReply> callback_reply =
-        std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
-    FreeRedisReply(redis_reply);
-    return callback_reply;
-  }
-}
 
 }  // namespace gcs
 

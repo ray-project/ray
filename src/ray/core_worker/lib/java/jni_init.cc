@@ -22,6 +22,7 @@ jmethodID java_double_double_value;
 
 jclass java_object_class;
 jmethodID java_object_equals;
+jmethodID java_object_hash_code;
 
 jclass java_list_class;
 jmethodID java_list_size;
@@ -87,6 +88,7 @@ jclass java_call_options_class;
 jfieldID java_call_options_name;
 jfieldID java_task_creation_options_group;
 jfieldID java_task_creation_options_bundle_index;
+jfieldID java_call_options_concurrency_group_name;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
@@ -96,6 +98,7 @@ jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
+jfieldID java_actor_creation_options_concurrency_groups;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -119,6 +122,11 @@ jfieldID java_native_ray_object_contained_object_ids;
 jclass java_task_executor_class;
 jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
+
+jclass java_concurrency_group_impl_class;
+jmethodID java_concurrency_group_impl_get_function_descriptors;
+jfieldID java_concurrency_group_impl_name;
+jfieldID java_concurrency_group_impl_max_concurrency;
 
 jclass java_native_task_executor_class;
 jmethodID java_native_task_executor_on_worker_shutdown;
@@ -154,6 +162,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_object_class = LoadClass(env, "java/lang/Object");
   java_object_equals =
       env->GetMethodID(java_object_class, "equals", "(Ljava/lang/Object;)Z");
+  java_object_hash_code = env->GetMethodID(java_object_class, "hashCode", "()I");
 
   java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
@@ -245,6 +254,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
   java_task_creation_options_bundle_index =
       env->GetFieldID(java_call_options_class, "bundleIndex", "I");
+  java_call_options_concurrency_group_name = env->GetFieldID(
+      java_call_options_class, "concurrencyGroupName", "Ljava/lang/String;");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
@@ -284,6 +295,17 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       "Lio/ray/api/placementgroup/PlacementGroup;");
   java_actor_creation_options_bundle_index =
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
+  java_actor_creation_options_concurrency_groups = env->GetFieldID(
+      java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
+  java_concurrency_group_impl_class =
+      LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
+  java_concurrency_group_impl_get_function_descriptors = env->GetMethodID(
+      java_concurrency_group_impl_class, "getFunctionDescriptors", "()Ljava/util/List;");
+  java_concurrency_group_impl_name =
+      env->GetFieldID(java_concurrency_group_impl_class, "name", "Ljava/lang/String;");
+  java_concurrency_group_impl_max_concurrency =
+      env->GetFieldID(java_concurrency_group_impl_class, "maxConcurrency", "I");
+
   java_gcs_client_options_class = LoadClass(env, "io/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
@@ -347,4 +369,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_native_ray_object_class);
   env->DeleteGlobalRef(java_task_executor_class);
   env->DeleteGlobalRef(java_native_task_executor_class);
+  env->DeleteGlobalRef(java_concurrency_group_impl_class);
 }

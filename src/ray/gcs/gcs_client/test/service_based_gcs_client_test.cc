@@ -51,7 +51,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
-    config_.pull_based_resource_reporting = false;
     config_.grpc_based_resource_broadcast = false;
 
     client_io_service_.reset(new instrumented_io_context());
@@ -1443,9 +1442,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

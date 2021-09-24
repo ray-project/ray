@@ -52,8 +52,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.0 \
-        numpy==1.15.4 \
+        cython==0.29.23 \
+        numpy==1.19.5 \
         psutil \
         blist \ 
         atari-py \

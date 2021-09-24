@@ -5,6 +5,7 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
@@ -17,8 +18,10 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import normalize_action
+from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -243,7 +246,7 @@ def build_eager_tf_policy(
             from ray.rllib.evaluation.rollout_worker import get_global_worker
             worker = get_global_worker()
             worker_idx = worker.worker_index if worker else 0
-            if tf.config.list_physical_devices("GPU"):
+            if get_gpu_devices():
                 logger.info(
                     "TF-eager Policy (worker={}) running on GPU.".format(
                         worker_idx if worker_idx > 0 else "local"))
@@ -254,7 +257,6 @@ def build_eager_tf_policy(
 
             self._is_training = False
             self._loss_initialized = False
-            self._sess = None
 
             self._loss = loss_fn
             self.batch_divisibility_req = get_batch_divisibility_req(self) if \
@@ -323,7 +325,8 @@ def build_eager_tf_policy(
                     optimizers)
             # TODO: (sven) Allow tf policy to have more than 1 optimizer.
             #  Just like torch Policy does.
-            self._optimizer = optimizers[0] if optimizers else None
+            self._optimizer: LocalOptimizer = \
+                optimizers[0] if optimizers else None
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -390,7 +393,9 @@ def build_eager_tf_policy(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
             self._is_training = True
             samples["is_training"] = True
@@ -417,16 +422,16 @@ def build_eager_tf_policy(
                             **kwargs):
 
             self._is_training = False
-            self._is_recurrent = \
-                state_batches is not None and state_batches != []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), obs_batch),
+                },
+                _is_training=tf.constant(False))
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -471,10 +476,12 @@ def build_eager_tf_policy(
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
+            self._is_recurrent = state_batches is not None and \
+                state_batches != []
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -565,12 +572,15 @@ def build_eager_tf_policy(
 
         @with_lock
         @override(Policy)
-        def compute_log_likelihoods(self,
-                                    actions,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None):
+        def compute_log_likelihoods(
+                self,
+                actions,
+                obs_batch,
+                state_batches=None,
+                prev_action_batch=None,
+                prev_reward_batch=None,
+                actions_normalized=True,
+        ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError("Cannot compute log-prob/likelihood w/o an "
                                  "`action_distribution_fn` and a provided "
@@ -606,6 +616,11 @@ def build_eager_tf_policy(
                 dist_class = self.dist_class
 
             action_dist = dist_class(dist_inputs, self.model)
+
+            # Normalize actions if necessary.
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
             log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
@@ -703,10 +718,9 @@ def build_eager_tf_policy(
         def export_model(self, export_dir):
             pass
 
-        # TODO: (sven) Deprecate this in favor of `save()`.
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            deprecation_warning("export_checkpoint", "save")
+            pass
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)

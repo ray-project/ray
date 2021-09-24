@@ -2,7 +2,7 @@ import numpy as np
 import time
 import ray
 import ray.autoscaler.sdk
-from ray.test_utils import Semaphore
+from ray._private.test_utils import Semaphore
 
 import json
 import os
@@ -137,7 +137,7 @@ def test_large_object():
     assert big_obj[-1] == 0
 
 
-ray.client().env({}).connect()
+ray.init(address="auto")
 
 args_start = perf_counter()
 test_many_args()

@@ -1,5 +1,6 @@
 """CQL (derived from SAC).
 """
+import logging
 import numpy as np
 from typing import Optional, Type
 
@@ -10,13 +11,19 @@ from ray.rllib.agents.sac.sac import SACTrainer, \
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
-from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
+logger = logging.getLogger(__name__)
+replay_buffer = None
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -50,8 +57,20 @@ def validate_config(config: TrainerConfigDict):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
 
+    # CQL-torch performs the optimizer steps inside the loss function.
+    # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+    # check above) and we must use the simple optimizer for now.
+    if config["simple_optimizer"] is not True and \
+            config["framework"] == "torch":
+        config["simple_optimizer"] = True
 
-replay_buffer = None
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run CQL! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def execution_plan(workers, config):
@@ -103,7 +122,7 @@ def execution_plan(workers, config):
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
     else:
-        train_step_op = TrainTFMultiGPU(
+        train_step_op = MultiGPUTrainOneStep(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
@@ -155,9 +174,8 @@ def after_init(trainer):
                     np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
-        print(
-            f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
-            f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
+        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
+              f"replay buffer, which has capacity {replay_buffer.capacity}.")
     else:
         raise ValueError(
             "Unknown offline input! config['input'] must either be list of "

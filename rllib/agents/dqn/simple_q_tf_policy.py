@@ -54,13 +54,17 @@ class TargetNetworkMixin:
 
     @override(TFPolicy)
     def variables(self):
+        if not hasattr(self, "q_func_vars"):
+            self.q_func_vars = self.model.variables()
+        if not hasattr(self, "target_q_func_vars"):
+            self.target_q_func_vars = self.target_model.variables()
         return self.q_func_vars + self.target_q_func_vars
 
 
 def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
                    action_space: gym.spaces.Space,
                    config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for Simple Q learning
+    """Build q_model and target_model for Simple Q learning
 
     Note that this function works for both Tensorflow and PyTorch.
 
@@ -73,7 +77,7 @@ def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         ModelV2: The Model for the Policy to use.
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
@@ -87,16 +91,13 @@ def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
         framework=config["framework"],
         name=Q_SCOPE)
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
         framework=config["framework"],
         name=Q_TARGET_SCOPE)
-
-    policy.q_func_vars = model.variables()
-    policy.target_q_func_vars = policy.target_q_model.variables()
 
     return model
 
@@ -114,7 +115,6 @@ def get_distribution_inputs_and_class(
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = q_model.variables()
     return policy.q_values, (TorchCategorical
                              if policy.config["framework"] == "torch" else
                              Categorical), []  # state-outs
@@ -141,10 +141,12 @@ def build_q_losses(policy: Policy, model: ModelV2,
     # target q network evalution
     q_tp1 = compute_q_values(
         policy,
-        policy.target_q_model,
+        policy.target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False)
-    policy.target_q_func_vars = policy.target_q_model.variables()
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
@@ -203,7 +205,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
-SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
+SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,

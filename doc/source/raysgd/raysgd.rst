@@ -4,7 +4,9 @@
 RaySGD: Distributed Training Wrappers
 =====================================
 
-.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
+
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <sgd-v2-docs>`.
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
@@ -68,4 +70,12 @@ You can start a ``TorchTrainer`` with the following:
     trainer1.shutdown()
     print("success!")
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+
+.. toctree::
+   :hidden:
+
+   raysgd_pytorch.rst
+   raysgd_tensorflow.rst
+   raysgd_tune.rst
+   raysgd_ref.rst

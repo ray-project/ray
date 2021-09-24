@@ -24,11 +24,11 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (Lio/ray/runtime/object/NativeRayObject;)[B
+ * Signature: (Lio/ray/runtime/object/NativeRayObject;[B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jobject);
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
+    JNIEnv *, jclass, jobject, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore

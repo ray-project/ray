@@ -189,6 +189,13 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
+message CheckAliveRequest {
+}
+
+message CheckAliveReply {
+  GcsStatus status = 1;
+}
+
 message GetInternalConfigRequest {
 }
 
@@ -256,6 +263,8 @@ message ReportResourceUsageReply {
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Check alive.
+  rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
 message GetObjectLocationsRequest {
@@ -461,6 +470,10 @@ message CreateActorRequest {
 
 message CreateActorReply {
   GcsStatus status = 1;
+  // Address where the actor was created.
+  Address actor_address = 2;
+  // Info about any refs that the created actor is borrowing.
+  repeated ObjectReferenceCount borrowed_refs = 3;
 }
 
 message RegisterActorRequest {

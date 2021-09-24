@@ -13,8 +13,8 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import AgentID, ModelGradients, PolicyID, \
+    TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
@@ -53,7 +53,7 @@ def build_tf_policy(
         extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
         validate_spaces: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+            [PolicyID, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_loss_init: Optional[Callable[[
@@ -224,7 +224,7 @@ def build_tf_policy(
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
 
-                if extra_action_out_fn is None:
+                if extra_action_out_fn is None or policy._is_tower:
                     extra_action_fetches = {}
                 else:
                     extra_action_fetches = extra_action_out_fn(policy)
@@ -279,16 +279,33 @@ def build_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
-            # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
-            #  Just like torch Policy does.
-            return optimizers[0] if optimizers else None
+
+            # No optimizers produced -> Return None.
+            if not optimizers:
+                return None
+            # New API: Allow more than one optimizer to be returned.
+            # -> Return list.
+            elif self.config["_tf_policy_handles_more_than_one_loss"]:
+                return optimizers
+            # Old API: Return a single LocalOptimizer.
+            else:
+                return optimizers[0]
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
+            optimizers = force_list(optimizer)
+            losses = force_list(loss)
+
             if compute_gradients_fn:
-                return compute_gradients_fn(self, optimizer, loss)
+                # New API: Allow more than one optimizer -> Return a list of
+                # lists of gradients.
+                if self.config["_tf_policy_handles_more_than_one_loss"]:
+                    return compute_gradients_fn(self, optimizers, losses)
+                # Old API: Return a single List of gradients.
+                else:
+                    return compute_gradients_fn(self, optimizers[0], losses[0])
             else:
-                return base.gradients(self, optimizer, loss)
+                return base.gradients(self, optimizers, losses)
 
         @override(TFPolicy)
         def build_apply_op(self, optimizer, grads_and_vars):

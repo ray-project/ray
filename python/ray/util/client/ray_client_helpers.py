@@ -35,7 +35,7 @@ def ray_start_client_server_pair(metadata=None,
 def ray_start_cluster_client_server_pair(address):
     ray._inside_client_test = True
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(

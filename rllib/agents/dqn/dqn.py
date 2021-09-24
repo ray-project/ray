@@ -14,8 +14,9 @@ from typing import List, Optional, Type
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -23,7 +24,7 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
-    TrainTFMultiGPU
+    MultiGPUTrainOneStep
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -32,112 +33,71 @@ logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    # === Model ===
-    # Number of atoms for representing the distribution of return. When
-    # this is greater than 1, distributional Q-learning is used.
-    # the discrete supports are bounded by v_min and v_max
-    "num_atoms": 1,
-    "v_min": -10.0,
-    "v_max": 10.0,
-    # Whether to use noisy network
-    "noisy": False,
-    # control the initial value of noisy nets
-    "sigma0": 0.5,
-    # Whether to use dueling dqn
-    "dueling": True,
-    # Dense-layer setup for each the advantage branch and the value branch
-    # in a dueling architecture.
-    "hiddens": [256],
-    # Whether to use double dqn
-    "double_q": True,
-    # N-step Q learning
-    "n_step": 1,
+DEFAULT_CONFIG = Trainer.merge_trainer_configs(
+    SIMPLEQ_DEFAULT_CONFIG,
+    {
+        # === Model ===
+        # Number of atoms for representing the distribution of return. When
+        # this is greater than 1, distributional Q-learning is used.
+        # the discrete supports are bounded by v_min and v_max
+        "num_atoms": 1,
+        "v_min": -10.0,
+        "v_max": 10.0,
+        # Whether to use noisy network
+        "noisy": False,
+        # control the initial value of noisy nets
+        "sigma0": 0.5,
+        # Whether to use dueling dqn
+        "dueling": True,
+        # Dense-layer setup for each the advantage branch and the value branch
+        # in a dueling architecture.
+        "hiddens": [256],
+        # Whether to use double dqn
+        "double_q": True,
+        # N-step Q learning
+        "n_step": 1,
 
-    # === Exploration Settings ===
-    "exploration_config": {
-        # The Exploration class to use.
-        "type": "EpsilonGreedy",
-        # Config for the Exploration class' constructor:
-        "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        # === Prioritized replay buffer ===
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": True,
+        # Alpha parameter for prioritized replay buffer.
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Final value of beta (by default, we use constant beta=0.4).
+        "final_prioritized_replay_beta": 0.4,
+        # Time steps over which the beta parameter is annealed.
+        "prioritized_replay_beta_annealing_timesteps": 20000,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
 
-        # For soft_q, use:
-        # "exploration_config" = {
-        #   "type": "SoftQ"
-        #   "temperature": [float, e.g. 1.0]
-        # }
+        # Callback to run before learning on a multi-agent batch of
+        # experiences.
+        "before_learn_on_batch": None,
+
+        # The intensity with which to update the model (vs collecting samples
+        # from the env). If None, uses the "natural" value of:
+        # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+        # `num_envs_per_worker`).
+        # If provided, will make sure that the ratio between ts inserted into
+        # and sampled from the buffer matches the given value.
+        # Example:
+        #   training_intensity=1000.0
+        #   train_batch_size=250 rollout_fragment_length=1
+        #   num_workers=1 (or 0) num_envs_per_worker=1
+        #   -> natural value = 250 / 1 = 250.0
+        #   -> will make sure that replay+train op will be executed 4x as
+        #      often as rollout+insert op (4 * 250 = 1000).
+        # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further
+        # details.
+        "training_intensity": None,
+
+        # === Parallelism ===
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
-    # Switch to greedy actions in evaluation workers.
-    "evaluation_config": {
-        "explore": False,
-    },
-
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 500,
-    # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": 50000,
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
-    # Alpha parameter for prioritized replay buffer.
-    "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    "prioritized_replay_beta": 0.4,
-    # Final value of beta (by default, we use constant beta=0.4).
-    "final_prioritized_replay_beta": 0.4,
-    # Time steps over which the beta parameter is annealed.
-    "prioritized_replay_beta_annealing_timesteps": 20000,
-    # Epsilon to add to the TD errors when updating priorities.
-    "prioritized_replay_eps": 1e-6,
-
-    # Whether to LZ4 compress observations
-    "compress_observations": False,
-    # Callback to run before learning on a multi-agent batch of experiences.
-    "before_learn_on_batch": None,
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
-    "training_intensity": None,
-
-    # === Optimization ===
-    # Learning rate for adam optimizer
-    "lr": 5e-4,
-    # Learning rate schedule
-    "lr_schedule": None,
-    # Adam epsilon hyper parameter
-    "adam_epsilon": 1e-8,
-    # If not None, clip gradients during optimization at this value
-    "grad_clip": 40,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
-    # Update the replay buffer with this many samples at once. Note that
-    # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 4,
-    # Size of a batch sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
-    "train_batch_size": 32,
-
-    # === Parallelism ===
-    # Number of workers for collecting samples with. This only makes sense
-    # to increase if your environment is particularly slow to sample, or if
-    # you"re using the Async or Ape-X optimizers.
-    "num_workers": 0,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
-})
+    _allow_unknown_configs=True,
+)
 # __sphinx_doc_end__
 # yapf: enable
 
@@ -170,6 +130,11 @@ def validate_config(config: TrainerConfigDict) -> None:
         elif config["replay_sequence_length"] > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
 
     # Multi-agent mode and multi-GPU optimizer.
     if config["multiagent"]["policies"] and not config["simple_optimizer"]:
@@ -179,11 +144,12 @@ def validate_config(config: TrainerConfigDict) -> None:
             "simple_optimizer=True if this doesn't work for you.")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(trainer: Trainer, workers: WorkerSet,
+                   config: TrainerConfigDict, **kwargs) -> LocalIterator[dict]:
     """Execution plan of the DQN algorithm. Defines the distributed dataflow.
 
     Args:
+        trainer (Trainer): The Trainer object creating the execution plan.
         workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
             of the Trainer.
         config (TrainerConfigDict): The trainer's configuration dict.
@@ -210,6 +176,9 @@ def execution_plan(workers: WorkerSet,
         replay_burn_in=config.get("burn_in", 0),
         replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
+    # Assign to Trainer, so we can store the LocalReplayBuffer's
+    # data when we save checkpoints.
+    trainer.local_replay_buffer = local_replay_buffer
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -244,7 +213,7 @@ def execution_plan(workers: WorkerSet,
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
     else:
-        train_step_op = TrainTFMultiGPU(
+        train_step_op = MultiGPUTrainOneStep(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
@@ -307,10 +276,13 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 # Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
 # may build on top of it.
-GenericOffPolicyTrainer = build_trainer(
-    name="GenericOffPolicyAlgorithm",
+GenericOffPolicyTrainer = SimpleQTrainer.with_updates(
+    name="GenericOffPolicyTrainer",
+    # No Policy preference.
     default_policy=None,
-    get_policy_class=get_policy_class,
+    get_policy_class=None,
+    # Use DQN's config and exec. plan as base for
+    # all other OffPolicy algos.
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
     execution_plan=execution_plan)
@@ -318,4 +290,8 @@ GenericOffPolicyTrainer = build_trainer(
 # Build a DQN trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
-    name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
+    name="DQN",
+    default_policy=DQNTFPolicy,
+    get_policy_class=get_policy_class,
+    default_config=DEFAULT_CONFIG,
+)

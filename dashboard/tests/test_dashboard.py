@@ -18,22 +18,22 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import (format_web_url, wait_for_condition,
-                            wait_until_server_available, run_string_as_driver,
-                            wait_until_succeeded_without_exception)
+from ray._private.test_utils import (
+    format_web_url, wait_for_condition, wait_until_server_available,
+    run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
-from ray.new_dashboard import dashboard
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules
+from ray.dashboard import dashboard
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
 def cleanup_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Remove test file: %s", filename)
     try:
@@ -43,7 +43,7 @@ def cleanup_test_files():
 
 
 def prepare_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Prepare test file: %s", filename)
     with open(filename, "w") as f:
@@ -92,7 +92,7 @@ def test_basic(ray_start_with_dashboard):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "new_dashboard/agent.py" in c:
+                    if "dashboard/agent.py" in c:
                         return p
             except Exception:
                 pass
@@ -320,6 +320,22 @@ def test_async_loop_forever():
     loop.run_forever()
     assert counter[0] > 2
 
+    counter2 = [0]
+    task = None
+
+    @dashboard_utils.async_loop_forever(interval_seconds=0.1, cancellable=True)
+    async def bar():
+        nonlocal task
+        counter2[0] += 1
+        if counter2[0] > 2:
+            task.cancel()
+
+    loop = asyncio.new_event_loop()
+    task = loop.create_task(bar())
+    with pytest.raises(asyncio.CancelledError):
+        loop.run_until_complete(task)
+    assert counter2[0] == 3
+
 
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(
@@ -332,7 +348,7 @@ def test_dashboard_module_decorator(enable_test_module):
 
     test_code = """
 import os
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
 head_cls_list = dashboard_utils.get_all_modules(
@@ -623,6 +639,26 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+
+
+def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+
+    all_processes = ray.worker._global_node.all_processes
+    dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
+    dashboard_proc = psutil.Process(dashboard_info.process.pid)
+    gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+    gcs_server_proc = psutil.Process(gcs_server_info.process.pid)
+
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
+    ]
+
+    gcs_server_proc.kill()
+    gcs_server_proc.wait()
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

@@ -123,6 +123,10 @@ class JsonReader(InputReader):
                     "from URIs like {}".format(path))
             ctx = smart_open
         else:
+            # Allow shortcut for home directory ("~/" -> env[HOME]).
+            if path.startswith("~/"):
+                path = os.path.join(os.environ.get("HOME", ""), path[2:])
+
             # If path doesn't exist, try to interpret is as relative to the
             # rllib directory (located ../../ from this very module).
             path_orig = path
@@ -166,8 +170,7 @@ class JsonReader(InputReader):
                         self.ioctx.worker.policy_map[pid].action_space_struct)
         # Re-normalize actions (from env's bounds to 0.0 centered), if
         # necessary.
-        if "actions_in_input_normalized" in cfg and \
-                cfg["actions_in_input_normalized"] is False:
+        if cfg.get("actions_in_input_normalized") is False:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = normalize_action(
                     batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[

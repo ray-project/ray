@@ -8,9 +8,8 @@ import sys
 import time
 
 import ray
-import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import (
+from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,

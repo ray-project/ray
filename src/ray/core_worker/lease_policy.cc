@@ -15,6 +15,7 @@
 #include "ray/core_worker/lease_policy.h"
 
 namespace ray {
+namespace core {
 
 rpc::Address LocalityAwareLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
   if (auto node_id = GetBestNodeIdForTask(spec)) {
@@ -58,4 +59,5 @@ rpc::Address LocalLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec)
   return local_node_rpc_address_;
 }
 
+}  // namespace core
 }  // namespace ray

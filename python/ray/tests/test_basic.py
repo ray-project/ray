@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message,
-                            run_string_as_driver)
+from ray._private.test_utils import (client_test_enabled, get_error_message,
+                                     SignalActor, run_string_as_driver)
 
 import ray
 
@@ -210,10 +210,30 @@ print("local", ray._private.runtime_env.VAR)
 """
 
     out = run_string_as_driver(
-        script, {"RAY_USER_SETUP_FUNCTION": "ray.test_utils.set_setup_func"})
+        script,
+        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
     (remote_out, local_out) = out.strip().split("\n")[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
+
+
+# https://github.com/ray-project/ray/issues/17842
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_disable_cuda_devices():
+    script = """
+import ray
+ray.init()
+
+@ray.remote
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("remote", ray.get(check.remote()))
+"""
+
+    run_string_as_driver(script,
+                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
 
 
 def test_put_get(shutdown_only):
@@ -321,7 +341,7 @@ def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
 
-    signal_actor = ray.test_utils.SignalActor.remote()
+    signal_actor = SignalActor.remote()
 
     @ray.remote
     def put():
@@ -534,20 +554,20 @@ def test_keyword_args(ray_start_shared_local_modes):
         return
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(x=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(0, w=0)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(3, x=3)
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(1, 2, 3, 4)
 
     @ray.remote
@@ -617,6 +637,27 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     local_method = local_actor.hello
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_oversized_function(ray_start_shared_local_modes):
+    bar = np.zeros(100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            return len(bar)
+
+    @ray.remote
+    def f():
+        return len(bar)
+
+    with pytest.raises(
+            ValueError, match="The remote function .*f is too large"):
+        f.remote()
+
+    with pytest.raises(ValueError, match="The actor Actor is too large"):
+        Actor.remote()
 
 
 def test_args_stars_after(ray_start_shared_local_modes):

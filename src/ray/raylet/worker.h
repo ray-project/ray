@@ -93,21 +93,21 @@ class WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
 
   virtual std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() = 0;
 
   virtual void ClearAllocatedInstances() = 0;
 
   virtual void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual Task &GetAssignedTask() = 0;
+  virtual RayTask &GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(const Task &assigned_task) = 0;
+  virtual void SetAssignedTask(const RayTask &assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -182,7 +182,7 @@ class Worker : public WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
@@ -193,7 +193,7 @@ class Worker : public WorkerInterface {
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
@@ -203,9 +203,9 @@ class Worker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  Task &GetAssignedTask() { return assigned_task_; };
+  RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -279,8 +279,8 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// Task being assigned to this worker.
-  Task assigned_task_;
+  /// RayTask being assigned to this worker.
+  RayTask assigned_task_;
 };
 
 }  // namespace raylet

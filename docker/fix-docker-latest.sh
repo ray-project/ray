@@ -2,7 +2,7 @@
 # This script is not for normal use and is used in the event that CI (or a user) overwrites the latest tag.
 set -x
 
-IMAGE="1.0.0"
+IMAGE="1.6.0"
 DEST="latest"
 
 while [[ $# -gt 0 ]]
@@ -24,11 +24,11 @@ esac
 shift
 done
 
-echo "You must be logged into a user with push priviledges to do this."
+echo "You must be logged into a user with push privileges to do this."
 # for REPO in "ray" "ray-ml" "autoscaler" "ray-deps" "base-deps"
 for REPO in "ray" "ray-ml" "autoscaler"
 do
-    for PYVERSION in "py36" "py37" "py38"
+    for PYVERSION in "py36" "py37" "py38" "py39"
     do
         export SOURCE_TAG="$IMAGE"-"$PYVERSION"
         export DEST_TAG="$DEST"-"$PYVERSION"

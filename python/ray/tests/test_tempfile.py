@@ -5,7 +5,7 @@ import time
 
 import pytest
 import ray
-from ray.test_utils import check_call_ray, wait_for_condition
+from ray._private.test_utils import check_call_ray, wait_for_condition
 
 
 def unix_socket_create_path(name):
@@ -120,7 +120,9 @@ def test_raylet_tempfiles(shutdown_only):
 
 
 def test_tempdir_privilege(shutdown_only):
-    os.chmod(ray._private.utils.get_ray_temp_dir(), 0o000)
+    tmp_dir = ray._private.utils.get_ray_temp_dir()
+    os.makedirs(tmp_dir, exist_ok=True)
+    os.chmod(tmp_dir, 0o000)
     ray.init(num_cpus=1)
     session_dir = ray.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Specified socket path not found."

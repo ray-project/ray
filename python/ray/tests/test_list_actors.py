@@ -3,7 +3,7 @@ import pytest
 import sys
 
 import ray
-from ray.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
 
 def test_list_named_actors_basic(ray_start_regular):
@@ -56,6 +56,7 @@ def test_list_named_actors_basic_local_mode(ray_start_regular):
     assert "hi2" in ray.util.list_named_actors()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_list_named_actors_restarting_actor(ray_start_regular):
     @ray.remote(max_restarts=-1)
     class A:
@@ -92,7 +93,7 @@ def test_list_named_actors_detached(ray_start_regular):
 
     driver_script = """
 import ray
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
 class A:
@@ -111,6 +112,7 @@ assert "sad" in ray.util.list_named_actors()
     assert ray.util.list_named_actors() == ["hi"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_list_named_actors_namespace(ray_start_regular):
     """Verify that actor names are filtered on namespace by default."""
     address = ray_start_regular["redis_address"]
@@ -127,20 +129,25 @@ A.options(name="hi", lifetime="detached").remote()
 
 assert len(ray.util.list_named_actors()) == 1
 assert ray.util.list_named_actors() == ["hi"]
-assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == \
+    [dict(name="hi", namespace="test")]
 """.format(address)
 
     run_string_as_driver(driver_script_1)
 
     assert not ray.util.list_named_actors()
-    assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+    assert ray.util.list_named_actors(all_namespaces=True) == [{
+        "name": "hi",
+        "namespace": "test"
+    }]
 
     driver_script_2 = """
 import ray
 ray.init(address="{}", namespace="test")
 
 assert ray.util.list_named_actors() == ["hi"]
-assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == \
+    [dict(name="hi", namespace="test")]
 ray.kill(ray.get_actor("hi"), no_restart=True)
 assert not ray.util.list_named_actors()
 """.format(address)

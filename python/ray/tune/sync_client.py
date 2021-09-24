@@ -8,6 +8,7 @@ import types
 from shlex import quote
 
 from ray.tune.error import TuneError
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def get_cloud_sync_client(remote_path):
             raise ValueError("Upload uri starting with '{}' requires hdfs tool"
                              " to be installed".format(HDFS_PREFIX))
         sync_up_template = "hdfs dfs -put -f {source} {target}"
-        sync_down_template = "hdfs dfs -get -f {target} {source}"
+        sync_down_template = "hdfs dfs -get -f {source} {target}"
         delete_template = "hdfs dfs -rm -r {target}"
     else:
         raise ValueError("Upload uri must start with one of: {}"
@@ -89,6 +90,7 @@ def get_cloud_sync_client(remote_path):
                               delete_template)
 
 
+@PublicAPI(stability="beta")
 class SyncClient:
     """Client interface for interacting with remote storage options."""
 

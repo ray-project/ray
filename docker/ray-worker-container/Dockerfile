@@ -1,4 +1,4 @@
-ARG BASE_IMAGE="ubuntu:groovy"
+ARG BASE_IMAGE="ubuntu:21.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -70,18 +70,20 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
 
 RUN apt-get update -y \
     && apt-get install -y gnupg curl golang wget make git libseccomp-dev \
-    && . /etc/os-release \
-    && echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
-    && curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | apt-key add - \
-    && apt-get update \
-    && apt-get -y install podman \
+    #&& . /etc/os-release \
+    #&& echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
+    #&& curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | apt-key add - \
+    #&& apt-get update \
+    && apt-get -y install podman runc \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 ARG WHEEL_PATH
+ARG FIND_LINKS_PATH=".whl"
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 COPY $WHEEL_PATH .
+COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install `basename $WHEEL_PATH`[all] \
-&& sudo rm `basename $WHEEL_PATH`
+--find-links $FIND_LINKS_PATH && sudo rm `basename $WHEEL_PATH`

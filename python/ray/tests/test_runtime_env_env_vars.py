@@ -128,14 +128,13 @@ def test_override_environment_variables_multitenancy(shutdown_only,
 def test_override_environment_variables_complex(shutdown_only,
                                                 use_runtime_env):
     if use_runtime_env:
-        ray.init(
-            job_config=ray.job_config.JobConfig(runtime_env={
-                "env_vars": {
-                    "a": "job_a",
-                    "b": "job_b",
-                    "z": "job_z",
-                }
-            }))
+        ray.init(runtime_env={
+            "env_vars": {
+                "a": "job_a",
+                "b": "job_b",
+                "z": "job_z",
+            }
+        })
     else:
         ray.init(
             job_config=ray.job_config.JobConfig(worker_env={

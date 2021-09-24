@@ -16,6 +16,7 @@ from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
                              EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
 from ray.tune.utils import flatten_dict
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial  # noqa: F401
@@ -333,6 +334,7 @@ class UnifiedLogger(Logger):
             _logger.flush()
 
 
+@PublicAPI
 class LoggerCallback(Callback):
     """Base class for experiment-level logger callbacks
 

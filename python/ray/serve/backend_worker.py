@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 import time
 
 import starlette.responses
@@ -13,11 +13,12 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
+from ray.serve.autoscaling_metrics import start_metrics_pusher
+from ray.serve.common import BackendTag, ReplicaTag
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
-from ray._private.utils import import_attr
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
@@ -25,6 +26,7 @@ from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
+from ray.serve.version import BackendVersion
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -41,13 +43,12 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config: BackendConfig,
-                           controller_name: str):
-            backend_def = cloudpickle.loads(serialized_backend_def)
-            if isinstance(backend_def, str):
-                backend = import_attr(backend_def)
-            else:
-                backend = backend_def
+                           backend_config_proto_bytes: bytes,
+                           version: BackendVersion, controller_name: str,
+                           detached: bool):
+            backend = cloudpickle.loads(serialized_backend_def)
+            backend_config = BackendConfig.from_proto_bytes(
+                backend_config_proto_bytes)
 
             if inspect.isfunction(backend):
                 is_function = True
@@ -80,9 +81,17 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
-            controller_handle = ray.get_actor(controller_name)
-            self.backend = RayServeReplica(_callable, backend_config,
+            controller_namespace = ray.serve.api._get_controller_namespace(
+                detached)
+            controller_handle = ray.get_actor(
+                controller_name, namespace=controller_namespace)
+            self.backend = RayServeReplica(_callable, backend_tag, replica_tag,
+                                           backend_config,
+                                           backend_config.user_config, version,
                                            is_function, controller_handle)
+
+            # asyncio.Event used to signal that the replica is shutting down.
+            self.shutdown_event = asyncio.Event()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -99,15 +108,18 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def reconfigure(self, user_config: Any) -> None:
+        async def reconfigure(self, user_config: Optional[Any] = None) -> None:
             await self.backend.reconfigure(user_config)
 
-        async def drain_pending_queries(self):
-            return await self.backend.drain_pending_queries()
+        def get_version(self) -> BackendVersion:
+            return self.backend.version
+
+        async def prepare_for_shutdown(self):
+            self.shutdown_event.set()
+            return await self.backend.prepare_for_shutdown()
 
         async def run_forever(self):
-            while True:
-                await asyncio.sleep(10000)
+            await self.shutdown_event.wait()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
@@ -129,23 +141,30 @@ def wrap_to_ray_error(function_name: str,
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, _callable: Callable, backend_config: BackendConfig,
-                 is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
-        self.replica_tag = ray.serve.api.get_replica_context().replica_tag
+    def __init__(self, _callable: Callable, backend_tag: BackendTag,
+                 replica_tag: ReplicaTag, backend_config: BackendConfig,
+                 user_config: Any, version: BackendVersion, is_function: bool,
+                 controller_handle: ActorHandle) -> None:
+        self.backend_tag = backend_tag
+        self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
 
-        self.config = backend_config
+        self.backend_config = backend_config
+        self.user_config = user_config
+        self.version = version
 
         self.num_ongoing_requests = 0
 
         self.request_counter = metrics.Counter(
-            "serve_backend_request_counter",
+            "serve_deployment_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("backend", ))
-        self.request_counter.set_default_tags({"backend": self.backend_tag})
+            tag_keys=("deployment", "replica"))
+        self.request_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.loop = asyncio.get_event_loop()
         self.long_poll_client = LongPollClient(
@@ -158,50 +177,65 @@ class RayServeReplica:
         )
 
         self.error_counter = metrics.Counter(
-            "serve_backend_error_counter",
+            "serve_deployment_error_counter",
             description=("The number of exceptions that have "
-                         "occurred in the backend."),
-            tag_keys=("backend", ))
-        self.error_counter.set_default_tags({"backend": self.backend_tag})
+                         "occurred in this replica."),
+            tag_keys=("deployment", "replica"))
+        self.error_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.restart_counter = metrics.Counter(
-            "serve_backend_replica_starts",
+            "serve_deployment_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.restart_counter.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
-            "serve_backend_processing_latency_ms",
+            "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.processing_latency_tracker.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.num_processing_items.set_default_tags({
-            "backend": self.backend_tag,
+            "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
 
         self.restart_counter.inc()
+
+        if backend_config.autoscaling_config:
+            config = backend_config.autoscaling_config
+            start_metrics_pusher(
+                interval_s=config.metrics_interval_s,
+                collection_callback=self._collect_autoscaling_metrics,
+                controller_handle=controller_handle)
 
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
             handler.setFormatter(
                 logging.Formatter(
                     handler.formatter._fmt +
-                    f" component=serve backend={self.backend_tag} "
+                    f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
+
+    def _collect_autoscaling_metrics(self):
+        # TODO(simon): Instead of relying on this counter, we should get the
+        # outstanding actor calls properly from Ray's core worker.
+        return {self.replica_tag: self.num_ongoing_requests}
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
@@ -258,8 +292,12 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self, user_config) -> None:
+    async def reconfigure(self,
+                          user_config: Optional[Any] = None) -> BackendVersion:
         if user_config:
+            self.user_config = user_config
+            self.version = BackendVersion(
+                self.version.code_version, user_config=user_config)
             if self.is_function:
                 raise ValueError(
                     "backend_def must be a class to use user_config")
@@ -271,8 +309,8 @@ class RayServeReplica:
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
 
-    def _update_backend_configs(self, new_config: BackendConfig) -> None:
-        self.config = new_config
+    def _update_backend_configs(self, new_config_bytes: bytes) -> None:
+        self.backend_config = BackendConfig.from_proto_bytes(new_config_bytes)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
@@ -281,6 +319,13 @@ class RayServeReplica:
 
         self.num_ongoing_requests += 1
         self.num_processing_items.set(self.num_ongoing_requests)
+
+        # Trigger a context switch so we can enqueue more requests in the
+        # meantime. Without this line and if the function is synchronous,
+        # other requests won't even get enqueued as await self.invoke_single
+        # doesn't context switch.
+        await asyncio.sleep(0)
+
         result = await self.invoke_single(request)
         self.num_ongoing_requests -= 1
         request_time_ms = (time.time() - request.tick_enter_replica) * 1000
@@ -290,13 +335,13 @@ class RayServeReplica:
         # Returns a small object for router to track request status.
         return b"", result
 
-    async def drain_pending_queries(self):
+    async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
 
         Trigger a graceful shutdown protocol that will wait for all the queued
         tasks to be completed and return to the controller.
         """
-        sleep_time = self.config.experimental_graceful_shutdown_wait_loop_s
+        sleep_time = self.backend_config.experimental_graceful_shutdown_wait_loop_s  # noqa: E501
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
@@ -308,3 +353,14 @@ class RayServeReplica:
                     f"Waiting for an additional {sleep_time}s to shut down "
                     f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
+
+        # Explicitly call the del method to trigger clean up.
+        # We set the del method to noop after succssifully calling it so the
+        # destructor is called only once.
+        try:
+            if hasattr(self.callable, "__del__"):
+                self.callable.__del__()
+        except Exception:
+            logger.exception("Exception during graceful shutdown of replica.")
+        finally:
+            self.callable.__del__ = lambda _self: None

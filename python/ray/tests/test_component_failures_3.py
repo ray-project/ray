@@ -6,7 +6,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.test_utils import get_other_nodes
+from ray._private.test_utils import get_other_nodes
 
 
 @pytest.mark.parametrize(

@@ -237,6 +237,11 @@ def with_parameters(trainable, **kwargs):
     the passed parameters as keyword arguments. When used with the class API,
     the ``Trainable.setup()`` method is called with the respective kwargs.
 
+    If the data already exists in the object store (are instances of
+    ObjectRef), using ``tune.with_parameters()`` is not necessary. You can
+    instead pass the object refs to the training function via the ``config``
+    or use Python partials.
+
     Args:
         trainable: Trainable to wrap.
         **kwargs: parameters to store in object store.

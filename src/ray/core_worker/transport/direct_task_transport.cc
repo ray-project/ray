@@ -17,25 +17,19 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
+namespace core {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  num_tasks_submitted_++;
 
-  if (task_spec.IsActorCreationTask()) {
-    // Synchronously register the actor to GCS server.
-    // Previously, we asynchronously registered the actor after all its dependencies were
-    // resolved. This caused a problem: if the owner of the actor dies before dependencies
-    // are resolved, the actor will never be created. But the actor handle may already be
-    // passed to other workers. In this case, the actor tasks will hang forever.
-    // So we fixed this issue by synchronously registering the actor. If the owner dies
-    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
-    auto status = actor_creator_->RegisterActor(task_spec);
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
-      return status;
+      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+      return;
     }
-  }
-
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
@@ -46,11 +40,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec, [this, actor_id, task_id](Status status) {
+          task_spec,
+          [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok()) {
               RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                  rpc::Address());
+              // Copy the actor's reply to the GCS for ref counting purposes.
+              rpc::PushTaskReply push_task_reply;
+              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              task_finisher_->CompletePendingTask(task_id, push_task_reply,
+                                                  reply.actor_address());
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
@@ -193,7 +191,7 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
         ((candidate_entry.tasks_in_flight > victim_entry.tasks_in_flight) &&
          candidate_addr.worker_id != thief_addr.worker_id)) {
       // We copy the candidate's rpc::Address (instead of its rpc::WorkerAddress) because
-      // objects of type 'ray::rpc::WorkerAddress' cannot be assigned as their copy
+      // objects of type 'rpc::WorkerAddress' cannot be assigned as their copy
       // assignment operator is implicitly deleted
       *victim_raw_addr = candidate_addr.ToProto();
     }
@@ -204,16 +202,15 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
-    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
-                  << " thief_addr.worker_id: " << thief_addr.worker_id;
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(DEBUG) << "victim_addr.worker_id: " << victim_addr.worker_id
+                   << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
 
   const auto &victim_entry = worker_to_lease_entry_[victim_addr];
   // Double check that the victim has the correct SchedulingKey
   RAY_CHECK(victim_entry.scheduling_key == scheduling_key);
-
   RAY_LOG(DEBUG) << "Victim is worker " << victim_addr.worker_id << " and has "
                  << victim_entry.tasks_in_flight << " tasks in flight, "
                  << " among which we estimate that " << victim_entry.tasks_in_flight / 2
@@ -246,14 +243,9 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
     return;
   }
 
-  RAY_LOG(DEBUG) << "Beginning to steal work now! Thief is worker: "
-                 << thief_addr.worker_id;
-
   // Search for a suitable victim
   rpc::Address victim_raw_addr;
   if (!FindOptimalVictimForStealing(scheduling_key, thief_addr, &victim_raw_addr)) {
-    RAY_LOG(DEBUG) << "Could not find a suitable victim for stealing! Returning worker "
-                   << thief_addr.worker_id;
     // If stealing was enabled, we can now cancel any pending new workeer lease request,
     // because stealing is now possible this time.
     if (max_tasks_in_flight_per_worker_ > 1) {
@@ -340,8 +332,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight == 0) {
-      RAY_LOG(DEBUG)
-          << "Number of tasks in flight == 0, calling StealTasksOrReturnWorker!";
       StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
   } else {
@@ -475,6 +465,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
+  num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
@@ -505,7 +496,22 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
 
         if (status.ok()) {
-          if (reply.canceled()) {
+          if (reply.runtime_env_setup_failed()) {
+            // If the runtime_env failed to be set up, we fail all of the pending
+            // tasks in the queue. This makes an implicit assumption that runtime_env
+            // failures are not transient -- we may consider adding some retries
+            // in the future.
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
+          } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {
@@ -603,6 +609,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
+            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
@@ -618,14 +625,19 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          if (!task_spec.GetMessage().retry_exceptions() ||
+              !reply.is_application_level_error() ||
+              !task_finisher_->RetryTaskIfPossible(task_id)) {
+            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          }
         }
       });
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+                << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
@@ -729,4 +741,5 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   return Status::OK();
 }
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

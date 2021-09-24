@@ -54,10 +54,14 @@ class Reducer(object):
             mapper.get_range.remote(article_index, self.keys)
             for mapper in self.mappers
         ]
-        # TODO(rkn): We should process these out of order using ray.wait.
-        for count_id in count_ids:
-            for k, v in ray.get(count_id):
-                word_count_sum[k] += v
+
+        while len(count_ids) > 0:
+            finished, unfinished = ray.wait(count_ids)
+            for count_id in finished:
+                for k, v in ray.get(count_id):
+                    word_count_sum[k] += v
+            count_ids = unfinished
+
         return word_count_sum
 
 
