@@ -64,21 +64,21 @@ As seen in the example above, workflow steps can be composed by passing ``Workfl
 
 Here we can see though ``get_val1.step()`` returns a ``Workflow[int]``, when passed to the ``add`` step, the ``add`` function will see its resolved value.
 
-Retrieve results
--------------------------
+Retrieving results
+------------------
 
-Workflow result can be retrieved, by ``workflow.get_output(workflow_id)`` and the return value will be ``ObjectRef[T]``. The function will return even the underline workflow is still execution. For example:
+Workflow results can be retrieved with ``workflow.get_output(workflow_id) -> ObjectRef[T]``. If the workflow has not yet completed, calling ``ray.get()`` on the returned reference will block until the result is computed. For example:
 
 .. code-block:: python
 
     assert ray.get(workflow.get_output("add_example")) == 30
 
-We can retrieve the results for steps too with named steps. A step can be named in two ways,
+We can retrieve the results for individual workflow steps too with *named steps*. A step can be named in two ways:
 
  1) via ``.options(name="step_name")``
- 2) via decorator ``@workflow.step(name="step_name"``. 
+ 2) via decorator ``@workflow.step(name="step_name"``)
 
-Once a step is given a name, the result of the step will be able to be retrived via ``workflow.get_output(workflow_id, name="step_name")``. The return value will be either an ``ObjectRef[T]`` or throw an exception if the step hasn't been executed. Here are some examples:
+Once a step is given a name, the result of the step will be retrievable via ``workflow.get_output(workflow_id, name="step_name")``. If the step with the given name hasn't been executed yet, an exception will be thrown. Here are some examples:
 
 .. code-block:: python
 
@@ -96,7 +96,7 @@ Once a step is given a name, the result of the step will be able to be retrived 
     assert ray.get(outer) == 4
     assert ray.get(result) == 4
 
-If there are multiple steps with the same name, the suffix with a counter ``_n`` will be added automatically. For example,
+If there are multiple steps with the same name, a suffix with a counter ``_n`` will be added automatically. For example,
 
 .. code-block:: python
 

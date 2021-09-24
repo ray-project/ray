@@ -49,12 +49,13 @@ py_test_module_list(
     "test_client.py",
     "test_client_builder.py",
     "test_client_init.py",
-    "test_client_multi.py",    
+    "test_client_multi.py",
     "test_client_proxy.py",
     "test_client_server.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
+    "test_client_reconnect.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -74,6 +75,10 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_object_assign_owner.py",
     "test_output.py",
+    "test_placement_group.py",
+    "test_placement_group_2.py",
+    "test_placement_group_3.py",
+    "test_placement_group_mini_integration.py",
     "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
@@ -134,6 +139,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
+    "test_response_cache.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -225,16 +231,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_placement_group.py",
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 

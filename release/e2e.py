@@ -251,6 +251,8 @@ GLOBAL_CONFIG = {
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
+    "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
+                                          "/tmp/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
@@ -298,6 +300,11 @@ class CommandTimeoutError(ReleaseTestTimeoutError):
 
 
 class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
+    pass
+
+
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
     pass
 
 
@@ -747,10 +754,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -770,7 +777,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -781,7 +788,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -846,18 +853,20 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        session_operation_response = sdk.get_session_operation(
+            sop_id, _request_timeout=30)
+        session_operation = session_operation_response.result
+        completed = session_operation.completed
+
         _check_stop(stop_event, "session")
         now = time.time()
         if now > next_report:
             logger.info(f"... still waiting for session {session_name} "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        session_operation_response = sdk.get_session_operation(
-            sop_id, _request_timeout=30)
-        session_operation = session_operation_response.result
-        completed = session_operation.completed
-        time.sleep(1)
 
     return session_id
 
@@ -893,6 +902,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        result = sdk.get_session_command(session_command_id=scd_id)
+        completed = result.result.finished_at
+
         if state_str == "CMD_RUN":
             _check_stop(stop_event, "command")
         elif state_str == "CMD_PREPARE":
@@ -903,10 +918,6 @@ def wait_for_session_command_to_complete(create_session_command_result,
             logger.info(f"... still waiting for command to finish "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        result = sdk.get_session_command(session_command_id=scd_id)
-        completed = result.result.finished_at
-        time.sleep(1)
 
     status_code = result.result.status_code
     runtime = time.time() - start_wait
@@ -1084,6 +1095,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        keep_results_dir: bool = False,
         app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
@@ -1494,7 +1506,8 @@ def run_test_config(
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
                       or isinstance(e, SessionTimeoutError)
-                      or isinstance(e, PrepareCommandRuntimeError)):
+                      or isinstance(e, PrepareCommandRuntimeError)
+                      or isinstance(e, AppConfigBuildFailure)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1729,7 +1742,22 @@ def run_test_config(
 
     log_results_and_artifacts(result)
 
-    shutil.rmtree(temp_dir)
+    if not keep_results_dir:
+        logger.info(f"Removing results dir {temp_dir}")
+        shutil.rmtree(temp_dir)
+    else:
+        # Write results.json
+        with open(os.path.join(temp_dir, "results.json"), "wt") as fp:
+            json.dump(result, fp)
+
+        out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
+
+        logger.info(f"Moving results dir {temp_dir} to persistent location "
+                    f"{out_dir}")
+
+        shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.copytree(temp_dir, out_dir)
+        logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
 
@@ -1742,9 +1770,10 @@ def run_test(test_config_file: str,
              smoke_test: bool = False,
              no_terminate: bool = False,
              kick_off_only: bool = False,
-             check_progress=False,
-             report=True,
-             session_name=None,
+             check_progress: bool = False,
+             report: bool = True,
+             keep_results_dir: bool = False,
+             session_name: Optional[str] = None,
              app_config_id_override=None):
     with open(test_config_file, "rt") as f:
         test_configs = yaml.load(f, Loader=yaml.FullLoader)
@@ -1793,6 +1822,7 @@ def run_test(test_config_file: str,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
         upload_artifacts=report,
+        keep_results_dir=keep_results_dir,
         app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
@@ -1872,6 +1902,12 @@ if __name__ == "__main__":
         default=False,
         help="Check (long running) status")
     parser.add_argument(
+        "--keep-results-dir",
+        action="store_true",
+        default=False,
+        help="Keep results in directory (named RELEASE_RESULTS_DIR), e.g. "
+        "for Buildkite artifact upload.")
+    parser.add_argument(
         "--category",
         type=str,
         default="unspecified",
@@ -1928,5 +1964,6 @@ if __name__ == "__main__":
         check_progress=args.check,
         report=not args.no_report,
         session_name=args.session_name,
+        keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )

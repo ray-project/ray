@@ -4,6 +4,10 @@ from __future__ import print_function
 
 import inspect
 import logging
+import numpy as np
+# use cloudpickle instead of pickle to make lambda funcs
+# in dragonfly pickleable
+import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -78,6 +82,10 @@ class DragonflySearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
+        random_state_seed (int, None): Seed for reproducible
+            results. Defaults to None. Please note that setting this to a value
+            will change global random state for `numpy`
+            on initalization and loading from checkpoint.
 
     Tune automatically converts search spaces to Dragonfly's format:
 
@@ -143,12 +151,18 @@ class DragonflySearch(Searcher):
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
+                 random_state_seed: Optional[int] = None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
             `pip install dragonfly-opt`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+        if random_state_seed is not None:
+            assert isinstance(
+                random_state_seed, int
+            ), "random_state_seed must be None or int, got '{}'.".format(
+                type(random_state_seed))
 
         super(DragonflySearch, self).__init__(
             metric=metric, mode=mode, **kwargs)
@@ -170,6 +184,7 @@ class DragonflySearch(Searcher):
         self._initial_points = []
         self._live_trial_mapping = {}
         self._point_parameter_names = []
+        self._random_state_seed = random_state_seed
 
         self._opt = None
         if isinstance(optimizer, BlackboxOptimiser):
@@ -207,6 +222,9 @@ class DragonflySearch(Searcher):
                 "Choose one of [Cartesian, Euclidean].")
 
         self._point_parameter_names = [param["name"] for param in self._space]
+
+        if self._random_state_seed is not None:
+            np.random.seed(self._random_state_seed)
 
         if self._domain.lower().startswith("cartesian"):
             function_caller_cls = CPFunctionCaller
@@ -372,3 +390,21 @@ class DragonflySearch(Searcher):
             for path, domain in domain_vars
         ]
         return space
+
+    def save(self, checkpoint_path: str):
+        if self._random_state_seed is not None:
+            numpy_random_state = np.random.get_state()
+        else:
+            numpy_random_state = None
+        save_object = self.__dict__
+        save_object["_random_state_seed_to_set"] = numpy_random_state
+        with open(checkpoint_path, "wb") as outputFile:
+            cloudpickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = cloudpickle.load(inputFile)
+        numpy_random_state = save_object.pop("_random_state_seed_to_set", None)
+        self.__dict__.update(save_object)
+        if numpy_random_state is not None:
+            np.random.set_state(numpy_random_state)

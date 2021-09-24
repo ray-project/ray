@@ -86,9 +86,9 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
                    int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
-/// It is used for normal task, such as ray::Task(Plus1, 1), ray::Task(Plus, 1, 2).
+/// It is used for normal task, such as ray::Task(Plus1).Remote(1),
+/// ray::Task(Plus).Remote(1, 2).
 /// \param[in] func The function to be remote executed.
-/// \param[in] args The function arguments passed by a value or ObjectRef.
 /// \return TaskCaller.
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func);
@@ -128,34 +128,28 @@ inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
-template <typename FuncType>
-ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func);
-
-template <typename FuncType>
-ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
-
-template <typename T>
-inline static boost::optional<ActorHandle<T>> GetActorInternal(
-    bool global, const std::string &actor_name);
-
 /// Create a placement group on remote nodes.
 ///
 /// \param[in] create_options Creation options of the placement group.
 /// \return A PlacementGroup to the created placement group.
 PlacementGroup CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options);
+    const ray::PlacementGroupCreationOptions &create_options);
 
 /// Remove a placement group by id.
 ///
 /// \param[in] placement_group_id Id of the placement group.
 void RemovePlacementGroup(const std::string &placement_group_id);
 
-/// Wait for the placement group to be ready within the specified time.
-///
-/// \param[in] id Id of the placement group.
-/// \param[in] timeout_seconds Timeout in seconds.
-/// \return True if the placement group is created. False otherwise.
-bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds);
+std::vector<PlacementGroup> GetAllPlacementGroups();
+
+/// Get a placement group by id.
+PlacementGroup GetPlacementGroupById(const std::string &id);
+
+/// Get a placement group by name.
+PlacementGroup GetPlacementGroup(const std::string &name);
+
+/// Get a placement group by placement group name from all jobs.
+PlacementGroup GetGlobalPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
@@ -274,7 +268,7 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
 }
 
 inline PlacementGroup CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
 }
 
@@ -282,8 +276,20 @@ inline void RemovePlacementGroup(const std::string &placement_group_id) {
   return ray::internal::GetRayRuntime()->RemovePlacementGroup(placement_group_id);
 }
 
-inline bool WaitPlacementGroupReady(const std::string &id, int timeout_seconds) {
-  return ray::internal::GetRayRuntime()->WaitPlacementGroupReady(id, timeout_seconds);
+inline std::vector<PlacementGroup> GetAllPlacementGroups() {
+  return ray::internal::GetRayRuntime()->GetAllPlacementGroups();
+}
+
+inline PlacementGroup GetPlacementGroupById(const std::string &id) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroupById(id);
+}
+
+inline PlacementGroup GetPlacementGroup(const std::string &name) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, false);
+}
+
+inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, true);
 }
 
 inline bool WasCurrentActorRestarted() {

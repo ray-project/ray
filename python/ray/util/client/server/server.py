@@ -1,8 +1,10 @@
 import logging
 from concurrent import futures
+import gc
 import grpc
 import base64
 from collections import defaultdict
+import functools
 import queue
 import pickle
 
@@ -22,7 +24,7 @@ import time
 import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
-                                    CLIENT_SERVER_MAX_THREADS)
+                                    CLIENT_SERVER_MAX_THREADS, ResponseCache)
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -38,6 +40,53 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S",
                                             30)
+
+
+def _use_response_cache(func):
+    """
+    Decorator for gRPC stubs. Before calling the real stubs, checks if there's
+    an existing entry in the caches. If there is, then return the cached
+    entry. Otherwise, call the real function and use the real cache
+    """
+
+    @functools.wraps(func)
+    def wrapper(self, request, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        expected_ids = ("client_id", "thread_id", "req_id")
+        if any(i not in metadata for i in expected_ids):
+            # Missing IDs, skip caching and call underlying stub directly
+            return func(self, request, context)
+
+        # Get relevant IDs to check cache
+        client_id = metadata["client_id"]
+        thread_id = metadata["thread_id"]
+        req_id = int(metadata["req_id"])
+
+        # Check if response already cached
+        response_cache = self.response_caches[client_id]
+        cached_entry = response_cache.check_cache(thread_id, req_id)
+        if cached_entry is not None:
+            if isinstance(cached_entry, Exception):
+                # Original call errored, propogate error
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details(str(cached_entry))
+                raise cached_entry
+            return cached_entry
+
+        try:
+            # Response wasn't cached, call underlying stub and cache result
+            resp = func(self, request, context)
+        except Exception as e:
+            # Unexpected error in underlying stub -- update cache and
+            # propagate to user through context
+            response_cache.update_cache(thread_id, req_id, e)
+            context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+            context.set_details(str(e))
+            raise
+        response_cache.update_cache(thread_id, req_id, resp)
+        return resp
+
+    return wrapper
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -60,6 +109,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.named_actors = set()
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
+        self.response_caches: Dict[str, ResponseCache] = defaultdict(
+            ResponseCache)
 
     def Init(self, request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
@@ -95,7 +146,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config and \
-           set(job_config.runtime_env.uris) != set(
+                set(job_config.runtime_env.uris) != set(
                 current_job_config.runtime_env.uris) and \
                 len(job_config.runtime_env.uris) > 0:
             return ray_client_pb2.InitResponse(
@@ -105,6 +156,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 f"current one {current_job_config.runtime_env.uris}")
         return ray_client_pb2.InitResponse(ok=True)
 
+    @_use_response_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
@@ -116,6 +168,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             value = ray.experimental.internal_kv._internal_kv_get(request.key)
         return ray_client_pb2.KVGetResponse(value=value)
 
+    @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
         with disable_client_hook():
             ray.experimental.internal_kv._internal_kv_del(request.key)
@@ -221,6 +274,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with self.state_lock:
             self._release_objects(client_id)
             self._release_actors(client_id)
+        # NOTE: Try to actually dereference the object and actor refs.
+        # Otherwise dereferencing will happen later, which may run concurrently
+        # with ray.shutdown() and will crash the process. The crash is a bug
+        # that should be fixed eventually.
+        gc.collect()
 
     def _can_remove_actor_ref(self, actor_id_bytes):
         no_owner = not any(actor_id_bytes in actor_list
@@ -235,6 +293,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         del self.object_refs[client_id]
         if client_id in self.client_side_ref_map:
             del self.client_side_ref_map[client_id]
+        if client_id in self.response_caches:
+            del self.response_caches[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
@@ -252,11 +312,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
+    @_use_response_cache
     def Terminate(self, req, context=None):
         if req.WhichOneof("terminate_type") == "task_object":
             try:
                 object_ref = \
-                        self.object_refs[req.client_id][req.task_object.id]
+                    self.object_refs[req.client_id][req.task_object.id]
                 with disable_client_hook():
                     ray.cancel(
                         object_ref,
@@ -288,15 +349,19 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         main loop when the desired object is ready. If there is some failure
         in scheduling, a GetResponse will be immediately returned.
         """
-        refs = []
-        for rid in request.ids:
-            ref = self.object_refs[client_id].get(rid, None)
-            if ref:
-                refs.append(ref)
-            else:
-                return ray_client_pb2.GetResponse(valid=False)
+        if len(request.ids) != 1:
+            raise ValueError("Async get() must have exactly 1 Object ID. "
+                             f"Actual: {request}")
+        rid = request.ids[0]
+        ref = self.object_refs[client_id].get(rid, None)
+        if not ref:
+            return ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(f"ClientObjectRef with id {rid} not found for "
+                               f"client {client_id}")))
         try:
-            logger.debug("async get: %s" % refs)
+            logger.debug("async get: %s" % ref)
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
@@ -307,36 +372,44 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         serialized = dumps_from_server(result, client_id, self)
                         get_resp = ray_client_pb2.GetResponse(
                             valid=True, data=serialized)
-                    except Exception as e:
+                    except Exception as exc:
                         get_resp = ray_client_pb2.GetResponse(
-                            valid=False, error=cloudpickle.dumps(e))
+                            valid=False, error=cloudpickle.dumps(exc))
                     resp = ray_client_pb2.DataResponse(
                         get=get_resp, req_id=req_id)
-                    resp.req_id = req_id
                     result_queue.put(resp)
 
-                for ref in refs:
-                    ref._on_completed(send_get_response)
+                ref._on_completed(send_get_response)
                 return None
 
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
 
-    def GetObject(self, request: ray_client_pb2.GetRequest, context=None):
-        return self._get_object(request, "", context)
+    def GetObject(self, request: ray_client_pb2.GetRequest, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata.get("client_id")
+        if client_id is None:
+            return ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(
+                        "client_id is not specified in request metadata")))
+        return self._get_object(request, client_id)
 
-    def _get_object(self,
-                    request: ray_client_pb2.GetRequest,
-                    client_id: str,
-                    context=None):
+    def _get_object(self, request: ray_client_pb2.GetRequest, client_id: str):
         objectrefs = []
         for rid in request.ids:
             ref = self.object_refs[client_id].get(rid, None)
             if ref:
                 objectrefs.append(ref)
             else:
-                return ray_client_pb2.GetResponse(valid=False)
+                return ray_client_pb2.GetResponse(
+                    valid=False,
+                    error=cloudpickle.dumps(
+                        ValueError(
+                            f"ClientObjectRef {rid} is not found for client "
+                            f"{client_id}")))
         try:
             logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
@@ -344,8 +417,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
-        items_ser = dumps_from_server(items, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=items_ser)
+        serialized = dumps_from_server(items, client_id, self)
+        return ray_client_pb2.GetResponse(valid=True, data=serialized)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
@@ -383,12 +456,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
-        for id in request.object_ids:
-            if id not in self.object_refs[request.client_id]:
+        for rid in request.object_ids:
+            if rid not in self.object_refs[request.client_id]:
                 raise Exception(
                     "Asking for a ref not associated with this client: %s" %
-                    str(id))
-            object_refs.append(self.object_refs[request.client_id][id])
+                    str(rid))
+            object_refs.append(self.object_refs[request.client_id][rid])
         num_returns = request.num_returns
         timeout = request.timeout
         try:
@@ -416,7 +489,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+    @_use_response_cache
+    def Schedule(self, task: ray_client_pb2.ClientTask,
+                 context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s" % (task.name,
                                  ray_client_pb2.ClientTask.RemoteExecType.Name(
@@ -598,7 +673,9 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+        futures.ThreadPoolExecutor(
+            max_workers=CLIENT_SERVER_MAX_THREADS,
+            thread_name_prefix="ray_client_server"),
         options=GRPC_OPTIONS)
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
@@ -711,6 +788,12 @@ def main():
         type=int,
         default=0,
         help="The PID of the process for setup worker runtime env.")
+    parser.add_argument(
+        "--metrics-agent-port",
+        required=False,
+        type=int,
+        default=0,
+        help="The port to use for connecting to the runtime_env agent.")
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
@@ -726,7 +809,10 @@ def main():
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport, args.redis_address, redis_password=args.redis_password)
+            hostport,
+            args.redis_address,
+            redis_password=args.redis_password,
+            runtime_env_agent_port=args.metrics_agent_port)
     else:
         server = serve(hostport, ray_connect_handler)
 
