@@ -5,7 +5,6 @@ import itertools
 import ray
 import torch
 
-from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
 from ray.util.sgd.torch.utils import choose_amp_backend
 
@@ -137,9 +136,11 @@ class TorchRunner:
             else:
                 iterator = self.make_iterator(
                     training=True, num_steps=num_steps)
-            train_stats = self.training_operator.train_epoch(iterator,
-                                                             info=info,
-                                                             num_steps=num_steps, epoch_idx=self.epochs)
+            train_stats = self.training_operator.train_epoch(
+                iterator,
+                info=info,
+                num_steps=num_steps,
+                epoch_idx=self.epochs)
 
         # This is so that `epochs` is first in ordering.
         stats = dict(epoch=self.epochs, **train_stats)

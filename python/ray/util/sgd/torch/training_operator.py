@@ -11,11 +11,8 @@ from filelock import FileLock
 from ray.util.annotations import PublicAPI
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
-from ray.util.sgd.torch.constants import (
-    SCHEDULER_STEP_EPOCH,
-    NUM_STEPS,
-    SCHEDULER_STEP_BATCH,
-    USE_FP16)
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
+                                          SCHEDULER_STEP_BATCH, USE_FP16)
 from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
