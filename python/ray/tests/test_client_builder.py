@@ -7,7 +7,7 @@ from unittest.mock import patch, Mock
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
-from ray.test_utils import run_string_as_driver_nonblocking,\
+from ray._private.test_utils import run_string_as_driver_nonblocking,\
     wait_for_condition, run_string_as_driver
 
 from ray.cluster_utils import Cluster

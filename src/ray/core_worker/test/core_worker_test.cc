@@ -26,6 +26,7 @@
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
@@ -63,7 +64,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                                          "actor creation task", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
-      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
   std::string name = "";
   std::string ray_namespace = "";
@@ -145,7 +146,6 @@ class CoreWorkerTest : public ::testing::Test {
       options.node_manager_port = node_manager_port;
       options.raylet_ip_address = "127.0.0.1";
       options.driver_name = "core_worker_test";
-      options.ref_counting_enabled = true;
       options.num_workers = 1;
       options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
@@ -205,12 +205,11 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources) {
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{"", 1, resources};
-  std::vector<ObjectID> return_ids;
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
 
-  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options,
-                                                     &return_ids);
+  auto return_ids = ObjectRefsToIds(
+      CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -236,21 +235,24 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
-                              &object_id));
+      RAY_CHECK_OK(
+          driver.Put(RayObject(buffer2, nullptr, std::vector<rpc::ObjectReference>()), {},
+                     &object_id));
 
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
-      args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
+      args.emplace_back(
+          new TaskArgByReference(object_id, driver.GetRpcAddress(), /*call_site=*/""));
 
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
-      std::vector<ObjectID> return_ids;
-      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
-                        std::make_pair(PlacementGroupID::Nil(), -1), true,
-                        /*debugger_breakpoint=*/"");
+      auto return_refs = driver.SubmitTask(
+          func, args, options, /*max_retries=*/0,
+          /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+          /*debugger_breakpoint=*/"");
+      auto return_ids = ObjectRefsToIds(return_refs);
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -282,17 +284,17 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      std::vector<ObjectID> return_ids;
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
-      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+      auto return_ids =
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<RayObject>> results;
@@ -321,19 +323,21 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     ObjectID object_id;
     RAY_CHECK_OK(
-        driver.Put(RayObject(buffer1, nullptr, std::vector<ObjectID>()), {}, &object_id));
+        driver.Put(RayObject(buffer1, nullptr, std::vector<rpc::ObjectReference>()), {},
+                   &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<std::unique_ptr<TaskArg>> args;
-    args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
+    args.emplace_back(
+        new TaskArgByReference(object_id, driver.GetRpcAddress(), /*call_site=*/""));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
-    std::vector<ObjectID> return_ids;
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                            "MergeInputArgsAsOutput", "", "", ""));
-    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+    auto return_ids =
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -388,15 +392,15 @@ void CoreWorkerTest::TestActorRestart(
 
       // Create arguments with PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      std::vector<ObjectID> return_ids;
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
-      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+      auto return_ids =
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -431,15 +435,15 @@ void CoreWorkerTest::TestActorFailure(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      std::vector<ObjectID> return_ids;
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
-      driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+      auto return_ids =
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -491,7 +495,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
-      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
   std::unordered_map<std::string, double> resources;
   std::string name = "";
@@ -521,7 +525,6 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   rpc::Address address;
   for (int i = 0; i < num_tasks; i++) {
     TaskOptions options{"", 1, resources};
-    std::vector<ObjectID> return_ids;
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
@@ -565,15 +568,15 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
     auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
                                                       sizeof(array));
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
-    std::vector<ObjectID> return_ids;
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                            "MergeInputArgsAsOutput", "", "", ""));
 
-    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
+    auto return_ids =
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
@@ -655,10 +658,10 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
                        std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -780,10 +783,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, array2_size),
                        std::make_shared<LocalMemoryBuffer>(array2, array2_size / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -843,9 +846,6 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
                     FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
   RayFunction func2(Language::PYTHON,
                     FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
-  // Return IDs for the two functions that implement while(true) loops.
-  std::vector<ObjectID> return_ids1;
-  std::vector<ObjectID> return_ids2;
 
   // Create default args and options needed to submit the tasks that encapsulate func1 and
   // func2.
@@ -853,15 +853,17 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   TaskOptions options;
 
   // Submit func1. The function should start looping forever.
-  driver.SubmitTask(func1, args, options, &return_ids1, /*max_retries=*/0,
-                    std::make_pair(PlacementGroupID::Nil(), -1), true,
-                    /*debugger_breakpoint=*/"");
+  auto return_ids1 = ObjectRefsToIds(driver.SubmitTask(
+      func1, args, options, /*max_retries=*/0,
+      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+      /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids1.size(), 1);
 
   // Submit func2. The function should be queued at the worker indefinitely.
-  driver.SubmitTask(func2, args, options, &return_ids2, /*max_retries=*/0,
-                    std::make_pair(PlacementGroupID::Nil(), -1), true,
-                    /*debugger_breakpoint=*/"");
+  auto return_ids2 = ObjectRefsToIds(driver.SubmitTask(
+      func2, args, options, /*max_retries=*/0,
+      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
+      /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids2.size(), 1);
 
   // Cancel func2 by removing it from the worker's queue

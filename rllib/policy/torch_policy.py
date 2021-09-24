@@ -26,7 +26,7 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
-    TrainerConfigDict
+    TensorStructType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode  # noqa
@@ -246,23 +246,24 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_actions(
             self,
-            obs_batch: Union[List[TensorType], TensorType],
+            obs_batch: Union[List[TensorStructType], TensorStructType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
+            prev_action_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+            Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
 
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
-            input_dict = self._lazy_tensor_dict(
-                SampleBatch({
-                    SampleBatch.CUR_OBS: np.asarray(obs_batch),
-                }))
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch
+            })
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     np.asarray(prev_action_batch)
@@ -405,13 +406,13 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_log_likelihoods(
             self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
+            actions: Union[List[TensorStructType], TensorStructType],
+            obs_batch: Union[List[TensorStructType], TensorStructType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
+            prev_action_batch: Optional[Union[List[TensorStructType],
+                                              TensorStructType]] = None,
+            prev_reward_batch: Optional[Union[List[TensorStructType],
+                                              TensorStructType]] = None,
             actions_normalized: bool = True,
     ) -> TensorType:
 
@@ -658,6 +659,16 @@ class TorchPolicy(Policy):
 
         assert len(self.devices) == 1
 
+        # If not done yet, see whether we have to zero-pad this batch.
+        if not postprocessed_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                batch=postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
         postprocessed_batch.is_training = True
         self._lazy_tensor_dict(postprocessed_batch, device=self.devices[0])
 
@@ -849,7 +860,7 @@ class TorchPolicy(Policy):
         # returned empty internal states list).
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
-                self._dummy_batch["seq_lens"] = np.array([1.0])
+                self._dummy_batch[SampleBatch.SEQ_LENS] = np.array([1.0])
 
         state_ins = []
         i = 0
@@ -864,7 +875,7 @@ class TorchPolicy(Policy):
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
 
-        seq_lens = self._dummy_batch["seq_lens"]
+        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
@@ -874,14 +885,14 @@ class TorchPolicy(Policy):
                 opset_version=onnx,
                 do_constant_folding=True,
                 input_names=list(dummy_inputs.keys()) +
-                ["state_ins", "seq_lens"],
+                ["state_ins", SampleBatch.SEQ_LENS],
                 output_names=["output", "state_outs"],
                 dynamic_axes={
                     k: {
                         0: "batch_size"
                     }
                     for k in list(dummy_inputs.keys()) +
-                    ["state_ins", "seq_lens"]
+                    ["state_ins", SampleBatch.SEQ_LENS]
                 })
         else:
             traced = torch.jit.trace(self.model,

@@ -91,7 +91,6 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
 void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
                                            rpc::CheckAliveReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  reply->set_seq(request.seq());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

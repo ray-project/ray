@@ -17,7 +17,7 @@ from typing import List
 from typing import Optional
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.gcs_utils import PlacementGroupTableData
+from ray._private.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler.tags import (

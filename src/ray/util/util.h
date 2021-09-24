@@ -21,7 +21,15 @@
 #include <sstream>
 #include <string>
 #include <thread>
+
 #include <unordered_map>
+
+#include "ray/util/logging.h"
+#include "ray/util/macros.h"
+
+#ifdef _WIN32
+#include <process.h>  // to ensure getpid() on Windows
+#endif
 
 // Portable code for unreachable
 #if defined(_MSC_VER)
@@ -60,6 +68,20 @@ inline std::string StringToHex(const std::string &str) {
     result.push_back(hex[val & 0xf]);
   }
   return result;
+}
+
+// Append append_str to the begining of each line of str.
+inline std::string AppendToEachLine(const std::string &str,
+                                    const std::string &append_str) {
+  std::stringstream ss;
+  ss << append_str;
+  for (char c : str) {
+    ss << c;
+    if (c == '\n') {
+      ss << append_str;
+    }
+  }
+  return ss.str();
 }
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -172,21 +194,29 @@ struct EnumClassHash {
 template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
+namespace ray {
+namespace internal {
+inline __suppress_ubsan__("signed-integer-overflow") int64_t GenerateSeed() {
+  int64_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  // To increase the entropy, mix in a number of time samples instead of a single one.
+  // This avoids the possibility of duplicate seeds for many workers that start in
+  // close succession.
+  for (int i = 0; i < 128; i++) {
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  }
+  return seed;
+}
+}  // namespace internal
+}  // namespace ray
+
 /// A helper function to fill random bytes into the `data`.
 /// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
   auto randomly_seeded_mersenne_twister = []() {
-    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    // To increase the entropy, mix in a number of time samples instead of a single one.
-    // This avoids the possibility of duplicate seeds for many workers that start in
-    // close succession.
-    for (int i = 0; i < 128; i++) {
-      std::this_thread::sleep_for(std::chrono::microseconds(10));
-      seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    }
-    std::mt19937 seeded_engine(seed);
+    std::mt19937 seeded_engine(ray::internal::GenerateSeed());
     return seeded_engine;
   };
 
@@ -209,3 +239,77 @@ inline void SetThreadName(const std::string &thread_name) {
   pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
 }
+
+inline std::string GetThreadName() {
+#if defined(__linux__)
+  char name[128];
+  auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
+  if (rc != 0) {
+    return "ERROR";
+  } else {
+    return name;
+  }
+#else
+  return "UNKNOWN";
+#endif
+}
+
+namespace ray {
+template <typename T>
+class ThreadPrivate {
+ public:
+  template <typename... Ts>
+  ThreadPrivate(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
+
+  T &operator*() {
+    ThreadCheck();
+    return t_;
+  }
+
+  T *operator->() {
+    ThreadCheck();
+    return &t_;
+  }
+
+  const T &operator*() const {
+    ThreadCheck();
+    return t_;
+  }
+
+  const T *operator->() const {
+    ThreadCheck();
+    return &t_;
+  }
+
+ private:
+  void ThreadCheck() const {
+    // ThreadCheck is not a thread safe function and at the same time, multiple
+    // threads might be accessing id_ at the same time.
+    // Here we only introduce mutex to protect write instead of read for the
+    // following reasons:
+    //    - read and write at the same time for `id_` is fine since this is a
+    //      trivial object. And since we are using this to detect errors,
+    //      it doesn't matter which value it is.
+    //    - read and write of `thread_name_` is not good. But it will only be
+    //      read when we crash the program.
+    //
+    if (id_ == std::thread::id()) {
+      // Protect thread_name_
+      std::lock_guard<std::mutex> _(mutex_);
+      thread_name_ = GetThreadName();
+      RAY_LOG(DEBUG) << "First accessed in thread " << thread_name_;
+      id_ = std::this_thread::get_id();
+    }
+
+    RAY_CHECK(id_ == std::this_thread::get_id())
+        << "A variable private to thread " << thread_name_ << " was accessed in thread "
+        << GetThreadName();
+  }
+
+  T t_;
+  mutable std::string thread_name_;
+  mutable std::thread::id id_;
+  mutable std::mutex mutex_;
+};
+
+}  // namespace ray

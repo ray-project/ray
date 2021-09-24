@@ -11,7 +11,7 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.test_utils import object_memory_usage
+from ray._private.test_utils import object_memory_usage
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -172,6 +172,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):

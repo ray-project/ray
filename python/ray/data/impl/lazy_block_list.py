@@ -16,7 +16,19 @@ class LazyBlockList(BlockList[T]):
         self._blocks = [calls[0]()] if calls else []
         self._metadata = metadata
 
+    def copy(self) -> "LazyBlockList":
+        new_list = LazyBlockList.__new__(LazyBlockList)
+        new_list._calls = self._calls
+        new_list._blocks = self._blocks
+        new_list._metadata = self._metadata
+        return new_list
+
+    def clear(self):
+        super().clear()
+        self._calls = None
+
     def split(self, split_size: int) -> List["LazyBlockList"]:
+        self._check_if_cleared()
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
         meta = np.array_split(self._metadata, num_splits)
@@ -26,9 +38,11 @@ class LazyBlockList(BlockList[T]):
         return output
 
     def __len__(self):
+        self._check_if_cleared()
         return len(self._calls)
 
     def __iter__(self):
+        self._check_if_cleared()
         outer = self
 
         class Iter:
@@ -47,6 +61,7 @@ class LazyBlockList(BlockList[T]):
         return Iter()
 
     def _get_or_compute(self, i: int) -> ObjectRef[Block]:
+        self._check_if_cleared()
         assert i < len(self._calls), i
         # Check if we need to compute more blocks.
         if i >= len(self._blocks):

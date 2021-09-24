@@ -11,9 +11,8 @@ import sys
 import tempfile
 import datetime
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import wait_for_condition
-from ray.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
 
 import ray
@@ -354,13 +353,13 @@ def test_keyword_args(ray_start_regular_shared):
 
     # Make sure we get an exception if the constructor is called
     # incorrectly.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, 1, 2, arg3=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, arg0=1)
 
     # Make sure we get an exception if the method is called incorrectly.
@@ -733,6 +732,7 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -864,6 +864,23 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
 def test_get_non_existing_named_actor(ray_start_regular_shared):
     with pytest.raises(ValueError):
         _ = ray.get_actor("non_existing_actor")
+
+
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
 
 
 def test_named_actor_cache(ray_start_regular_shared):

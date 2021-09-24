@@ -171,7 +171,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
 }
@@ -192,8 +192,10 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) const {
-  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
+const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
+    size_t arg_index) const {
+  return VectorFromProtobuf<rpc::ObjectReference>(
+      message_->args(arg_index).nested_inlined_refs());
 }
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {

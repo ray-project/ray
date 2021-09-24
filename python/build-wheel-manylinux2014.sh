@@ -25,6 +25,11 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+yum install libasan-4.8.5-44.el7.x86_64 -y
+yum install libubsan-7.3.1-5.10.el7.x86_64 -y
+yum install devtoolset-8-libasan-devel.x86_64 -y
+
+
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -55,7 +60,7 @@ nvm use "$NODE_VERSION"
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
-pushd python/ray/new_dashboard/client
+pushd python/ray/dashboard/client
   npm ci
   npm run build
 popd
@@ -70,7 +75,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
   # dashboard directory and jars directory.
-  git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client -e python/ray/jars
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can

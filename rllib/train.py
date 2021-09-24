@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -56,9 +55,15 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--ray-ui",
+        action="store_true",
+        help="Whether to enable the Ray web UI.")
+    # Deprecated: Use --ray-ui, instead.
+    parser.add_argument(
         "--no-ray-ui",
         action="store_true",
-        help="Whether to disable the Ray web ui.")
+        help="Deprecated! Ray UI is disabled by default now. "
+        "Use `--ray-ui` to enable.")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -172,6 +177,11 @@ def run(args, parser):
             }
         }
 
+    # Ray UI.
+    if args.no_ray_ui:
+        deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=False)
+        args.ray_ui = False
+
     verbose = 1
     for exp in experiments.values():
         # Bazel makes it hard to find files specified in `args` (and `data`).
@@ -223,6 +233,9 @@ def run(args, parser):
             verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
+        # Import this only here so that train.py also works with
+        # older versions (and user doesn't use `--ray-num-nodes`).
+        from ray.cluster_utils import Cluster
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
@@ -232,7 +245,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_dashboard=not args.no_ray_ui,
+            include_dashboard=args.ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             num_cpus=args.ray_num_cpus,

@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
 
 def test_ray_debugger_breakpoint(shutdown_only):

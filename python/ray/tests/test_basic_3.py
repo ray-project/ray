@@ -1,4 +1,5 @@
 # coding: utf-8
+import gc
 import logging
 import os
 import sys
@@ -8,7 +9,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (
+from ray._private.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
     wait_for_condition,
@@ -158,8 +159,10 @@ def test_background_tasks_with_max_calls(shutdown_only):
     nested = ray.get([f.remote() for _ in range(10)])
     while nested:
         pid, g_id = nested.pop(0)
-        ray.get(g_id)
+        assert ray.get(g_id) == 0
         del g_id
+        # Necessary to dereference the object via GC, so the worker can exit.
+        gc.collect()
         wait_for_pid_to_exit(pid)
 
 
@@ -228,22 +231,16 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "_system_config": {
-            "event_stats_print_interval_ms": 100,
-            "debug_dump_period_milliseconds": 100,
-            "event_stats": True
-        }
-    }],
-    indirect=True)
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
 
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
-    cluster.add_node(num_cpus=4, )
+    cluster.add_node(
+        num_cpus=4, _system_config={
+            "debug_dump_period_milliseconds": 100,
+        })
     ray.init(address=cluster.address)
 
     # A slow function never returns. It will hold cpu resources all the way.
@@ -270,7 +267,8 @@ def test_worker_startup_count(ray_start_cluster):
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    return int(line[len(num_workers_prefix):])
+                    num_workers = int(line[len(num_workers_prefix):])
+                    return num_workers
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
@@ -281,9 +279,31 @@ def test_worker_startup_count(ray_start_cluster):
 
     # Check that no more workers started for a while.
     for i in range(100):
-        num = get_num_workers()
+        # Sometimes the debug state file can be empty. Retry if needed.
+        for _ in range(3):
+            num = get_num_workers()
+            if num is None:
+                print("Retrying parse debug_state.txt")
+                time.sleep(0.05)
+            else:
+                break
         assert num == 16
         time.sleep(0.1)
+
+
+def test_function_unique_export(ray_start_regular):
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def g():
+        ray.get(f.remote())
+
+    ray.get(g.remote())
+    num_exports = ray.worker.global_worker.redis_client.llen("Exports")
+    ray.get([g.remote() for _ in range(5)])
+    assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
 
 
 if __name__ == "__main__":

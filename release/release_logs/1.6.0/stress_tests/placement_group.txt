@@ -1,0 +1,50 @@
+INFO:__main__:remove_group iteration 622
+INFO:__main__:remove_group iteration 623
+INFO:__main__:remove_group iteration 624
+INFO:__main__:remove_group iteration 625
+INFO:__main__:remove_group iteration 626
+INFO:__main__:remove_group iteration 627
+INFO:__main__:remove_group iteration 628
+INFO:__main__:remove_group iteration 629
+INFO:__main__:remove_group iteration 630
+INFO:__main__:remove_group iteration 631
+INFO:__main__:remove_group iteration 632
+INFO:__main__:remove_group iteration 633
+INFO:__main__:remove_group iteration 634
+INFO:__main__:remove_group iteration 635
+INFO:__main__:remove_group iteration 636
+INFO:__main__:remove_group iteration 637
+INFO:__main__:remove_group iteration 638
+INFO:__main__:remove_group iteration 639
+INFO:__main__:remove_group iteration 640
+INFO:__main__:remove_group iteration 641
+INFO:__main__:remove_group iteration 642
+INFO:__main__:remove_group iteration 643
+INFO:__main__:remove_group iteration 644
+INFO:__main__:remove_group iteration 645
+INFO:__main__:remove_group iteration 646
+INFO:__main__:remove_group iteration 647
+INFO:__main__:remove_group iteration 648
+INFO:__main__:remove_group iteration 649
+INFO:__main__:remove_group iteration 650
+INFO:__main__:remove_group iteration 651
+INFO:__main__:remove_group iteration 652
+INFO:__main__:remove_group iteration 653
+INFO:__main__:remove_group iteration 654
+INFO:__main__:remove_group iteration 655
+INFO:__main__:remove_group iteration 656
+INFO:__main__:remove_group iteration 657
+INFO:__main__:remove_group iteration 658
+INFO:__main__:remove_group iteration 659
+INFO:__main__:remove_group iteration 660
+INFO:__main__:remove_group iteration 661
+INFO:__main__:remove_group iteration 662
+INFO:__main__:remove_group iteration 663
+INFO:__main__:remove_group iteration 664
+INFO:__main__:remove_group iteration 665
+2021-08-25 00:24:46,958	WARNING worker.py:1215 -- WARNING: 8 PYTHON worker processes have been started on node: 4bc8d5ab28cef16a5ad3d30c4502a260d1e1df3d588225a348183a5b with address: 172.31.50.22. This could be a result of using a large number of actors, or due to tasks blocked in ray.get() calls (see https://github.com/ray-project/ray/issues/3644 for some discussion of workarounds).
+2021-08-25 00:24:48,990	WARNING worker.py:1215 -- WARNING: 10 PYTHON worker processes have been started on node: 4bc8d5ab28cef16a5ad3d30c4502a260d1e1df3d588225a348183a5b with address: 172.31.50.22. This could be a result of using a large number of actors, or due to tasks blocked in ray.get() calls (see https://github.com/ray-project/ray/issues/3644 for some discussion of workarounds).
+2021-08-25 00:24:50,791	WARNING worker.py:1215 -- WARNING: 12 PYTHON worker processes have been started on node: 4bc8d5ab28cef16a5ad3d30c4502a260d1e1df3d588225a348183a5b with address: 172.31.50.22. This could be a result of using a large number of actors, or due to tasks blocked in ray.get() calls (see https://github.com/ray-project/ray/issues/3644 for some discussion of workarounds).
+Avg placement group creating time: 0.6881522147153959 ms
+Avg placement group removing time: 4.041917145644407 ms
+PASSED.

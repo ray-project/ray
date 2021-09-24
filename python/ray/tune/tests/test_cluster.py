@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
@@ -32,6 +32,7 @@ from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
 os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
 # Block for results even when placement groups are pending
 os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "9999"
 
 
 def _check_trial_running(trial):

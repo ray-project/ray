@@ -46,7 +46,7 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 
 # Deployment configs
@@ -120,7 +120,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_endpoints().keys())
+    all_endpoints = list(serve.list_deployments().keys())
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
         NUM_CONNECTIONS,
@@ -142,3 +142,6 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
 
 if __name__ == "__main__":
     main()
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
