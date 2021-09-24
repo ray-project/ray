@@ -16,9 +16,9 @@ py_test_run_all_subdirectory(
     exclude = [
         "modules/test/**",
         "modules/node/tests/test_node.py",
-        "tests/test_dashboard.py"
+        "tests/test_dashboard.py",
         "modules/snapshot/tests/test_snapshot_1.py",
-        "modules/snapshot/tests/test_snapshot_2.py"
+        "modules/snapshot/tests/test_snapshot_2.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
