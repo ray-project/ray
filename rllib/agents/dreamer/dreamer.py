@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.utils.metrics import LEARNER_INFO
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
