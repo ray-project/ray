@@ -133,7 +133,7 @@ if __name__ == "__main__":
                        if args.torch else DQNTFPolicy, None, None, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

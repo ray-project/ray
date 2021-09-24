@@ -1,5 +1,5 @@
-Profiling for Ray Developers
-============================
+Profiling (internal)
+====================
 
 This document details, for Ray developers, how to analyze Ray performance.
 

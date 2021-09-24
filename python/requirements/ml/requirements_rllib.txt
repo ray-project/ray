@@ -1,16 +1,4 @@
-# Deep learning.
-# --------------
-tensorflow==2.5.1
-tensorflow-probability==0.13.0
-
-torch==1.8.1;sys_platform=="darwin"
-torchvision==0.9.1;sys_platform=="darwin"
-
-# On non-OSX machines only install CPU version of torch and torchvision
--f https://download.pytorch.org/whl/torch_stable.html
-torch==1.8.1+cpu;sys_platform!="darwin"
--f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.9.1+cpu;sys_platform!="darwin"
+-r requirements_dl.txt
 
 # Environment adapters.
 # ---------------------
@@ -20,8 +8,7 @@ gym[atari]==0.18.3
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-mlagents==0.26.0
-mlagents_envs==0.26.0
+mlagents_envs==0.27.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.11.0
 pymunk==6.0.0

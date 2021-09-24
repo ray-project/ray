@@ -200,6 +200,30 @@ class ArrowBlockAccessor(BlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        acc = BlockAccessor.for_block(other)
+        if not isinstance(acc, ArrowBlockAccessor):
+            raise ValueError("Cannot zip {} with block of type {}".format(
+                type(self), type(other)))
+        if acc.num_rows() != self.num_rows():
+            raise ValueError(
+                "Cannot zip self (length {}) with block of length {}".format(
+                    self.num_rows(), acc.num_rows()))
+        r = self.to_arrow()
+        s = acc.to_arrow()
+        for col_name in s.column_names:
+            col = s.column(col_name)
+            # Ensure the column names are unique after zip.
+            if col_name in r.column_names:
+                i = 1
+                new_name = col_name
+                while new_name in r.column_names:
+                    new_name = "{}_{}".format(col_name, i)
+                    i += 1
+                col_name = new_name
+            r = r.append_column(col_name, col)
+        return r
+
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()

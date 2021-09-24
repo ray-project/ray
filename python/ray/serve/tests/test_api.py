@@ -8,7 +8,7 @@ import starlette.responses
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def test_e2e(serve_instance):
@@ -241,6 +241,28 @@ def test_start_idempotent(serve_instance):
     serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_deployments()
+
+
+def test_shutdown_destructor(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class A:
+        def __del__(self):
+            signal.send.remote()
+
+    A.deploy()
+    A.delete()
+    ray.get(signal.wait.remote(), timeout=10)
+
+    # If the destructor errored, it should be logged but also cleaned up.
+    @serve.deployment
+    class B:
+        def __del__(self):
+            raise RuntimeError("Opps")
+
+    B.deploy()
+    B.delete()
 
 
 if __name__ == "__main__":
