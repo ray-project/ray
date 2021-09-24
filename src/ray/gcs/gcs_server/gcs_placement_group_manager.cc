@@ -248,6 +248,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     }
     MarkSchedulingDone();
   }
+  io_context_.dispatch([this] { SchedulePendingPlacementGroups(); });
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
