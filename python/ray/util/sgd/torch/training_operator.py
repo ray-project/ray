@@ -15,7 +15,7 @@ from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH,
     NUM_STEPS,
     SCHEDULER_STEP_BATCH,
-)
+    USE_FP16)
 from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
@@ -131,14 +131,15 @@ class TrainingOperator:
                  config,
                  world_rank,
                  local_rank,
-                 is_distributed=False,
-                 device=None,
-                 use_gpu=False,
+                 is_distributed,
+                 use_gpu,
+                 device,
                  use_fp16=False,
                  use_tqdm=False,
                  wrap_ddp=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
+
         # You are not expected to override this method.
         self._world_rank = world_rank
         self._local_rank = local_rank
@@ -456,7 +457,7 @@ class TrainingOperator:
                     self._validation_loader = with_sampler(
                         self._validation_loader)
 
-    def train_epoch(self, iterator, info):
+    def train_epoch(self, iterator, info=None, num_steps=None, epoch_idx=0):
         """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
@@ -489,8 +490,10 @@ class TrainingOperator:
         Args:
             iterator (iter): Iterator over the training data for the entire
                 epoch. This iterator is expected to be entirely consumed.
-            info (dict): Dictionary for information to be used for custom
-                training operations.
+            info (Optional[dict]): Dictionary for information to be used for
+                custom training operations.
+            num_steps (Optional[int]): Number of steps in the iterator.
+            epoch_idx (int): Index of current epoch.
 
         Returns:
             A dict of metrics from training.
@@ -499,6 +502,14 @@ class TrainingOperator:
             raise RuntimeError("Either set self.model in setup function or "
                                "override this method to implement a custom "
                                "training loop.")
+
+        info = info or {}
+
+        info.update({
+            NUM_STEPS: num_steps,
+            USE_FP16: self.use_fp16,
+            "epoch_idx": epoch_idx
+        })
         model = self.model
         scheduler = None
         if hasattr(self, "scheduler"):
@@ -636,7 +647,7 @@ class TrainingOperator:
 
         return {"train_loss": loss.item(), NUM_SAMPLES: target.size(0)}
 
-    def validate(self, val_iterator, info):
+    def validate(self, val_iterator, info=None):
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
@@ -648,8 +659,8 @@ class TrainingOperator:
         Args:
             val_iterator (iter): Iterable constructed from the
                 validation dataloader.
-            info: (dict): Dictionary for information to be used for custom
-                validation operations.
+            info: (Optional[dict]): Dictionary for information to be used for
+                custom validation operations.
 
         Returns:
             A dict of metrics from the evaluation.
@@ -662,6 +673,8 @@ class TrainingOperator:
             raise RuntimeError("Either set self.model in setup function or "
                                "override this method to implement a custom "
                                "validation loop.")
+
+        info = info or {}
         model = self.model
         metric_meters = AverageMeterCollection()
 
