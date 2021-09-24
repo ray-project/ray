@@ -107,7 +107,7 @@ These variants can be installed with:
 
     pip install ray[variant_string_goes_here]
 
-Availiable variant strings include:
+Available variant strings include:
 
 * ``default``: includes things like :ref:`Ray dashboard <ray-dashboard>` and cluster launcher
 * ``serve``: includes dependencies for :ref:`Ray Serve <rayserve>`
