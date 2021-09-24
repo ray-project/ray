@@ -33,7 +33,7 @@ def get_qualname(f):
 
 def ensure_ray_initialized():
     if not ray.is_initialized():
-        ray.client().connect()
+        ray.init()
 
 
 @dataclass

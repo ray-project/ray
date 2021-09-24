@@ -60,7 +60,6 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
             raise RuntimeError("Calling 'workflow.init()' again with a "
                                "different storage")
     storage_base.set_global_storage(storage)
-    ensure_ray_initialized()
     workflow_access.init_management_actor()
     serialization.init_manager()
 
