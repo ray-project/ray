@@ -154,9 +154,11 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
-# Used in cpu instructions detection
-NUM_OF_AVX2_RESOURCE = 512.0
-CPU_INSTRUCTION_SET = "avx2"
+# Default number of cpu instruction set resources.
+NUM_OF_CPU_RESOURCE = 512.0
+
+# Default list of cpu instruction set, like "avx, avx2".
+CPU_INSTRUCTION_SET = ""
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)

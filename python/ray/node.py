@@ -363,7 +363,7 @@ class Node:
             for required_ins in required_cpu_instruction_set:
                 if required_ins in cpu_info["flags"]:
                     env_resources[required_ins] = \
-                        ray_constants.NUM_OF_AVX2_RESOURCE
+                        ray_constants.NUM_OF_CPU_RESOURCE
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
