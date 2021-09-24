@@ -23,9 +23,6 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     @serve.deployment(
         name="recover_start_from_replica_actor_names", num_replicas=2)
     class TransientConstructorFailureDeployment:
-        def __init__(self):
-            return True
-
         def __call__(self, *args):
             return "hii"
 
