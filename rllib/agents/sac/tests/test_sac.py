@@ -71,8 +71,6 @@ class TestSAC(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["n_step"] = 3
         config["twin_q"] = True
-        config["clip_actions"] = False
-        config["normalize_actions"] = True
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10

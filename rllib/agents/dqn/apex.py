@@ -33,7 +33,7 @@ from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import LEARNER_INFO
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory

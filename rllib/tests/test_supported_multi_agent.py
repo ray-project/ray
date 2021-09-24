@@ -4,7 +4,8 @@ import ray
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     MultiAgentMountainCar
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check_train_results, \
+    framework_iterator
 from ray.tune import register_env
 
 
@@ -25,7 +26,9 @@ def check_support_multiagent(alg, config):
             a = get_trainer_class(alg)(
                 config=config, env="multi_agent_cartpole")
 
-        print(a.train())
+        results = a.train()
+        check_train_results(results)
+        print(results)
         a.stop()
 
 

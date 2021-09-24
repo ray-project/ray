@@ -411,16 +411,17 @@ def check_train_results(train_results):
             f"train_results['infos']['learner'] ({learner_info})!"
 
     for pid, policy_stats in learner_info.items():
-        # In any case, make sure each policy has the LEARNER_STATS_KEY under
-        # it.
+        # Expect td-errors to be per batch-item.
+        if "td_error" in policy_stats:
+            assert policy_stats["td_error"].shape[0] == train_results[
+                "config"]["train_batch_size"]
+
+        # Make sure each policy has the LEARNER_STATS_KEY under it.
         assert LEARNER_STATS_KEY in policy_stats
         learner_stats = policy_stats[LEARNER_STATS_KEY]
         for key, value in learner_stats.items():
-            # Expect td-errors to be per batch-item.
-            if key == "td_error":
-                assert value.shape[0] == info["num_steps_trained"]
             # Min- and max-stats should be single values.
-            elif key.startswith("min_") or key.startswith("max_"):
+            if key.startswith("min_") or key.startswith("max_"):
                 assert np.isscalar(
                     value), f"'key' value not a scalar ({value})!"
 

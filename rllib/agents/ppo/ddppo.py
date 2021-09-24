@@ -29,7 +29,7 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARN_ON_BATCH_TIMER, \
     _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.utils.metrics import LEARNER_INFO
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
