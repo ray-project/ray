@@ -130,7 +130,7 @@ class Worker : public WorkerInterface {
   ~Worker() {}
   rpc::WorkerType GetWorkerType() const override;
   void MarkDead() override;
-  bool IsDead() const override override;
+  bool IsDead() const override;
   void MarkBlocked() override;
   void MarkUnblocked() override;
   bool IsBlocked() const override;
@@ -157,8 +157,8 @@ class Worker : public WorkerInterface {
   bool RemoveBlockedTaskId(const TaskID &task_id) override;
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const override;
   const JobID &GetAssignedJobId() const override;
-  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override override;
-  RuntimeEnvHash GetRuntimeEnvHash() const override override;
+  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override;
+  RuntimeEnvHash GetRuntimeEnvHash() const override;
   void AssignActorId(const ActorID &actor_id) override;
   const ActorID &GetActorId() const override;
   void MarkDetachedActor() override;
