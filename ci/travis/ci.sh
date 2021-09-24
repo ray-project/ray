@@ -392,7 +392,7 @@ lint_readme() {
 }
 
 lint_scripts() {
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all-scripts
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all
 }
 
 lint_bazel() {
