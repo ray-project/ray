@@ -81,11 +81,13 @@ def _zip_module(root: Path,
         if path.is_dir() and next(path.iterdir(),
                                   None) is None or path.is_file():
             file_size = path.stat().st_size
+            to_path = path.relative_to(relative_path)
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
-                    f"File {path} is very large ({file_size} bytes). "
-                    "Consider excluding this file from the working directory.")
-            to_path = path.relative_to(relative_path)
+                    f"File {path} is very large ({file_size/(1024 * 1024):.2f}"
+                    " MiB). Consider excluding this file from the working "
+                    "directory: `ray.init(..., runtime_env={'excludes': "
+                    f"['{to_path}']}})`")
             zip_handler.write(path, to_path)
 
     excludes = [] if excludes is None else [excludes]
