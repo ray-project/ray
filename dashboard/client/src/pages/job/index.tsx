@@ -122,9 +122,7 @@ const JobList = () => {
                       </TableCell>
                       <TableCell align="center">
                         {endTime > 0
-                          ? dayjs(Math.floor(endTime)).format(
-                              "YYYY/MM/DD HH:mm:ss",
-                            )
+                          ? dayjs(Number(endTime)).format("YYYY/MM/DD HH:mm:ss")
                           : "-"}
                       </TableCell>
                     </TableRow>
