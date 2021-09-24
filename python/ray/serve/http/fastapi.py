@@ -2,6 +2,7 @@ import inspect
 from typing import Any, Callable, Dict
 
 from fastapi import Depends, FastAPI
+from fastapi.routing import APIRoute
 
 from ray.serve.exceptions import RayServeException
 from ray.serve.http.asgi import ASGIWrapper
@@ -37,8 +38,28 @@ class FastAPIRouteMetadata:
 
 class FastAPIWrapper(ASGIWrapper):
     def __init__(self, app: FastAPI):
+        self._fix_serialized_fastapi_app(app)
         self._add_method_routes_to_app(app)
         super().__init__(app)
+
+    def _fix_serialized_fastapi_app(self, app: FastAPI):
+        # Addresses https://github.com/ray-project/ray/issues/17363.
+        # This is only relevant when the FastAPI app was serialized as part of
+        # the code. If it's constructed in the deployment, there's no issue.
+        routes = app.routes
+        for route in routes:
+            if not isinstance(route, APIRoute):
+                continue
+
+            # If there is a response model, FastAPI creates a copy of the
+            # fields, but misses the outer_type_.
+            if route.response_model:
+                original_resp_fields = (
+                    route.response_field.outer_type_.__fields__)
+                cloned_resp_fields = (
+                    route.secure_cloned_response_field.outer_type_.__fields__)
+                for key, field in cloned_resp_fields.items():
+                    field.outer_type_ = original_resp_fields[key].outer_type_
 
     def _add_method_route_to_app(self, app: FastAPI, method: Callable):
         # This block just adds a default values to the self parameters so that
@@ -54,8 +75,7 @@ class FastAPIWrapper(ASGIWrapper):
                 "their first argument.")
 
         old_self_parameter = old_parameters[0]
-        # XXX: why do we need Depends?
-        # Just passing self gives recursion depth exceeded.
+        # Passing `self` gives recursion depth exceeded, need to use Depends.
         new_self_parameter = old_self_parameter.replace(
             default=Depends(lambda: self))
         new_parameters = [new_self_parameter] + [
@@ -92,7 +112,6 @@ class FastAPIWrapper(ASGIWrapper):
                 raise TypeError("Path argument must be a string.")
 
             def inner_decorator(func: Callable):
-                print(f"ADDING ATTR TO {func}")
                 setattr(func, ROUTE_METADATA_ATTR,
                         FastAPIRouteMetadata(method, path, func, kwargs))
                 return func

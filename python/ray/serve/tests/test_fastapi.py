@@ -626,8 +626,7 @@ def test_fastapi_nested_field_in_response_model(serve_instance,
 
     @app.get("/", response_model=TestModel)
     def test_endpoint():
-        test_model = TestModel(a="a", b=["b"])
-        return test_model
+        return TestModel(a="a", b=["b"])
 
     # https://github.com/ray-project/ray/issues/17363
     if use_inheritance_api:
@@ -636,21 +635,22 @@ def test_fastapi_nested_field_in_response_model(serve_instance,
             def __init__(self):
                 super().__init__(app)
 
-            @app.get("/inner", response_model=TestModel)
+            @FastAPIWrapper.get("/inner", response_model=TestModel)
             def test_endpoint_2(self):
-                test_model = TestModel(a="a", b=["b"])
-                return test_model
+                return TestModel(a="a", b=["b"])
     else:
 
         @serve.ingress(app)
         class TestDeployment:
             @app.get("/inner", response_model=TestModel)
             def test_endpoint_2(self):
-                test_model = TestModel(a="a", b=["b"])
-                return test_model
+                return TestModel(a="a", b=["b"])
 
     serve.deployment(route_prefix="/")(TestDeployment).deploy()
 
+    # XXX(eoakes): this test condition is failing when we serialize the app.
+    # The "inner" condition below works. Tried replicating the existing logic
+    # to fix this but it didn't work.
     resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"a": "a", "b": ["b"]}
 
@@ -751,12 +751,17 @@ def test_fastapi_method_redefinition(serve_instance, use_inheritance_api):
             def __init__(self):
                 super().__init__(app)
 
-            @app.get("/")
+            @FastAPIWrapper.get("/")
             def method(self):
                 return "hi get"
 
-            @app.post("/")  # noqa: F811
-            def method(self):
+            # XXX(edoakes): this isn't working because once the method is
+            # re-defined, the old one is overwritten and we lose access to it.
+            # Thought about adding it to the class object but we don't have
+            # access to that at decorator runtime -- maybe it's ok to not
+            # support this?
+            @FastAPIWrapper.post("/")
+            def method(self):  # noqa: F811
                 return "hi post"
 
     else:
@@ -767,8 +772,8 @@ def test_fastapi_method_redefinition(serve_instance, use_inheritance_api):
             def method(self):
                 return "hi get"
 
-            @app.post("/")  # noqa: F811
-            def method(self):
+            @app.post("/")
+            def method(self):  # noqa: F811
                 return "hi post"
 
     serve.deployment(route_prefix="/a")(A).deploy()
