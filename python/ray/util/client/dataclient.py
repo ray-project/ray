@@ -361,3 +361,21 @@ class DataClient:
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
         self._async_send(datareq)
+
+    def Schedule(self, request: ray_client_pb2.ClientTask,
+                 callback: ResponseCallable):
+        datareq = ray_client_pb2.DataRequest(task=request)
+        self._async_send(datareq, callback)
+
+    def Terminate(self, request: ray_client_pb2.TerminateRequest
+                  ) -> ray_client_pb2.TerminateResponse:
+        req = ray_client_pb2.DataRequest(terminate=request, )
+        resp = self._blocking_send(req)
+        return resp.terminate
+
+    def ListNamedActors(self,
+                        request: ray_client_pb2.ClientListNamedActorsRequest
+                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        req = ray_client_pb2.DataRequest(list_named_actors=request, )
+        resp = self._blocking_send(req)
+        return resp.list_named_actors

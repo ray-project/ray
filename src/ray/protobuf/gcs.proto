@@ -472,6 +472,8 @@ message ResourcesData {
   bool resources_normal_task_changed = 12;
   // The timestamp that normal task resources are measured.
   int64 resources_normal_task_timestamp = 13;
+  // Whether this node has detected a resource deadlock (full of actors).
+  bool cluster_full_of_actors_detected = 14;
 }
 
 message ResourceUsageBatchData {

@@ -114,6 +114,13 @@ class OptunaSearch(Searcher):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
 
+            ..warning::
+                When using ``evaluated_rewards``, the search space ``space``
+                must be provided as a :class:`dict` with parameter names as
+                keys and ``optuna.distributions`` instances as values. The
+                define-by-run search space definition is not yet supported with
+                this functionality.
+
     Tune automatically converts search spaces to Optuna's format:
 
     .. code-block:: python
@@ -139,7 +146,7 @@ class OptunaSearch(Searcher):
         from ray.tune.suggest.optuna import OptunaSearch
         import optuna
 
-        config = {
+        space = {
             "a": optuna.distributions.UniformDistribution(6, 8),
             "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
         }
@@ -161,6 +168,49 @@ class OptunaSearch(Searcher):
 
         optuna_search = OptunaSearch(
             define_search_space,
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
+
+    You can pass configs that will be evaluated first using
+    ``points_to_evaluate``:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
+
+        space = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
+
+        optuna_search = OptunaSearch(
+            space,
+            points_to_evaluate=[{"a": 6.5, "b": 5e-4}, {"a": 7.5, "b": 1e-3}]
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
+
+    Avoid re-running evaluated trials by passing the rewards together with
+    `points_to_evaluate`:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
+
+        space = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
+
+        optuna_search = OptunaSearch(
+            space,
+            points_to_evaluate=[{"a": 6.5, "b": 5e-4}, {"a": 7.5, "b": 1e-3}]
+            evaluated_rewards=[0.89, 0.42]
             metric="loss",
             mode="min")
 
@@ -367,6 +417,12 @@ class OptunaSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
+        if callable(self._space):
+            raise TypeError(
+                "Define-by-run function passed in `space` argument is not "
+                "yet supported when using `evaluated_rewards`. Please provide "
+                "an `OptunaDistribution` dict or pass a Ray Tune "
+                "search space to `tune.run()`.")
 
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
