@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.es as es
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+    framework_iterator
 
 
 class TestES(unittest.TestCase):
@@ -30,7 +30,6 @@ class TestES(unittest.TestCase):
                 trainer = es.ESTrainer(config=plain_config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
-                    check_train_results(results)
                     print(results)
 
                 check_compute_single_action(trainer)
