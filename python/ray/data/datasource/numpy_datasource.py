@@ -8,7 +8,6 @@ if TYPE_CHECKING:
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.extensions import TensorArray
 
 
 class NumpyDatasource(FileBasedDatasource):
@@ -22,6 +21,7 @@ class NumpyDatasource(FileBasedDatasource):
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+        from ray.data.extensions import TensorArray
         import pyarrow as pa
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
