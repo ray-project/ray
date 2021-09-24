@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.ars as ars
 from ray.rllib.utils.test_utils import framework_iterator, \
-    check_compute_single_action, check_train_results
+    check_compute_single_action
 
 
 class TestARS(unittest.TestCase):
@@ -26,7 +26,6 @@ class TestARS(unittest.TestCase):
             trainer = ars.ARSTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
-                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)
