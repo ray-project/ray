@@ -12,6 +12,11 @@ from ray._private.test_utils import run_string_as_driver
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
 
+if not os.environ.get("CI"):
+    # This flag turns on the local development that links against current Ray
+    # packages and falls back all the dependencies to the current Python site.
+    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+
 
 @pytest.fixture
 def ray_start(scope="module"):
@@ -290,6 +295,44 @@ Test.delete()
         use_ray_client=use_ray_client, client_addr=ray_start)
 
     run_string_as_driver(driver2)
+
+
+@pytest.mark.parametrize("use_ray_client", [False, True])
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Post-wheel-build test is only run on linux CI machines.")
+def test_pip_no_working_dir(ray_start, use_ray_client):
+
+    driver = """
+import ray
+from ray import serve
+import requests
+
+if {use_ray_client}:
+    ray.util.connect("{client_addr}")
+else:
+    ray.init(address="auto")
+
+serve.start()
+
+
+@serve.deployment
+def requests_version(request):
+    return requests.__version__
+
+
+requests_version.options(
+    ray_actor_options={{
+        "runtime_env": {{
+            "pip": ["ray[serve]", "requests==2.25.1"]
+        }}
+    }}).deploy()
+
+assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
+""".format(
+        use_ray_client=use_ray_client, client_addr=ray_start)
+
+    run_string_as_driver(driver)
 
 
 if __name__ == "__main__":
