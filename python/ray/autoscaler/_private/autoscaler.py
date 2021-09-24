@@ -493,7 +493,7 @@ class StandardAutoscaler:
             else:
                 infeasible.append(bundle)
         if pending:
-            if self.load_metrics.cluster_full_reported:
+            if self.load_metrics.cluster_full_of_actors_detected:
                 for request in pending:
                     self.event_summarizer.add_once_per_interval(
                         "Warning: The following resource request cannot be "
