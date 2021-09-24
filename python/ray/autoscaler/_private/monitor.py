@@ -1,7 +1,6 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
-import copy
 import logging
 import logging.handlers
 import os
@@ -244,12 +243,12 @@ class Monitor:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = format_readonly_node_type(
                     resource_message.node_id.hex())
-                resources = resource_message.resources_total
-                for k in list(resources.keys()):
-                    if k.startswith("node:"):
-                        del resources[k]
+                resources = {}
+                for k, v in resource_message.resources_total.items():
+                    if not k.startswith("node:"):
+                        resources[k] = v
                 mirror_node_types[node_type] = {
-                    "resources": copy.deepcopy(resources),
+                    "resources": resources,
                     "node_config": {},
                     "max_workers": 1,
                 }
