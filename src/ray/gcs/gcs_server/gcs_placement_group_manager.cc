@@ -579,9 +579,11 @@ void GcsPlacementGroupManager::AddToPendingQueue(
   auto now = absl::GetCurrentTimeNanos();
   if (!exp_backer) {
     exp_backer = ExponentialBackOff(
-        1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
+        1000000 *
+            RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
         RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
-        1000000 * RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
+        1000000 *
+            RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
   } else {
     now += static_cast<int64_t>(exp_backer->Next());
   }
