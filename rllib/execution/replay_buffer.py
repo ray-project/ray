@@ -502,7 +502,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                         # If SampleBatch has prio-replay weights, average
                         # over these to use as a weight for the entire
                         # sequence.
-                        if "weights" in time_slice:
+                        if "weights" in time_slice and \
+                                len(time_slice["weights"]):
                             weight = np.mean(time_slice["weights"])
                         else:
                             weight = None

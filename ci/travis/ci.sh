@@ -213,7 +213,7 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
-  cd cpp/example && sh run.sh
+  cd cpp/example && bash run.sh
 }
 
 test_wheels() {
