@@ -666,6 +666,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert ds.count() == 10
     assert len(arr1) == 5
     assert len(arr2) == 5
+    assert arr1.sum() == 10
+    assert arr2.sum() == 35
     assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
 
 
