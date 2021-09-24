@@ -109,6 +109,10 @@ class BlockAccessor(Generic[T]):
             schema=self.schema(),
             input_files=input_files)
 
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        """Zip this block with another block of the same type and size."""
+        raise NotImplementedError
+
     @staticmethod
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""

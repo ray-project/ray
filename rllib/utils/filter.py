@@ -35,10 +35,11 @@ class Filter:
 class NoFilter(Filter):
     is_concurrent = True
 
-    def __init__(self, *args):
-        pass
-
     def __call__(self, x, update=True):
+        # Process no further if already np.ndarray, dict, or tuple.
+        if isinstance(x, (np.ndarray, dict, tuple)):
+            return x
+
         try:
             return np.asarray(x)
         except Exception:

@@ -20,7 +20,7 @@ from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
@@ -44,7 +44,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, TrainerConfigDict
+    SampleBatchType
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -168,7 +168,8 @@ class RolloutWorker(ParallelIteratorWorker):
             env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
-            policy_spec: Union[type, Dict[PolicyID, PolicySpec]] = None,
+            policy_spec: Optional[Union[type, Dict[PolicyID,
+                                                   PolicySpec]]] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -176,24 +177,24 @@ class RolloutWorker(ParallelIteratorWorker):
             rollout_fragment_length: int = 100,
             count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
-            episode_horizon: int = None,
-            preprocessor_pref: Optional[str] = "deepmind",
+            episode_horizon: Optional[int] = None,
+            preprocessor_pref: str = "deepmind",
             sample_async: bool = False,
             compress_observations: bool = False,
             num_envs: int = 1,
-            observation_fn: "ObservationFunction" = None,
+            observation_fn: Optional["ObservationFunction"] = None,
             observation_filter: str = "NoFilter",
             clip_rewards: Optional[Union[bool, float]] = None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
-            env_config: EnvConfigDict = None,
-            model_config: ModelConfigDict = None,
-            policy_config: TrainerConfigDict = None,
+            env_config: Optional[EnvConfigDict] = None,
+            model_config: Optional[ModelConfigDict] = None,
+            policy_config: Optional[PartialTrainerConfigDict] = None,
             worker_index: int = 0,
             num_workers: int = 0,
             record_env: Union[bool, str] = False,
-            log_dir: str = None,
-            log_level: str = None,
+            log_dir: Optional[str] = None,
+            log_level: Optional[str] = None,
             callbacks: Type["DefaultCallbacks"] = None,
             input_creator: Callable[[
                 IOContext
@@ -206,7 +207,7 @@ class RolloutWorker(ParallelIteratorWorker):
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             seed: int = None,
-            extra_python_environs: dict = None,
+            extra_python_environs: Optional[dict] = None,
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
@@ -258,10 +259,10 @@ class RolloutWorker(ParallelIteratorWorker):
                     that when `num_envs > 1`, episode steps will be buffered
                     until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
-            episode_horizon (int): Whether to stop episodes at this horizon.
-            preprocessor_pref (Optional[str]): Whether to use no preprocessor
-                (None), RLlib preprocessors ("rllib") or deepmind ("deepmind"),
-                when applicable.
+            episode_horizon: Horizon at which to stop episodes (even if the
+                environment itself has not retured a "done" signal).
+            preprocessor_pref (str): Whether to use RLlib preprocessors
+                ("rllib") or deepmind ("deepmind"), when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -284,9 +285,9 @@ class RolloutWorker(ParallelIteratorWorker):
             env_config (EnvConfigDict): Config to pass to the env creator.
             model_config (ModelConfigDict): Config to use when creating the
                 policy model.
-            policy_config (TrainerConfigDict): Config to pass to the policy.
-                In the multi-agent case, this config will be merged with the
-                per-policy configs specified by `policy_spec`.
+            policy_config: Config to pass to the
+                policy. In the multi-agent case, this config will be merged
+                with the per-policy configs specified by `policy_spec`.
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
@@ -378,7 +379,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
-        policy_config: TrainerConfigDict = policy_config or {}
+        policy_config = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
@@ -400,7 +401,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_workers=num_workers,
         )
         self.env_context = env_context
-        self.policy_config: TrainerConfigDict = policy_config
+        self.policy_config: PartialTrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
@@ -413,7 +414,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
-        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        self.policy_mapping_fn = \
+            lambda agent_id, episode, worker, **kwargs: DEFAULT_POLICY_ID
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
@@ -423,10 +425,10 @@ class RolloutWorker(ParallelIteratorWorker):
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = False \
-            if preprocessor_pref is None else True
+            if policy_config.get("_disable_preprocessor_api") else True
         self.observation_filter = observation_filter
-        self.last_batch: SampleBatchType = None
-        self.global_vars: dict = None
+        self.last_batch: Optional[SampleBatchType] = None
+        self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
@@ -1075,10 +1077,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 space of the policy to add.
             action_space (Optional[gym.spaces.Space]): The action space
                 of the policy to add.
-            config (Optional[PartialTrainerConfigDict]): The config
-                overrides for the policy to add.
-            policy_config (Optional[TrainerConfigDict]): The base config of the
-                Trainer object owning this RolloutWorker.
+            config: The config overrides for the policy to add.
+            policy_config: The base config of the Trainer object owning this
+                RolloutWorker.
             policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
                 PolicyID]]): An optional (updated) policy mapping function to
                 use from here on. Note that already ongoing episodes will not
@@ -1339,7 +1340,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _build_policy_map(
             self,
             policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict,
+            policy_config: PartialTrainerConfigDict,
             session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             seed: Optional[int] = None,
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
@@ -1370,13 +1371,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
             else:
-                self.preprocessors[name] = NoPreprocessor(obs_space)
-
-            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                raise ValueError(
-                    "Found raw Tuple|Dict space as input to policy. "
-                    "Please preprocess these observations with a "
-                    "Tuple|DictFlatteningPreprocessor.")
+                self.preprocessors[name] = None
 
             self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
                                           conf, merged_conf)
