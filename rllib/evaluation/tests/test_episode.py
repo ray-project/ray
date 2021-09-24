@@ -125,14 +125,13 @@ class TestEpisodeLastValues(unittest.TestCase):
     def test_multiagent_env(self):
         temp_env = MultiAgentEpisodeEnv(NUM_STEPS, NUM_AGENTS)
         ev = RolloutWorker(
-            env_creator=
-            lambda env_config: MultiAgentEpisodeEnv(NUM_STEPS, NUM_AGENTS),
+            env_creator=lambda _: MultiAgentEpisodeEnv(NUM_STEPS, NUM_AGENTS),
             policy_spec={
                 str(agent_id): (EchoPolicy, temp_env.observation_space,
                                 temp_env.action_space, {})
                 for agent_id in range(NUM_AGENTS)
             },
-            policy_mapping_fn=lambda agent_id, episode, **kwargs: str(agent_id),
+            policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
             callbacks=LastInfoCallback)
         ev.sample()
 
