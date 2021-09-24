@@ -11,12 +11,12 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, get_dummy_batch_for_space, unbatch, \
-    unsquash_action
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
+    get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
@@ -267,7 +267,7 @@ class Policy(metaclass=ABCMeta):
                     s, 0) for s in state
             ]
 
-        out = self.compute_actions(
+        out = self.compute_actions_from_input_dict(
             tree.map_structure(lambda s: np.array([s]), obs),
             state_batch,
             prev_action_batch=prev_action_batch,
@@ -276,6 +276,8 @@ class Policy(metaclass=ABCMeta):
             episodes=episodes,
             explore=explore,
             timestep=timestep,
+            unsquash_actions=unsquash_action,
+            clip_actions=clip_action,
         )
 
         # Some policies don't return a tuple, but always just a single action.
@@ -290,16 +292,6 @@ class Policy(metaclass=ABCMeta):
             single_action = unbatch(batched_action)
         assert len(single_action) == 1
         single_action = single_action[0]
-
-        # If we work in normalized action space (normalize_actions=True),
-        # we re-translate here into the env's action space.
-        if unsquash_action:
-            single_action = unsquash_action(single_action,
-                                            self.action_space_struct)
-        # Clip, according to env's action space.
-        elif clip_action:
-            single_action = clip_action(single_action,
-                                        self.action_space_struct)
 
         # Return action, internal state(s), infos.
         return single_action, [s[0] for s in state_out], \
