@@ -258,6 +258,7 @@ def test_ray_init_credential(monkeypatch):
     with pytest.raises(Stop) as stop:
         ray.init("ray://127.0.0.1", _credentials=Credentials("test"))
 
+    ray.util.disconnect()
     assert stop.value.credentials.name == "test"
 
 
