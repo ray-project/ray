@@ -655,7 +655,17 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds.write_numpy(data_path, filesystem=fs)
     file_path1 = os.path.join(data_path, "data_000000.npy")
     file_path2 = os.path.join(data_path, "data_000001.npy")
+    if endpoint_url is None:
+        arr1 = np.load(file_path1)
+        arr2 = np.load(file_path2)
+    else:
+        from s3fs.core import S3FileSystem
+        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
+        arr1 = np.load(s3.open(file_path1))
+        arr2 = np.load(s3.open(file_path2))
     assert ds.count() == 10
+    assert len(arr1) == 5
+    assert len(arr2) == 5
     assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
 
 
