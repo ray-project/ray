@@ -413,8 +413,9 @@ def check_train_results(train_results):
     for pid, policy_stats in learner_info.items():
         # Expect td-errors to be per batch-item.
         if "td_error" in policy_stats:
-            assert policy_stats["td_error"].shape[0] == train_results[
-                "config"]["train_batch_size"]
+            configured_b = train_results["config"]["train_batch_size"]
+            actual_b = policy_stats["td_error"].shape[0]
+            assert (configured_b - actual_b) / actual_b <= 0.1
 
         # Make sure each policy has the LEARNER_STATS_KEY under it.
         assert LEARNER_STATS_KEY in policy_stats

@@ -72,8 +72,9 @@ def all_tower_reduce(path, *tower_data):
     # each item's weight in a prioritized replay buffer.
     if len(path) == 1 and path[0] == "td_error":
         return np.concatenate(tower_data, axis=0)
+
     # Min stats: Reduce min.
-    elif path[-1].startswith("min_"):
+    if path[-1].startswith("min_"):
         return np.nanmin(tower_data)
     # Max stats: Reduce max.
     elif path[-1].startswith("max_"):

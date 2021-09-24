@@ -4,7 +4,8 @@ import unittest
 import ray
 import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     check_train_results, framework_iterator
 
@@ -102,7 +103,8 @@ class TestApexDQN(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["cur_lr"]
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+                LEARNER_STATS_KEY]["cur_lr"]
 
         # Check eager execution frameworks here, since it's easier to control
         # exact timesteps with these frameworks.
