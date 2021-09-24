@@ -25,6 +25,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -37,7 +38,10 @@
 #include <string>
 #include <vector>
 
+#include "ray/util/filesystem.h"
+#include "ray/util/macros.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;
