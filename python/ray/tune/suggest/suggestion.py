@@ -424,6 +424,9 @@ class ConcurrencyLimiter(Searcher):
             self.live_trials.remove(trial_id)
             self.num_unfinished_live_trials -= 1
 
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
+        self.searcher.on_trial_result(trial_id, result)
+
     def add_evaluated_point(self,
                             parameters: Dict,
                             value: float,

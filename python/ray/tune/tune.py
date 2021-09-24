@@ -292,6 +292,13 @@ def run(
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
 
+    # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
+    # remote_run_kwargs must be defined before any other
+    # code is ran to ensure that at this point,
+    # `locals()` is equal to args and kwargs
+    remote_run_kwargs = locals().copy()
+    remote_run_kwargs.pop("_remote")
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -307,45 +314,9 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = force_on_current_node(remote_run)
 
-        return ray.get(
-            remote_run.remote(
-                run_or_experiment,
-                name,
-                metric,
-                mode,
-                stop,
-                time_budget_s,
-                config,
-                resources_per_trial,
-                num_samples,
-                local_dir,
-                search_alg,
-                scheduler,
-                keep_checkpoints_num,
-                checkpoint_score_attr,
-                checkpoint_freq,
-                checkpoint_at_end,
-                verbose,
-                progress_reporter,
-                log_to_file,
-                trial_name_creator,
-                trial_dirname_creator,
-                sync_config,
-                export_formats,
-                max_failures,
-                fail_fast,
-                restore,
-                server_port,
-                resume,
-                queue_trials,
-                reuse_actors,
-                trial_executor,
-                raise_on_failed_trial,
-                callbacks,
-                max_concurrent_trials,
-                # Deprecated args
-                loggers,
-                _remote=False))
+        return ray.get(remote_run.remote(_remote=False, **remote_run_kwargs))
+
+    del remote_run_kwargs
 
     all_start = time.time()
 

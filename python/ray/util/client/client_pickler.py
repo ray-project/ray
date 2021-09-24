@@ -141,9 +141,9 @@ class ServerUnpickler(pickle.Unpickler):
     def persistent_load(self, pid):
         assert isinstance(pid, PickleStub)
         if pid.type == "Object":
-            return ClientObjectRef(id=pid.ref_id)
+            return ClientObjectRef(pid.ref_id)
         elif pid.type == "Actor":
-            return ClientActorHandle(ClientActorRef(id=pid.ref_id))
+            return ClientActorHandle(ClientActorRef(pid.ref_id))
         else:
             raise NotImplementedError("Being passed back an unknown stub")
 

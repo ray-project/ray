@@ -71,7 +71,7 @@ def ppo_surrogate_loss(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
         train_batch[SampleBatch.ACTION_LOGP])
     action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl = reduce_mean_valid(action_kl)
+    mean_kl_loss = reduce_mean_valid(action_kl)
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -112,7 +112,8 @@ def ppo_surrogate_loss(
     policy._vf_explained_var = explained_variance(
         train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
     policy._mean_entropy = mean_entropy
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl_loss
 
     return total_loss
 
@@ -135,7 +136,7 @@ def kl_and_loss_stats(policy: Policy,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": policy._vf_explained_var,
-        "kl": policy._mean_kl,
+        "kl": policy._mean_kl_loss,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
     }

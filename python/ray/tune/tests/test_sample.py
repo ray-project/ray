@@ -570,8 +570,7 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        searcher = TuneBOHB(
-            space=config, metric="a", mode="max", max_concurrent=1000)
+        searcher = TuneBOHB(space=config, metric="a", mode="max")
 
         def config_generator():
             for i in range(1000):
