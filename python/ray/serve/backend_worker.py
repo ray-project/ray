@@ -90,6 +90,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                                            backend_config.user_config, version,
                                            is_function, controller_handle)
 
+            # asyncio.Event used to signal that the replica is shutting down.
+            self.shutdown_event = asyncio.Event()
+
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
@@ -112,11 +115,11 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             return self.backend.version
 
         async def prepare_for_shutdown(self):
+            self.shutdown_event.set()
             return await self.backend.prepare_for_shutdown()
 
         async def run_forever(self):
-            while True:
-                await asyncio.sleep(10000)
+            await self.shutdown_event.wait()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
