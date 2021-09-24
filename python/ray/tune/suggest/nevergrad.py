@@ -278,15 +278,18 @@ class NevergradSearch(Searcher):
                                  self._metric_op * result[self._metric])
 
     def save(self, checkpoint_path: str):
-        trials_object = (self._nevergrad_opt, self._parameters)
+        save_object = self.__dict__
         with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(trials_object, outputFile)
+            pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
-            trials_object = pickle.load(inputFile)
-        self._nevergrad_opt = trials_object[0]
-        self._parameters = trials_object[1]
+            save_object = pickle.load(inputFile)
+        if not isinstance(save_object, dict):
+            # backwards compatibility
+            # Deprecate: 1.8
+            self._nevergrad_opt, self._parameters = save_object
+        self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict) -> Parameter:
