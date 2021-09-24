@@ -115,7 +115,7 @@ class LatestWorkflowOutput:
 
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
-@ray.remote
+@ray.remote(num_cpus=0)
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
@@ -179,7 +179,8 @@ class WorkflowManagementActor:
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        print("run_or_resume: ", workflow_id, step_id, result.persisted_output)
+        logger.info(f"run_or_resume: {workflow_id}, {step_id},"
+                    f"{result.persisted_output}")
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(
@@ -225,7 +226,6 @@ class WorkflowManagementActor:
                 common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
         else:
-            # remaining = 0
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
@@ -372,10 +372,12 @@ def init_management_actor() -> None:
     except ValueError:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
-        WorkflowManagementActor.options(
+        actor = WorkflowManagementActor.options(
             name=common.MANAGEMENT_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
             lifetime="detached").remote(store)
+        # No-op to ensure the actor is created before the driver exits.
+        ray.get(actor.get_storage_url.remote())
 
 
 def get_management_actor() -> "ActorHandle":

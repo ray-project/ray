@@ -67,4 +67,4 @@
 
   smoke_test:
       run:
-        timeout: 1200
+        timeout: 2000
