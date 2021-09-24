@@ -936,7 +936,7 @@ void CoreWorker::CheckForRayletFailure() {
   // When running worker process in container, the worker parent process is not raylet.
   // So we add RAY_RAYLET_PID enviroment to ray worker process.
   if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
-    pid_t pid = static_cast<pid_t>(std::stoi(env_pid));
+    auto pid = static_cast<pid_t>(std::stoi(env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
       Shutdown();
