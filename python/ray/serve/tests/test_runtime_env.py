@@ -299,6 +299,8 @@ Test.delete()
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
 @pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env unsupported on Windows")
+@pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="Post-wheel-build test is only run on linux CI machines.")
 def test_pip_no_working_dir(ray_start, use_ray_client):
