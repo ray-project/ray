@@ -59,29 +59,6 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 
 namespace ray {
 
-namespace {
-
-ProcessEnvironment DumpEnvironment() {
-  ProcessEnvironment env;
-  for (char *const *e = environ; *e; ++e) {
-    RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
-    const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
-    RAY_CHECK(key_end) << "environment variable value is absent: " << e;
-    env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
-  }
-  return env;
-}
-}  // namespace
-
-std::optional<std::string> GetEnvironment(const std::string &name) {
-  static const ProcessEnvironment *env = new ProcessEnvironment(DumpEnvironment());
-  auto it = env->find(name);
-  if (it == env->end()) {
-    return std::nullopt;
-  }
-  return it->second;
-}
-
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
   // It should be changed when Process adds Unicode support on Windows.
@@ -122,7 +99,13 @@ class ProcessFD {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
-    ProcessEnvironment new_env = DumpEnvironment();
+    ProcessEnvironment new_env;
+    for (char *const *e = environ; *e; ++e) {
+      RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+      const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
+      RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+      new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
+    }
     for (const auto &item : env) {
       new_env[item.first] = item.second;
     }

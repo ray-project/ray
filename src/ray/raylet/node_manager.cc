@@ -31,7 +31,6 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
-#include "ray/util/process.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -285,7 +284,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        if (GetEnvironment("RUNTIME_ENV_SKIP_LOCAL_GC")) {
+        if (RayConfig::instance().runtime_env_skip_local_gc()) {
           return cb(true);
         }
         return agent_manager_->DeleteURIs({uri}, cb);

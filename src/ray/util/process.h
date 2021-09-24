@@ -23,7 +23,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -45,11 +44,6 @@ class EnvironmentVariableLess {
 };
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-// Gets the value of the environment variable. Returns std::nullopt if not found.
-// The environment variables are cached on first access. Subsequent modifications
-// of the environment do not affect the return values.
-std::optional<std::string> GetEnvironment(const std::string &name);
 
 #ifdef _WIN32
 typedef int pid_t;
