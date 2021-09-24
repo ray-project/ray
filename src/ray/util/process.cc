@@ -25,7 +25,6 @@
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -38,10 +37,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
-#include "ray/util/macros.h"
-#include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;
@@ -51,6 +47,9 @@ extern char **environ;
 int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;
   int rc;
+  // Mutating environ is generally unsafe, but this logic only runs on the
+  // start of a worker process. There should be no concurrent access to the
+  // environment.
   environ = const_cast<char **>(envp);
   rc = execvp(program, argv);
   environ = saved;
@@ -59,6 +58,29 @@ int execvpe(const char *program, char *const argv[], char *const envp[]) {
 #endif
 
 namespace ray {
+
+namespace {
+
+ProcessEnvironment DumpEnvironment() {
+  ProcessEnvironment env;
+  for (char *const *e = environ; *e; ++e) {
+    RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+    const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
+    RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+    env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
+  }
+  return env;
+}
+}  // namespace
+
+std::optional<std::string> GetEnvironment(const std::string &name) {
+  static const ProcessEnvironment *env = new ProcessEnvironment(DumpEnvironment());
+  auto it = env->find(name);
+  if (it == env->end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
 
 bool EnvironmentVariableLess::operator()(char a, char b) const {
   // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
@@ -100,13 +122,7 @@ class ProcessFD {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
-    ProcessEnvironment new_env;
-    for (char *const *e = environ; *e; ++e) {
-      RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
-      const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
-      RAY_CHECK(key_end) << "environment variable value is absent: " << e;
-      new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
-    }
+    ProcessEnvironment new_env = DumpEnvironment();
     for (const auto &item : env) {
       new_env[item.first] = item.second;
     }

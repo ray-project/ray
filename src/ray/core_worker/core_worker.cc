@@ -23,7 +23,6 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -65,9 +64,9 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 
   if (options.worker_type == WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
-    const char *job_id_env = std::getenv(kEnvVarKeyJobId);
-    RAY_CHECK(job_id_env);
-    return JobID::FromHex(job_id_env);
+    const auto job_id_env = GetEnvironment(kEnvVarKeyJobId);
+    RAY_CHECK(job_id_env.has_value());
+    return JobID::FromHex(*job_id_env);
   }
   return options.job_id;
 }
@@ -936,8 +935,8 @@ void CoreWorker::RegisterToGcs() {
 void CoreWorker::CheckForRayletFailure() {
   // When running worker process in container, the worker parent process is not raylet.
   // So we add RAY_RAYLET_PID enviroment to ray worker process.
-  if (const char *env_pid = std::getenv("RAY_RAYLET_PID")) {
-    pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
+  if (auto env_pid = GetEnvironment("RAY_RAYLET_PID")) {
+    pid_t pid = static_cast<pid_t>(std::atoi(*env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
       Shutdown();

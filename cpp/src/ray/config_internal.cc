@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "config_internal.h"
+
 #include <boost/dll/runtime_symbol_info.hpp>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
-
-#include "config_internal.h"
+#include "ray/util/process.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -114,11 +116,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (redis_ip.empty()) {
-      auto ray_address_env = std::getenv("RAY_ADDRESS");
+      const auto ray_address_env = GetEnvironment("RAY_ADDRESS");
       if (ray_address_env) {
-        RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
+        RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << *ray_address_env
                        << "\" from environment variable \"RAY_ADDRESS\".";
-        SetRedisAddress(ray_address_env);
+        SetRedisAddress(*ray_address_env);
       }
     }
     if (code_search_path.empty()) {
