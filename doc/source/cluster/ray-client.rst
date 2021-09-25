@@ -103,6 +103,7 @@ Connect to multiple ray clusters
 --------------------------------
 
 Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+
 .. code-block:: python
 
     import ray
