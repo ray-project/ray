@@ -944,6 +944,39 @@ def test_large_file_error(shutdown_only):
         os.chdir(old_dir)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_large_dir_upload_output(call_ray_start):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        driver_script = """
+import ray
+ray.init(address="ray://localhost:24001", runtime_env={"working_dir": "."})
+"""
+
+        size = working_dir_pkg.SILENT_UPLOAD_SIZE_THRESHOLD - 1024
+        with open("test_file_1", "wb") as f:
+            f.write(os.urandom(size))
+
+        output = run_string_as_driver(driver_script)
+        assert "Pushing local files" not in output
+
+        size = working_dir_pkg.SILENT_UPLOAD_SIZE_THRESHOLD + 1
+        with open("test_file_1", "wb") as f:
+            f.write(os.urandom(size))
+
+        output = run_string_as_driver(driver_script)
+        assert "Pushing local files" in output
+        assert "complete" in output
+
+        os.chdir(old_dir)
+
+
 class TestOverrideTaskOrActorRuntimeEnv:
     def test_working_dir_in_child_invalid(self):
         child_env = {"working_dir": "some_dir"}
