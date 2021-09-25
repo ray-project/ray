@@ -47,6 +47,20 @@ std::vector<ResourceSet> GcsScheduleStrategy::GetRequiredResourcesFromBundles(
   return required_resources;
 }
 
+ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
+    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status) {
+  ScheduleMap schedule_map;
+  if (status == SUCCESS && !selected_nodes.empty()) {
+    RAY_CHECK(bundles.size() == selected_nodes.size());
+    int index = 0;
+    for (const auto &bundle : bundles) {
+      schedule_map[bundle->BundleId()] = selected_nodes[index++];
+    }
+  }
+  return std::make_pair(status, schedule_map);
+}
+
 ScheduleResult GcsStrictPackStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,

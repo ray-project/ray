@@ -45,8 +45,8 @@ std::string GcsPlacementGroup::GetRayNamespace() const {
   return placement_group_table_data_.ray_namespace();
 }
 
-const std::vector<std::shared_ptr<const BundleSpecification>>
-    &GcsPlacementGroup::GetBundles() const {
+std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetBundles()
+    const {
   // Fill the cache if it wasn't.
   if (cached_bundle_specs_.empty()) {
     const auto &bundles = placement_group_table_data_.bundles();

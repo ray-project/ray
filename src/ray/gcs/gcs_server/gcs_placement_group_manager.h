@@ -90,7 +90,7 @@ class GcsPlacementGroup {
   std::string GetRayNamespace() const;
 
   /// Get the bundles of this placement_group (including unplaced).
-  const std::vector<std::shared_ptr<const BundleSpecification>> &GetBundles() const;
+  std::vector<std::shared_ptr<const BundleSpecification>> &GetBundles() const;
 
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;

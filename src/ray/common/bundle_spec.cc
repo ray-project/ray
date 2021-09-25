@@ -74,7 +74,7 @@ PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
-const NodeID BundleSpecification::NodeId() const {
+NodeID BundleSpecification::NodeId() const {
   return NodeID::FromBinary(message_->node_id());
 }
 
@@ -94,7 +94,7 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
   std::string str;
-  const auto &group_id_hex = group_id.Hex();
+  auto group_id_hex = group_id.Hex();
   if (bundle_index >= 0) {
     const auto &bundle_index_str = std::to_string(bundle_index);
     str.reserve(original_resource_name.size() + kGroupKeywordSize +
