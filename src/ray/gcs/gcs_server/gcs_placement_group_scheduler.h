@@ -49,9 +49,8 @@ struct pair_hash {
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
-using BundleLocations =
-    absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
-                        pair_hash>;
+using BundleLocations = absl::flat_hash_map<
+    BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
