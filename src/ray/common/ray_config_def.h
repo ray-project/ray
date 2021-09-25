@@ -25,6 +25,11 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, false)
 
+/// Whether to enable Ray legacy scheduler warnings. These are replaced by
+/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
+/// TODO(ekl) remove this after Ray 1.8
+RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
