@@ -213,7 +213,9 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
-  cd cpp/example && bash run.sh
+  rm -rf ray-template && mkdir ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  pushd ray-template && bash run.sh
 }
 
 test_wheels() {
@@ -390,7 +392,7 @@ lint_readme() {
 }
 
 lint_scripts() {
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all-scripts
 }
 
 lint_bazel() {
