@@ -19,6 +19,9 @@ from ray._private.runtime_env import RuntimeEnvContext
 
 default_logger = logging.getLogger(__name__)
 
+# Beyond this size, print "Uploading..." to prevent the appearance of hanging.
+SILENT_UPLOAD_SIZE_THRESHOLD = 1 * 1024 * 1024  # 1MiB
+# If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
 # limit, but for some reason that causes failures when downloading.
@@ -85,9 +88,9 @@ def _zip_module(root: Path,
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
                     f"File {path} is very large ({file_size/(1024 * 1024):.2f}"
-                    " MiB). Consider excluding this file from the working "
-                    "directory: `ray.init(..., runtime_env={'excludes': "
-                    f"['{to_path}']}})`")
+                    " MiB). Consider adding this file to the 'excludes' list "
+                    "to skip uploading it: `ray.init(..., "
+                    f"runtime_env={{'excludes': ['{to_path}']}})`")
             zip_handler.write(path, to_path)
 
     excludes = [] if excludes is None else [excludes]
@@ -161,14 +164,27 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    if len(data) >= GCS_STORAGE_MAX_SIZE:
+def _store_package_in_gcs(
+        gcs_key: str,
+        data: bytes,
+        logger: Optional[logging.Logger] = default_logger) -> int:
+    file_size = len(data)
+    file_size_str = f"{file_size/(1024 * 1024):.1f} MiB"
+
+    if file_size >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
-            "working_dir package exceeds the maximum size of 100MiB. You "
-            "can exclude large files using the 'excludes' option to the "
-            "runtime_env.")
+            f"working_dir package has size {file_size_str}, which exceeds the "
+            "maximum size of 100 MiB. You can exclude large files using the "
+            "'excludes' field of the runtime_env.")
+
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.warning(f"Pushing local files to cluster ({file_size_str})...")
 
     _internal_kv_put(gcs_key, data)
+
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.warning("Pushing local files complete.")
+
     return len(data)
 
 
@@ -296,7 +312,9 @@ def create_project_package(
                 logger=logger)
 
 
-def push_package(pkg_uri: str, pkg_path: str) -> int:
+def push_package(pkg_uri: str,
+                 pkg_path: str,
+                 logger: Optional[logging.Logger] = default_logger) -> int:
     """Push a package to uri.
 
     This function is to push a local file to remote uri. Right now, only
@@ -312,7 +330,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     protocol, pkg_name = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        return _store_package_in_gcs(pkg_uri, data)
+        return _store_package_in_gcs(pkg_uri, data, logger)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -423,7 +441,7 @@ class WorkingDirManager:
                         file_path,
                         logger=logger)
                 # Push the data to remote storage
-                pkg_size = push_package(pkg_uri, pkg_file)
+                pkg_size = push_package(pkg_uri, pkg_file, logger)
                 logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
     def ensure_runtime_env_setup(
