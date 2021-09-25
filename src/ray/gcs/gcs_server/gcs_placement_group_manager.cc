@@ -617,7 +617,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-        AddToPendingQueue(std::move(iter->second));
+        AddToPendingQueue(iter->second);
       }
     }
   }
