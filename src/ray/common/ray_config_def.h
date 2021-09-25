@@ -430,7 +430,7 @@ RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5
 /// Whether to enable GCS-based actor scheduling.
 RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
            std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -441,8 +441,8 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
-    std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
-std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
+           std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 10)
 
