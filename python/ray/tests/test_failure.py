@@ -1,6 +1,5 @@
 import os
 import sys
-import tempfile
 import time
 
 import numpy as np
@@ -127,62 +126,6 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     assert errors[0].type == ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
     assert "Function to run failed." in errors[0].error_message
     assert "Function to run failed." in errors[1].error_message
-
-
-def test_fail_importing_actor(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    # Create the contents of a temporary Python file.
-    temporary_python_file = """
-def temporary_helper_function():
-    return 1
-"""
-
-    f = tempfile.NamedTemporaryFile(suffix=".py")
-    f.write(temporary_python_file.encode("ascii"))
-    f.flush()
-    directory = os.path.dirname(f.name)
-    # Get the module name and strip ".py" from the end.
-    module_name = os.path.basename(f.name)[:-3]
-    sys.path.append(directory)
-    module = __import__(module_name)
-
-    # Define an actor that closes over this temporary module. This should
-    # fail when it is unpickled.
-    @ray.remote
-    class Foo:
-        def __init__(self, arg1, arg2=3):
-            self.x = module.temporary_python_file()
-
-        def get_val(self, arg1, arg2=3):
-            return 1
-
-    # There should be no errors yet.
-    errors = get_error_message(p, 2)
-    assert len(errors) == 0
-    # Create an actor.
-    foo = Foo.remote(3, arg2=0)
-
-    errors = get_error_message(p, 2)
-    assert len(errors) == 2
-
-    for error in errors:
-        # Wait for the error to arrive.
-        if error.type == ray_constants.REGISTER_ACTOR_PUSH_ERROR:
-            assert "No module named" in error.error_message
-        else:
-            # Wait for the error from when the __init__ tries to run.
-            assert ("failed to be imported, and so cannot execute this method"
-                    in error.error_message)
-
-    # Check that if we try to get the function it throws an exception and
-    # does not hang.
-    with pytest.raises(Exception, match="failed to be imported"):
-        ray.get(foo.get_val.remote(1, arg2=2))
-
-    f.close()
-
-    # Clean up the junk we added to sys.path.
-    sys.path.pop(-1)
 
 
 def test_failed_actor_init(ray_start_regular, error_pubsub):
@@ -626,9 +569,11 @@ def test_warning_task_waiting_on_actor(shutdown_only):
 
     @ray.remote(num_cpus=1)
     class Actor:
-        pass
+        def hello(self):
+            pass
 
     a = Actor.remote()  # noqa
+    ray.get(a.hello.remote())
 
     @ray.remote(num_cpus=1)
     def f():

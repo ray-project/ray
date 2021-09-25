@@ -25,6 +25,11 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, false)
 
+/// Whether to enable Ray legacy scheduler warnings. These are replaced by
+/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
+/// TODO(ekl) remove this after Ray 1.8
+RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
@@ -216,8 +221,14 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+// TODO: fix win32 timeout in ci and unify these two.
+#ifdef _MSC_VER
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+#else
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 8)
+#endif
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -469,5 +480,11 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, actor_register_async, true)
+
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
+
+/// Whether to avoid scheduling cpu requests on gpu nodes
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)

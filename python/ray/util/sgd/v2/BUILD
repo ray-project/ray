@@ -90,7 +90,7 @@ py_test(
 
 py_test(
     name = "test_worker_group",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_worker_group.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]

@@ -69,6 +69,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 }
 
 void AbstractRayRuntime::DoShutdown() {
+  abstract_ray_runtime_ = nullptr;
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
     ProcessHelper::GetInstance().RayStop();
   }
@@ -253,7 +254,7 @@ bool AbstractRayRuntime::WasCurrentActorRestarted() {
 }
 
 ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   return task_submitter_->CreatePlacementGroup(create_options);
 }
 
@@ -264,6 +265,57 @@ void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
 bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
                                                  int timeout_seconds) {
   return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
+}
+
+PlacementGroup AbstractRayRuntime::GeneratePlacementGroup(const std::string &str) {
+  rpc::PlacementGroupTableData pg_table_data;
+  bool r = pg_table_data.ParseFromString(str);
+  if (!r) {
+    throw RayException("Received invalid protobuf data from GCS.");
+  }
+
+  PlacementGroupCreationOptions options;
+  options.name = pg_table_data.name();
+  auto &bundles = options.bundles;
+  for (auto &bundle : bundles) {
+    options.bundles.emplace_back(bundle);
+  }
+  options.strategy = PlacementStrategy(pg_table_data.strategy());
+  PlacementGroup group(pg_table_data.placement_group_id(), std::move(options),
+                       PlacementGroupState(pg_table_data.state()));
+  return group;
+}
+
+std::vector<PlacementGroup> AbstractRayRuntime::GetAllPlacementGroups() {
+  std::vector<std::string> list = global_state_accessor_->GetAllPlacementGroupInfo();
+  std::vector<PlacementGroup> groups;
+  for (auto &str : list) {
+    PlacementGroup group = GeneratePlacementGroup(str);
+    groups.push_back(std::move(group));
+  }
+
+  return groups;
+}
+
+PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) {
+  PlacementGroupID pg_id = PlacementGroupID::FromBinary(id);
+  auto str_ptr = global_state_accessor_->GetPlacementGroupInfo(pg_id);
+  if (str_ptr == nullptr) {
+    return {};
+  }
+  PlacementGroup group = GeneratePlacementGroup(*str_ptr);
+  return group;
+}
+
+PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
+                                                     bool global) {
+  auto full_name = task_submitter_->GetFullName(global, name);
+  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(full_name, "");
+  if (str_ptr == nullptr) {
+    return {};
+  }
+  PlacementGroup group = GeneratePlacementGroup(*str_ptr);
+  return group;
 }
 
 }  // namespace internal

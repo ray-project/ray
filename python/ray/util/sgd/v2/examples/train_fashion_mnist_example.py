@@ -86,6 +86,9 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
+    device = torch.device(f"cuda:{sgd.local_rank()}"
+                          if torch.cuda.is_available() else "cpu")
+
     # Create data loaders.
     train_dataloader = DataLoader(
         training_data,
@@ -97,10 +100,11 @@ def train_func(config: Dict):
         sampler=DistributedSampler(test_data))
 
     # Create model.
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = NeuralNetwork()
     model = model.to(device)
-    model = DistributedDataParallel(model)
+    model = DistributedDataParallel(
+        model,
+        device_ids=[device.index] if torch.cuda.is_available() else None)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
