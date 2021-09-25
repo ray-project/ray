@@ -102,6 +102,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes);
 
+  void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
+                        int64_t backlog_size) override;
+
+  void ClearWorkerBacklog(const WorkerID &worker_id) override;
+
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
@@ -124,13 +129,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
   void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) override;
-
-  /// Return worker resources.
-  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
-  /// once we remove the legacy scheduler.
-  ///
-  /// \param worker: The worker which was running the task.
-  void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
 
   /// Attempt to cancel an already queued task.
   ///
@@ -307,8 +305,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       infeasible_tasks_;
 
-  /// Track the cumulative backlog of all workers requesting a lease to this raylet.
-  std::unordered_map<SchedulingClass, int> backlog_tracker_;
+  /// Track the backlog of all workers belonging to this raylet.
+  std::unordered_map<SchedulingClass, std::unordered_map<WorkerID, int64_t>>
+      backlog_tracker_;
 
   /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
   /// parameters of methods if necessary once we remove the legacy scheduler.
@@ -360,8 +359,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<Work> &work);
 
-  void AddToBacklogTracker(const RayTask &task);
-  void RemoveFromBacklogTracker(const RayTask &task);
+  int64_t AggregateWorkerBacklog(SchedulingClass scheduling_class);
 
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is

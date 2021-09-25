@@ -135,6 +135,10 @@ class MockRayletClient : public RayletClient {
   MOCK_METHOD(ray::Status, WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
+  MOCK_METHOD(void, ReportWorkerBacklog,
+              (const WorkerID &worker_id, const ray::TaskSpecification &resource_spec,
+               const int64_t backlog_size),
+              (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
       (const ray::TaskSpecification &resource_spec,

@@ -68,7 +68,8 @@ class CoreWorkerDirectTaskSubmitter {
           ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
       uint64_t max_pending_lease_requests_per_scheduling_category =
-          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
+          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category(),
+      bool report_worker_backlog = ::RayConfig::instance().report_worker_backlog())
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -82,6 +83,7 @@ class CoreWorkerDirectTaskSubmitter {
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         max_pending_lease_requests_per_scheduling_category_(
             max_pending_lease_requests_per_scheduling_category),
+        report_worker_backlog_(report_worker_backlog),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -130,6 +132,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// local raylet.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
@@ -243,6 +248,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   const uint64_t max_pending_lease_requests_per_scheduling_category_;
 
+  const bool report_worker_backlog_;
+
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
@@ -313,6 +320,7 @@ class CoreWorkerDirectTaskSubmitter {
         absl::flat_hash_set<rpc::WorkerAddress>();
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
     uint32_t total_tasks_in_flight = 0;
+    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.

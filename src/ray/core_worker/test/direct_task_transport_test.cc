@@ -153,6 +153,12 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
+  void ReportWorkerBacklog(const WorkerID &worker_id,
+                           const ray::TaskSpecification &resource_spec,
+                           const int64_t backlog_size) override {
+    reported_backlog_size = backlog_size;
+  }
+
   void RequestWorkerLease(
       const TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
@@ -222,6 +228,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
+  int reported_backlog_size = 0;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
 };
@@ -577,6 +584,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Task 1 is pushed; worker 3 is requested.
@@ -606,6 +614,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -636,18 +645,21 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 1 is pushed; worker 2 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 1);
 
   // Task 2 is pushed; worker 3 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 3 is pushed; no more workers requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
@@ -664,6 +676,7 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These

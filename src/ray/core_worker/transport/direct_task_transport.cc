@@ -424,6 +424,33 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
   return lease_client;
 }
 
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
+    const SchedulingKey &scheduling_key) {
+  if (!report_worker_backlog_) {
+    return;
+  }
+
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  int64_t backlog_size;
+  if (scheduling_key_entry.task_queue.size() <
+      scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
+    // During work stealing we may have more pending lease requests than the number of
+    // queued tasks
+    backlog_size = 0;
+  } else {
+    // Subtract tasks with pending lesae requests so we don't double count them.
+    backlog_size = scheduling_key_entry.task_queue.size() -
+                   scheduling_key_entry.pending_lease_request_task_to_raylet.size();
+  }
+
+  if (scheduling_key_entry.last_reported_backlog_size != backlog_size) {
+    scheduling_key_entry.last_reported_backlog_size = backlog_size;
+    local_lease_client_->ReportWorkerBacklog(
+        WorkerID::FromBinary(rpc_address_.worker_id()),
+        scheduling_key_entry.resource_spec, backlog_size);
+  }
+}
+
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -484,8 +511,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
-  // Subtract 1 so we don't double count the task we are requesting for.
-  const int64_t backlog_size = task_queue.size() - 1;
 
   lease_client->RequestWorkerLease(
       resource_spec,
@@ -553,9 +578,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RAY_LOG(FATAL) << status.ToString();
         }
       },
-      backlog_size);
+      task_queue.size());
   scheduling_key_entry.pending_lease_request_task_to_raylet.emplace(task_id,
                                                                     *raylet_address);
+  ReportWorkerBacklogIfNeeded(scheduling_key);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(

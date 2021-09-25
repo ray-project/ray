@@ -426,7 +426,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   } else {
     tasks_to_schedule_[scheduling_class].push_back(work);
   }
-  AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
 }
 
@@ -563,12 +562,6 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   }
 }
 
-void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {
-  // TODO(Shanly): This method will be removed and can be replaced by
-  // `ReleaseWorkerResources` directly once we remove the legacy scheduler.
-  ReleaseWorkerResources(worker);
-}
-
 void ReplyCancelled(std::shared_ptr<Work> &work, bool runtime_env_setup_failed) {
   auto reply = work->reply;
   auto callback = work->callback;
@@ -587,7 +580,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
         ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
@@ -604,7 +596,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
         ReplyCancelled(*work_it, runtime_env_setup_failed);
         if ((*work_it)->status == WorkStatus::WAITING_FOR_WORKER) {
@@ -634,7 +625,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from infeasible queue.";
         ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
@@ -649,7 +639,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
   auto iter = waiting_tasks_index_.find(task_id);
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = (*iter->second)->task;
-    RemoveFromBacklogTracker(task);
     ReplyCancelled(*iter->second, runtime_env_setup_failed);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
@@ -741,11 +730,7 @@ void ClusterTaskManager::FillResourceUsage(
 
       int num_ready = by_shape_entry->num_ready_requests_queued();
       by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-
-      auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
-      if (backlog_it != backlog_tracker_.end()) {
-        by_shape_entry->set_backlog_size(backlog_it->second);
-      }
+      by_shape_entry->set_backlog_size(AggregateWorkerBacklog(one_cpu_scheduling_cls));
     }
   }
 
@@ -783,10 +768,7 @@ void ClusterTaskManager::FillResourceUsage(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    auto backlog_it = backlog_tracker_.find(scheduling_class);
-    if (backlog_it != backlog_tracker_.end()) {
-      by_shape_entry->set_backlog_size(backlog_it->second);
-    }
+    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
   }
 
   for (const auto &pair : tasks_to_dispatch_) {
@@ -819,10 +801,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    auto backlog_it = backlog_tracker_.find(scheduling_class);
-    if (backlog_it != backlog_tracker_.end()) {
-      by_shape_entry->set_backlog_size(backlog_it->second);
-    }
+    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
   }
 
   for (const auto &pair : infeasible_tasks_) {
@@ -858,10 +837,7 @@ void ClusterTaskManager::FillResourceUsage(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
-    auto backlog_it = backlog_tracker_.find(scheduling_class);
-    if (backlog_it != backlog_tracker_.end()) {
-      by_shape_entry->set_backlog_size(backlog_it->second);
-    }
+    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
   }
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
@@ -1015,7 +991,6 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
-  RemoveFromBacklogTracker(task);
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -1071,7 +1046,6 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
-  RemoveFromBacklogTracker(task);
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
@@ -1098,21 +1072,45 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   send_reply_callback();
 }
 
-void ClusterTaskManager::AddToBacklogTracker(const RayTask &task) {
-  if (report_worker_backlog_) {
-    auto cls = task.GetTaskSpecification().GetSchedulingClass();
-    backlog_tracker_[cls] += task.BacklogSize();
+void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
+  if (!report_worker_backlog_) {
+    return;
+  }
+
+  for (const auto &entry : backlog_tracker_) {
+    SetWorkerBacklog(entry.first, worker_id, 0);
   }
 }
 
-void ClusterTaskManager::RemoveFromBacklogTracker(const RayTask &task) {
-  if (report_worker_backlog_) {
-    SchedulingClass cls = task.GetTaskSpecification().GetSchedulingClass();
-    backlog_tracker_[cls] -= task.BacklogSize();
-    if (backlog_tracker_[cls] == 0) {
-      backlog_tracker_.erase(backlog_tracker_.find(cls));
-    }
+void ClusterTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
+                                          const WorkerID &worker_id,
+                                          int64_t backlog_size) {
+  if (!report_worker_backlog_) {
+    return;
   }
+
+  if (backlog_size == 0) {
+    backlog_tracker_[scheduling_class].erase(worker_id);
+    if (backlog_tracker_[scheduling_class].empty()) {
+      backlog_tracker_.erase(scheduling_class);
+    }
+  } else {
+    backlog_tracker_[scheduling_class][worker_id] = backlog_size;
+  }
+}
+
+int64_t ClusterTaskManager::AggregateWorkerBacklog(SchedulingClass scheduling_class) {
+  auto backlog_it = backlog_tracker_.find(scheduling_class);
+  if (backlog_it == backlog_tracker_.end()) {
+    return 0;
+  }
+
+  int64_t sum = 0;
+  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
+    sum += worker_id_and_backlog_size.second;
+  }
+
+  return sum;
 }
 
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
