@@ -575,10 +575,9 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 }
 
 void GcsPlacementGroupManager::AddToPendingQueue(
-    std::shared_ptr<GcsPlacementGroup> pg,
-    std::optional<int64_t> rank,
+    std::shared_ptr<GcsPlacementGroup> pg, std::optional<int64_t> rank,
     std::optional<ExponentialBackOff> exp_backer) {
-  if(!rank) {
+  if (!rank) {
     rank = absl::GetCurrentTimeNanos();
   }
 
