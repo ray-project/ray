@@ -102,18 +102,18 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 Connect to multiple ray clusters
 --------------------------------
 
-Ray client gives a way to connect to multiple ray clusters in one python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
 .. code-block:: python
 
     import ray
-    # This create a default client
+    # Create a default client.
     ray.init("ray://<head_node_host_cluster>:10001")
 
-    # Connect to other clusters
+    # Connect to other clusters.
     cli1 = ray.init("ray://<head_node_host_cluster_1>:10001", allow_multiple=True)
     cli2 = ray.init("ray://<head_node_host_cluster_2>:10001", allow_multiple=True)
 
-    # Data is put into the default cluster
+    # Data is put into the default cluster.
     obj = ray.put("obj")
 
     with cli1:
@@ -125,26 +125,26 @@ Ray client gives a way to connect to multiple ray clusters in one python process
     with cli1:
         assert ray.get(obj1) == "obj1"
         try:
-            ray.get(obj2) # this will throw exception
+            ray.get(obj2)  # Cross-cluster ops not allowed.
         except:
-            print("failed to get object which doesn't belong to this cluster")
+            print("Failed to get object which doesn't belong to this cluster")
 
     with cli2:
         assert ray.get(obj2) == "obj2"
         try:
-            ray.get(obj1) # this will throw exception
+            ray.get(obj1)  # Cross-cluster ops not allowed.
         except:
-            print("failed to get object which doesn't belong to this cluster")
+            print("Failed to get object which doesn't belong to this cluster")
     assert "obj" == ray.get(obj)
     cli1.disconnect()
     cli2.disconnect()
 
 
-When using ray multi-client, there are some different behaviors need to pay attention to:
+When using ray multi-client, there are some different behaviors to pay attention to:
 
-* The client won't be disconnected automatically. User need to call ``disconnect`` to close the connection.
-* Object reference can't be retrieved in the cluseter which it doesn't belong to.
-* ``ray.init`` without ``allow_multiple`` will create a default global ray client. This will be used by default.
+* The client won't be disconnected automatically. Call ``disconnect`` explicitly to close the connection.
+* Object references can only be used by the client from which it was obtained.
+* ``ray.init`` without ``allow_multiple`` will create a default global ray client.
 
 Things to know
 --------------
