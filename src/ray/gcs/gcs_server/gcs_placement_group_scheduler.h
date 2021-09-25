@@ -111,7 +111,7 @@ class ScheduleContext {
 class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
-  virtual ScheduleMap Schedule(
+  virtual ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) = 0;

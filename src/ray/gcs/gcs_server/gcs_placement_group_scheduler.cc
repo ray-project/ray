@@ -61,7 +61,7 @@ ScheduleMap GcsScheduleStrategy::GenerateScheduleMap(
   return std::make_pair(status, schedule_map);
 }
 
-ScheduleMap GcsStrictPackStrategy::Schedule(
+ScheduleResult GcsStrictPackStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
@@ -72,7 +72,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
                                 scheduling_result.first);
 }
 
-ScheduleMap GcsPackStrategy::Schedule(
+ScheduleResult GcsPackStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
@@ -86,7 +86,7 @@ ScheduleMap GcsPackStrategy::Schedule(
                                 scheduling_result.first);
 }
 
-ScheduleMap GcsSpreadStrategy::Schedule(
+ScheduleResult GcsSpreadStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
@@ -97,7 +97,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
                                 scheduling_result.first);
 }
 
-ScheduleMap GcsStrictSpreadStrategy::Schedule(
+ScheduleResult GcsStrictSpreadStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
     GcsResourceScheduler &gcs_resource_scheduler) {
