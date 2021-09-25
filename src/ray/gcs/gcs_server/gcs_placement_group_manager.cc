@@ -230,7 +230,6 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
-    MarkSchedulingDone();
   } else {
     auto state = placement_group->GetState();
     RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
@@ -246,9 +245,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     } else {
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
-    MarkSchedulingDone();
   }
-  io_context_.dispatch([this] { SchedulePendingPlacementGroups(); });
+  io_context_.post([this] { SchedulePendingPlacementGroups(); });
+  MarkSchedulingDone();
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
@@ -256,16 +255,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
-  // Mark the scheduling done firstly.
-  MarkSchedulingDone();
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
-
-        SchedulePendingPlacementGroups();
-
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
         // placement_group_to_create_callbacks_.
@@ -278,6 +272,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
         }
       }));
+  io_context_.post([this] { SchedulePendingPlacementGroups(); });
+  MarkSchedulingDone();
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
