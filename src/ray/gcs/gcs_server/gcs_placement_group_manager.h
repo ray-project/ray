@@ -330,8 +330,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
 
-  /// The pending placement_groups which will not be scheduled until there's a resource
-  /// change.
+  /// The pending placement_groups which will not be scheduled until there's a
+  /// resource change. The pending queue is represented as an ordered map, where
+  /// the key is the time to schedule the pg and value if a pair containing the
+  /// actual placement group and a exp-backoff.
+  /// When error happens, we'll retry it later and this can be simply done by
+  /// inserting an element into the queue with a bigger key. With this, we don't
+  /// need to post retry job to io context. And when schedule pending placement
+  /// group, we always start with the one with the smallest key.
   absl::btree_multimap<int64_t,
                        std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
