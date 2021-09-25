@@ -104,6 +104,7 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
+    RAY_LOG(INFO) << "PlacementGroupID: " << placement_group_id.Hex();
     builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy,
                                   /* is_detached */ false, job_id, actor_id,
                                   /* is_creator_detached */ false);

@@ -281,6 +281,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
  private:
   /// Push a placement group to pending queue
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
+                         std::optional<int64_t> rank = std::nullopt,
                          std::optional<ExponentialBackOff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 

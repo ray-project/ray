@@ -242,9 +242,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // NOTE: If a node is dead, the placement group scheduler should try to recover the
       // group by rescheduling the bundles of the dead node. This should have higher
       // priority than trying to place other placement groups.
-      AddToPendingQueue(std::move(placement_group));
+      AddToPendingQueue(std::move(placement_group), 0);
     } else {
-      AddToPendingQueue(std::move(placement_group), backoff);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
     MarkSchedulingDone();
   }
@@ -575,8 +575,13 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 }
 
 void GcsPlacementGroupManager::AddToPendingQueue(
-    std::shared_ptr<GcsPlacementGroup> pg, std::optional<ExponentialBackOff> exp_backer) {
-  auto now = absl::GetCurrentTimeNanos();
+    std::shared_ptr<GcsPlacementGroup> pg,
+    std::optional<int64_t> rank,
+    std::optional<ExponentialBackOff> exp_backer) {
+  if(!rank) {
+    rank = absl::GetCurrentTimeNanos();
+  }
+
   if (!exp_backer) {
     exp_backer = ExponentialBackOff(
         1000000 *
@@ -585,11 +590,11 @@ void GcsPlacementGroupManager::AddToPendingQueue(
         1000000 *
             RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
   } else {
-    now += static_cast<int64_t>(exp_backer->Next());
+    *rank += static_cast<int64_t>(exp_backer->Next());
   }
   auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(
       std::move(*exp_backer), std::move(pg));
-  pending_placement_groups_.emplace(now, val);
+  pending_placement_groups_.emplace(*rank, val);
 }
 
 void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg_id) {
@@ -617,7 +622,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-        AddToPendingQueue(iter->second);
+        AddToPendingQueue(iter->second, 0);
       }
     }
   }

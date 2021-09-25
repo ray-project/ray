@@ -360,7 +360,6 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
   placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
-
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
   // placement group. The placement group state is set to `RESCHEDULING` and will be
   // scheduled first.
