@@ -35,11 +35,14 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.grpc_server_thread_num),
+                  config.grpc_server_thread_num,
+                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(main_service_) {}
+      pubsub_periodical_runner_(main_service_),
+      is_started_(false),
+      is_stopped_(false) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -243,8 +246,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     // eligible node is registered.
     gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
   };
-  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor) {
-    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
+                                         const rpc::PushTaskReply &reply) {
+    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
   };
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -429,7 +433,7 @@ void GcsServer::InstallEventListeners() {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
     gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+    gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     gcs_resource_report_poller_->HandleNodeAdded(*node);

@@ -582,8 +582,12 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     local_view->predefined_resources[idx].total = 0;
 
     if (node_id == local_node_id_) {
-      local_resources_.predefined_resources[idx].total.clear();
-      local_resources_.predefined_resources[idx].available.clear();
+      for (auto &total : local_resources_.predefined_resources[idx].total) {
+        total = 0;
+      }
+      for (auto &available : local_resources_.predefined_resources[idx].available) {
+        available = 0;
+      }
     }
   } else {
     int64_t resource_id = string_to_int_map_.Get(resource_name);
@@ -1107,6 +1111,13 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   if (!RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }
+}
+
+double ClusterResourceScheduler::GetLocalAvailableCpus() const {
+  NodeResources local_resources;
+  RAY_CHECK(GetNodeResources(local_node_id_, &local_resources));
+  auto &capacity = local_resources.predefined_resources[CPU];
+  return capacity.available.Double();
 }
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap

@@ -74,7 +74,7 @@ Step 2: Check ports
 ~~~~~~~~~~~~~~~~~~~
 
 Ensure that the Ray Client port on the head node is reachable from your local machine.
-This means opening that port up (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
+This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
 Step 3: Run Ray code
@@ -99,7 +99,53 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 
    #....
 
+Connect to multiple ray clusters
+--------------------------------
 
+Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+
+.. code-block:: python
+
+    import ray
+    # Create a default client.
+    ray.init("ray://<head_node_host_cluster>:10001")
+
+    # Connect to other clusters.
+    cli1 = ray.init("ray://<head_node_host_cluster_1>:10001", allow_multiple=True)
+    cli2 = ray.init("ray://<head_node_host_cluster_2>:10001", allow_multiple=True)
+
+    # Data is put into the default cluster.
+    obj = ray.put("obj")
+
+    with cli1:
+        obj1 = ray.put("obj1")
+
+    with cli2:
+        obj2 = ray.put("obj2")
+
+    with cli1:
+        assert ray.get(obj1) == "obj1"
+        try:
+            ray.get(obj2)  # Cross-cluster ops not allowed.
+        except:
+            print("Failed to get object which doesn't belong to this cluster")
+
+    with cli2:
+        assert ray.get(obj2) == "obj2"
+        try:
+            ray.get(obj1)  # Cross-cluster ops not allowed.
+        except:
+            print("Failed to get object which doesn't belong to this cluster")
+    assert "obj" == ray.get(obj)
+    cli1.disconnect()
+    cli2.disconnect()
+
+
+When using ray multi-client, there are some different behaviors to pay attention to:
+
+* The client won't be disconnected automatically. Call ``disconnect`` explicitly to close the connection.
+* Object references can only be used by the client from which it was obtained.
+* ``ray.init`` without ``allow_multiple`` will create a default global ray client.
 
 Things to know
 --------------
@@ -121,3 +167,35 @@ Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray client.
+
+Connection through the Ingress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter the following error message when connecting to the ``Ray Cluster`` using an ``Ingress``,  it may be caused by the Ingress's configuration.
+
+..
+.. code-block:: python
+
+   grpc._channel._MultiThreadedRendezvous: <_MultiThreadedRendezvous of RPC that terminated with:
+       status = StatusCode.INVALID_ARGUMENT
+       details = ""
+       debug_error_string = "{"created":"@1628668820.164591000","description":"Error received from peer ipv4:10.233.120.107:443","file":"src/core/lib/surface/call.cc","file_line":1062,"grpc_message":"","grpc_status":3}"
+   >
+   Got Error from logger channel -- shutting down: <_MultiThreadedRendezvous of RPC that terminated with:
+       status = StatusCode.INVALID_ARGUMENT
+       details = ""
+       debug_error_string = "{"created":"@1628668820.164713000","description":"Error received from peer ipv4:10.233.120.107:443","file":"src/core/lib/surface/call.cc","file_line":1062,"grpc_message":"","grpc_status":3}"
+   >
+
+
+If you are using the ``nginx-ingress-controller``, you may be able to resolve the issue by adding the following Ingress configuration.
+
+
+.. code-block:: yaml
+   
+   metadata:
+     annotations:
+        nginx.ingress.kubernetes.io/server-snippet: |
+          underscores_in_headers on;
+          ignore_invalid_headers on;
+   

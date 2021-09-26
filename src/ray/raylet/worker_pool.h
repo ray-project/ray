@@ -122,10 +122,6 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
-  virtual void PopUtilWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
-
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -307,9 +303,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
-  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
-  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
-
   /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
@@ -323,7 +316,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
-  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
+  /// \param num_available_cpus The number of CPUs that are currently unused.
+  /// We aim to prestart 1 worker per CPU, up to the the backlog size.
+  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size,
+                       int64_t num_available_cpus);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
@@ -566,7 +562,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in

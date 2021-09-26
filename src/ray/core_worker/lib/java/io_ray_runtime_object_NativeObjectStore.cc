@@ -34,9 +34,13 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
   std::shared_ptr<Buffer> data;
   Status status;
   if (object_id.IsNil()) {
+    std::vector<ObjectID> nested_ids;
+    for (const auto &ref : native_ray_object->GetNestedRefs()) {
+      nested_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+    }
     status = CoreWorkerProcess::GetCoreWorker().CreateOwned(
-        native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
-        out_object_id, &data, /*created_by_worker=*/true,
+        native_ray_object->GetMetadata(), data_size, nested_ids, out_object_id, &data,
+        /*created_by_worker=*/true,
         /*owner_address=*/owner_address);
   } else {
     status = CoreWorkerProcess::GetCoreWorker().CreateExisting(

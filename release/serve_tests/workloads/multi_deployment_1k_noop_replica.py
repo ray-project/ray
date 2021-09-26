@@ -29,8 +29,8 @@ import click
 import math
 import os
 import random
-import ray
 
+import ray
 from ray import serve
 from ray.serve.utils import logger
 from serve_test_utils import (
@@ -48,8 +48,8 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
-DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
+DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 1 replicas each
 
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
@@ -144,7 +144,8 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
 
     logger.info("Warming up cluster ....\n")
     rst_ray_refs = []
-    for endpoint in serve.list_endpoints().keys():
+    all_endpoints = list(serve.list_deployments().keys())
+    for endpoint in all_endpoints:
         rst_ray_refs.append(
             warm_up_one_cluster.options(num_cpus=0.1).remote(
                 10, http_host, http_port, endpoint))
@@ -154,7 +155,6 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_endpoints().keys())
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
         NUM_CONNECTIONS,
@@ -176,3 +176,6 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
 
 if __name__ == "__main__":
     main()
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

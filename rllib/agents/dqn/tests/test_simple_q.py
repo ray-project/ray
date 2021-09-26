@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import unittest
 
@@ -32,6 +31,7 @@ class TestSimpleQ(unittest.TestCase):
         config["num_workers"] = 0
         # Test with compression.
         config["compress_observations"] = True
+
         num_iterations = 2
 
         for _ in framework_iterator(config):
@@ -44,28 +44,6 @@ class TestSimpleQ(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
-
-    def test_simple_q_fake_multi_gpu_learning(self):
-        """Test whether SimpleQTrainer learns CartPole w/ fake GPUs."""
-        config = copy.deepcopy(dqn.SIMPLE_Q_DEFAULT_CONFIG)
-
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print("reward={}".format(results["episode_reward_mean"]))
-                if results["episode_reward_mean"] > 75.0:
-                    learnt = True
-                    break
-            assert learnt, "SimpleQ multi-GPU (with fake-GPUs) did not " \
-                           "learn CartPole!"
-            trainer.stop()
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""

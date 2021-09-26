@@ -42,7 +42,6 @@ auth:
 
 available_node_types:
   ray.head.default:
-    max_workers: 0
     resources: {}
     node_config:
       NetworkInterfaces:

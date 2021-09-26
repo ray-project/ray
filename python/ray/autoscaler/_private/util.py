@@ -5,13 +5,15 @@ import logging
 import hashlib
 import json
 import os
+import re
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional, Tuple, List, Union
 
 import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
@@ -26,6 +28,9 @@ RAY_SCHEMA_PATH = os.path.join(
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)")
+PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
     " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
@@ -37,6 +42,8 @@ HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
     "https://docs.ray.io/en/master/cluster/config.html"\
     "#cluster-configuration-node-max-workers\n"\
     "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+
+ResourceBundle = Dict[str, Union[int, float]]
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +164,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
-    fill_node_type_max_workers(with_defaults)
+    fill_node_type_min_max_workers(with_defaults)
     return with_defaults
 
 
@@ -257,27 +264,28 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_max_workers(config):
+def fill_node_type_min_max_workers(config):
     """Sets default per-node max workers to global max_workers.
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
+    Sets default per-node min workers to zero.
+    Also sets default max_workers for the head node to zero.
     """
     assert "max_workers" in config, "Global max workers should be set."
     node_types = config["available_node_types"]
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
 
-        # Log a warning if head node type's max_workers is absent.
-        if (node_type_name == config["head_node_type"]
-                and "max_workers" not in node_type_data):
-            cli_logger.warning(
-                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
-                    node_type=node_type_name,
-                    max_workers=config["max_workers"],
-                    version=ray.__version__))
-
-        # The key part of this function:
-        node_type_data.setdefault("max_workers", config["max_workers"])
+        node_type_data.setdefault("min_workers", 0)
+        if "max_workers" not in node_type_data:
+            if node_type_name == config["head_node_type"]:
+                logger.info("setting max workers for head node type to 0")
+                node_type_data.setdefault("max_workers", 0)
+            else:
+                global_max_workers = config["max_workers"]
+                logger.info(f"setting max workers for {node_type_name} to "
+                            f"{global_max_workers}")
+                node_type_data.setdefault("max_workers", global_max_workers)
 
 
 def with_head_node_ip(cmds, head_ip=None):
@@ -385,47 +393,6 @@ def hash_runtime_conf(file_mounts,
     return (_hash_cache[conf_str], file_mounts_contents_hash)
 
 
-def add_resources(dict1: Dict[str, float],
-                  dict2: Dict[str, float]) -> Dict[str, float]:
-    """Add the values in two dictionaries.
-
-    Returns:
-        dict: A new dictionary (inputs remain unmodified).
-    """
-    new_dict = dict1.copy()
-    for k, v in dict2.items():
-        new_dict[k] = v + new_dict.get(k, 0)
-    return new_dict
-
-
-def freq_of_dicts(dicts: List[Dict],
-                  serializer=lambda d: frozenset(d.items()),
-                  deserializer=dict):
-    """Count a list of dictionaries (or unhashable types).
-
-    This is somewhat annoying because mutable data structures aren't hashable,
-    and set/dict keys must be hashable.
-
-    Args:
-        dicts (List[D]): A list of dictionaries to be counted.
-        serializer (D -> S): A custom serailization function. The output type S
-            must be hashable. The default serializer converts a dictionary into
-            a frozenset of KV pairs.
-        deserializer (S -> U): A custom deserialization function. See the
-            serializer for information about type S. For dictionaries U := D.
-
-    Returns:
-        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
-            is a tuple containing a unique entry from `dicts` and its
-            corresponding frequency count.
-    """
-    freqs = collections.Counter(map(lambda d: serializer(d), dicts))
-    as_list = []
-    for as_set, count in freqs.items():
-        as_list.append((deserializer(as_set), count))
-    return as_list
-
-
 def add_prefix(info_string, prefix):
     """Prefixes each line of info_string, except the first, by prefix."""
     lines = info_string.split("\n")
@@ -447,27 +414,140 @@ def format_pg(pg):
     return f"{bundles_str} ({strategy})"
 
 
-def get_usage_report(lm_summary) -> str:
+def parse_placement_group_resource_str(
+        placement_group_resource_str: str) -> Tuple[str, Optional[str]]:
+    """Parse placement group resource in the form of following 3 cases:
+    {resource_name}_group_{bundle_id}_{group_name};
+    -> This case is ignored as it is duplicated to the case below.
+    {resource_name}_group_{group_name};
+    {resource_name}
+
+    Returns:
+        Tuple of (resource_name, placement_group_name, is_countable_resource).
+        placement_group_name could be None if its not a placement group
+        resource. is_countable_resource is True if the resource
+        doesn't contain bundle index. We shouldn't count resources
+        with bundle index because it will
+        have duplicated resource information as
+        wildcard resources (resource name without bundle index).
+    """
+    result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
+        placement_group_resource_str)
+    if result:
+        return (result.group(1), result.group(3), False)
+    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(
+        placement_group_resource_str)
+    if result:
+        return (result.group(1), result.group(2), True)
+    return (placement_group_resource_str, None, True)
+
+
+def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
+    # first collect resources used in placement groups
+    placement_group_resource_usage = {}
+    placement_group_resource_total = collections.defaultdict(float)
+    for resource, (used, total) in lm_summary.usage.items():
+        (pg_resource_name, pg_name,
+         is_countable) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            if pg_resource_name not in placement_group_resource_usage:
+                placement_group_resource_usage[pg_resource_name] = 0
+            if is_countable:
+                placement_group_resource_usage[pg_resource_name] += used
+                placement_group_resource_total[pg_resource_name] += total
+            continue
+
     usage_lines = []
     for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
-        line = f" {used}/{total} {resource}"
+
+        (_, pg_name, _) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            continue  # Skip resource used by placement groups
+
+        pg_used = 0
+        pg_total = 0
+        used_in_pg = resource in placement_group_resource_usage
+        if used_in_pg:
+            pg_used = placement_group_resource_usage[resource]
+            pg_total = placement_group_resource_total[resource]
+            # Used includes pg_total because when pgs are created
+            # it allocates resources.
+            # To get the real resource usage, we should subtract the pg
+            # reserved resources from the usage and add pg used instead.
+            used = used - pg_total + pg_used
+
         if resource in ["memory", "object_store_memory"]:
             to_GiB = 1 / 2**30
-            used *= to_GiB
-            total *= to_GiB
-            line = f" {used:.2f}/{total:.3f} GiB {resource}"
-        usage_lines.append(line)
+            line = (f" {(used * to_GiB):.2f}/"
+                    f"{(total * to_GiB):.3f} GiB {resource}")
+            if used_in_pg:
+                line = line + (f" ({(pg_used * to_GiB):.2f} used of "
+                               f"{(pg_total * to_GiB):.2f} GiB " +
+                               "reserved in placement groups)")
+            usage_lines.append(line)
+        else:
+            line = f" {used}/{total} {resource}"
+            if used_in_pg:
+                line += (f" ({pg_used} used of "
+                         f"{pg_total} reserved in placement groups)")
+            usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
 
 
-def get_demand_report(lm_summary):
+def format_resource_demand_summary(
+        resource_demand: List[Tuple[ResourceBundle, int]]) -> List[str]:
+    def filter_placement_group_from_bundle(bundle: ResourceBundle):
+        """filter placement group from bundle resource name. returns
+        filtered bundle and a bool indicate if the bundle is using
+        placement group.
+
+        Example: {"CPU_group_groupid": 1} returns {"CPU": 1}, True
+                 {"memory": 1} return {"memory": 1}, False
+        """
+        using_placement_group = False
+        result_bundle = dict()
+        for pg_resource_str, resource_count in bundle.items():
+            (resource_name, pg_name,
+             _) = parse_placement_group_resource_str(pg_resource_str)
+            result_bundle[resource_name] = resource_count
+            if pg_name:
+                using_placement_group = True
+        return (result_bundle, using_placement_group)
+
+    bundle_demand = collections.defaultdict(int)
+    pg_bundle_demand = collections.defaultdict(int)
+
+    for bundle, count in resource_demand:
+        (pg_filtered_bundle,
+         using_placement_group) = filter_placement_group_from_bundle(bundle)
+
+        # bundle is a special keyword for placement group ready tasks
+        # do not report the demand for this.
+        if "bundle" in pg_filtered_bundle.keys():
+            continue
+
+        bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
+        if using_placement_group:
+            pg_bundle_demand[tuple(sorted(
+                pg_filtered_bundle.items()))] += count
+
     demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f" {bundle}: {count}+ pending tasks/actors"
+    for bundle, count in bundle_demand.items():
+        line = f" {dict(bundle)}: {count}+ pending tasks/actors"
+        if bundle in pg_bundle_demand:
+            line += f" ({pg_bundle_demand[bundle]}+ using placement groups)"
         demand_lines.append(line)
+    return demand_lines
+
+
+def get_demand_report(lm_summary: LoadMetricsSummary):
+    demand_lines = []
+    if lm_summary.resource_demand:
+        demand_lines.extend(
+            format_resource_demand_summary(lm_summary.resource_demand))
     for entry in lm_summary.pg_demand:
         pg, count = entry
         pg_str = format_pg(pg)
@@ -533,7 +613,6 @@ Pending:
 
 Resources
 {separator}
-
 Usage:
 {usage_report}
 
@@ -542,31 +621,32 @@ Demands:
     return formatted_output
 
 
-def format_info_string_no_node_types(lm_summary, time=None):
-    if time is None:
-        time = datetime.now()
-    header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
-    separator = "-" * len(header)
+def format_readonly_node_type(node_id: str):
+    """The anonymous node type for readonly node provider nodes."""
+    return "node_{}".format(node_id)
 
-    node_lines = []
-    for node_type, count in lm_summary.node_types:
-        line = f" {count} node(s) with resources: {node_type}"
-        node_lines.append(line)
-    node_report = "\n".join(node_lines)
 
-    usage_report = get_usage_report(lm_summary)
-    demand_report = get_demand_report(lm_summary)
+def format_no_node_type_string(node_type: dict):
+    placement_group_resource_usage = {}
+    regular_resource_usage = collections.defaultdict(float)
+    for resource, total in node_type.items():
+        (pg_resource_name, pg_name,
+         is_countable) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            if not is_countable:
+                continue
+            if pg_resource_name not in placement_group_resource_usage:
+                placement_group_resource_usage[pg_resource_name] = 0
+            placement_group_resource_usage[pg_resource_name] += total
+        else:
+            regular_resource_usage[resource] += total
 
-    formatted_output = f"""{header}
-Node status
-{separator}
-{node_report}
+    output_lines = [""]
+    for resource, total in regular_resource_usage.items():
+        output_line = f"{resource}: {total}"
+        if resource in placement_group_resource_usage:
+            pg_resource = placement_group_resource_usage[resource]
+            output_line += f" ({pg_resource} reserved in placement groups)"
+        output_lines.append(output_line)
 
-Resources
-{separator}
-Usage:
-{usage_report}
-
-Demands:
-{demand_report}"""
-    return formatted_output
+    return "\n  ".join(output_lines)

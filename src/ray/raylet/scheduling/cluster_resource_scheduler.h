@@ -414,6 +414,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  double GetLocalAvailableCpus() const override;
+
   /// Serialize task resource instances to json string.
   ///
   /// \param task_allocation Allocated resource instances for a task.

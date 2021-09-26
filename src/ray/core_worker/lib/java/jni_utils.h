@@ -542,7 +542,9 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
         return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
-  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_ids);
+  auto contained_object_refs =
+      CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_refs);
 }
 
 /// Convert a C++ RayObject to a Java NativeRayObject.

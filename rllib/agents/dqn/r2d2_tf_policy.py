@@ -44,8 +44,12 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     # Create the policy's models.
     model = build_q_model(policy, obs_space, action_space, config)
 
-    # Assert correct model type.
-    assert model.get_initial_state() != [], \
+    # Assert correct model type by checking the init state to be present.
+    # For attention nets: These don't necessarily publish their init state via
+    # Model.get_initial_state, but may only use the trajectory view API
+    # (view_requirements).
+    assert (model.get_initial_state() != [] or
+            model.view_requirements.get("state_in_0") is not None), \
         "R2D2 requires its model to be a recurrent one! Try using " \
         "`model.use_lstm` or `model.use_attention` in your config " \
         "to auto-wrap your model with an LSTM- or attention net."
@@ -81,7 +85,7 @@ def r2d2_loss(policy: Policy, model, _,
         model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
@@ -91,7 +95,7 @@ def r2d2_loss(policy: Policy, model, _,
         policy.target_model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
@@ -140,7 +144,8 @@ def r2d2_loss(policy: Policy, model, _,
                 config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
-        seq_mask = tf.sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                    T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.

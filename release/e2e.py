@@ -215,35 +215,44 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+def getenv_default(key: str, default: Optional[str] = None):
+    """Return environment variable with default value"""
+    # If the environment variable is set but "", still return default
+    return os.environ.get(key, None) or default
+
+
 GLOBAL_CONFIG = {
-    "ANYSCALE_USER": os.environ.get("ANYSCALE_USER",
+    "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
-    "ANYSCALE_HOST": os.environ.get("ANYSCALE_HOST",
+    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
                                     "https://beta.anyscale.com"),
-    "ANYSCALE_CLI_TOKEN": os.environ.get("ANYSCALE_CLI_TOKEN"),
-    "ANYSCALE_CLOUD_ID": os.environ.get(
+    "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
+    "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
         "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
-    "ANYSCALE_PROJECT": os.environ.get("ANYSCALE_PROJECT", ""),
-    "RAY_VERSION": os.environ.get("RAY_VERSION", "2.0.0.dev0"),
-    "RAY_REPO": os.environ.get("RAY_REPO",
+    "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
+    "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
+    "RAY_REPO": getenv_default("RAY_REPO",
                                "https://github.com/ray-project/ray.git"),
-    "RAY_BRANCH": os.environ.get("RAY_BRANCH", "master"),
-    "RELEASE_AWS_BUCKET": os.environ.get("RELEASE_AWS_BUCKET",
+    "RAY_BRANCH": getenv_default("RAY_BRANCH", "master"),
+    "RELEASE_AWS_BUCKET": getenv_default("RELEASE_AWS_BUCKET",
                                          "ray-release-automation-results"),
-    "RELEASE_AWS_LOCATION": os.environ.get("RELEASE_AWS_LOCATION", "dev"),
-    "RELEASE_AWS_DB_NAME": os.environ.get("RELEASE_AWS_DB_NAME", "ray_ci"),
-    "RELEASE_AWS_DB_TABLE": os.environ.get("RELEASE_AWS_DB_TABLE",
+    "RELEASE_AWS_LOCATION": getenv_default("RELEASE_AWS_LOCATION", "dev"),
+    "RELEASE_AWS_DB_NAME": getenv_default("RELEASE_AWS_DB_NAME", "ray_ci"),
+    "RELEASE_AWS_DB_TABLE": getenv_default("RELEASE_AWS_DB_TABLE",
                                            "release_test_result"),
-    "RELEASE_AWS_DB_SECRET_ARN": os.environ.get(
+    "RELEASE_AWS_DB_SECRET_ARN": getenv_default(
         "RELEASE_AWS_DB_SECRET_ARN",
         "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
         "rds-db-credentials/cluster-7RB7EYTTBK2EUC3MMTONYRBJLE/ray_ci-MQN2hh",
     ),
-    "RELEASE_AWS_DB_RESOURCE_ARN": os.environ.get(
+    "RELEASE_AWS_DB_RESOURCE_ARN": getenv_default(
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
+    "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
+                                          "/tmp/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
@@ -270,6 +279,10 @@ def maybe_fetch_api_token():
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
 
 
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
+
+
 class ReleaseTestTimeoutError(RuntimeError):
     pass
 
@@ -287,6 +300,11 @@ class CommandTimeoutError(ReleaseTestTimeoutError):
 
 
 class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
+    pass
+
+
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
     pass
 
 
@@ -374,11 +392,21 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        raise RuntimeError(f"Could not populate wheels sanity check command: "
+                           f"Commit hash missing. Got: {commit}")
+
+    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -510,6 +538,28 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         schema=schema,
         sql=sql,
     )
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -672,7 +722,7 @@ def install_matching_ray():
         return
     assert "manylinux2014_x86_64" in wheel, wheel
     if sys.platform == "darwin":
-        platform = "macosx_10_13_intel"
+        platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
@@ -704,10 +754,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -727,7 +777,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -738,7 +788,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -749,11 +799,10 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
 def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             job_name: str, min_workers: str, script: str,
-            script_args: List[str],
-            env_vars: Dict[str, str]) -> Tuple[int, str]:
+            script_args: List[str], env_vars: Dict[str, str],
+            autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
-    address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend=5&&update=True"
+    address = f"anyscale://{cluster_name}?autosuspend={autosuspend}"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -802,18 +851,20 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        session_operation_response = sdk.get_session_operation(
+            sop_id, _request_timeout=30)
+        session_operation = session_operation_response.result
+        completed = session_operation.completed
+
         _check_stop(stop_event, "session")
         now = time.time()
         if now > next_report:
             logger.info(f"... still waiting for session {session_name} "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
-
-        session_operation_response = sdk.get_session_operation(
-            sop_id, _request_timeout=30)
-        session_operation = session_operation_response.result
-        completed = session_operation.completed
-        time.sleep(1)
 
     return session_id
 
@@ -849,6 +900,12 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        result = sdk.get_session_command(session_command_id=scd_id)
+        completed = result.result.finished_at
+
         if state_str == "CMD_RUN":
             _check_stop(stop_event, "command")
         elif state_str == "CMD_PREPARE":
@@ -860,16 +917,16 @@ def wait_for_session_command_to_complete(create_session_command_result,
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
-        result = sdk.get_session_command(session_command_id=scd_id)
-        completed = result.result.finished_at
-        time.sleep(1)
-
     status_code = result.result.status_code
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -1036,6 +1093,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        keep_results_dir: bool = False,
         app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
@@ -1115,6 +1173,7 @@ def run_test_config(
 
     build_id_override = None
     if test_config["run"].get("use_connect"):
+        autosuspend_mins = test_config["run"].get("autosuspend_mins", 5)
         assert not kick_off_only, \
             "Unsupported for running with Anyscale connect."
         if app_config_id_override is not None:
@@ -1128,6 +1187,9 @@ def run_test_config(
             app_config = response.result.config_json
         install_app_config_packages(app_config)
         install_matching_ray()
+    elif "autosuspend_mins" in test_config["run"]:
+        raise ValueError(
+            "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1181,6 +1243,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1239,6 +1302,7 @@ def run_test_config(
         session_url = None
         runtime = None
         anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        test_uses_ray_connect = test_config["run"].get("use_connect")
 
         session_id = None
         scd_id = None
@@ -1295,36 +1359,15 @@ def run_test_config(
                     session_options["build_id"] = build_id
                     session_options["uses_app_config"] = True
 
-                if not test_config["run"].get("use_connect"):
-                    session_id = create_and_wait_for_session(
-                        sdk=sdk,
-                        stop_event=stop_event,
-                        session_name=session_name,
-                        session_options=session_options,
-                    )
+                # Start session
+                session_id = create_and_wait_for_session(
+                    sdk=sdk,
+                    stop_event=stop_event,
+                    session_name=session_name,
+                    session_options=session_options,
+                )
 
-            if test_config["run"].get("use_connect"):
-                assert compute_tpl_name, "Compute template must exist."
-                assert app_config_name, "Cluster environment must exist."
-                script_args = test_config["run"].get("args", [])
-                if smoke_test:
-                    script_args += ["--smoke-test"]
-                min_workers = 0
-                for node_type in compute_tpl["worker_node_types"]:
-                    min_workers += node_type["min_workers"]
-                # Build completed, use job timeout
-                result_queue.put(State("CMD_RUN", time.time(), None))
-                returncode, logs = run_job(
-                    cluster_name=test_name,
-                    compute_tpl_name=compute_tpl_name,
-                    cluster_env_name=app_config_name,
-                    job_name=session_name,
-                    min_workers=min_workers,
-                    script=test_config["run"]["script"],
-                    script_args=script_args,
-                    env_vars=env_vars)
-                _process_finished_client_command(returncode, logs)
-                return
+            prepare_command = test_config["run"].get("prepare")
 
             # Write test state json
             test_state_file = os.path.join(local_dir, "test_state.json")
@@ -1334,47 +1377,73 @@ def run_test_config(
                     "test_name": test_name
                 }, f)
 
-            # Rsync up
-            logger.info("Syncing files to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=None,
-                target=None,
-                config=None,
-                all_nodes=False,
-            )
+            if prepare_command or not test_uses_ray_connect:
+                if test_uses_ray_connect:
+                    logger.info("Found a prepare command, so pushing it "
+                                "to the session.")
+                # Rsync up
+                logger.info("Syncing files to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=None,
+                    target=None,
+                    config=None,
+                    all_nodes=False,
+                )
 
-            logger.info("Syncing test state to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=test_state_file,
-                target=state_json,
-                config=None,
-                all_nodes=False,
-            )
+                logger.info("Syncing test state to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=test_state_file,
+                    target=state_json,
+                    config=None,
+                    all_nodes=False,
+                )
 
-            session_url = anyscale_session_url(
-                project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
-                session_id=session_id)
-            _check_stop(stop_event, "file_sync")
+                session_url = anyscale_session_url(
+                    project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
+                    session_id=session_id)
+                _check_stop(stop_event, "file_sync")
 
-            # Optionally run preparation command
-            prepare_command = test_config["run"].get("prepare")
-            if prepare_command:
-                logger.info(f"Running preparation command: {prepare_command}")
-                scd_id, result = run_session_command(
-                    sdk=sdk,
-                    session_id=session_id,
-                    cmd_to_run=prepare_command,
-                    result_queue=result_queue,
+                # Optionally run preparation command
+                if prepare_command:
+                    logger.info(
+                        f"Running preparation command: {prepare_command}")
+                    scd_id, result = run_session_command(
+                        sdk=sdk,
+                        session_id=session_id,
+                        cmd_to_run=prepare_command,
+                        result_queue=result_queue,
+                        env_vars=env_vars,
+                        state_str="CMD_PREPARE")
+                    _, _ = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_PREPARE")
+
+            if test_uses_ray_connect:
+                script_args = test_config["run"].get("args", [])
+                if smoke_test:
+                    script_args += ["--smoke-test"]
+                min_workers = 0
+                for node_type in compute_tpl["worker_node_types"]:
+                    min_workers += node_type["min_workers"]
+                # Build completed, use job timeout
+                result_queue.put(State("CMD_RUN", time.time(), None))
+                returncode, logs = run_job(
+                    cluster_name=session_name,
+                    compute_tpl_name=compute_tpl_name,
+                    cluster_env_name=app_config_name,
+                    job_name=session_name,
+                    min_workers=min_workers,
+                    script=test_config["run"]["script"],
+                    script_args=script_args,
                     env_vars=env_vars,
-                    state_str="CMD_PREPARE")
-                _, _ = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_PREPARE")
+                    autosuspend=autosuspend_mins)
+                _process_finished_client_command(returncode, logs)
+                return
 
             # Run release test command
             cmd_to_run = test_config["run"]["script"] + " "
@@ -1439,7 +1508,9 @@ def run_test_config(
                     runtime = 0
                 elif (isinstance(e, PrepareCommandTimeoutError)
                       or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
+                      or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)
+                      or isinstance(e, AppConfigBuildFailure)):
                     timeout_type = "infra_timeout"
                     runtime = None
                 elif isinstance(e, RuntimeError):
@@ -1454,6 +1525,7 @@ def run_test_config(
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
@@ -1671,7 +1743,24 @@ def run_test_config(
 
     logger.info(f"Final results: {result}")
 
-    shutil.rmtree(temp_dir)
+    log_results_and_artifacts(result)
+
+    if not keep_results_dir:
+        logger.info(f"Removing results dir {temp_dir}")
+        shutil.rmtree(temp_dir)
+    else:
+        # Write results.json
+        with open(os.path.join(temp_dir, "results.json"), "wt") as fp:
+            json.dump(result, fp)
+
+        out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
+
+        logger.info(f"Moving results dir {temp_dir} to persistent location "
+                    f"{out_dir}")
+
+        shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.copytree(temp_dir, out_dir)
+        logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
 
@@ -1684,9 +1773,10 @@ def run_test(test_config_file: str,
              smoke_test: bool = False,
              no_terminate: bool = False,
              kick_off_only: bool = False,
-             check_progress=False,
-             report=True,
-             session_name=None,
+             check_progress: bool = False,
+             report: bool = True,
+             keep_results_dir: bool = False,
+             session_name: Optional[str] = None,
              app_config_id_override=None):
     with open(test_config_file, "rt") as f:
         test_configs = yaml.load(f, Loader=yaml.FullLoader)
@@ -1735,6 +1825,7 @@ def run_test(test_config_file: str,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
         upload_artifacts=report,
+        keep_results_dir=keep_results_dir,
         app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
@@ -1814,6 +1905,12 @@ if __name__ == "__main__":
         default=False,
         help="Check (long running) status")
     parser.add_argument(
+        "--keep-results-dir",
+        action="store_true",
+        default=False,
+        help="Keep results in directory (named RELEASE_RESULTS_DIR), e.g. "
+        "for Buildkite artifact upload.")
+    parser.add_argument(
         "--category",
         type=str,
         default="unspecified",
@@ -1853,6 +1950,9 @@ if __name__ == "__main__":
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
+        # RAY_COMMIT is set by find_ray_wheels
+        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
+
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
     run_test(
@@ -1867,5 +1967,6 @@ if __name__ == "__main__":
         check_progress=args.check,
         report=not args.no_report,
         session_name=args.session_name,
+        keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )

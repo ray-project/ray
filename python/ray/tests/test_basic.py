@@ -554,20 +554,20 @@ def test_keyword_args(ray_start_shared_local_modes):
         return
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(x=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(0, w=0)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(3, x=3)
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(1, 2, 3, 4)
 
     @ray.remote
@@ -652,10 +652,11 @@ def test_oversized_function(ray_start_shared_local_modes):
     def f():
         return len(bar)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+            ValueError, match="The remote function .*f is too large"):
         f.remote()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="The actor Actor is too large"):
         Actor.remote()
 
 

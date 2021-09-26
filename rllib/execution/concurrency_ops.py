@@ -105,7 +105,7 @@ def Dequeue(input_queue: queue.Queue,
             check=lambda: True) -> LocalIterator[SampleBatchType]:
     """Dequeue data items from a queue.Queue instance.
 
-    The dequeue is non-blocking, so Dequeue operations can executed with
+    The dequeue is non-blocking, so Dequeue operations can execute with
     Enqueue via the Concurrently() operator.
 
     Args:
@@ -132,6 +132,7 @@ def Dequeue(input_queue: queue.Queue,
                 yield item
             except queue.Empty:
                 yield _NextValueNotReady()
-        raise RuntimeError("Error raised reading from queue")
+        raise RuntimeError("Dequeue `check()` returned False! "
+                           "Exiting with Exception from Dequeue iterator.")
 
     return LocalIterator(base_iterator, SharedMetrics())
