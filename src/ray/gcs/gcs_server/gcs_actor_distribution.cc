@@ -220,8 +220,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
   Reschedule(actor);
 }
 
-void GcsBasedActorScheduler::AddClusterResourcesChangedListener(
-    std::function<void()> listener) {
+void GcsBasedActorScheduler::AddResourcesChangedListener(std::function<void()> listener) {
   RAY_CHECK(listener != nullptr);
   resource_changed_listeners_.emplace_back(listener);
 }

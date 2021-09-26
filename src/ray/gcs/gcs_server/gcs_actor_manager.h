@@ -339,7 +339,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   std::string DebugString() const;
 
-  bool &SchedulePendingActorsPosted();
+  bool GetSchedulePendingActorsPosted() const;
+
+  void SetSchedulePendingActorsPosted(bool posted);
 
  private:
   /// A data structure representing an actor's owner.

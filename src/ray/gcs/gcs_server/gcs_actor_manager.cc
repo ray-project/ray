@@ -965,8 +965,12 @@ void GcsActorManager::SchedulePendingActors() {
   }
 }
 
-bool &GcsActorManager::SchedulePendingActorsPosted() {
+bool GcsActorManager::GetSchedulePendingActorsPosted() const {
   return schedule_pending_actors_posted_;
+}
+
+void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
+  schedule_pending_actors_posted_ = posted;
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {

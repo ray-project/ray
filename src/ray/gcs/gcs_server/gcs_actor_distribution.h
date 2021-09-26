@@ -97,8 +97,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param actor The actor to be destoryed.
   void OnActorDestruction(std::shared_ptr<GcsActor> actor) override;
 
-  /// Add cluster resources changed event handler.
-  void AddClusterResourcesChangedListener(std::function<void()> listener);
+  /// Add resources changed event handler.
+  void AddResourcesChangedListener(std::function<void()> listener);
 
  protected:
   /// Select a node for the actor based on cluster resources.
