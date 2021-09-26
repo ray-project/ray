@@ -356,8 +356,10 @@ def address_to_ip(address):
     """
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
-    # Make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1":
+    # Due to the mac osx firewall, we only listen to loopback ip
+    # to prevent security alerts,
+    # otherwise we make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1" and sys.platform != "darwin":
         ip_address = get_node_ip_address()
     return ":".join([ip_address] + address_parts[1:])
 
@@ -866,7 +868,8 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             fate_share=fate_share,
-            port_denylist=port_denylist)
+            port_denylist=port_denylist,
+            listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
         processes.append(p)
         redis_address = address(node_ip_address, port)
         primary_redis_client = redis.StrictRedis(
@@ -922,7 +925,8 @@ def start_redis(node_ip_address,
                 stdout_file=redis_stdout_file,
                 stderr_file=redis_stderr_file,
                 fate_share=fate_share,
-                port_denylist=port_denylist)
+                port_denylist=port_denylist,
+                listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
             processes.append(p)
 
             shard_address = address(node_ip_address, redis_shard_port)
@@ -944,7 +948,8 @@ def _start_redis_instance(executable,
                           password=None,
                           redis_max_memory=None,
                           fate_share=None,
-                          port_denylist=None):
+                          port_denylist=None,
+                          listen_to_localhost_only=False):
     """Start a single Redis server.
 
     Notes:
@@ -970,6 +975,9 @@ def _start_redis_instance(executable,
             will start LRU eviction of entries.
         port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
+        listen_to_localhost_only (bool): Redis server only listens to
+            localhost (127.0.0.1) if it's true,
+            otherwise it listens to all network interfaces.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -990,6 +998,8 @@ def _start_redis_instance(executable,
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
         command += (["--port", str(port), "--loglevel", "warning"])
+        if listen_to_localhost_only:
+            command += ["--bind", "127.0.0.1"]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
