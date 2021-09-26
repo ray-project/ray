@@ -136,7 +136,7 @@ cdef class CoreWorker:
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
-    cdef c_function_scriptors_to_python(self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
+    cdef c_function_descriptors_to_python(self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
     cdef initial_eventloops_for_concurrency_group(self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
 
 cdef class FunctionDescriptor:
