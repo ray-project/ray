@@ -422,11 +422,12 @@ class Worker:
 
         def sigterm_handler(signum, frame):
             shutdown(True)
-            sys.exit(1)
+            os._exit(1)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
-        sys.exit(0)
+        shutdown(True)
+        os._exit(0)
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job.
@@ -1000,14 +1001,13 @@ def shutdown(_exiting_interpreter: bool = False):
 
     disconnect(_exiting_interpreter)
 
-    # We need to destruct the core worker here because after this function,
+    # We need to shutdown the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
-        del global_worker.core_worker
 
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
@@ -1030,7 +1030,7 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
-    sys.exit(signum)
+    os._exit(signum)
 
 
 try:

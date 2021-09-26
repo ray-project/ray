@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <cstdlib>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -106,8 +108,6 @@ void CoreWorkerProcess::Shutdown() {
   RAY_CHECK(core_worker_process->global_worker_);
   core_worker_process->global_worker_->Disconnect();
   core_worker_process->global_worker_->Shutdown();
-  core_worker_process->RemoveWorker(core_worker_process->global_worker_);
-  core_worker_process.reset();
 }
 
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
