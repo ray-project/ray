@@ -76,8 +76,10 @@ class Cluster:
             Node object of the added Ray node.
         """
         default_kwargs = {
-            "node_ip_address": "127.0.0.1",
-            "raylet_ip_address": "127.0.0.1",
+            "node_ip_address": ray._private.services.address_to_ip(
+                "localhost"),
+            "raylet_ip_address": ray._private.services.address_to_ip(
+                "localhost"),
             "num_cpus": 1,
             "num_gpus": 0,
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB

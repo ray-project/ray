@@ -453,7 +453,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &
                         },
                         "ObjectManager.Push");
                   },
-                  std::move(chunk_reader));
+                  chunk_reader);
             },
             "ObjectManager.Push");
       });
