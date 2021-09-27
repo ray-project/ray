@@ -160,8 +160,8 @@ Then, you can connect to the Ray cluster using  ``localhost`` as the
 
    #....
 
-Connect to multiple ray clusters
---------------------------------
+Connect to multiple ray clusters (Experimental)
+-----------------------------------------------
 
 Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
 
