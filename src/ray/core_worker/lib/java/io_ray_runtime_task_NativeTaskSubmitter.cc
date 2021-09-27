@@ -237,7 +237,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       placement_options,
       true,
       "{}",
-      {},
       concurrency_groups};
   return actor_creation_options;
 }
