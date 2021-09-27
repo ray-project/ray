@@ -288,7 +288,7 @@ message ObjectReferenceCount {
   repeated ObjectReference stored_in_objects = 4;
   // The borrowed object ID that contained this object, if any. This is used
   // for nested object IDs.
-  bytes contained_in_borrowed_id = 5;
+  repeated bytes contained_in_borrowed_ids = 5;
   // The object IDs that this object contains, if any. This is used for nested
   // object IDs.
   repeated bytes contains = 6;

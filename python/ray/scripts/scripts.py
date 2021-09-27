@@ -1922,7 +1922,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
         cli_logger.print(
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && sh run.sh"))
+                " && bash run.sh"))
 
 
 def add_command_alias(command, name, hidden):
