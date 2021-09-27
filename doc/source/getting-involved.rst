@@ -151,9 +151,7 @@ We also have tests for code formatting and linting that need to pass before merg
 
   pip install -r python/requirements_linters.txt
 
-* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
-
-.. note:: On MacOS X, don't use HomeBrew to install ``clang-format``, as the only version available is too new.
+* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 You can run the following locally:
 
@@ -185,7 +183,7 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/travis/bazel-format.sh
 
-* clang-tidy for C++ anti-patterns, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
+* clang-tidy for C++ lint, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
 
 .. code-block:: shell
 

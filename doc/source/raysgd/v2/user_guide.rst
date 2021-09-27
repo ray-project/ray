@@ -341,7 +341,7 @@ You can plug all of these into RaySGD with the following interface:
 .. code-block:: python
 
     from ray import sgd
-    from sgd import SGDCallback, Trainer
+    from ray.sgd import SGDCallback, Trainer
     from typing import List, Dict
 
     class PrintingCallback(SGDCallback):
@@ -478,7 +478,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         model = 0 # This should be replaced with a real model.
@@ -520,7 +520,7 @@ As an example, to disable writing checkpoints to disk:
     :emphasize-lines: 8,12
 
     from ray import sgd
-    from sgd import CheckpointStrategy, Trainer
+    from ray.sgd import CheckpointStrategy, Trainer
 
     def train_func():
         for epoch in range(3):
@@ -551,7 +551,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         checkpoint = sgd.load_checkpoint() or {}
@@ -663,7 +663,7 @@ produce an object ("Trainable") that will be passed to Ray Tune.
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
@@ -705,7 +705,7 @@ A couple caveats:
 
     from ray import tune
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
