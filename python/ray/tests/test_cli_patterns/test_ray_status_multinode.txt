@@ -3,6 +3,9 @@ Node status
 ---------------------------------------------------------------
 Healthy:
  1 node_.+
+ 1 node_.+
+ 1 node_.+
+ 1 node_.+
 Pending:
  \(no pending nodes\)
 Recent failures:
@@ -11,7 +14,7 @@ Recent failures:
 Resources
 ---------------------------------------------------------------
 Usage:
- 0.0/3.0 CPU
+ 0.0/8.0 CPU
  0.+
  0.+
 
