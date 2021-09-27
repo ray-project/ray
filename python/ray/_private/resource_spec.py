@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import GPUtil
 
 import ray
 import ray.ray_constants as ray_constants
@@ -222,19 +223,15 @@ def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
     TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): This currently does not work on macOS.
     TODO(mehrdadn): Use a better mechanism for Windows.
-
-    Possibly useful: tensorflow.config.list_physical_devices()
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
     if sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            result = len(os.listdir(proc_gpus_path))
+        gpu_list = GPUtil.getGPUs()
+        result = len(gpu_list)
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
@@ -253,18 +250,9 @@ gpu model type.
     Returns:
         (str) The full model name.
     """
-    if info_str is None:
+    if len(info_str) <= 0:
         return {}
-    lines = info_str.split("\n")
-    full_model_name = None
-    for line in lines:
-        split = line.split(":")
-        if len(split) != 2:
-            continue
-        k, v = split
-        if k.strip() == "Model":
-            full_model_name = v.strip()
-            break
+    full_model_name = info_str
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
         constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
@@ -274,22 +262,20 @@ gpu model type.
 
 
 def _get_gpu_info_string():
-    """Get the gpu type for this machine.
+    """Get the gpu type for this machine using GPUtil
 
     TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
     gpu type.
 
     Returns:
-        (str) The gpu's model name.
+        [list] The gpu's model's names.
     """
     if sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            gpu_dirs = os.listdir(proc_gpus_path)
-            if len(gpu_dirs) > 0:
-                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                info_str = open(gpu_info_path).read()
-                return info_str
+        gpu_list = GPUtil.getGPUs()
+        if len(gpu_list) > 0:
+            gpu_list_names = [gpu.name for gpu in gpu_list]
+            info_str = gpu_list_names.pop()
+            return info_str
     return None
 
 
