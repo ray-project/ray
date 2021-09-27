@@ -96,13 +96,15 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
   std::stringstream os;
   if (bundle_index >= 0) {
     os << original_resource_name << "_" << kGroupKeyword << "_"
-       << std::to_string(bundle_index) << group_id.Hex();
+       << std::to_string(bundle_index) << "_" << group_id.Hex();
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
     os << original_resource_name << "_" << kGroupKeyword << "_" << group_id.Hex();
   }
-  RAY_DCHECK(GetOriginalResourceName(os.str()) == original_resource_name) << os.str();
-  return os.str();
+  std::string result = os.str();
+  RAY_LOG(INFO) << result;
+  RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name) << "Generated: " << GetOriginalResourceName(result) << " Original: " << original_resource_name;
+  return result;
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
