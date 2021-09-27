@@ -109,7 +109,7 @@ class BlockAccessor(Generic[T]):
             schema=self.schema(),
             input_files=input_files)
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block[T]", column_names: Optional[List[str]] = None) -> "Block[T]":
         """Zip this block with another block of the same type and size."""
         raise NotImplementedError
 

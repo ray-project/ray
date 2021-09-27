@@ -655,7 +655,7 @@ class Dataset(Generic[T]):
         """
         return Dataset(sort_impl(self._blocks, key, descending))
 
-    def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
+    def zip(self, other: "Dataset[U]", column_names: Optional[List[str]] = None) -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
 
         The datasets must have identical num rows, block types, and block sizes

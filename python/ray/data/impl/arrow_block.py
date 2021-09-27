@@ -200,7 +200,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block[T]", column_names: Optional[List[str]] = None) -> "Block[T]":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, ArrowBlockAccessor):
             raise ValueError("Cannot zip {} with block of type {}".format(
@@ -211,7 +211,10 @@ class ArrowBlockAccessor(BlockAccessor):
                     self.num_rows(), acc.num_rows()))
         r = self.to_arrow()
         s = acc.to_arrow()
-        for col_name in s.column_names:
+        for col_name in column_names:
+            if col_name not in s.column_names:
+                raise ValueError("{} must be in the {}.column_names".format(col_name, other))
+        for col_name in column_names:
             col = s.column(col_name)
             # Ensure the column names are unique after zip.
             if col_name in r.column_names:
