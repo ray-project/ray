@@ -1,11 +1,13 @@
 import {
   Button,
+  Chip,
   Grid,
   InputAdornment,
   LinearProgress,
   makeStyles,
   TextField,
   TextFieldProps,
+  Tooltip,
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
@@ -284,6 +286,7 @@ const EventTable = (props: EventTableProps) => {
                 jobName,
                 nodeId,
                 severity,
+                customFields,
               }) => {
                 const realTimestamp =
                   timeStamp ||
@@ -294,10 +297,26 @@ const EventTable = (props: EventTableProps) => {
                 const realPid = pid || sourcePid;
                 return (
                   <article className={classes.li} key={eventId}>
-                    <div>
-                      <StatusChip status={label} type={severity} />{" "}
-                      {realTimestamp}
-                    </div>
+                    <Grid container spacing={4}>
+                      <Grid item>
+                        <StatusChip status={label} type={severity} />
+                      </Grid>
+                      <Grid item>{realTimestamp}</Grid>
+                      {customFields && (
+                        <Grid item>
+                          <Tooltip
+                            interactive
+                            title={
+                              <pre style={{ whiteSpace: "pre-wrap" }}>
+                                {JSON.stringify(customFields, null, 2)}
+                              </pre>
+                            }
+                          >
+                            <Chip size="small" label="CustomFields" />
+                          </Tooltip>
+                        </Grid>
+                      )}
+                    </Grid>
                     <Grid container>
                       <Grid item className={classes.infokv}>
                         severity: {severity}

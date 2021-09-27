@@ -454,7 +454,8 @@ class GCPCompute(GCPResource):
         source_instance_template = config.pop("sourceInstanceTemplate", None)
 
         operation = self.resource.instances().insert(
-            project=self.project_id, zone=self.availability_zone,
+            project=self.project_id,
+            zone=self.availability_zone,
             sourceInstanceTemplate=source_instance_template,
             body=config).execute()
 

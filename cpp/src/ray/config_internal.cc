@@ -48,6 +48,11 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
+ABSL_FLAG(std::string, ray_head_args, "",
+          "The command line args to be appended as parameters of the `ray start` "
+          "command. It takes effect only if Ray head is started by a driver. Run `ray "
+          "start --help` for details.");
+
 namespace ray {
 namespace internal {
 
@@ -62,14 +67,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
-  if (config.num_cpus >= 0) {
-    num_cpus = config.num_cpus;
-  }
-  if (config.num_gpus >= 0) {
-    num_gpus = config.num_gpus;
-  }
-  if (!config.resources.empty()) {
-    resources = config.resources;
+  if (!config.head_args.empty()) {
+    head_args = config.head_args;
   }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
@@ -106,6 +105,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
+    }
+    if (!FLAGS_ray_head_args.CurrentValue().empty()) {
+      std::vector<std::string> args =
+          absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
+      head_args.insert(head_args.end(), args.begin(), args.end());
     }
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {

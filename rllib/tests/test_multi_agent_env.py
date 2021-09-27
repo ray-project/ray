@@ -166,7 +166,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
 
     def test_multi_agent_sample(self):
-        def policy_mapping_fn(agent_id, episode, **kwargs):
+        def policy_mapping_fn(agent_id, episode, worker, **kwargs):
             return "p{}".format(agent_id % 2)
 
         ev = RolloutWorker(
@@ -337,7 +337,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     # the extra trajectory.
                     env_id = episodes[0].env_id
                     fake_eps = MultiAgentEpisode(
-                        episodes[0].policy_map, episodes[0]._policy_mapping_fn,
+                        episodes[0].policy_map, episodes[0].policy_mapping_fn,
                         lambda: None, lambda x: None, env_id)
                     builder = get_global_worker().sampler.sample_collector
                     agent_id = "extra_0"
