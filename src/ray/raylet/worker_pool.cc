@@ -313,6 +313,12 @@ Process WorkerPool::StartWorkerProcess(
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
 
+  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
+  // should remove worker_env.
+  if (job_config) {
+    env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
+  }
+
   if (language == Language::PYTHON) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
