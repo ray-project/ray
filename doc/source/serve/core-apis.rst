@@ -252,6 +252,10 @@ Example:
   explicitly be included in the dependencies, as in the above example.  This is not
   required when just using Ray Core.
 
+.. tip::
+  Avoid dynamically installing packages that install from source: these can be slow and
+  use up all resources while installing, leading to problems with the Ray cluster.  Consider
+  precompiling such packages in a private repository or Docker image.
 
 The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
