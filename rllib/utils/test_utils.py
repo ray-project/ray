@@ -420,7 +420,6 @@ def check_compute_single_action(trainer,
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False]:
                         for clip in ([False] if unsquash else [True, False]):
-                            print("")
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
 
