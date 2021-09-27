@@ -1,0 +1,10 @@
+Finished queueing many tasks
+Generating object
+Putting object
+Getting object
+Done
+Many args time: 17.147782145000008 (10000 args)
+Many returns time: 5.787612378000006 (3000 returns)
+Ray.get time: 27.186593555 (10000 args)
+Queued task time: 143.27989390800002 (1000000 tasks)
+Ray.get large object time: 272.82891967999996 (107374182400 bytes)

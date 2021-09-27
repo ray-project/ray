@@ -1,0 +1,1 @@
+Success! Started 100 actors in 2.97153377532959s. (33.65265467625668 actors/s)

@@ -1,0 +1,20 @@
+multi client tasks async per second 38216.25 +- 1653.24
+1:1 actor calls sync per second 2132.63 +- 40.24
+1:1 actor calls async per second 5085.39 +- 177.25
+1:1 actor calls concurrent per second 5190.59 +- 90.52
+1:n actor calls async per second 12727.95 +- 648.8
+n:n actor calls async per second 41510.24 +- 1174.69
+n:n actor calls with arg async per second 2916.4 +- 89.64
+1:1 async-actor calls sync per second 1326.31 +- 21.79
+1:1 async-actor calls async per second 3097.82 +- 140.25
+1:1 async-actor calls with args async per second 2262.18 +- 75.61
+1:n async-actor calls async per second 12332.67 +- 400.97
+n:n async-actor calls async per second 32385.0 +- 4575.81
+client: get calls per second 1488.9 +- 18.54
+client: put calls per second 859.48 +- 14.92
+client: put gigabytes per second 0.12 +- 0.0
+client: tasks and put batch per second 58436.16 +- 612.41
+client: 1:1 actor calls sync per second 447.8 +- 10.01
+client: 1:1 actor calls async per second 717.08 +- 7.52
+client: 1:1 actor calls concurrent per second 727.64 +- 18.49
+client: tasks and get batch per second 0.7 +- 0.01
