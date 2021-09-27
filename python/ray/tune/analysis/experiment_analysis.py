@@ -559,13 +559,14 @@ class ExperimentAnalysis(Analysis):
         return self.best_trial.last_result
 
     def _delimiter(self):
-        delimiter = os.environ.get("TUNE_RESULT_DELIM", "/")
-        if delimiter == "/" and log_once("delimiter_deprecation"):
+        # Deprecate: 1.9  (default should become `/`)
+        delimiter = os.environ.get("TUNE_RESULT_DELIM", ".")
+        if delimiter == "." and log_once("delimiter_deprecation"):
             warnings.warn(
                 "Dataframes will use '/' instead of '.' to delimit "
                 "nested result keys in future versions of Ray. For forward "
                 "compatibility, set the environment variable "
-                "TUNE_RESULT_DELIM='.'")
+                "TUNE_RESULT_DELIM='/'")
         return delimiter
 
     @property
