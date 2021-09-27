@@ -198,10 +198,10 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
-def test_job_config_conda_env_eagerly(conda_envs, shutdown_only):
-    runtime_env = {"conda": f"package-{REQUEST_VERSIONS[0]}"}
+def test_job_eager_install(shutdown_only):
+    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": True}
     env_count = len(get_conda_env_list())
-    ray.init(runtime_env=runtime_env, prepare_runtime_env_eagerly=True)
+    ray.init(runtime_env=runtime_env)
     wait_for_condition(
         lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()

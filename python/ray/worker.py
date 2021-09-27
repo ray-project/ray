@@ -596,7 +596,6 @@ def init(
         log_to_driver: bool = True,
         namespace: Optional[str] = None,
         runtime_env: Dict[str, Any] = None,
-        prepare_runtime_env_eagerly=False,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction: bool = False,
         _redis_max_memory: Optional[int] = None,
@@ -701,8 +700,6 @@ def init(
         runtime_env (dict): The runtime environment to use for this job (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-        prepare_runtime_env_eagerly(bool) : A boolean indicates whether to
-            prepare runtime env eagerly before the workers are leased.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -810,7 +807,7 @@ def init(
     if runtime_env:
         if job_config is None:
             job_config = ray.job_config.JobConfig()
-        job_config.set_runtime_env(runtime_env, prepare_runtime_env_eagerly)
+        job_config.set_runtime_env(runtime_env)
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:

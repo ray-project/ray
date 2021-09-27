@@ -21,8 +21,6 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
-        prepare_runtime_env_eagerly(bool) : A boolean indicates whether to
-            prepare runtime env eagerly before the workers are leased.
     """
 
     def __init__(self,
@@ -31,7 +29,6 @@ class JobConfig:
                  jvm_options=None,
                  code_search_path=None,
                  runtime_env=None,
-                 prepare_runtime_env_eagerly=False,
                  client_job=False,
                  metadata=None,
                  ray_namespace=None):
@@ -50,7 +47,7 @@ class JobConfig:
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
-        self.set_runtime_env(runtime_env, prepare_runtime_env_eagerly)
+        self.set_runtime_env(runtime_env)
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -60,9 +57,7 @@ class JobConfig:
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
-    def set_runtime_env(self,
-                        runtime_env: Optional[Dict[str, Any]],
-                        eagerly=False) -> None:
+    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
@@ -73,7 +68,10 @@ class JobConfig:
                 or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
-        self.prepare_runtime_env_eagerly = eagerly
+        eager_install = False
+        if runtime_env and "eager_install" in runtime_env:
+            eager_install = runtime_env["eager_install"]
+        self.runtime_env_eager_install = eager_install
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 
@@ -101,8 +99,8 @@ class JobConfig:
                 self.get_serialized_runtime_env()
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
-            self._cached_pb.prepare_runtime_env_eagerly = \
-                self.prepare_runtime_env_eagerly
+            self._cached_pb.runtime_env_eager_install = \
+                self.runtime_env_eager_install
         return self._cached_pb
 
     def get_runtime_env_uris(self):

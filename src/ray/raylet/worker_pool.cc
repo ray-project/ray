@@ -483,7 +483,7 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.prepare_runtime_env_eagerly() && job_config.has_runtime_env()) {
+  if (job_config.runtime_env_eager_install() && job_config.has_runtime_env()) {
     auto const runtime_env = job_config.serialized_runtime_env();
     CreateRuntimeEnv(
         runtime_env, job_id,
