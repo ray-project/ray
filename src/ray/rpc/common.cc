@@ -17,15 +17,13 @@
 
 #include "ray/rpc/common.h"
 
-namespace ray {
-namespace rpc {
+namespace ray::rpc {
 
-std::string ReadCert(std::string cert_filepath) {
+std::string ReadCert(const std::string &cert_filepath) {
   std::ifstream t(cert_filepath);
   std::stringstream buffer;
   buffer << t.rdbuf();
   return buffer.str();
 };
 
-}  // namespace rpc
-}  // namespace ray
+}  // namespace rpc::ray

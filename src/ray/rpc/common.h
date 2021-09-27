@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace ray {
-namespace rpc {
+namespace ray::rpc {
 
 // Utility to read cert file from a particular location
-std::string ReadCert(std::string cert_filepath);
+std::string ReadCert(const std::string &cert_filepath);
 
-}  // namespace rpc
-}  // namespace ray
+}  // namespace ray::rpc

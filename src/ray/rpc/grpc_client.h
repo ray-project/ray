@@ -105,8 +105,8 @@ class GrpcClient {
   /// Whether to use TLS.
   bool use_tls_;
 
-  std::shared_ptr<grpc::Channel> BuildChannel(grpc::ChannelArguments argument,
-                                              std::string address, int port) {
+  std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
+                                              const std::string &address, int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (use_tls_) {
       std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
