@@ -382,17 +382,43 @@ def check_train_results(train_results):
         AssertionError: If `train_results` doesn't have the proper structure or
             data in it.
     """
-
+    # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
         LEARNER_STATS_KEY
+    from ray.rllib.utils.multi_agent import check_multi_agent
 
-    # Assert that all the keys are where we would expect them.
-    for key in ["info", "hist_stats", "timers", "perf", "episode_reward_mean"]:
+    # Assert that some keys are where we would expect them.
+    for key in [
+            "agent_timesteps_total",
+            "config",
+            "custom_metrics",
+            "episode_len_mean",
+            "episode_reward_max",
+            "episode_reward_mean",
+            "episode_reward_min",
+            "episodes_total",
+            "hist_stats",
+            "info",
+            "iterations_since_restore",
+            "num_healthy_workers",
+            "perf",
+            "policy_reward_max",
+            "policy_reward_mean",
+            "policy_reward_min",
+            "sampler_perf",
+            "time_since_restore",
+            "time_this_iter_s",
+            "timesteps_since_restore",
+            "timesteps_total",
+            "timers",
+            "time_total_s",
+            "training_iteration",
+    ]:
         assert key in train_results, \
             f"'{key}' not found in `train_results` ({train_results})!"
 
-    is_multi_agent = len(train_results["policy_reward_min"]) > 0
+    _, is_multi_agent = check_multi_agent(train_results["config"])
 
     # Check in particular the "info" dict.
     info = train_results["info"]

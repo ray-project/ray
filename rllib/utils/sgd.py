@@ -86,6 +86,11 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
+    # Use LearnerInfoBuilder as a unified way to build the final
+    # results dict from `learn_on_loaded_batch` call(s).
+    # This makes sure results dicts always have the same structure
+    # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+    # tf vs torch).
     learner_info_builder = LearnerInfoBuilder(num_devices=1)
     for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:

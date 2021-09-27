@@ -1,6 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import tree  # pip install dm_tree
+from typing import Dict
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import PolicyID
@@ -20,7 +21,7 @@ class LearnerInfoBuilder:
 
     def add_learn_on_batch_results(
             self,
-            results: dict,
+            results: Dict,
             policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> None:
         """Adds a policy.learn_on_(loaded)?_batch() result to this builder.

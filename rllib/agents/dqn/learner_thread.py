@@ -48,6 +48,11 @@ class LearnerThread(threading.Thread):
             if replay is not None:
                 prio_dict = {}
                 with self.grad_timer:
+                    # Use LearnerInfoBuilder as a unified way to build the
+                    # final results dict from `learn_on_loaded_batch` call(s).
+                    # This makes sure results dicts always have the same
+                    # structure no matter the setup (multi-GPU, multi-agent,
+                    # minibatch SGD, tf vs torch).
                     learner_info_builder = LearnerInfoBuilder(num_devices=1)
                     multi_agent_results = self.local_worker.learn_on_batch(
                         replay)
