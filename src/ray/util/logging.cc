@@ -14,14 +14,13 @@
 
 #include "ray/util/logging.h"
 
+#include <cstdlib>
 #ifdef _WIN32
 #include <process.h>
 #else
 #include <execinfo.h>
 #endif
-
 #include <signal.h>
-#include <stdlib.h>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -170,7 +169,7 @@ std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
-  const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
@@ -196,6 +195,10 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   app_name_ = app_name;
   log_dir_ = log_dir;
 
+  // All the logging sinks to add.
+  std::vector<spdlog::sink_ptr> sinks;
+  auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
+
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -219,16 +222,16 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
-    if (getenv("RAY_ROTATION_MAX_BYTES")) {
-      long max_size = std::atol(getenv("RAY_ROTATION_MAX_BYTES"));
+    if (std::getenv("RAY_ROTATION_MAX_BYTES")) {
+      long max_size = std::atol(std::getenv("RAY_ROTATION_MAX_BYTES"));
       // 0 means no log rotation in python, but not in spdlog. We just use the default
       // value here.
       if (max_size != 0) {
         log_rotation_max_size_ = max_size;
       }
     }
-    if (getenv("RAY_ROTATION_BACKUP_COUNT")) {
-      long file_num = std::atol(getenv("RAY_ROTATION_BACKUP_COUNT"));
+    if (std::getenv("RAY_ROTATION_BACKUP_COUNT")) {
+      long file_num = std::atol(std::getenv("RAY_ROTATION_BACKUP_COUNT"));
       if (file_num != 0) {
         log_rotation_file_num_ = file_num;
       }
@@ -243,26 +246,32 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
-    file_logger = spdlog::rotating_logger_mt(
-        RayLog::GetLoggerName(),
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
         log_rotation_max_size_, log_rotation_file_num_);
-    spdlog::set_default_logger(file_logger);
+    sinks.push_back(file_sink);
   } else {
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
-    auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
     console_sink->set_level(level);
-
-    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-    err_sink->set_pattern(log_format_pattern_);
-    err_sink->set_level(spdlog::level::err);
-
-    auto logger = std::shared_ptr<spdlog::logger>(
-        new spdlog::logger(RayLog::GetLoggerName(), {console_sink, err_sink}));
-    logger->set_level(level);
-    spdlog::set_default_logger(logger);
+    sinks.push_back(console_sink);
   }
+
+  // In all cases, log errors to the console log so they are in driver logs.
+  // https://github.com/ray-project/ray/issues/12893
+  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+  err_sink->set_pattern(log_format_pattern_);
+  err_sink->set_level(spdlog::level::err);
+  sinks.push_back(err_sink);
+
+  // Set the combined logger.
+  auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(), sinks.begin(),
+                                                 sinks.end());
+  logger->set_level(level);
+  logger->set_pattern(log_format_pattern_);
+  spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
+  spdlog::set_pattern(log_format_pattern_);
+  spdlog::set_default_logger(logger);
 }
 
 void RayLog::UninstallSignalAction() {

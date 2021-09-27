@@ -58,6 +58,9 @@ class SimpleBlockAccessor(BlockAccessor):
         import pandas
         return pandas.DataFrame(self._items)
 
+    def to_numpy(self) -> np.ndarray:
+        return np.array(self._items)
+
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
         return pyarrow.Table.from_pandas(self.to_pandas())
@@ -70,6 +73,16 @@ class SimpleBlockAccessor(BlockAccessor):
             return type(self._items[0])
         else:
             return None
+
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        if not isinstance(other, list):
+            raise ValueError("Cannot zip {} with block of type {}".format(
+                type(self), type(other)))
+        if len(other) != len(self._items):
+            raise ValueError(
+                "Cannot zip self (length {}) with block of length {}".format(
+                    len(self), len(other)))
+        return list(zip(self._items, other))
 
     @staticmethod
     def builder() -> SimpleBlockBuilder[T]:

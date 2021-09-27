@@ -20,6 +20,7 @@ Creating a Dataset
 .. autofunction:: ray.data.from_modin
 .. autofunction:: ray.data.from_mars
 .. autofunction:: ray.data.from_pandas
+.. autofunction:: ray.data.from_numpy
 
 Dataset API
 -----------
@@ -33,6 +34,21 @@ DatasetPipeline API
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
     :members:
 
+Tensor Column Extension API
+---------------------------
+
+.. autoclass:: ray.data.extensions.tensor_extension.TensorDtype
+    :members:
+
+.. autoclass:: ray.data.extensions.tensor_extension.TensorArray
+    :members:
+
+.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorType
+    :members:
+
+.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorArray
+    :members:
+
 Custom Datasource API
 ---------------------
 
@@ -40,9 +56,6 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
-    :members:
-
-.. autoclass:: ray.data.WriteTask
     :members:
 
 Utility

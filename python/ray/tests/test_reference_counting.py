@@ -415,8 +415,11 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         assert ray.get(tail_oid) is None
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -494,15 +497,21 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         return
 
     @ray.remote
-    def launch_pending_task(ref, signal):
-        return child.remote(ref[0], signal.wait.remote())
+    class Submitter:
+        def __init__(self):
+            pass
+
+        def launch_pending_task(self, ref, signal):
+            return child.remote(ref[0], signal.wait.remote())
 
     signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put_object(
         np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-    child_return_id = ray.get(launch_pending_task.remote([array_oid], signal))
+    s = Submitter.remote()
+    child_return_id = ray.get(
+        s.launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -515,7 +524,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
+    except ray.exceptions.WorkerCrashedError:
         assert failure
     del child_return_id
 
@@ -569,38 +578,6 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
     del a
     del b
     wait_for_condition(_all_actors_dead, timeout=10)
-
-
-# https://github.com/ray-project/ray/issues/17553
-def test_return_nested_ids(shutdown_only):
-    ray.init()
-
-    class Nested:
-        def __init__(self, blocks):
-            self._blocks = blocks
-
-    @ray.remote
-    def echo(fn):
-        return fn()
-
-    @ray.remote
-    def create_nested():
-        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
-        return Nested(refs)
-
-    @ray.remote
-    def test():
-        ref = create_nested.remote()
-        result1 = ray.get(ref)
-        del ref
-        result = echo.remote(lambda: result1)  # noqa
-        del result1
-
-        time.sleep(5)
-        block = ray.get(result)._blocks[0]
-        print(ray.get(block))
-
-    ray.get(test.remote())
 
 
 if __name__ == "__main__":

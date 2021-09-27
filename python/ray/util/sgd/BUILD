@@ -6,7 +6,7 @@ py_test(
     name = "test_client",
     size = "large",
     srcs = ["tests/test_client.py"],
-    tags = ["team:serverless", "exclusive", "client"],
+    tags = ["team:ml", "exclusive", "client"],
     deps = [":sgd_lib"]
 )
 
@@ -16,14 +16,6 @@ py_test(
     srcs = ["tests/test_placement_groups.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_lib"]
-)
-
-py_test(
-    name = "test_ptl",
-    size = "large",
-    srcs = ["tests/test_ptl.py"],
-    tags = ["team:ml", "exclusive", "pytorch-lightning", "pytorch"],
-    deps = [":sgd_lib"],
 )
 
 py_test(
@@ -39,7 +31,7 @@ py_test(
     size = "small",
     main = "test_tensorflow.py",
     srcs = ["tests/test_tensorflow.py"],
-    tags = ["team:serverless", "exclusive", "tf", "client_unit_tests", "client"]
+    tags = ["team:ml", "exclusive", "tf", "client_unit_tests", "client"]
 )
 
 py_test(
@@ -79,7 +71,7 @@ py_test(
     main = "test_torch_basic.py",
     size = "small",
     srcs = ["tests/test_torch_basic.py"],
-    tags = ["team:serverless", "exclusive", "pytorch", "client", "client_unit_tests"],
+    tags = ["team:ml", "exclusive", "pytorch", "client", "client_unit_tests"],
     deps = [":sgd_lib"]
 )
 
@@ -286,15 +278,6 @@ py_test(
     tags = ["team:ml", "exclusive", "pytorch"],
     deps = [":sgd_lib"],
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
-)
-
-py_test(
-    name = "mnist-ptl",
-    size = "small",
-    srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-    tags = ["team:ml", "exclusive", "pytorch", "pytorch-lightning"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test"]
 )
 
 # --------------------------------------------------------------------

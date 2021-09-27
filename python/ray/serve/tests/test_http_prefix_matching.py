@@ -14,101 +14,81 @@ def mock_longest_prefix_router() -> LongestPrefixRouter:
 
 def test_no_match(mock_longest_prefix_router):
     router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo({"POST"}, route="/hello")})
-    route, handle = router.match_route("/nonexistent", "POST")
+    router.update_routes({"endpoint": EndpointInfo(route="/hello")})
+    route, handle = router.match_route("/nonexistent")
     assert route is None and handle is None
 
 
 def test_default_route(mock_longest_prefix_router):
     router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo({"POST"})})
+    router.update_routes({"endpoint": EndpointInfo()})
 
-    route, handle = router.match_route("/nonexistent", "POST")
+    route, handle = router.match_route("/nonexistent")
     assert route is None and handle is None
 
-    route, handle = router.match_route("/endpoint", "POST")
+    route, handle = router.match_route("/endpoint")
     assert route == "/endpoint" and handle == "endpoint"
 
 
 def test_trailing_slash(mock_longest_prefix_router):
     router = mock_longest_prefix_router
     router.update_routes({
-        "endpoint": EndpointInfo({"POST"}, route="/test"),
+        "endpoint": EndpointInfo(route="/test"),
     })
 
-    route, handle = router.match_route("/test/", "POST")
+    route, handle = router.match_route("/test/")
     assert route == "/test" and handle == "endpoint"
 
     router.update_routes({
-        "endpoint": EndpointInfo({"POST"}, route="/test/"),
+        "endpoint": EndpointInfo(route="/test/"),
     })
 
-    route, handle = router.match_route("/test", "POST")
+    route, handle = router.match_route("/test")
     assert route is None and handle is None
 
 
 def test_prefix_match(mock_longest_prefix_router):
     router = mock_longest_prefix_router
     router.update_routes({
-        "endpoint1": EndpointInfo({"POST"}, route="/test/test2"),
-        "endpoint2": EndpointInfo({"POST"}, route="/test"),
-        "endpoint3": EndpointInfo({"POST"}, route="/"),
+        "endpoint1": EndpointInfo(route="/test/test2"),
+        "endpoint2": EndpointInfo(route="/test"),
+        "endpoint3": EndpointInfo(route="/"),
     })
 
-    route, handle = router.match_route("/test/test2/subpath", "POST")
+    route, handle = router.match_route("/test/test2/subpath")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle = router.match_route("/test/test2/", "POST")
+    route, handle = router.match_route("/test/test2/")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle = router.match_route("/test/test2", "POST")
+    route, handle = router.match_route("/test/test2")
     assert route == "/test/test2" and handle == "endpoint1"
 
-    route, handle = router.match_route("/test/subpath", "POST")
+    route, handle = router.match_route("/test/subpath")
     assert route == "/test" and handle == "endpoint2"
-    route, handle = router.match_route("/test/", "POST")
+    route, handle = router.match_route("/test/")
     assert route == "/test" and handle == "endpoint2"
-    route, handle = router.match_route("/test", "POST")
+    route, handle = router.match_route("/test")
     assert route == "/test" and handle == "endpoint2"
 
-    route, handle = router.match_route("/test2", "POST")
+    route, handle = router.match_route("/test2")
     assert route == "/" and handle == "endpoint3"
-    route, handle = router.match_route("/", "POST")
+    route, handle = router.match_route("/")
     assert route == "/" and handle == "endpoint3"
 
 
 def test_update_routes(mock_longest_prefix_router):
     router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo({"POST"})})
+    router.update_routes({"endpoint": EndpointInfo()})
 
-    route, handle = router.match_route("/endpoint", "POST")
+    route, handle = router.match_route("/endpoint")
     assert route == "/endpoint" and handle == "endpoint"
 
-    router.update_routes({"endpoint2": EndpointInfo({"POST"})})
+    router.update_routes({"endpoint2": EndpointInfo()})
 
-    route, handle = router.match_route("/endpoint", "POST")
+    route, handle = router.match_route("/endpoint")
     assert route is None and handle is None
 
-    route, handle = router.match_route("/endpoint2", "POST")
+    route, handle = router.match_route("/endpoint2")
     assert route == "/endpoint2" and handle == "endpoint2"
-
-
-def test_match_method(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
-    router.update_routes({
-        "endpoint": EndpointInfo({"POST", "GET"}, route="/test"),
-        "endpoint2": EndpointInfo({"PATCH"}, route="/")
-    })
-
-    route, handle = router.match_route("/test", "POST")
-    assert route == "/test" and handle == "endpoint"
-
-    route, handle = router.match_route("/test", "GET")
-    assert route == "/test" and handle == "endpoint"
-
-    route, handle = router.match_route("/test", "PATCH")
-    assert route == "/" and handle == "endpoint2"
-
-    route, handle = router.match_route("/test", "OPTIONS")
-    assert route is None and handle is None
 
 
 if __name__ == "__main__":

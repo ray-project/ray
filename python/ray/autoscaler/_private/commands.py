@@ -55,8 +55,7 @@ from ray.util.debug import log_once
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.util import format_info_string, \
-    format_info_string_no_node_types
+from ray.autoscaler._private.util import format_info_string
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +108,8 @@ def debug_status(status, error) -> str:
         as_dict = json.loads(status)
         time = datetime.datetime.fromtimestamp(as_dict["time"])
         lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
-        if "autoscaler_report" in as_dict:
-            autoscaler_summary = AutoscalerSummary(
-                **as_dict["autoscaler_report"])
-            status = format_info_string(
-                lm_summary, autoscaler_summary, time=time)
-        else:
-            status = format_info_string_no_node_types(lm_summary, time=time)
+        autoscaler_summary = AutoscalerSummary(**as_dict["autoscaler_report"])
+        status = format_info_string(lm_summary, autoscaler_summary, time=time)
     if error:
         status += "\n"
         status += error.decode("utf-8")

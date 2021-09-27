@@ -140,8 +140,11 @@ class LocalObjectManager {
   /// Record object spilling stats to metrics.
   void RecordObjectSpillingStats() const;
 
-  /// Return the spilled object URL or the empty string.
-  std::string GetSpilledObjectURL(const ObjectID &object_id);
+  /// Return the spilled object URL if the object is spilled locally,
+  /// or the empty string otherwise.
+  /// If the external storage is cloud, this will always return an empty string.
+  /// In that case, the URL is supposed to be obtained by the object directory.
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
   std::string DebugString() const;
 
@@ -168,19 +171,13 @@ class LocalObjectManager {
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
 
-  // A callback for unpinning spilled objects. This should be invoked after the object
-  // has been spilled and after the object directory has been sent the spilled URL.
-  void UnpinSpilledObjectCallback(const ObjectID &object_id,
-                                  const std::string &object_url,
-                                  std::shared_ptr<size_t> num_remaining,
-                                  std::function<void(const ray::Status &)> callback,
-                                  ray::Status status);
-
-  /// Add objects' spilled URLs to the global object directory. Call the
-  /// callback once all URLs have been added.
-  void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
-                      const rpc::SpillObjectsReply &worker_reply,
-                      std::function<void(const ray::Status &)> callback);
+  /// Do operations that are needed after spilling objects such as
+  /// 1. Unpin the pending spilling object.
+  /// 2. Update the spilled URL to the owner.
+  /// 3. Update the spilled URL to the local directory if it doesn't
+  ///    use the external storages like S3.
+  void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                       const rpc::SpillObjectsReply &worker_reply);
 
   /// Delete spilled objects stored in given urls.
   ///
