@@ -69,6 +69,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 }
 
 void AbstractRayRuntime::DoShutdown() {
+  abstract_ray_runtime_ = nullptr;
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
     ProcessHelper::GetInstance().RayStop();
   }
