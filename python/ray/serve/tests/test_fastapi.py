@@ -755,12 +755,7 @@ def test_fastapi_method_redefinition(serve_instance, use_inheritance_api):
             def method(self):
                 return "hi get"
 
-            # XXX(edoakes): this isn't working because once the method is
-            # re-defined, the old one is overwritten and we lose access to it.
-            # Thought about adding it to the class object but we don't have
-            # access to that at decorator runtime -- maybe it's ok to not
-            # support this?
-            @FastAPIWrapper.post("/")
+            @FastAPIWrapper.post("/")  # noqa: F811
             def method(self):  # noqa: F811
                 return "hi post"
 
@@ -772,13 +767,21 @@ def test_fastapi_method_redefinition(serve_instance, use_inheritance_api):
             def method(self):
                 return "hi get"
 
-            @app.post("/")
+            @app.post("/")  # noqa: F811
             def method(self):  # noqa: F811
                 return "hi post"
 
     serve.deployment(route_prefix="/a")(A).deploy()
     assert requests.get("http://localhost:8000/a/").json() == "hi get"
-    assert requests.post("http://localhost:8000/a/").json() == "hi post"
+    if use_inheritance_api:
+        # XXX(edoakes): this isn't working because once the method is
+        # re-defined, the old one is overwritten and we lose access to it.
+        # Thought about adding it to the class object but we don't have
+        # access to that at decorator runtime -- maybe it's ok to not
+        # support this?
+        assert requests.post("http://localhost:8000/a/").status_code == 405
+    else:
+        assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
 
 if __name__ == "__main__":
