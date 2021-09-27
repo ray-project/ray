@@ -1128,21 +1128,21 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
-        if data["pid"] in ["autoscaler", "raylet"]:
+        if data.get("pid") in ["autoscaler", "raylet"]:
             return ""
         else:
             res = "pid="
-            if data["actor_name"]:
+            if data.get("actor_name"):
                 res = data["actor_name"] + " " + res
-            elif data["task_name"]:
+            elif data.get("task_name"):
                 res = data["task_name"] + " " + res
             return res
 
     def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data["pid"] == "raylet":
+        if data.get("pid") == "raylet":
             return colorama.Fore.YELLOW
-        elif data["pid"] == "autoscaler":
+        elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
                 return colorama.Style.BRIGHT + colorama.Fore.YELLOW
             else:
@@ -1150,14 +1150,14 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             return colorama.Fore.CYAN
 
-    if data["pid"] == "autoscaler":
+    if data.get("pid") == "autoscaler":
         pid = "scheduler +{}".format(time_string())
-        lines = filter_autoscaler_events(data["lines"])
+        lines = filter_autoscaler_events(data.get("lines", []))
     else:
-        pid = data["pid"]
-        lines = data["lines"]
+        pid = data.get("pid")
+        lines = data.get("lines", [])
 
-    if data["ip"] == data["localhost"]:
+    if data.get("ip") == data.get("localhost"):
         for line in lines:
             print(
                 "{}{}({}{}){} {}".format(colorama.Style.DIM,
@@ -1168,9 +1168,12 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
     else:
         for line in lines:
             print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
-                    data["ip"], colorama.Style.RESET_ALL, line),
+                "{}{}({}{}, ip={}){} {}".format(colorama.Style.DIM,
+                                                color_for(data, line),
+                                                prefix_for(data), pid,
+                                                data.get("ip"),
+                                                colorama.Style.RESET_ALL,
+                                                line),
                 file=print_file)
 
 

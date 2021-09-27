@@ -107,8 +107,8 @@ RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
-           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
                : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -429,8 +429,8 @@ RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5
 
 /// Whether to enable GCS-based actor scheduling.
 RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
-           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+           std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -441,8 +441,8 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
-           getenv("RAY_preallocate_plasma_memory") != nullptr &&
-                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+           std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 10)
 
@@ -488,3 +488,6 @@ RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
 RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
+
+/// Whether to skip running local GC in runtime env.
+RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
