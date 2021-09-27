@@ -17,6 +17,7 @@ from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 import socket
+import pytest
 
 import ray
 import ray._private.services
@@ -744,6 +745,8 @@ def generate_self_signed_tls_certs():
 
 def setup_tls():
     """Sets up required environment variables for tls"""
+    if sys.platform == "darwin":
+        pytest.skip("Cryptography doesn't install in Mac build pipeline")
     cert, key = generate_self_signed_tls_certs()
     temp_dir = tempfile.mkdtemp("ray-test-certs")
     cert_filepath = os.path.join(temp_dir, "server.crt")
