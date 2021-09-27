@@ -35,25 +35,25 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=8 * 1000 * 1024 * 1024 * 1024,
+        default=1 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=2 * 1024,
+        default=256,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_mappers_per_round",
-        default=64,
+        default=16,
         type=int,
         help="number of map tasks per first-stage merge tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=64,
+        default=16,
         type=int,
         help="number of second-stage reduce tasks",
     )
@@ -68,12 +68,6 @@ def get_args(*args, **kwargs):
         default=100 * 1024 * 1024,
         type=ByteCount,
         help="bytes to read from each file in reduce tasks",
-    )
-    parser.add_argument(
-        "--reducer_output_chunk",
-        default=1 * 1024 * 1024,
-        type=RecordCount,
-        help="bytes to buffer before writing the output in merge/reduce tasks",
     )
     parser.add_argument(
         "--skip_sorting",
@@ -243,7 +237,7 @@ def _merge_impl(args: Args,
                 get_block: Callable[[int, int], np.ndarray],
                 skip_output=False):
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
-    merger = merge_fn(M, args.reducer_output_chunk, get_block)
+    merger = merge_fn(M, get_block)
 
     if skip_output:
         for datachunk in merger:
@@ -255,8 +249,8 @@ def _merge_impl(args: Args,
     return pinfo
 
 
-@ray.remote(
-    num_cpus=0, resources={"worker": 1e-3})  # TODO: test setting this to 1
+# See worker_placement_groups() for why `num_cpus=0`.
+@ray.remote(num_cpus=0, resources={"worker": 1})
 @tracing_utils.timeit("merge")
 def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
@@ -272,7 +266,8 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
     return _merge_impl(args, M, pinfo, get_block)
 
 
-@ray.remote(num_cpus=0, resources={"worker": 1e-3})
+# See worker_placement_groups() for why `num_cpus=0`.
+@ray.remote(num_cpus=0, resources={"worker": 1})
 @tracing_utils.timeit("reduce")
 def final_merge(args: Args, reducer_id: PartId,
                 *merged_parts: List[PartInfo]) -> PartInfo:
@@ -304,7 +299,9 @@ def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
     """
     Returns one placement group per node with a `worker` resource. To run
     tasks in the placement group, use
-    `@ray.remote(num_cpus=0, resources={"worker": 1e-3})`.
+    `@ray.remote(num_cpus=0, resources={"worker": 1})`. Ray does not
+    automatically reserve CPU resources, so tasks must specify `num_cpus=0`
+    in order to run in a placement group.
     """
     pgs = [
         ray.util.placement_group([{
@@ -327,8 +324,8 @@ def sort_main(args: Args):
 
     mapper_opt = {
         "num_returns": args.num_reducers,
-        "num_cpus": 2,  # concurrency = 2
-    }
+        "num_cpus": os.cpu_count() / args.num_concurrent_rounds,
+    }  # Load balance across worker nodes by setting `num_cpus`.
     merge_results = np.empty(
         (args.num_rounds, args.num_reducers), dtype=object)
 
