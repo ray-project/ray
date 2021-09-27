@@ -588,7 +588,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     *rank += static_cast<int64_t>(exp_backer->Next());
   }
   auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(
-      std::move(*exp_backer), std::move(pg));
+      *exp_backer, std::move(pg));
   pending_placement_groups_.emplace(*rank, val);
 }
 
