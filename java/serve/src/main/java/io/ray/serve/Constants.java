@@ -7,7 +7,7 @@ import java.util.List;
 public class Constants {
 
   /** Name of backend reconfiguration method implemented by user. */
-  public static final String BACKEND_RECONFIGURE_METHOD = "reconfigure";
+  public static final String DEPLOYMENT_RECONFIGURE_METHOD = "reconfigure";
 
   /** Default histogram buckets for latency tracker. */
   public static final List<Double> DEFAULT_LATENCY_BUCKET_MS =

@@ -242,7 +242,7 @@ public class RayServeReplica {
       Method reconfigureMethod =
           ReflectUtil.getMethod(
               callable.getClass(),
-              Constants.BACKEND_RECONFIGURE_METHOD,
+              Constants.DEPLOYMENT_RECONFIGURE_METHOD,
               userConfig); // TODO cache reconfigureMethod
       reconfigureMethod.invoke(callable, userConfig);
     } catch (NoSuchMethodException e) {
@@ -250,7 +250,7 @@ public class RayServeReplica {
           LogUtil.format(
               "user_config specified but backend {} missing {} method",
               deploymentTag,
-              Constants.BACKEND_RECONFIGURE_METHOD));
+              Constants.DEPLOYMENT_RECONFIGURE_METHOD));
     } catch (Throwable e) {
       throw new RayServeException(
           LogUtil.format(

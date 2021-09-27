@@ -53,7 +53,7 @@ DEFAULT_LATENCY_BUCKET_MS = [
 ]
 
 #: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+DEPLOYMENT_RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 

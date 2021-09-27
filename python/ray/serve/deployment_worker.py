@@ -23,7 +23,7 @@ from ray.serve.config import DeploymentConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
-    BACKEND_RECONFIGURE_METHOD,
+    DEPLOYMENT_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
@@ -301,12 +301,13 @@ class RayServeReplica:
             if self.is_function:
                 raise ValueError(
                     "deployment_def must be a class to use user_config")
-            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but deployment "
-                                        + self.deployment_tag + " missing " +
-                                        BACKEND_RECONFIGURE_METHOD + " method")
+            elif not hasattr(self.callable, DEPLOYMENT_RECONFIGURE_METHOD):
+                raise RayServeException(
+                    "user_config specified but deployment "
+                    + self.deployment_tag + " missing " +
+                    DEPLOYMENT_RECONFIGURE_METHOD + " method")
             reconfigure_method = sync_to_async(
-                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+                getattr(self.callable, DEPLOYMENT_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
 
     def _update_deployment_configs(self, new_config_bytes: bytes) -> None:
