@@ -3,7 +3,6 @@ import time
 import pytest
 
 import ray
-
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve.backend_state import ReplicaState
