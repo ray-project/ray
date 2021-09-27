@@ -23,7 +23,6 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -66,8 +65,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 
   if (options.worker_type == WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
-    const char *job_id_env = std::getenv(kEnvVarKeyJobId);
-    RAY_CHECK(job_id_env);
+    const std::string &job_id_env = RayConfig::instance().JOB_ID();
+    RAY_CHECK(!job_id_env.empty());
     return JobID::FromHex(job_id_env);
   }
   return options.job_id;
@@ -937,8 +936,8 @@ void CoreWorker::RegisterToGcs() {
 void CoreWorker::CheckForRayletFailure() {
   // When running worker process in container, the worker parent process is not raylet.
   // So we add RAY_RAYLET_PID enviroment to ray worker process.
-  if (const char *env_pid = std::getenv("RAY_RAYLET_PID")) {
-    pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
+  if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
+    auto pid = static_cast<pid_t>(std::stoi(env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
       Shutdown();
@@ -3063,15 +3062,16 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(Status::OK(),
-                      [this, is_idle]() {
-                        // If the worker is idle, we exit.
-                        if (is_idle) {
-                          Exit(rpc::WorkerExitType::IDLE_EXIT);
-                        }
-                      },
-                      // We need to kill it regardless if the RPC failed.
-                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(
+      Status::OK(),
+      [this, is_idle]() {
+        // If the worker is idle, we exit.
+        if (is_idle) {
+          Exit(rpc::WorkerExitType::IDLE_EXIT);
+        }
+      },
+      // We need to kill it regardless if the RPC failed.
+      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

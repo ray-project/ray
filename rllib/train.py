@@ -12,7 +12,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
-from ray.rllib.utils import force_list
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -188,23 +187,29 @@ def run(args, parser):
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
         input_ = exp.get("config", {}).get("input")
+
         if input_ and input_ != "sampler":
-            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
 
             def patch_path(path):
-                if os.path.exists(path):
-                    return path
+                if isinstance(path, list):
+                    return [patch_path(i) for i in path]
+                elif isinstance(path, dict):
+                    return {
+                        patch_path(k): patch_path(v)
+                        for k, v in path.items()
+                    }
+                elif isinstance(path, str):
+                    if os.path.exists(path):
+                        return path
+                    else:
+                        abs_path = str(rllib_dir.absolute().joinpath(path))
+                        return abs_path if os.path.exists(abs_path) else path
                 else:
-                    abs_path = str(rllib_dir.absolute().joinpath(path))
-                    return abs_path if os.path.exists(abs_path) else path
+                    return path
 
-            abs_inputs = list(map(patch_path, inputs))
-            if not isinstance(input_, list):
-                abs_inputs = abs_inputs[0]
-
-            exp["config"]["input"] = abs_inputs
+            exp["config"]["input"] = patch_path(input_)
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
