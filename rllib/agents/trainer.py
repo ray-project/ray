@@ -18,6 +18,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -1018,7 +1019,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episode: Optional["MultiAgentEpisode"] = None,
+            episode: Optional[MultiAgentEpisode] = None,
             unsquash_action: Optional[bool] = None,
             clip_action: Optional[bool] = None,
 
@@ -1028,9 +1029,8 @@ class Trainer(Trainable):
 
             # Kwargs placeholder for future compatibility.
             **kwargs,
-    ) -> Union[TensorStructType,
-               Tuple[TensorStructType, List[TensorType],
-                     Dict[str, TensorType]]]:
+    ) -> Union[TensorStructType, Tuple[TensorStructType, List[TensorType],
+                                       Dict[str, TensorType]]]:
         """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
@@ -1083,7 +1083,7 @@ class Trainer(Trainable):
                 new="Trainer.compute_single_action(`clip_action`=...)",
                 error=False)
             clip_action = clip_actions
-        if unsquash_action != DEPRECATED_VALUE:
+        if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
@@ -1117,36 +1117,43 @@ class Trainer(Trainable):
         observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        # Compute the action.
-        if input_dict is None:
-            input_dict = {}
-            if state is not None:
-                for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s
-            if prev_action is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-            if prev_reward is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
-            if info is not None:
-                input_dict[SampleBatch.INFOS] = info
-        # Update obs with filtered one.
-        input_dict[SampleBatch.OBS] = observation
+        # Input-dict.
+        if input_dict is not None:
+            input_dict[SampleBatch.OBS] = observation
+            action, state, extra = policy.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episodes=[episode],
+            )
+        # Individual args.
+        else:
+            action, state, extra = policy.compute_single_action(
+                obs=observation,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+                info=info,
+                explore=explore,
+                timestep=timestep,
+                episodes=[episode],
+            )
 
-        result = policy.compute_actions_from_input_dict(
-            input_dict,
-            explore=explore,
-            timestep=timestep,
-            episodes=[episode],
-            unsquash_actions=unsquash_action,
-            clip_actions=clip_action,
-        )
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
+        if unsquash_action:
+            action = space_utils.unsquash_action(action,
+                                                 policy.action_space_struct)
+        # Clip, according to env's action space.
+        elif clip_action:
+            action = space_utils.clip_action(action,
+                                             policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
-            return result
+            return action, state, extra
         # Ensure backward compatibility.
         else:
-            return result[0]
+            return action
 
     @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
@@ -1165,7 +1172,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
             # Deprecated.
@@ -1242,26 +1249,38 @@ class Trainer(Trainable):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
+        input_dict = {SampleBatch.OBS: obs_batch}
+        if prev_action:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+        if prev_reward:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+        if info:
+            input_dict[SampleBatch.INFOS] = info
+        for i, s in enumerate(state):
+            input_dict[f"state_in_{i}"] = s
+
         # Batch compute actions
-        actions, states, infos = policy.compute_actions(
-            obs_batch,
-            state,
-            prev_action,
-            prev_reward,
-            info,
+        actions, states, infos = policy.compute_actions_from_input_dict(
+            input_dict=input_dict,
             explore=explore,
             timestep=timestep,
             episodes=episodes,
-            unsquash_actions=unsquash_actions,
-            clip_actions=clip_actions,
         )
 
-        # Unbatch actions for the environment
-        atns, actions = space_utils.unbatch(actions), {}
-        for key, atn in zip(observations, atns):
-            actions[key] = atn
+        # Unbatch actions for the environment into a multi-agent dict.
+        single_actions = space_utils.unbatch(actions)
+        actions = {}
+        for key, a in zip(observations, single_actions):
+            # If we work in normalized action space (normalize_actions=True),
+            # we re-translate here into the env's action space.
+            if unsquash_actions:
+                a = space_utils.unsquash_action(a, policy.action_space_struct)
+            # Clip, according to env's action space.
+            elif clip_actions:
+                a = space_utils.clip_action(a, policy.action_space_struct)
+            actions[key] = a
 
-        # Unbatch states into a dict
+        # Unbatch states into a multi-agent dict.
         unbatched_states = {}
         for idx, agent_id in enumerate(observations):
             unbatched_states[agent_id] = [s[idx] for s in states]

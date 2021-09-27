@@ -11,7 +11,6 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -180,22 +179,17 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_single_action(
             self,
-            obs: TensorStructType,
+            obs: Optional[TensorStructType] = None,
             state: Optional[List[TensorType]] = None,
+            *,
             prev_action: Optional[TensorStructType] = None,
             prev_reward: Optional[TensorStructType] = None,
             info: dict = None,
+            input_dict: Optional[SampleBatch] = None,
             episode: Optional["MultiAgentEpisode"] = None,
             clip_action: Optional[bool] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            unsquash_action: Optional[bool] = None,
-            input_dict: Optional[SampleBatch] = None,
-
-            # Deprecated args:
-            clip_actions=None,
-            unsquash_actions=None,
-
             # Kwars placeholder for future compatibility.
             **kwargs) -> \
             Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
@@ -206,13 +200,13 @@ class Policy(metaclass=ABCMeta):
             state: List of RNN state inputs, if any.
             prev_action: Previous action value, if any.
             prev_reward: Previous reward, if any.
-            info (dict): Info object, if any.
+            info: Info object, if any.
+            input_dict: A SampleBatch or input dict containing the
+                single (unbatched) Tensors to compute actions. If given, it'll
+                be used instead of `obs`, `state`, `prev_action|reward`, and
+                `info`.
             episode: This provides access to all of the internal episode state,
                 which may be useful for model-based or multi-agent algorithms.
-            unsquash_actions: Should actions be unsquashed according to
-                the Policy's action space?
-            clip_actions: Should actions be clipped according to the
-                Policy's action space?
             explore: Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
@@ -226,58 +220,44 @@ class Policy(metaclass=ABCMeta):
             - state_outs: List of RNN state outputs, if any.
             - info: Dictionary of extra features, if any.
         """
-        if clip_actions != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Policy.compute_single_action(`clip_actions`=...)",
-                new="Policy.compute_single_action(`clip_action`=...)",
-                error=False)
-            clip_action = clip_actions
-        if unsquash_action != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Policy.compute_single_action(`unsquash_actions`=...)",
-                new="Policy.compute_single_action(`unsquash_action`=...)",
-                error=False)
-            unsquash_action = unsquash_actions
+        # Build the input-dict used for the call to
+        # `self.compute_actions_from_input_dict()`.
+        if input_dict is None:
+            input_dict = {
+                SampleBatch.OBS: tree.map_structure(
+                    lambda s: (s.unsqueeze(0) if
+                               torch and isinstance(s, torch.Tensor) else
+                               np.expand_dims(s, 0)),
+                    obs)
+            }
+            if state is not None:
+                for i, s in enumerate(state):
+                    input_dict[f"state_in_{i}"] = s.unsqueeze(0) if \
+                        torch and isinstance(s, torch.Tensor) else \
+                        np.expand_dims(s, 0)
+            if prev_action is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = [prev_action]
+            if prev_reward is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = [prev_reward]
+            if info is not None:
+                input_dict[SampleBatch.INFOS] = [info]
+        # Batch all data in input dict.
+        else:
+            input_dict = tree.map_structure_with_path(
+                lambda p, s: (s if p == "seq_lens" else s.unsqueeze(0) if
+                              torch and isinstance(s, torch.Tensor) else
+                              np.expand_dims(s, 0)),
+                input_dict)
 
-        ## If policy works in normalized space, we should unsquash the action.
-        ## Use value of config.normalize_actions, if None.
-        #unsquash_action = \
-        #    unsquash_action if unsquash_action is not None \
-        #    else self.config["normalize_actions"]
-        #clip_action = clip_action if clip_action is not None else \
-        #    self.config["clip_actions"]
-
-        prev_action_batch = None
-        prev_reward_batch = None
-        info_batch = None
         episodes = None
-        state_batch = None
-        if prev_action is not None:
-            prev_action_batch = [prev_action]
-        if prev_reward is not None:
-            prev_reward_batch = [prev_reward]
-        if info is not None:
-            info_batch = [info]
         if episode is not None:
             episodes = [episode]
-        if state is not None:
-            state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
-                    s, 0) for s in state
-            ]
 
         out = self.compute_actions_from_input_dict(
-            tree.map_structure(lambda s: np.array([s]), obs),
-            state_batch,
-            prev_action_batch=prev_action_batch,
-            prev_reward_batch=prev_reward_batch,
-            info_batch=info_batch,
+            input_dict=input_dict,
             episodes=episodes,
             explore=explore,
             timestep=timestep,
-            unsquash_actions=unsquash_action,
-            clip_actions=clip_action,
         )
 
         # Some policies don't return a tuple, but always just a single action.
@@ -300,12 +280,10 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_actions_from_input_dict(
             self,
-            input_dict: SampleBatch,
+            input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
-            unsquash_actions: Optional[bool] = None,
-            clip_actions: Optional[bool] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -314,7 +292,7 @@ class Policy(metaclass=ABCMeta):
         to construct the input_dict for the Model.
 
         Args:
-            input_dict: A SampleBatch containing the Tensors
+            input_dict: A SampleBatch or input dict containing the Tensors
                 to compute actions. `input_dict` already abides to the
                 Policy's as well as the Model's view requirements and can
                 thus be passed to the Model as-is.
@@ -324,12 +302,6 @@ class Policy(metaclass=ABCMeta):
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
-            unsquash_actions: Should actions be unsquashed according to the
-                env's/Policy's action space? If None, use the value of
-                self.config["normalize_actions"].
-            clip_actions: Should actions be clipped according to the
-                env's/Policy's action space? If None, use the value of
-                self.config["clip_actions"].
 
         Keyword Args:
             kwargs: Forward compatibility placeholder.
@@ -358,8 +330,6 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep,
             episodes=episodes,
-            unsquash_actions=unsquash_actions,
-            clip_actions=clip_actions,
             **kwargs,
         )
 
