@@ -303,8 +303,8 @@ class RayServeReplica:
                     "deployment_def must be a class to use user_config")
             elif not hasattr(self.callable, DEPLOYMENT_RECONFIGURE_METHOD):
                 raise RayServeException(
-                    "user_config specified but deployment "
-                    + self.deployment_tag + " missing " +
+                    "user_config specified but deployment " +
+                    self.deployment_tag + " missing " +
                     DEPLOYMENT_RECONFIGURE_METHOD + " method")
             reconfigure_method = sync_to_async(
                 getattr(self.callable, DEPLOYMENT_RECONFIGURE_METHOD))
