@@ -21,6 +21,7 @@ The main features are:
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
 
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 Intro to RaySGD
 ---------------
