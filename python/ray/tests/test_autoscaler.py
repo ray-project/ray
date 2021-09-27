@@ -24,6 +24,7 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
+from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
@@ -1078,6 +1079,43 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
 
+    def testReadonlyNodeProvider(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = ReadOnlyNodeProvider(config_path, "readonly")
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(0)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+
+        # Reflect updates to the readonly provider.
+        self.provider._set_nodes([
+            ("foo1", "1.1.1.1"),
+            ("foo2", "1.1.1.1"),
+            ("foo3", "1.1.1.1"),
+        ])
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(3)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert mock_metrics.stopped_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+        events = autoscaler.event_summarizer.summary()
+        assert not events, events
+
     def ScaleUpHelper(self, disable_node_updaters):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["provider"]["disable_node_updaters"] = disable_node_updaters
@@ -1857,7 +1895,8 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        for node_id in autoscaler.workers():
+        autoscaler.update_worker_list()
+        for node_id in autoscaler.workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -2115,7 +2154,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Terminating 1 nodes of type "
+        assert ("Removing 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
 
@@ -2820,7 +2859,8 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        assert 0 not in autoscaler.workers(), "Node zero still non-terminated."
+        autoscaler.update_worker_list()
+        assert 0 not in autoscaler.workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -2848,7 +2888,8 @@ MemAvailable:   33000000 kB
         # Should get two new nodes after the next update.
         autoscaler.update()
         self.waitForNodes(2)
-        assert set(autoscaler.workers()) == {2, 3},\
+        autoscaler.update_worker_list()
+        assert set(autoscaler.workers) == {2, 3},\
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1

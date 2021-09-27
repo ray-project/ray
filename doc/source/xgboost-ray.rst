@@ -43,7 +43,7 @@ If you'd like to install the latest master, use this command instead:
 
 .. code-block:: bash
 
-   pip install "git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray[default]"
+   pip install "git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray[default]"
 
 Usage
 -----

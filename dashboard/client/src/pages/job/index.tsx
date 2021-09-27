@@ -110,7 +110,7 @@ const JobList = () => {
                         {isDead ? "true" : "false"}
                       </TableCell>
                       <TableCell align="center">
-                        {dayjs(timestamp * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                        {dayjs(Number(timestamp)).format("YYYY/MM/DD HH:mm:ss")}
                       </TableCell>
                     </TableRow>
                   ),

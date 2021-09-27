@@ -23,21 +23,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  if (task_spec.IsActorCreationTask()) {
-    // Synchronously register the actor to GCS server.
-    // Previously, we asynchronously registered the actor after all its dependencies were
-    // resolved. This caused a problem: if the owner of the actor dies before dependencies
-    // are resolved, the actor will never be created. But the actor handle may already be
-    // passed to other workers. In this case, the actor tasks will hang forever.
-    // So we fixed this issue by synchronously registering the actor. If the owner dies
-    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
-    auto status = actor_creator_->RegisterActor(task_spec);
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
-      return status;
+      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+      return;
     }
-  }
-
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
@@ -48,11 +40,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec, [this, actor_id, task_id](Status status) {
+          task_spec,
+          [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok()) {
               RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                  rpc::Address());
+              // Copy the actor's reply to the GCS for ref counting purposes.
+              rpc::PushTaskReply push_task_reply;
+              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              task_finisher_->CompletePendingTask(task_id, push_task_reply,
+                                                  reply.actor_address());
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
@@ -551,7 +547,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // error.
           RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
                             "raylet. This is most "
-                            "likely because the local raylet has crahsed.";
+                            "likely because the local raylet has crashed.";
           RAY_LOG(FATAL) << status.ToString();
         }
       },

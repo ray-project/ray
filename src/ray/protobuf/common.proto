@@ -137,6 +137,8 @@ enum ErrorType {
   // been deleted from distributed memory. This can happen in distributed
   // reference counting, due to a bug or corner case.
   OBJECT_DELETED = 10;
+  // Indicates there is some error when resolving the dependence
+  DEPENDENCY_RESOLUTION_FAILED = 11;
 }
 
 /// The task exception encapsulates all information about task
@@ -284,7 +286,7 @@ message ObjectReferenceCount {
   repeated ObjectReference stored_in_objects = 4;
   // The borrowed object ID that contained this object, if any. This is used
   // for nested object IDs.
-  bytes contained_in_borrowed_id = 5;
+  repeated bytes contained_in_borrowed_ids = 5;
   // The object IDs that this object contains, if any. This is used for nested
   // object IDs.
   repeated bytes contains = 6;

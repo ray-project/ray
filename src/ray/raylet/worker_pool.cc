@@ -264,7 +264,7 @@ Process WorkerPool::StartWorkerProcess(
   // Append user-defined per-process options here
   options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
 
-  // Extract pointers from the worker command to pass into execvp.
+  // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
   for (auto const &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
