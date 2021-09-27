@@ -136,7 +136,7 @@ class ServeController:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
-    async def autoscale(self) -> None:
+    def autoscale(self) -> None:
         """Update autoscaling deployments with calculated num_replicas."""
         for deployment_name, (backend_info,
                               route_prefix) in self.list_deployments().items():
@@ -170,8 +170,7 @@ class ServeController:
             replica_config = backend_info.replica_config
             deployer_job_id = backend_info.deployer_job_id
             backend_config_proto_bytes = new_backend_config.to_proto_bytes()
-
-            goal_id, updating = await self.deploy(
+            goal_id, updating = self.deploy(
                 deployment_name,
                 backend_config_proto_bytes,
                 replica_config,
@@ -183,7 +182,7 @@ class ServeController:
     async def run_control_loop(self) -> None:
         while True:
             try:
-                await self.autoscale()
+                self.autoscale()
             except Exception:
                 logger.exception("Exception while autoscaling deployments.")
             async with self.write_lock:
@@ -273,62 +272,59 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(self,
-                     name: str,
-                     backend_config_proto_bytes: bytes,
-                     replica_config: ReplicaConfig,
-                     version: Optional[str],
-                     prev_version: Optional[str],
-                     route_prefix: Optional[str],
-                     deployer_job_id: "Optional[ray._raylet.JobID]" = None
-                     ) -> Tuple[Optional[GoalId], bool]:
+    def deploy(self,
+               name: str,
+               backend_config_proto_bytes: bytes,
+               replica_config: ReplicaConfig,
+               version: Optional[str],
+               prev_version: Optional[str],
+               route_prefix: Optional[str],
+               deployer_job_id: "Optional[ray._raylet.JobID]" = None
+               ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
         backend_config = BackendConfig.from_proto_bytes(
             backend_config_proto_bytes)
 
-        async with self.write_lock:
-            if prev_version is not None:
-                existing_backend_info = self.backend_state_manager.get_backend(
-                    name)
-                if (existing_backend_info is None
-                        or not existing_backend_info.version):
-                    raise ValueError(
-                        f"prev_version '{prev_version}' is specified but "
-                        "there is no existing deployment.")
-                if existing_backend_info.version != prev_version:
-                    raise ValueError(
-                        f"prev_version '{prev_version}' "
-                        "does not match with the existing "
-                        f"version '{existing_backend_info.version}'.")
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        name, replica_config.serialized_backend_def)),
-                version=version,
-                backend_config=backend_config,
-                replica_config=replica_config,
-                deployer_job_id=deployer_job_id,
-                start_time_ms=int(time.time() * 1000))
-            # TODO(architkulkarni): When a deployment is redeployed, even if
-            # the only change was num_replicas, the start_time_ms is refreshed.
-            # This is probably not the desired behavior for an autoscaling
-            # deployment, which redeploys very often to change num_replicas.
+        if prev_version is not None:
+            existing_backend_info = self.backend_state_manager.get_backend(
+                name)
+            if (existing_backend_info is None
+                    or not existing_backend_info.version):
+                raise ValueError(
+                    f"prev_version '{prev_version}' is specified but "
+                    "there is no existing deployment.")
+            if existing_backend_info.version != prev_version:
+                raise ValueError(f"prev_version '{prev_version}' "
+                                 "does not match with the existing "
+                                 f"version '{existing_backend_info.version}'.")
+        backend_info = BackendInfo(
+            actor_def=ray.remote(
+                create_backend_replica(name,
+                                       replica_config.serialized_backend_def)),
+            version=version,
+            backend_config=backend_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000))
+        # TODO(architkulkarni): When a deployment is redeployed, even if
+        # the only change was num_replicas, the start_time_ms is refreshed.
+        # This is probably not the desired behavior for an autoscaling
+        # deployment, which redeploys very often to change num_replicas.
 
-            goal_id, updating = self.backend_state_manager.deploy_backend(
-                name, backend_info)
-            backend_def = cloudpickle.loads(
-                replica_config.serialized_backend_def)
-            python_methods = []
-            if inspect.isclass(backend_def):
-                for method_name, _ in inspect.getmembers(
-                        backend_def, inspect.isfunction):
-                    python_methods.append(method_name)
-            endpoint_info = EndpointInfo(
-                route=route_prefix, python_methods=python_methods)
-            self.endpoint_state.update_endpoint(name, endpoint_info)
-            return goal_id, updating
+        goal_id, updating = self.backend_state_manager.deploy_backend(
+            name, backend_info)
+        backend_def = cloudpickle.loads(replica_config.serialized_backend_def)
+        python_methods = []
+        if inspect.isclass(backend_def):
+            for method_name, _ in inspect.getmembers(backend_def,
+                                                     inspect.isfunction):
+                python_methods.append(method_name)
+        endpoint_info = EndpointInfo(
+            route=route_prefix, python_methods=python_methods)
+        self.endpoint_state.update_endpoint(name, endpoint_info)
+        return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
