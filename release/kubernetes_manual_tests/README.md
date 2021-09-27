@@ -1,5 +1,8 @@
 # ray-k8s-tests
 
+These tests are not automated and must be run manually for each release.
+If you have issues running them, harass the code owner(s) for OSS Kubernetes support.
+
 How to run
 1. Configure kubectl and Helm 3 to access a K8s cluster.
 2. `git checkout releases/<release version>`
