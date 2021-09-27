@@ -72,6 +72,48 @@ class RuntimeEnvDict:
         # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
 
+        working_dir = self._handle_working_dir(runtime_env_json, working_dir)
+        self._handle_conda(runtime_env_json, working_dir)
+        self._handle_pip(runtime_env_json)
+
+        if "uris" in runtime_env_json:
+            self._dict["uris"] = runtime_env_json["uris"]
+
+        if "container" in runtime_env_json:
+            self._dict["container"] = runtime_env_json["container"]
+
+        self._handle_env_vars(runtime_env_json)
+
+        if "_ray_release" in runtime_env_json:
+            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
+
+        if "_ray_commit" in runtime_env_json:
+            self._dict["_ray_commit"] = runtime_env_json["_ray_commit"]
+        else:
+            if self._dict.get("pip") or self._dict.get("conda"):
+                self._dict["_ray_commit"] = ray.__commit__
+
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE"):
+            runtime_env_json["_inject_current_ray"] = True
+        if "_inject_current_ray" in runtime_env_json:
+            self._dict["_inject_current_ray"] = runtime_env_json[
+                "_inject_current_ray"]
+
+        # TODO(ekl) we should have better schema validation here.
+        # TODO(ekl) support py_modules
+        # TODO(architkulkarni) support docker
+
+        # TODO(architkulkarni) This is to make it easy for the worker caching
+        # code in C++ to check if the env is empty without deserializing and
+        # parsing it.  We should use a less confusing approach here.
+        if all(val is None for val in self._dict.values()):
+            self._dict = {}
+
+    def _handle_working_dir(self, runtime_env_json: dict,
+                            working_dir: Optional[str]):
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
             if not isinstance(self._dict["working_dir"], str):
@@ -82,6 +124,9 @@ class RuntimeEnvDict:
             self._dict["working_dir"] = None
             working_dir = Path(working_dir).absolute() if working_dir else None
 
+        return working_dir
+
+    def _handle_conda(self, runtime_env_json: dict, working_dir: str):
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
             if sys.platform == "win32":
@@ -113,6 +158,7 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
 
+    def _handle_pip(self, runtime_env_json: dict, working_dir: str):
         self._dict["pip"] = None
         if "pip" in runtime_env_json:
             if sys.platform == "win32":
@@ -149,12 +195,7 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['pip'] must be of type str or "
                                 "List[str]")
 
-        if "uris" in runtime_env_json:
-            self._dict["uris"] = runtime_env_json["uris"]
-
-        if "container" in runtime_env_json:
-            self._dict["container"] = runtime_env_json["container"]
-
+    def _handle_env_vars(self, runtime_env_json: dict):
         self._dict["env_vars"] = None
         if "env_vars" in runtime_env_json:
             env_vars = runtime_env_json["env_vars"]
@@ -164,34 +205,6 @@ class RuntimeEnvDict:
                     for (k, v) in env_vars.items())):
                 raise TypeError("runtime_env['env_vars'] must be of type"
                                 "Dict[str, str]")
-
-        if "_ray_release" in runtime_env_json:
-            self._dict["_ray_release"] = runtime_env_json["_ray_release"]
-
-        if "_ray_commit" in runtime_env_json:
-            self._dict["_ray_commit"] = runtime_env_json["_ray_commit"]
-        else:
-            if self._dict.get("pip") or self._dict.get("conda"):
-                self._dict["_ray_commit"] = ray.__commit__
-
-        # Used for testing wheels that have not yet been merged into master.
-        # If this is set to True, then we do not inject Ray into the conda
-        # or pip dependencies.
-        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE"):
-            runtime_env_json["_inject_current_ray"] = True
-        if "_inject_current_ray" in runtime_env_json:
-            self._dict["_inject_current_ray"] = runtime_env_json[
-                "_inject_current_ray"]
-
-        # TODO(ekl) we should have better schema validation here.
-        # TODO(ekl) support py_modules
-        # TODO(architkulkarni) support docker
-
-        # TODO(architkulkarni) This is to make it easy for the worker caching
-        # code in C++ to check if the env is empty without deserializing and
-        # parsing it.  We should use a less confusing approach here.
-        if all(val is None for val in self._dict.values()):
-            self._dict = {}
 
     def get_parsed_dict(self) -> dict:
         return self._dict
