@@ -106,7 +106,7 @@ py_test(
 
 py_test(
     name = "test_ray_client",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serverless"],
     deps = [":serve_lib"],
@@ -336,5 +336,13 @@ py_test(
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "conda_env",
+    size = "medium",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"]
 )

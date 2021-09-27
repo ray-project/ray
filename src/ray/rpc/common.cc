@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/rpc/common.h"
+
 #include <fstream>
 #include <sstream>
-
-#include "ray/rpc/common.h"
 
 namespace ray::rpc {
 
@@ -26,4 +26,4 @@ std::string ReadCert(const std::string &cert_filepath) {
   return buffer.str();
 };
 
-}  // namespace rpc::ray
+}  // namespace ray::rpc

@@ -116,10 +116,9 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        checkpoints_df = Analysis(experiment_path).dataframe(
-            metric="episode_reward_mean", mode="max")
-    except TuneError:
-        raise click.ClickException("No trial data found!")
+        checkpoints_df = Analysis(experiment_path).dataframe()  # last result
+    except TuneError as e:
+        raise click.ClickException("No trial data found!") from e
 
     def key_filter(k):
         return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)

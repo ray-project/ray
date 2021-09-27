@@ -226,6 +226,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
         self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
+    def testRegisterDurableTrainableTwice(self):
+        def train(config, reporter):
+            pass
+
+        register_trainable("foo", train)
+        register_trainable("foo", tune.durable("foo"))
+        register_trainable("foo", tune.durable("foo"))
+
     def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)

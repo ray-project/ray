@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -1111,21 +1112,6 @@ def validate_namespace(namespace: str):
                          "Pass None to not specify a namespace.")
 
 
-def load_certs_from_env():
-    if os.environ.get("RAY_USE_TLS", "0") == "1":
-        with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
-            server_cert_chain = f.read()
-        with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
-            private_key = f.read()
-        if "RAY_TLS_CA_CERT" in os.environ:
-            with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
-                ca_cert = f.read()
-        else:
-            ca_cert = None
-
-    return server_cert_chain, private_key, ca_cert
-
-
 def init_grpc_channel(address: str,
                       options: Optional[Sequence[Tuple[str, Any]]] = None,
                       asynchronous: bool = False):
@@ -1142,15 +1128,3 @@ def init_grpc_channel(address: str,
         channel = grpc_module.insecure_channel(address, options=options)
 
     return channel
-
-
-def add_port_to_grpc_server(server, address):
-    if os.environ.get("RAY_USE_TLS", "0") == "1":
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
-        credentials = grpc.ssl_server_credentials(
-            [(private_key, server_cert_chain)],
-            root_certificates=ca_cert,
-            require_client_auth=ca_cert is not None)
-        return server.add_secure_port(address, credentials)
-    else:
-        return server.add_insecure_port(address)

@@ -75,6 +75,11 @@ class GcsActorSchedulerInterface {
   virtual void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
+
   virtual ~GcsActorSchedulerInterface() {}
 };
 
@@ -145,6 +150,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
+
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  void OnActorDestruction(std::shared_ptr<GcsActor> actor) override {}
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -302,8 +312,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
       schedule_success_handler_;
-  /// Whether or not to report the backlog of actors waiting to be scheduled.
-  bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
@@ -35,13 +36,14 @@ class TestServiceHandler {
       RAY_LOG(INFO) << "No reply!";
       return;
     }
-    send_reply_callback(ray::Status::OK(),
-                        /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
-                        /*reply_failure=*/
-                        [this]() {
-                          RAY_LOG(INFO) << "Reply failed.";
-                          reply_failure_count++;
-                        });
+    send_reply_callback(
+        ray::Status::OK(),
+        /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
+        /*reply_failure=*/
+        [this]() {
+          RAY_LOG(INFO) << "Reply failed.";
+          reply_failure_count++;
+        });
   }
   std::atomic<int> request_count{0};
   std::atomic<int> reply_failure_count{0};
@@ -83,7 +85,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
       handler_io_service_.run();
     });
     test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
-    grpc_server_.reset(new GrpcServer("test", 0));
+    grpc_server_.reset(new GrpcServer("test", 0, true));
     grpc_server_->RegisterService(*test_service_);
     grpc_server_->Run();
 

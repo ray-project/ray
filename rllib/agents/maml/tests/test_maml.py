@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.maml as maml
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestMAML(unittest.TestCase):
@@ -34,7 +34,9 @@ class TestMAML(unittest.TestCase):
                 env_ = "ray.rllib.examples.env.{}".format(env)
                 trainer = maml.MAMLTrainer(config=config, env=env_)
                 for i in range(num_iterations):
-                    trainer.train()
+                    results = trainer.train()
+                    check_train_results(results)
+                    print(results)
                 check_compute_single_action(
                     trainer, include_prev_action_reward=True)
                 trainer.stop()

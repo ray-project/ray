@@ -128,6 +128,9 @@ class Worker:
         self._connect_channel()
         self._has_connected = True
 
+        # Has Ray been initialized on the server?
+        self._serverside_ray_initialized = False
+
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self, self._client_id, self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
@@ -359,8 +362,8 @@ class Worker:
                 logger.debug("Internal retry for get {}".format(to_get))
         if len(to_get) != len(res):
             raise Exception(
-                "Mismatched number of items in request ({}) and response ({})"
-                .format(len(to_get), len(res)))
+                "Mismatched number of items in request ({}) and response ({})".
+                format(len(to_get), len(res)))
         if isinstance(vals, ClientObjectRef):
             res = res[0]
         return res
@@ -647,10 +650,17 @@ class Worker:
         return json.loads(self.data_client.ListNamedActors(req).actors_json)
 
     def is_initialized(self) -> bool:
-        if self.server is not None:
-            return self.get_cluster_info(
+        if not self.is_connected() or self.server is None:
+            return False
+        if not self._serverside_ray_initialized:
+            # We only check that Ray is initialized on the server once to
+            # avoid making an RPC every time this function is called. This is
+            # safe to do because Ray only 'un-initializes' on the server when
+            # the Client connection is torn down.
+            self._serverside_ray_initialized = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
-        return False
+
+        return self._serverside_ray_initialized
 
     def ping_server(self, timeout=None) -> bool:
         """Simple health check.
