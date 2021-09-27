@@ -32,7 +32,7 @@ typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 
-const std::string kGroupKeyword = "group";
+const std::string kGroupKeyword = "_group_";
 const size_t kGroupKeywordSize = kGroupKeyword.size();
 
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
