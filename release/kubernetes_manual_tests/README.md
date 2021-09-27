@@ -12,6 +12,7 @@ How to run
 
 This runs three tests and does the necessary resource creation/teardown. The tests typically take about 15 minutes to finish.
 Notes:
+0. Anyscale employees: You should have access to create a K8s cluster using either GKE or EKS, ask OSS Kubernetes code owner if in doubt.
 1. Your Ray cluster should be able to accomodate 30 1-CPU pods to run all of the tests.
 2. These tests use basic Ray client functionality -- your locally installed Ray version may need to be updated to match the one in the release image.
 3. The tests do a poor job of Ray client port-forwarding process clean-up -- if a test fails, it's possible there might be a port-forwarding process stuck running in the background. To identify the rogue process run `ps aux | grep "port-forward"`. Then `kill` it.
