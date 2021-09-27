@@ -48,7 +48,7 @@ std::vector<ResourceSet> GcsScheduleStrategy::GetRequiredResourcesFromBundles(
 }
 
 ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
-    const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status) {
   ScheduleMap schedule_map;
   if (status == SUCCESS && !selected_nodes.empty()) {

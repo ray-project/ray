@@ -93,26 +93,16 @@ std::string BundleSpecification::DebugString() const {
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
-  std::string str;
-  auto group_id_hex = group_id.Hex();
+  std::stringstream os;
   if (bundle_index >= 0) {
-    const auto &bundle_index_str = std::to_string(bundle_index);
-    str.reserve(original_resource_name.size() + kGroupKeywordSize +
-                bundle_index_str.size() + 1 + group_id_hex.size());
-    str += original_resource_name;
-    str += kGroupKeyword;
-    str += bundle_index_str;
-    str += "_";
-    str += group_id_hex;
+    os << original_resource_name << "_" << kGroupKeyword << "_"
+       << std::to_string(bundle_index) << group_id.Hex();
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    str.reserve(original_resource_name.size() + kGroupKeywordSize + group_id_hex.size());
-    str += original_resource_name;
-    str += kGroupKeyword;
-    str += group_id_hex;
+    os << original_resource_name << "_" << kGroupKeyword << "_" << group_id.Hex();
   }
-  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
-  return str;
+  RAY_DCHECK(GetOriginalResourceName(os.str()) == original_resource_name) << os.str();
+  return os.str();
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
