@@ -1,6 +1,5 @@
 import requests
 from ray import serve
-import requests
 
 serve.start()
 
