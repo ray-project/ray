@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 #include <functional>
+
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
 
