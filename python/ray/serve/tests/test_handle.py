@@ -188,8 +188,8 @@ async def test_nonexistent_method(serve_instance, sync):
         ray.get(obj_ref)
 
     exception_string = str(excinfo.value)
-    assert "'does_not_exist'" in exception_string, exception_string
-    assert "Available methods: ['exists']" in exception_string, exception_string
+    assert "'does_not_exist'" in exception_string
+    assert "Available methods: ['exists']" in exception_string
 
 
 if __name__ == "__main__":
