@@ -1514,21 +1514,6 @@ cc_test(
 )
 
 cc_test(
-    name = "gcs_actor_scheduler_mock_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_mock_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "gcs_based_actor_scheduler_test",
     size = "small",
     srcs = [
@@ -2085,6 +2070,18 @@ cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "@boost//:asio",
+    ],
+)
+
+cc_test(
+    name = "callback_reply_test",
+    size = "small",
+    srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

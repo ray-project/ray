@@ -1408,8 +1408,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
                       ObjectID object_id, void *py_future);
 
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
+  /// we are shutting down and not running further tasks.
+  /// when exiting_ is set to true HandlePushTask becomes no-op.
+  std::atomic<bool> exiting_ = false;
 
   int64_t max_direct_call_object_size_;
 

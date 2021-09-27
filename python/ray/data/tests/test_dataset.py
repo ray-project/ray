@@ -153,6 +153,34 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
+def test_zip(ray_start_regular_shared):
+    ds1 = ray.data.range(5)
+    ds2 = ray.data.range(5).map(lambda x: x + 1)
+    ds = ds1.zip(ds2)
+    assert ds.schema() == tuple
+    assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+    with pytest.raises(ValueError):
+        ds.zip(ray.data.range(3))
+
+
+def test_zip_arrow(ray_start_regular_shared):
+    ds1 = ray.data.range_arrow(5).map(lambda r: {"id": r["value"]})
+    ds2 = ray.data.range_arrow(5).map(
+        lambda r: {"a": r["value"] + 1, "b": r["value"] + 2})
+    ds = ds1.zip(ds2)
+    assert "{id: int64, a: int64, b: int64}" in str(ds)
+    assert ds.count() == 5
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"id": 0, "a": 1, "b": 2}
+
+    # Test duplicate column names.
+    ds = ds1.zip(ds1).zip(ds1)
+    assert ds.count() == 5
+    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
+
+
 def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
