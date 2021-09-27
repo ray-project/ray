@@ -374,12 +374,10 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
   RAY_LOG(DEBUG)
       << "Task queue is empty, and there are no stealable tasks; canceling lease request";
 
-  for (auto &pending_lease_request_task_and_raylet :
-       scheduling_key_entry.pending_lease_request_task_to_raylet) {
+  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
-    auto lease_client =
-        GetOrConnectLeaseClient(&pending_lease_request_task_and_raylet.second);
-    auto &task_id = pending_lease_request_task_and_raylet.first;
+    auto lease_client = GetOrConnectLeaseClient(&pending_lease_request.second);
+    auto &task_id = pending_lease_request.first;
     RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
     lease_client->CancelWorkerLease(
         task_id, [this, scheduling_key](const Status &status,
@@ -433,14 +431,14 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   int64_t backlog_size;
   if (scheduling_key_entry.task_queue.size() <
-      scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
+      scheduling_key_entry.pending_lease_requests.size()) {
     // During work stealing we may have more pending lease requests than the number of
     // queued tasks
     backlog_size = 0;
   } else {
     // Subtract tasks with pending lesae requests so we don't double count them.
     backlog_size = scheduling_key_entry.task_queue.size() -
-                   scheduling_key_entry.pending_lease_request_task_to_raylet.size();
+                   scheduling_key_entry.pending_lease_requests.size();
   }
 
   if (scheduling_key_entry.last_reported_backlog_size != backlog_size) {
@@ -455,11 +453,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-  if (scheduling_key_entry.pending_lease_request_task_to_raylet.size() ==
+  if (scheduling_key_entry.pending_lease_requests.size() ==
       max_pending_lease_requests_per_scheduling_category_) {
     return;
   }
-  RAY_CHECK(scheduling_key_entry.pending_lease_request_task_to_raylet.size() <
+  RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
             max_pending_lease_requests_per_scheduling_category_);
 
   // Check whether we really need a new worker or whether we have
@@ -491,7 +489,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       return;
     }
   } else if (scheduling_key_entry.task_queue.size() <=
-             scheduling_key_entry.pending_lease_request_task_to_raylet.size()) {
+             scheduling_key_entry.pending_lease_requests.size()) {
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
@@ -520,7 +518,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         auto lease_client = GetOrConnectLeaseClient(&raylet_address);
-        scheduling_key_entry.pending_lease_request_task_to_raylet.erase(task_id);
+        scheduling_key_entry.pending_lease_requests.erase(task_id);
 
         if (status.ok()) {
           if (reply.runtime_env_setup_failed()) {
@@ -579,8 +577,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         }
       },
       task_queue.size());
-  scheduling_key_entry.pending_lease_request_task_to_raylet.emplace(task_id,
-                                                                    *raylet_address);
+  scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
 }
 

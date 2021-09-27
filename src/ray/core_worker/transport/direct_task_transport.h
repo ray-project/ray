@@ -246,6 +246,7 @@ class CoreWorkerDirectTaskSubmitter {
   // worker using a single lease.
   const uint32_t max_tasks_in_flight_per_worker_;
 
+  // Max number of pending lease requests per SchedulingKey
   const uint64_t max_pending_lease_requests_per_scheduling_category_;
 
   const bool report_worker_backlog_;
@@ -309,7 +310,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_request_task_to_raylet;
+    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
     TaskSpecification resource_spec = TaskSpecification();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
@@ -325,7 +326,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     inline bool CanDelete() const {
-      if (pending_lease_request_task_to_raylet.empty() && task_queue.empty() &&
+      if (pending_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
