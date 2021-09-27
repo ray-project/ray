@@ -38,8 +38,10 @@ class ComplexInputNetwork(TFModelV2):
         assert isinstance(self.original_space, (Dict, Tuple)), \
             "`obs_space.original_space` must be [Dict|Tuple]!"
 
-        super().__init__(self.original_space, action_space, num_outputs,
-                         model_config, name)
+        super_space = self.original_space if \
+            model_config.get("_disable_preprocessor_api") else obs_space
+        super().__init__(super_space, action_space, num_outputs, model_config,
+                         name)
 
         self.flattened_input_space = flatten_space(self.original_space)
 

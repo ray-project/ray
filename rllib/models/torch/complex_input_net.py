@@ -40,9 +40,12 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         assert isinstance(self.original_space, (Dict, Tuple)), \
             "`obs_space.original_space` must be [Dict|Tuple]!"
 
+        super_space = self.original_space if \
+            model_config.get("_disable_preprocessor_api") else obs_space
+
         nn.Module.__init__(self)
-        TorchModelV2.__init__(self, self.original_space, action_space,
-                              num_outputs, model_config, name)
+        TorchModelV2.__init__(self, super_space, action_space, num_outputs,
+                              model_config, name)
 
         self.flattened_input_space = flatten_space(self.original_space)
 
