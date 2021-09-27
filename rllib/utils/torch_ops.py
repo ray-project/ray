@@ -45,6 +45,20 @@ def atanh(x):
         (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
 
 
+def concat_multi_gpu_td_errors(policy):
+    td_error = torch.cat(
+        [
+            getattr(t, "td_error", torch.tensor([0.0])).to(policy.device)
+            for t in policy.model_gpu_towers
+        ],
+        dim=0)
+    policy.td_error = td_error
+    return {
+        "td_error": td_error,
+        "mean_td_error": torch.mean(td_error),
+    }
+
+
 def convert_to_non_torch_type(stats):
     """Converts values in `stats` to non-Tensor numpy or python types.
 

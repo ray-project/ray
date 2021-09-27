@@ -15,7 +15,7 @@ head_node_type:
 worker_node_types:
     - name: worker_node_m
       instance_type: m5.16xlarge
-      min_workers: 0
+      min_workers: 32
       max_workers: 32
       use_spot: false
       resources:
@@ -23,18 +23,9 @@ worker_node_types:
           node: 1
     - name: worker_node_r
       instance_type: r5.16xlarge
-      min_workers: 0
+      min_workers: 32
       max_workers: 32
       use_spot: false
       resources:
         custom_resources:
           node: 1
-    - name: small_worker
-      instance_type: m5.xlarge
-      min_workers: 0
-      max_workers: 999
-      use_spot: false
-      resources:
-        custom_resources:
-          node: 1
-

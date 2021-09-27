@@ -24,11 +24,14 @@ from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
+from ray.util.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_FILE_TYPE = "csv"
 
 
+@PublicAPI(stability="beta")
 class Analysis:
     """Analyze all results from a directory of experiments.
 
@@ -116,19 +119,31 @@ class Analysis:
                   mode: Optional[str] = None) -> DataFrame:
         """Returns a pandas.DataFrame object constructed from the trials.
 
+        This function will look through all observed results of each trial
+        and return the one corresponding to the passed ``metric`` and
+        ``mode``: If ``mode=min``, it returns the result with the lowest
+        *ever* observed ``metric`` for this trial (this is not necessarily
+        the last)! For ``mode=max``, it's the highest, respectively. If
+        ``metric=None`` or ``mode=None``, the last result will be returned.
+
         Args:
             metric (str): Key for trial info to order on.
                 If None, uses last result.
-            mode (str): One of [min, max].
+            mode (None|str): One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
         """
-        # Allow None values here.
-        if metric or self.default_metric:
-            metric = self._validate_metric(metric)
-        if mode or self.default_mode:
-            mode = self._validate_mode(mode)
+        # Do not validate metric/mode here or set from default metric/mode!
+        # Otherwise we will get confusing results as the lowest ever observed
+        # result may not be the last result.
+        if mode and mode not in ["min", "max"]:
+            raise ValueError("If set, `mode` has to be one of [min, max]")
+
+        if mode and not metric:
+            raise ValueError(
+                "If a `mode` is passed to `Analysis.dataframe(), you'll "
+                "also have to pass a `metric`!")
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -342,6 +357,7 @@ class Analysis:
                        metric: Optional[str] = None,
                        mode: Optional[str] = None) -> Dict[str, Any]:
         assert mode is None or mode in ["max", "min"]
+        assert not mode or metric
         rows = {}
         for path, df in self.trial_dataframes.items():
             if mode == "max":
@@ -380,6 +396,7 @@ class Analysis:
         return self._trial_dataframes
 
 
+@PublicAPI(stability="beta")
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 

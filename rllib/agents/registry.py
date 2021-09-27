@@ -3,7 +3,7 @@
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 
 
 def _import_a2c():
@@ -180,9 +180,8 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         return class_
 
 
-# Deprecated: Use `get_trainer_class` instead.
+@Deprecated(new="get_trainer_class", error=False)
 def get_agent_class(alg: str) -> type:
-    deprecation_warning("get_agent_class", "get_trainer_class", error=False)
     return get_trainer_class(alg)
 
 

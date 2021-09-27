@@ -27,7 +27,6 @@ namespace gcs {
 using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectLocationInfo;
 using rpc::ObjectTableData;
@@ -240,14 +239,6 @@ class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
   }
 };
 
-class GcsHeartbeatTable : public GcsTable<NodeID, HeartbeatTableData> {
- public:
-  explicit GcsHeartbeatTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::HEARTBEAT);
-  }
-};
-
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
   explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> &store_client)
@@ -344,11 +335,6 @@ class GcsTableStorage {
     return *placement_group_schedule_table_;
   }
 
-  GcsHeartbeatTable &HeartbeatTable() {
-    RAY_CHECK(heartbeat_table_ != nullptr);
-    return *heartbeat_table_;
-  }
-
   GcsResourceUsageBatchTable &HeartbeatBatchTable() {
     RAY_CHECK(resource_usage_batch_table_ != nullptr);
     return *resource_usage_batch_table_;
@@ -386,7 +372,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
-  std::unique_ptr<GcsHeartbeatTable> heartbeat_table_;
   std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
@@ -411,7 +396,6 @@ class RedisGcsTableStorage : public GcsTableStorage {
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
-    heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
     resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
@@ -439,7 +423,6 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
-    heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));

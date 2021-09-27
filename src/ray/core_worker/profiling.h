@@ -23,6 +23,7 @@
 #include "ray/gcs/gcs_client.h"
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
@@ -84,4 +85,5 @@ class ProfileEvent {
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray

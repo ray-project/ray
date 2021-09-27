@@ -1,12 +1,52 @@
 import inspect
+import pickle
 from enum import Enum
 from typing import Any, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
+                                           AutoscalingConfig as
+                                           AutoscalingConfigProto)
+from ray.serve.generated.serve_pb2 import BackendLanguage
 
 from ray import cloudpickle as cloudpickle
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+
+
+class AutoscalingConfig(BaseModel):
+    # Publicly exposed options
+    min_replicas: int
+    max_replicas: int
+    target_num_ongoing_requests_per_replica: int = 1
+
+    # Private options below
+
+    # Metrics scraping options
+    metrics_interval_s: float = 10.0
+    loop_period_s: float = 30.0
+    look_back_period_s: float = 30.0
+
+    # Internal autoscaling configuration options
+
+    # Multiplicative "gain" factor to limit scaling decisions
+    smoothing_factor: float = 1.0
+
+    # TODO(architkulkarni): implement below
+    # How long to wait before scaling down replicas
+    # downscale_delay_s: float = 600.0
+    # How long to wait before scaling up replicas
+    # upscale_delay_s: float = 30.0
+
+    # The number of replicas to start with when creating the deployment
+    # initial_replicas: int = 1
+    # The num_ongoing_requests_per_replica error ratio (desired / current)
+    # threshold for overriding `upscale_delay_s`
+    # panic_mode_threshold: float = 2.0
+
+    # TODO(architkulkarni): Add reasonable defaults
+    # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
 class BackendConfig(BaseModel):
@@ -38,6 +78,8 @@ class BackendConfig(BaseModel):
     experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
     experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
+    autoscaling_config: Optional[AutoscalingConfig] = None
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -53,20 +95,48 @@ class BackendConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
+    def to_proto_bytes(self):
+        data = self.dict()
+        if data.get("user_config"):
+            data["user_config"] = pickle.dumps(data["user_config"])
+        if data.get("autoscaling_config"):
+            data["autoscaling_config"] = AutoscalingConfigProto(
+                **data["autoscaling_config"])
+        return BackendConfigProto(
+            is_cross_language=False,
+            backend_language=BackendLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = BackendConfigProto.FromString(proto_bytes)
+        data = MessageToDict(proto, preserving_proto_field_name=True)
+        if "user_config" in data:
+            data["user_config"] = pickle.loads(proto.user_config)
+        if "autoscaling_config" in data:
+            data["autoscaling_config"] = AutoscalingConfig(
+                **data["autoscaling_config"])
+        return cls(**data)
+
 
 class ReplicaConfig:
     def __init__(self, backend_def, *init_args, ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):
+            self.func_or_class_name = backend_def
             pass
         elif inspect.isfunction(backend_def):
+            self.func_or_class_name = backend_def.__name__
             if len(init_args) != 0:
                 raise ValueError(
                     "init_args not supported for function backend.")
-        elif not inspect.isclass(backend_def):
+        elif inspect.isclass(backend_def):
+            self.func_or_class_name = backend_def.__name__
+        else:
             raise TypeError(
-                "Backend must be a function or class, it is {}.".format(
-                    type(backend_def)))
+                "Backend must be an import path, function or class, it is {}.".
+                format(type(backend_def)))
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
         self.init_args = init_args
@@ -144,6 +214,7 @@ class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
     EveryNode = "EveryNode"
+    FixedNumber = "FixedNumber"
 
 
 class HTTPOptions(pydantic.BaseModel):
@@ -153,11 +224,21 @@ class HTTPOptions(pydantic.BaseModel):
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
+    root_url: str = ""
+    fixed_number_replicas: Optional[int] = None
+    fixed_number_selection_seed: int = 0
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+        return v
+
+    @validator("fixed_number_replicas", always=True)
+    def fixed_number_replicas_should_exist(cls, v, values):
+        if values["location"] == DeploymentMode.FixedNumber and v is None:
+            raise ValueError("When location='FixedNumber', you must specify "
+                             "the `fixed_number_replicas` parameter.")
         return v
 
     class Config:

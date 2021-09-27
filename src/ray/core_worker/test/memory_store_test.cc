@@ -20,6 +20,7 @@
 #include "ray/common/test_util.h"
 
 namespace ray {
+namespace core {
 
 TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::vector<std::shared_ptr<RayObject>> results;
@@ -126,6 +127,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   ASSERT_EQ(item.used_object_store_memory, expected_item3.used_object_store_memory);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

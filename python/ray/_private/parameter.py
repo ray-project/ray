@@ -74,10 +74,6 @@ class RayParams:
             worker.
         setup_worker_path (str): The path of the Python file that will run
             worker_setup_hook to set up the environment for the worker process.
-        worker_setup_hook (str): The module path to a Python function that will
-            be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -90,6 +86,8 @@ class RayParams:
             external machines.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
+        dashboard_agent_listen_port: The port for dashboard agents to listen on
+            for HTTP requests.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -150,13 +148,11 @@ class RayParams:
                  plasma_directory=None,
                  worker_path=None,
                  setup_worker_path=None,
-                 worker_setup_hook=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
-                 runtime_env_setup_hook=ray_constants.
-                 DEFAULT_RUNTIME_ENV_SETUP_HOOK,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                 dashboard_agent_listen_port=0,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -202,12 +198,11 @@ class RayParams:
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
-        self.worker_setup_hook = worker_setup_hook
-        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
+        self.dashboard_agent_listen_port = dashboard_agent_listen_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir

@@ -175,46 +175,47 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.state.object_transfer_timeline()
+    # TODO(Sang): Re-enable it after event is introduced.
+    # transfer_events = ray.state.object_transfer_timeline()
 
-    # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_refs:
-        relevant_events = [
-            event for event in transfer_events if
-            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
-        ]
+    # # Make sure that each object was transferred a reasonable number of times. # noqa
+    # for x_id in object_refs:
+    #     relevant_events = [
+    #         event for event in transfer_events if
+    #         event["cat"] == "transfer_send" and event["args"][0] == x_id.hex() # noqa
+    #     ]
 
-        # NOTE: Each event currently appears twice because we duplicate the
-        # send and receive boxes to underline them with a box (black if it is a
-        # send and gray if it is a receive). So we need to remove these extra
-        # boxes here.
-        deduplicated_relevant_events = [
-            event for event in relevant_events if event["cname"] != "black"
-        ]
-        assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
-        relevant_events = deduplicated_relevant_events
+    #     # NOTE: Each event currently appears twice because we duplicate the
+    #     # send and receive boxes to underline them with a box (black if it is a # noqa
+    #     # send and gray if it is a receive). So we need to remove these extra
+    #     # boxes here.
+    #     deduplicated_relevant_events = [
+    #         event for event in relevant_events if event["cname"] != "black"
+    #     ]
+    #     assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
+    #     relevant_events = deduplicated_relevant_events
 
-        # Each object must have been broadcast to each remote machine.
-        assert len(relevant_events) >= num_nodes - 1
-        # If more object transfers than necessary have been done, print a
-        # warning.
-        if len(relevant_events) > num_nodes - 1:
-            warnings.warn("This object was transferred {} times, when only {} "
-                          "transfers were required.".format(
-                              len(relevant_events), num_nodes - 1))
-        # Each object should not have been broadcast more than once from every
-        # machine to every other machine. Also, a pair of machines should not
-        # both have sent the object to each other.
-        assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
+    #     # Each object must have been broadcast to each remote machine.
+    #     assert len(relevant_events) >= num_nodes - 1
+    #     # If more object transfers than necessary have been done, print a
+    #     # warning.
+    #     if len(relevant_events) > num_nodes - 1:
+    #         warnings.warn("This object was transferred {} times, when only {} " # noqa
+    #                       "transfers were required.".format(
+    #                           len(relevant_events), num_nodes - 1))
+    #     # Each object should not have been broadcast more than once from every # noqa
+    #     # machine to every other machine. Also, a pair of machines should not
+    #     # both have sent the object to each other.
+    #     assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
 
-        # Make sure that no object was sent multiple times between the same
-        # pair of object managers.
-        send_counts = defaultdict(int)
-        for event in relevant_events:
-            # The pid identifies the sender and the tid identifies the
-            # receiver.
-            send_counts[(event["pid"], event["tid"])] += 1
-        assert all(value == 1 for value in send_counts.values())
+    #     # Make sure that no object was sent multiple times between the same
+    #     # pair of object managers.
+    #     send_counts = defaultdict(int)
+    #     for event in relevant_events:
+    #         # The pid identifies the sender and the tid identifies the
+    #         # receiver.
+    #         send_counts[(event["pid"], event["tid"])] += 1
+    #     assert all(value == 1 for value in send_counts.values())
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the
@@ -282,12 +283,7 @@ def test_pull_request_retry(shutdown_only):
         remote_ref = put.remote()
 
         ready, _ = ray.wait([remote_ref], timeout=30)
-
-        if ray.worker.global_worker.core_worker.plasma_unlimited():
-            # Sadly, the test cannot work in this mode.
-            assert len(ready) == 1
-        else:
-            assert len(ready) == 0
+        assert len(ready) == 1
 
         del local_ref
 
@@ -335,7 +331,6 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-# Will hang if RAY_pull_manager_pin_active_objects=0 due to an eviction loop.
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)

@@ -6,7 +6,7 @@ from ray import serve
 ray.init(address="auto")
 
 # Start a detached Ray Serve instance.  It will persist after the script exits.
-serve.start(http_host=None, detached=True)
+serve.start(http_options={"http_host": None}, detached=True)
 
 
 # Set up a deployment with the desired number of replicas. This could also be

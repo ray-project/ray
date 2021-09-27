@@ -21,6 +21,7 @@ from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -48,8 +49,9 @@ def set_sync_periods(sync_config):
     global CLOUD_SYNC_PERIOD
     global NODE_SYNC_PERIOD
     if os.environ.get("TUNE_CLOUD_SYNC_S"):
-        logger.warning("'TUNE_CLOUD_SYNC_S' is deprecated. Set "
-                       "`cloud_sync_period` via tune.SyncConfig instead.")
+        raise DeprecationWarning(
+            "'TUNE_CLOUD_SYNC_S' is deprecated. Set "
+            "`cloud_sync_period` via tune.SyncConfig instead.")
         CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
     NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
     CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
@@ -86,6 +88,7 @@ def log_sync_template(options=""):
     return template.format(options=options, rsh=quote(rsh))
 
 
+@PublicAPI
 @dataclass
 class SyncConfig:
     """Configuration object for syncing.

@@ -2,6 +2,9 @@ import copy
 import ray
 from datetime import datetime
 
+from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
+    NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
+
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
 ray.autoscaler._private.aws.config.RAY = \
@@ -168,3 +171,46 @@ CUSTOM_IN_BOUND_RULES = [{
 DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
 DEFAULT_SG_WITH_NAME_AND_RULES[
     "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
+
+# Default launch template to expose to tests.
+DEFAULT_LT = {
+    "LaunchTemplateId": "lt-00000000000000000",
+    "LaunchTemplateName": "ExampleLaunchTemplate",
+    "VersionNumber": 2,
+    "CreateTime": datetime(2020, 8, 17, 23, 30, 3),
+    "CreatedBy": DEFAULT_INSTANCE_PROFILE["Roles"][0]["Arn"],
+    "DefaultVersion": True,
+    "LaunchTemplateData": {
+        "EbsOptimized": False,
+        "IamInstanceProfile": {
+            "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
+        },
+        "NetworkInterfaces": [{
+            "DeviceIndex": 0,
+            "Groups": [DEFAULT_SG["GroupId"]],
+            "SubnetId": DEFAULT_SUBNET["SubnetId"]
+        }],
+        "ImageId": "ami-00000000000000000",
+        "InstanceType": "m5.large",
+        "TagSpecifications": [{
+            "ResourceType": "instance",
+            "Tags": [{
+                "Key": "test-key",
+                "Value": "test-value"
+            }]
+        }, {
+            "ResourceType": "volume",
+            "Tags": [{
+                "Key": "test-key",
+                "Value": "test-value"
+            }]
+        }]
+    }
+}
+
+# Default node provider tags to expose to tests.
+DEFAULT_NODE_PROVIDER_INSTANCE_TAGS = {
+    TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+    TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
+    TAG_RAY_USER_NODE_TYPE: "ray.head.default",
+}

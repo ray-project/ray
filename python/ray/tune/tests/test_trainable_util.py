@@ -176,6 +176,14 @@ class UnflattenDictTest(unittest.TestCase):
         })
         assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
 
+    def test_raises_error_on_key_conflict(self):
+        """Ensure that an informative exception is raised on key conflict."""
+        with self.assertRaisesRegex(TypeError, r"Cannot unflatten dict"):
+            unflatten_dict({"a": 1, "a/b": 2, "a/c": 3})
+
+        with self.assertRaisesRegex(TypeError, r"Cannot unflatten dict"):
+            unflatten_dict({"a/b": 2, "a/b/c": 3})
+
 
 class GPUUtilMock:
     class GPU:

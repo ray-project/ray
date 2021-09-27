@@ -24,7 +24,7 @@ from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND,
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
-from ray.gcs_utils import PlacementGroupTableData
+from ray._private.gcs_utils import PlacementGroupTableData
 
 
 class Task:

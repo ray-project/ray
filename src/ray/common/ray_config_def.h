@@ -25,6 +25,11 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, false)
 
+/// Whether to enable Ray legacy scheduler warnings. These are replaced by
+/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
+/// TODO(ekl) remove this after Ray 1.8
+RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
@@ -61,9 +66,10 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to record the creation sites of object references. This adds more
-/// information to `ray memstat`, but introduces a little extra overhead when
-/// creating object references.
-RAY_CONFIG(bool, record_ref_creation_sites, true)
+/// information to `ray memory`, but introduces a little extra overhead when
+/// creating object references (e.g. 5~10 microsec per call in Python).
+/// TODO: maybe group this under RAY_DEBUG.
+RAY_CONFIG(bool, record_ref_creation_sites, false)
 
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -71,9 +77,6 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// cluster. If set, then this is the duration between attempts to flush the
 /// local cache. If this is set to 0, then the objects will be freed as soon as
 /// they enter the cache. To disable eager eviction, set this to -1.
-/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
-/// likely cause spurious object lost errors for Object IDs that were
-/// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_period_milliseconds.
@@ -95,28 +98,17 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
-/// in /tmp, creating a new file per object. This degrades performance since filesystem
-/// backed objects are written to disk, but allows Ray to operate with degraded
-/// performance instead of crashing. Note that memory admission control is still in play,
-/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
-/// spilling).
-RAY_CONFIG(bool, plasma_unlimited, true)
-
-/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
-RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
-
-/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
-RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
-
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
+/// The fraction of resource utilization on a node after which the scheduler starts
+/// to prefer spreading tasks to other nodes. This balances between locality and
+/// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
-           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
                : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -134,6 +126,10 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
+
+/// Warn if more than this many tasks are queued for submission to an actor.
+/// It likely indicates a bug in the user code.
+RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
 
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
@@ -155,6 +151,9 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+/// How long to wait for a fetch to complete during ray.get before warning the
+/// user.
+RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
@@ -218,15 +217,18 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 /// Maximum number of rows in GCS profile table.
 RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
-/// When getting objects from object store, print a warning every this number of attempts.
-RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
-
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+// TODO: fix win32 timeout in ci and unify these two.
+#ifdef _MSC_VER
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+#else
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 8)
+#endif
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -251,9 +253,6 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to turn on resource report polling. Polling and raylet pushing are
-// mutually exlusive.
-RAY_CONFIG(bool, pull_based_resource_reporting, true)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
@@ -262,9 +261,6 @@ RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
-
-/// The amount of time to wait between logging plasma space usage debug messages.
-RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The threshold to trigger a global gc
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
@@ -306,6 +302,9 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+// Max number bytes of inlined objects in a task rpc request/response.
+RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -352,7 +351,7 @@ RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
-RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 
 /* Configuration parameters for object spilling. */
 /// JSON configuration that describes the external storage. This is passed to
@@ -376,7 +375,7 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 1.0)
+RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -417,6 +416,9 @@ RAY_CONFIG(int, publish_batch_size, 5000)
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 
+/// The maximum batch size for OBOD report.
+RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
+
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
 RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
@@ -426,9 +428,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_task_scheduling_enabled,
-           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
+           std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -439,8 +441,8 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
-           getenv("RAY_preallocate_plasma_memory") != nullptr &&
-                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+           std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 10)
 
@@ -460,3 +462,32 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+/// ServerCall instance number of each RPC service handler
+RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+/// This is only configured in GCS server now.
+/// NOTE: It is not ideal for other components because
+/// they have a failure model that considers network failures as component failures
+/// and this configuration break that assumption. We should apply to every other component
+/// after we change this failure assumption from code.
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
+
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, event_log_reporter_enabled, false)
+
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, actor_register_async, true)
+
+/// Event severity threshold value
+RAY_CONFIG(std::string, event_level, "warning")
+
+/// Whether to avoid scheduling cpu requests on gpu nodes
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
+
+/// Whether to skip running local GC in runtime env.
+RAY_CONFIG(bool, runtime_env_skip_local_gc, false)

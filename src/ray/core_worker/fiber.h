@@ -18,6 +18,7 @@
 
 #include "ray/util/logging.h"
 namespace ray {
+namespace core {
 
 /// Used by async actor mode. The fiber event will be used
 /// from python to switch control among different coroutines.
@@ -129,7 +130,7 @@ class FiberState {
 
  private:
   /// The fiber channel used to send task between the submitter thread
-  /// (main direct_actor_trasnport thread) and the fiber_worker_thread_ (defined below)
+  /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
   FiberChannel channel_;
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
@@ -141,4 +142,5 @@ class FiberState {
   std::thread fiber_runner_thread_;
 };
 
+}  // namespace core
 }  // namespace ray

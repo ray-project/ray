@@ -75,24 +75,22 @@ def infer(batch):
 
 ray.init()
 
-while ray.cluster_resources().get("GPU", 0) != 2:
-    print("Waiting for GPUs {}/2".format(ray.cluster_resources().get(
-        "GPU", 400)))
-    time.sleep(5)
-
 start_time = time.time()
 
 print("Downloading...")
-ds = ray.experimental.data.read_binary_files(
-    "s3://anyscale-data/small-images/", parallelism=400)
-ds = ds.limit(100 * 1000)
+ds = ray.data.read_binary_files(
+    "s3://anyscale-data/small-images/",
+    parallelism=1000,
+    ray_remote_args={"num_cpus": 0.5})
+# Do a blocking map so that we can measure the download time.
+ds = ds.map(lambda x: x)
 
 end_download_time = time.time()
 print("Preprocessing...")
 ds = ds.map(preprocess)
 end_preprocess_time = time.time()
 print("Inferring...")
-ds = ds.map_batches(infer, num_gpus=0.25)
+ds = ds.map_batches(infer, num_gpus=0.25, batch_format="pandas")
 
 end_time = time.time()
 

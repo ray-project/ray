@@ -37,14 +37,14 @@ When an HTTP request is sent to the router, the follow things happen:
 - The HTTP request is received and parsed.
 - The correct deployment associated with the HTTP url path is looked up. The
   request is placed on a queue.
-- For each request in a backend queue, an available replica is looked up
+- For each request in a deployment queue, an available replica is looked up
   and the request is sent to it. If there are no available replicas (there
   are more than ``max_concurrent_queries`` requests outstanding), the request
   is left in the queue until an outstanding request is finished.
 
 Each replica maintains a queue of requests and executes one at a time, possibly
 using asyncio to process them concurrently. If the handler (the function for the
-backend or ``__call__``) is ``async``, the replica will not wait for the
+deployment or ``__call__``) is ``async``, the replica will not wait for the
 handler to run; otherwise, the replica will block until the handler returns.
 
 FAQ
@@ -59,7 +59,7 @@ replica will be able to continue to handle requests.
 Machine errors and faults will be handled by Ray. Serve utilizes the :ref:`actor
 reconstruction <actor-fault-tolerance>` capability. For example, when a machine hosting any of the
 actors crashes, those actors will be automatically restarted on another
-available machine. All data in the Controller (routing policies, backend
+available machine. All data in the Controller (routing policies, deployment
 configurations, etc) is checkpointed to the Ray. Transient data in the
 router and the replica (like network connections and internal request
 queues) will be lost upon failure.
@@ -81,7 +81,7 @@ How do ServeHandles work?
 :mod:`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to the router actor on the same node. When a
 request is sent from one via replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
-the same backend selection and batching procedures to happen. ServeHandles are
+the same deployment selection and batching procedures to happen. ServeHandles are
 often used to implement :ref:`model composition <serve-model-composition>`.
 
 

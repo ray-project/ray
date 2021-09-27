@@ -1,8 +1,10 @@
 import errno
 import gym
 import logging
+import math
 import numpy as np
 import os
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
@@ -12,16 +14,17 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
+    TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
@@ -69,7 +72,7 @@ class TFPolicy(Policy):
                  sess: "tf1.Session",
                  obs_input: TensorType,
                  sampled_action: TensorType,
-                 loss: TensorType,
+                 loss: Union[TensorType, List[TensorType]],
                  loss_inputs: List[Tuple[str, TensorType]],
                  model: ModelV2 = None,
                  sampled_action_logp: Optional[TensorType] = None,
@@ -98,7 +101,9 @@ class TFPolicy(Policy):
                 shape [BATCH_SIZE, obs...].
             sampled_action (TensorType): Tensor for sampling an action, of
                 shape [BATCH_SIZE, action...]
-            loss (TensorType): Scalar policy loss output tensor.
+            loss (Union[TensorType, List[TensorType]]): Scalar policy loss
+                output tensor or a list thereof (in case there is more than
+                one loss).
             loss_inputs (List[Tuple[str, TensorType]]): A (name, placeholder)
                 tuple for each loss input argument. Each placeholder name must
                 correspond to a SampleBatch column key returned by
@@ -148,21 +153,46 @@ class TFPolicy(Policy):
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        num_gpus = config["num_gpus"] if worker_idx == 0 \
-            else config["num_gpus_per_worker"]
+        if not config["_fake_gpus"] and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE:
+            num_gpus = 0
+        elif worker_idx == 0:
+            num_gpus = config["num_gpus"]
+        else:
+            num_gpus = config["num_gpus_per_worker"]
+        gpu_ids = get_gpu_devices()
 
-        # No GPU configured, fake GPUs, or none available.
-        if config["_fake_gpus"] or num_gpus == 0 or not get_gpu_devices():
+        # Place on one or more CPU(s) when either:
+        # - Fake GPU mode.
+        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - no GPUs available.
+        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TFPolicy (worker={}) running on {}.".format(
                 worker_idx
                 if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
                 if config["_fake_gpus"] else "CPU"))
-            self.devices = ["/cpu:0" for _ in range(num_gpus or 1)]
-        # One or more actual GPUs (no fake GPUs).
+            self.devices = [
+                "/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)
+            ]
+        # Place on one or more actual GPU(s), when:
+        # - num_gpus > 0 (set by user) AND
+        # - local_mode=False AND
+        # - actual GPUs available AND
+        # - non-fake GPU mode.
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))
-            gpu_ids = ray.get_gpu_ids()
+
+            # We are a remote worker (WORKER_MODE=1):
+            # GPUs should be assigned to us by ray.
+            if ray.worker._mode() == ray.worker.WORKER_MODE:
+                gpu_ids = ray.get_gpu_ids()
+
+            if len(gpu_ids) < num_gpus:
+                raise ValueError(
+                    "TFPolicy was not able to find enough GPU IDs! Found "
+                    f"{gpu_ids}, but num_gpus={num_gpus}.")
+
             self.devices = [
                 f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
             ]
@@ -219,22 +249,30 @@ class TFPolicy(Policy):
             tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
 
+        self._optimizers: List[LocalOptimizer] = []
+        # Backward compatibility and for some code shared with tf-eager Policy.
         self._optimizer = None
-        self._grads_and_vars = None
-        self._grads = None
+
+        self._grads_and_vars: Union[ModelGradients, List[ModelGradients]] = []
+        self._grads: Union[ModelGradients, List[ModelGradients]] = []
         # Policy tf-variables (weights), whose values to get/set via
         # get_weights/set_weights.
         self._variables = None
-        # Local optimizer's tf-variables (e.g. state vars for Adam).
+        # Local optimizer(s)' tf-variables (e.g. state vars for Adam).
         # Will be stored alongside `self._variables` when checkpointing.
-        self._optimizer_variables = None
+        self._optimizer_variables: \
+            Optional[ray.experimental.tf_utils.TensorFlowVariables] = None
 
-        # The loss tf-op.
+        # The loss tf-op(s). Number of losses must match number of optimizers.
+        self._losses = []
+        # Backward compatibility (in case custom child TFPolicies access this
+        # property).
         self._loss = None
         # A batch dict passed into loss function as input.
         self._loss_input_dict = {}
-        if loss is not None:
-            self._initialize_loss(loss, loss_inputs)
+        losses = force_list(loss)
+        if len(losses) > 0:
+            self._initialize_loss(losses, loss_inputs)
 
         # The log-likelihood calculator op.
         self._log_likelihood = log_likelihood
@@ -282,15 +320,16 @@ class TFPolicy(Policy):
         return self._sess
 
     def loss_initialized(self) -> bool:
-        """Returns whether the loss function has been initialized."""
-        return self._loss is not None
+        """Returns whether the loss term(s) have been initialized."""
+        return len(self._losses) > 0
 
-    def _initialize_loss(self, loss: TensorType,
+    def _initialize_loss(self, losses: List[TensorType],
                          loss_inputs: List[Tuple[str, TensorType]]) -> None:
         """Initializes the loss op from given loss tensor and placeholders.
 
         Args:
-            loss (TensorType): The loss op generated by some loss function.
+            loss (List[TensorType]): The list of loss ops returned by some
+                loss function.
             loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
@@ -304,45 +343,68 @@ class TFPolicy(Policy):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
         if self.model and not isinstance(self.model, tf.keras.Model):
-            self._loss = self.model.custom_loss(loss, self._loss_input_dict)
+            self._losses = force_list(
+                self.model.custom_loss(losses, self._loss_input_dict))
             self._stats_fetches.update({"model": self.model.metrics()})
         else:
-            self._loss = loss
+            self._losses = losses
+        # Backward compatibility.
+        self._loss = self._losses[0] if self._losses is not None else None
 
-        if self._optimizer is None:
-            self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
+        if not self._optimizers:
+            self._optimizers = force_list(self.optimizer())
+            # Backward compatibility.
+            self._optimizer = self._optimizers[0] if self._optimizers else None
+
+        # Supporting more than one loss/optimizer.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            self._grads_and_vars = []
+            self._grads = []
+            for group in self.gradients(self._optimizers, self._losses):
+                g_and_v = [(g, v) for (g, v) in group if g is not None]
+                self._grads_and_vars.append(g_and_v)
+                self._grads.append([g for (g, _) in g_and_v])
+        # Only one optimizer and and loss term.
+        else:
+            self._grads_and_vars = [
+                (g, v)
+                for (g, v) in self.gradients(self._optimizer, self._loss)
+                if g is not None
+            ]
+            self._grads = [g for (g, _) in self._grads_and_vars]
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self.get_session(), self.variables())
 
-        # gather update ops for any batch norm layers
-        if not self._update_ops:
-            self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf1.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+        # Gather update ops for any batch norm layers.
+        if len(self.devices) <= 1:
+            if not self._update_ops:
+                self._update_ops = tf1.get_collection(
+                    tf1.GraphKeys.UPDATE_OPS,
+                    scope=tf1.get_variable_scope().name)
+            if self._update_ops:
+                logger.info("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+            with tf1.control_dependencies(self._update_ops):
+                self._apply_op = self.build_apply_op(
+                    optimizer=self._optimizers
+                    if self.config["_tf_policy_handles_more_than_one_loss"]
+                    else self._optimizer,
+                    grads_and_vars=self._grads_and_vars)
 
         if log_once("loss_used"):
-            logger.debug(
-                "These tensors were used in the loss_fn:\n\n{}\n".format(
-                    summarize(self._loss_input_dict)))
+            logger.debug("These tensors were used in the loss functions:"
+                         f"\n{summarize(self._loss_input_dict)}\n")
 
         self.get_session().run(tf1.global_variables_initializer())
-        self._optimizer_variables = None
-        if self._optimizer:
-            self._optimizer_variables = \
-                ray.experimental.tf_utils.TensorFlowVariables(
-                    self._optimizer.variables(), self.get_session())
+
+        # TensorFlowVariables holing a flat list of all our optimizers'
+        # variables.
+        self._optimizer_variables = \
+            ray.experimental.tf_utils.TensorFlowVariables(
+                [v for o in self._optimizers for v in o.variables()],
+                self.get_session())
 
     @override(Policy)
     def compute_actions(
@@ -374,15 +436,16 @@ class TFPolicy(Policy):
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
-            else obs_batch.shape[0]
+        self.global_timestep += \
+            len(obs_batch) if isinstance(obs_batch, list) \
+            else tree.flatten(obs_batch)[0].shape[0]
 
         return fetched
 
     @override(Policy)
     def compute_actions_from_input_dict(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: Union[SampleBatch, Dict[str, TensorType]],
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
@@ -403,6 +466,7 @@ class TFPolicy(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else len(input_dict) if isinstance(input_dict, SampleBatch) \
             else obs_batch.shape[0]
 
         return fetched
@@ -502,9 +566,8 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    # TODO: (sven) Deprecate this method.
+    @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        deprecation_warning("get_exploration_info", "get_exploration_state")
         return self.get_exploration_state()
 
     @override(Policy)
@@ -522,8 +585,7 @@ class TFPolicy(Policy):
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
-        if self._optimizer_variables and \
-                len(self._optimizer_variables.variables) > 0:
+        if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
                 self.get_session().run(self._optimizer_variables.variables)
         # Add exploration state.
@@ -536,7 +598,7 @@ class TFPolicy(Policy):
     def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
-        if optimizer_vars:
+        if optimizer_vars is not None:
             self._optimizer_variables.set_weights(optimizer_vars)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -600,14 +662,12 @@ class TFPolicy(Policy):
                         graph=self.get_session().graph))
                 builder.save()
 
-    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
-        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:
@@ -715,41 +775,84 @@ class TFPolicy(Policy):
             tf.keras.optimizers.Optimizer: The local optimizer to use for this
                 Policy's Model.
         """
-        if hasattr(self, "config"):
+        if hasattr(self, "config") and "lr" in self.config:
             return tf1.train.AdamOptimizer(learning_rate=self.config["lr"])
         else:
             return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self, optimizer: "tf.keras.optimizers.Optimizer",
-                  loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
+    def gradients(
+            self,
+            optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
+            loss: Union[TensorType, List[TensorType]],
+    ) -> Union[List[ModelGradients], List[List[ModelGradients]]]:
         """Override this for a custom gradient computation behavior.
 
+        Args:
+            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): A single
+                LocalOptimizer of a list thereof to use for gradient
+                calculations. If more than one optimizer given, the number of
+                optimizers must match the number of losses provided.
+            loss (Union[TensorType, List[TensorType]]): A single loss term
+                or a list thereof to use for gradient calculations.
+                If more than one loss given, the number of loss terms must
+                match the number of optimizers provided.
+
         Returns:
-            List[Tuple[TensorType, TensorType]]: List of tuples with grad
-                values and the grad-value's corresponding tf.variable in it.
+            Union[List[ModelGradients], List[List[ModelGradients]]]: List of
+                ModelGradients (grads and vars OR just grads) OR List of List
+                of ModelGradients in case we have more than one
+                optimizer/loss.
         """
-        return optimizer.compute_gradients(loss)
+        optimizers = force_list(optimizer)
+        losses = force_list(loss)
+
+        # We have more than one optimizers and loss terms.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            grads = []
+            for optim, loss_ in zip(optimizers, losses):
+                grads.append(optim.compute_gradients(loss_))
+        # We have only one optimizer and one loss term.
+        else:
+            return optimizers[0].compute_gradients(losses[0])
 
     @DeveloperAPI
     def build_apply_op(
             self,
-            optimizer: "tf.keras.optimizers.Optimizer",
-            grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
-            "tf.Operation":
+            optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
+            grads_and_vars: Union[ModelGradients, List[ModelGradients]],
+    ) -> "tf.Operation":
         """Override this for a custom gradient apply computation behavior.
 
         Args:
-            optimizer (tf.keras.optimizers.Optimizer): The local tf optimizer
-                to use for applying the grads and vars.
-            grads_and_vars (List[Tuple[TensorType, TensorType]]): List of
-                tuples with grad values and the grad-value's corresponding
+            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): The local
+                tf optimizer to use for applying the grads and vars.
+            grads_and_vars (Union[ModelGradients, List[ModelGradients]]): List
+                of tuples with grad values and the grad-value's corresponding
                 tf.variable in it.
+
+        Returns:
+            tf.Operation: The tf op that applies all computed gradients
+                (`grads_and_vars`) to the model(s) via the given optimizer(s).
         """
-        # Specify global_step for TD3 which needs to count the num updates.
-        return optimizer.apply_gradients(
-            self._grads_and_vars,
-            global_step=tf1.train.get_or_create_global_step())
+        optimizers = force_list(optimizer)
+
+        # We have more than one optimizers and loss terms.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            ops = []
+            for i, optim in enumerate(optimizers):
+                # Specify global_step (e.g. for TD3 which needs to count the
+                # num updates that have happened).
+                ops.append(
+                    optim.apply_gradients(
+                        grads_and_vars[i],
+                        global_step=tf1.train.get_or_create_global_step()))
+            return tf.group(ops)
+        # We have only one optimizer and one loss term.
+        else:
+            return optimizers[0].apply_gradients(
+                grads_and_vars,
+                global_step=tf1.train.get_or_create_global_step())
 
     def _get_is_training_placeholder(self):
         """Get the placeholder for _is_training, i.e., for batch norm layers.
@@ -763,8 +866,13 @@ class TFPolicy(Policy):
 
     def _debug_vars(self):
         if log_once("grad_vars"):
-            for _, v in self._grads_and_vars:
-                logger.info("Optimizing variable {}".format(v))
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
+                for group in self._grads_and_vars:
+                    for _, v in group:
+                        logger.info("Optimizing variable {}".format(v))
+            else:
+                for _, v in self._grads_and_vars:
+                    logger.info("Optimizing variable {}".format(v))
 
     def _extra_input_signature_def(self):
         """Extra input signatures to add when exporting tf model.
@@ -795,7 +903,7 @@ class TFPolicy(Policy):
             tf1.saved_model.utils.build_tensor_info(self._obs_input)
 
         if self._seq_lens is not None:
-            input_signature["seq_lens"] = \
+            input_signature[SampleBatch.SEQ_LENS] = \
                 tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
@@ -860,7 +968,11 @@ class TFPolicy(Policy):
             if hasattr(self, "_input_dict"):
                 for key, value in input_dict.items():
                     if key in self._input_dict:
-                        builder.add_feed_dict({self._input_dict[key]: value})
+                        # Handle complex/nested spaces as well.
+                        tree.map_structure(
+                            lambda k, v: builder.add_feed_dict({k: v}),
+                            self._input_dict[key], value,
+                        )
             # For policies that inherit directly from TFPolicy.
             else:
                 builder.add_feed_dict({
@@ -899,7 +1011,10 @@ class TFPolicy(Policy):
                     "Must pass in RNN state batches for placeholders {}, "
                     "got {}".format(self._state_inputs, state_batches))
 
-            builder.add_feed_dict({self._obs_input: obs_batch})
+            tree.map_structure(
+                lambda k, v: builder.add_feed_dict({k: v}),
+                self._obs_input, obs_batch,
+            )
             if state_batches:
                 builder.add_feed_dict({
                     self._seq_lens: np.ones(len(obs_batch))
@@ -1001,8 +1116,12 @@ class TFPolicy(Policy):
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for key, placeholder in self._loss_input_dict.items():
-            feed_dict[placeholder] = train_batch[key]
+        for key, placeholders in self._loss_input_dict.items():
+            tree.map_structure(
+                lambda ph, v: feed_dict.__setitem__(ph, v),
+                placeholders,
+                train_batch[key],
+            )
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
@@ -1010,7 +1129,7 @@ class TFPolicy(Policy):
         for key in state_keys:
             feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = train_batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
 
@@ -1046,6 +1165,8 @@ class LearningRateSchedule:
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
+                # This property (self._optimizer) is (still) accessible for
+                # both TFPolicy and any TFPolicy_eager.
                 self._optimizer.learning_rate.assign(self.cur_lr)
 
     @override(TFPolicy)

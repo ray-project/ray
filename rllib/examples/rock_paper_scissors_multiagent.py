@@ -21,7 +21,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
-from pettingzoo.classic import rps_v1
+from pettingzoo.classic import rps_v2
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -55,7 +55,7 @@ parser.add_argument(
 
 
 def env_creator(args):
-    env = rps_v1.env()
+    env = rps_v2.env()
     return env
 
 

@@ -7,18 +7,20 @@ from typing import Dict, Tuple, List
 
 import ray
 import ray.experimental.tf_utils
-from ray.util.debug import log_once
 from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
     TorchDirichlet
 from ray.rllib.utils.annotations import override
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -26,10 +28,8 @@ from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
-    LocalOptimizer, ModelGradients
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+    LocalOptimizer, ModelGradients, PolicyID
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -253,23 +253,6 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     return policy.critic_loss + policy.actor_loss
 
 
-def make_ddpg_optimizers(policy: Policy, config: TrainerConfigDict) -> None:
-    # Create separate optimizers for actor & critic losses.
-    if policy.config["framework"] in ["tf2", "tfe"]:
-        policy._actor_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config["actor_lr"])
-        policy._critic_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=config["critic_lr"])
-    else:
-        policy._actor_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
-        policy._critic_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
-    # TODO: (sven) make this function return both optimizers and
-    #  TFPolicy handle optimizers vs loss terms correctly (like torch).
-    return None
-
-
 def build_apply_op(policy: Policy, optimizer: LocalOptimizer,
                    grads_and_vars: ModelGradients) -> TensorType:
     # For policy gradient, update policy net one time v.s.
@@ -343,14 +326,44 @@ def build_ddpg_stats(policy: Policy,
     return stats
 
 
-def before_init_fn(policy: Policy, obs_space: gym.spaces.Space,
-                   action_space: gym.spaces.Space,
-                   config: TrainerConfigDict) -> None:
-    # Create global step for counting the number of update operations.
-    if config["framework"] in ["tf2", "tfe"]:
-        policy.global_step = get_variable(0, tf_name="global_step")
-    else:
-        policy.global_step = tf1.train.get_or_create_global_step()
+class ActorCriticOptimizerMixin:
+    """Mixin class to generate the necessary optimizers for actor-critic algos.
+
+    - Creates global step for counting the number of update operations.
+    - Creates separate optimizers for actor, critic, and alpha.
+    """
+
+    def __init__(self, config):
+        # Eager mode.
+        if config["framework"] in ["tf2", "tfe"]:
+            self.global_step = get_variable(0, tf_name="global_step")
+            self._actor_optimizer = tf.keras.optimizers.Adam(
+                learning_rate=config["actor_lr"])
+            self._critic_optimizer = \
+                tf.keras.optimizers.Adam(learning_rate=config["critic_lr"])
+        # Static graph mode.
+        else:
+            self.global_step = tf1.train.get_or_create_global_step()
+            self._actor_optimizer = tf1.train.AdamOptimizer(
+                learning_rate=config["actor_lr"])
+            self._critic_optimizer = \
+                tf1.train.AdamOptimizer(learning_rate=config["critic_lr"])
+
+
+def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                       action_space: gym.spaces.Space,
+                       config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors before Policy's initialization.
+
+    Adds the necessary optimizers to the given Policy.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
+    ActorCriticOptimizerMixin.__init__(policy, config)
 
 
 class ComputeTDErrorMixin:
@@ -416,7 +429,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid: int, observation_space: gym.spaces.Space,
+def validate_spaces(pid: PolicyID, observation_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):
@@ -439,15 +452,15 @@ DDPGTFPolicy = build_tf_policy(
     loss_fn=ddpg_actor_critic_loss,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    optimizer_fn=make_ddpg_optimizers,
     compute_gradients_fn=gradients_fn,
     apply_gradients_fn=build_apply_op,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     validate_spaces=validate_spaces,
-    before_init=before_init_fn,
+    before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     mixins=[
         TargetNetworkMixin,
+        ActorCriticOptimizerMixin,
         ComputeTDErrorMixin,
     ])

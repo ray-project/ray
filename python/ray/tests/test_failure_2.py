@@ -16,8 +16,8 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import (init_error_pubsub, get_error_message, Semaphore,
-                            wait_for_condition)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     Semaphore, wait_for_condition)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
@@ -88,14 +88,14 @@ def test_warning_for_too_many_actors(shutdown_only):
             time.sleep(1000)
 
     # NOTE: We should save actor, otherwise it will be out of scope.
-    actor_group1 = [Foo.remote() for _ in range(num_cpus * 3)]
-    assert len(actor_group1) == num_cpus * 3
+    actor_group1 = [Foo.remote() for _ in range(num_cpus * 10)]
+    assert len(actor_group1) == num_cpus * 10
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
-    actor_group2 = [Foo.remote() for _ in range(num_cpus)]
-    assert len(actor_group2) == num_cpus
+    actor_group2 = [Foo.remote() for _ in range(num_cpus * 3)]
+    assert len(actor_group2) == num_cpus * 3
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
@@ -283,7 +283,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(object_ref)
     thread.join()
 
@@ -307,7 +307,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)
 
     @ray.remote

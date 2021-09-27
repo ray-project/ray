@@ -32,6 +32,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
                                                             int port)>
@@ -64,17 +65,17 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
-          RayConfig::instance().max_tasks_in_flight_per_worker(),
+          ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
         lease_policy_(std::move(lease_policy)),
-        resolver_(store, task_finisher),
+        resolver_(*store, *task_finisher, *actor_creator),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_creator_(std::move(actor_creator)),
+        actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         cancel_retry_timer_(std::move(cancel_timer)) {}
@@ -97,6 +98,13 @@ class CoreWorkerDirectTaskSubmitter {
   bool CheckNoSchedulingKeyEntriesPublic() {
     absl::MutexLock lock(&mu_);
     return scheduling_key_entries_.empty();
+  }
+
+  int64_t GetNumTasksSubmitted() const { return num_tasks_submitted_; }
+
+  int64_t GetNumLeasesRequested() {
+    absl::MutexLock lock(&mu_);
+    return num_leases_requested_;
   }
 
  private:
@@ -347,6 +355,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
+
+  int64_t num_tasks_submitted_ = 0;
+  int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
 };
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

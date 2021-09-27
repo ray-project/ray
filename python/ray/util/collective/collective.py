@@ -26,9 +26,6 @@ try:
         gloo_collective_group import GLOOGroup
 except ImportError:
     _GLOO_AVAILABLE = False
-    logger.warning("PyGloo seems unavailable. Please install PyGloo "
-                   "following the guide at: "
-                   "https://github.com/ray-project/pygloo.")
 
 
 def nccl_available():

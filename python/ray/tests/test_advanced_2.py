@@ -9,12 +9,9 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import (
-    RayTestTimeoutException,
-    wait_for_condition,
-)
+from ray._private.test_utils import (RayTestTimeoutException,
+                                     wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
 
@@ -736,7 +733,7 @@ def test_max_call_tasks(ray_start_regular):
         return os.getpid()
 
     pid = ray.get(f.remote())
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     @ray.remote(max_calls=2)
     def f():
@@ -745,7 +742,7 @@ def test_max_call_tasks(ray_start_regular):
     pid1 = ray.get(f.remote())
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
-    ray.test_utils.wait_for_pid_to_exit(pid1)
+    wait_for_pid_to_exit(pid1)
 
 
 if __name__ == "__main__":
