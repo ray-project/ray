@@ -3,6 +3,8 @@
 RaySGD User Guide
 =================
 
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+
 In this guide, we cover examples for the following use cases:
 
 * How do I :ref:`port my code <sgd-porting-code>` to using RaySGD?
@@ -11,9 +13,6 @@ In this guide, we cover examples for the following use cases:
   (:ref:`fault tolerance <sgd-fault-tolerance>`)?
 * How do I use RaySGD to :ref:`train with a large dataset <sgd-datasets>`?
 * How do I :ref:`tune <sgd-tune>` my RaySGD model?
-
-
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 .. _sgd-backends:
 
