@@ -125,7 +125,7 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 
    #....
 
-Alternative Approach: Port Forwarding
+Alternative Approach: SSH Port Forwarding
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 As an alternative to configuring inbound traffic rules, you can also set up
