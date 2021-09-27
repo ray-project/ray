@@ -10,7 +10,6 @@ from typing import Any, Dict, List
 import yaml
 
 import ray
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
 from ray.tune import run_experiments
@@ -302,6 +301,9 @@ def check_compute_single_action(trainer,
     Raises:
         ValueError: If anything unexpected happens.
     """
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import SampleBatch
+
     # Some Trainers may not abide to the standard API.
     try:
         pol = trainer.get_policy()
@@ -380,6 +382,8 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
+        # Test whether unsquash/clipping works: Both should push the action
+        # to certainly be within the space's bounds.
         if not action_space.contains(action):
             if clip or unsquash or not isinstance(action_space,
                                                   gym.spaces.Box):
@@ -396,6 +400,8 @@ def check_compute_single_action(trainer,
                 "should be in normalized space, but seems too large/small for "
                 "that!")
 
+    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # actions; unsquash option; clip option; full fetch or not.
     for what in [pol, trainer]:
         if what is trainer:
             # Get the obs-space from Workers.env (not Policy) due to possible
