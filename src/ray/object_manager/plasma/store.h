@@ -113,8 +113,9 @@ class PlasmaStore {
 
   void AbortObject(const ObjectID &object_id);
 
-  void GetObjects(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                  bool is_from_worker);
+  void GetObjects(const std::shared_ptr<Client> &client,
+                  const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                  bool is_from_worker, RequestFinishCallback all_objects_callback);
 
   void ReleaseObject(const ObjectID &object_id);
 
@@ -135,6 +136,8 @@ class PlasmaStore {
     io_context_.dispatch([&task] { task(); });
     return res.get();
   }
+
+  bool TryGetObject(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
 
  private:
   /// Create a new object. The client must do a call to release_object to tell

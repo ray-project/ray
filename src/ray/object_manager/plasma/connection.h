@@ -58,6 +58,8 @@ class Client : public ray::ClientConnection, public ClientInterface {
   std::unordered_set<ray::ObjectID> object_ids;
 };
 
+class InProcessClient : public ClientInterface {};
+
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
 
 /// Contains all information that is associated with a Plasma store client.

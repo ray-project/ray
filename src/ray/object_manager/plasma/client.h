@@ -312,6 +312,11 @@ class RemotePlasmaClient : public PlasmaClientInterface {
                      const uint8_t *metadata, uint64_t *retry_with_request_id,
                      std::shared_ptr<Buffer> *data);
 
+  /// Helper method to read and process the reply of a create request.
+  Status HandleCreateReply(const ObjectID &object_id, const uint8_t *metadata,
+                           uint64_t *retry_with_request_id,
+                           std::shared_ptr<Buffer> *data);
+
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);

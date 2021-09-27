@@ -105,21 +105,13 @@ class Impl : public std::enable_shared_from_this<Impl> {
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
-  Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
-                     const uint8_t *metadata, uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
-
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address, int64_t data_size,
-                              const uint8_t *metadata, int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data, fb::ObjectSource source,
-                              int device_num);
-
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
-
-  Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer *object_buffers, bool is_from_worker);
+             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker,
+             const std::function<Status(std::vector<MEMFD_TYPE> &store_fds,
+                                        std::vector<int64_t> &mmap_sizes,
+                                        std::vector<ObjectID> &received_object_ids,
+                                        std::vector<PlasmaObject> &object_data)>
+                 get_from_store);
 
   Status Release(const ObjectID &object_id);
 
@@ -141,8 +133,7 @@ class Impl : public std::enable_shared_from_this<Impl> {
 
   /// Helper method to read and process the reply of a create request.
   Status HandleCreateReply(const ObjectID &object_id, const uint8_t *metadata,
-                           uint64_t *retry_with_request_id,
-                           std::shared_ptr<Buffer> *data);
+                           std::shared_ptr<Buffer> *data, PlasmaObject &object);
 
  private:
   /// Check if store_fd has already been received from the store. If yes,
@@ -163,7 +154,12 @@ class Impl : public std::enable_shared_from_this<Impl> {
   Status GetBuffers(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
                     const std::function<std::shared_ptr<Buffer>(
                         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
-                    ObjectBuffer *object_buffers, bool is_from_worker);
+                    ObjectBuffer *object_buffers, bool is_from_worker,
+                    const std::function<Status(std::vector<MEMFD_TYPE> &store_fds,
+                                               std::vector<int64_t> &mmap_sizes,
+                                               std::vector<ObjectID> &received_object_ids,
+                                               std::vector<PlasmaObject> &object_data)>
+                        get_from_store);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val);
 
@@ -265,37 +261,15 @@ void Impl::IncrementObjectCount(const ObjectID &object_id, PlasmaObject *object,
 }
 
 Status Impl::HandleCreateReply(const ObjectID &object_id, const uint8_t *metadata,
-                               uint64_t *retry_with_request_id,
-                               std::shared_ptr<Buffer> *data) {
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
-  ObjectID id;
-  PlasmaObject object;
-  MEMFD_TYPE store_fd;
-  int64_t mmap_size;
-
-  if (retry_with_request_id) {
-    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id,
-                                      retry_with_request_id, &object, &store_fd,
-                                      &mmap_size));
-    if (*retry_with_request_id > 0) {
-      // The client should retry the request.
-      return Status::OK();
-    }
-  } else {
-    uint64_t unused = 0;
-    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
-                                      &store_fd, &mmap_size));
-    RAY_CHECK(unused == 0);
-  }
-
+                               std::shared_ptr<Buffer> *data, PlasmaObject &object) {
   // If the CreateReply included an error, then the store will not send a file
   // descriptor.
   if (object.device_num == 0) {
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
-        shared_from_this(), GetStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
+        shared_from_this(),
+        GetStoreFdAndMmap(object.store_fd, object.mmap_size) + object.data_offset,
         object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
@@ -320,34 +294,16 @@ Status Impl::HandleCreateReply(const ObjectID &object_id, const uint8_t *metadat
   return Status::OK();
 }
 
-Status Impl::RetryCreate(const ObjectID &object_id, uint64_t request_id,
-                         const uint8_t *metadata, uint64_t *retry_with_request_id,
-                         std::shared_ptr<Buffer> *data) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RAY_RETURN_NOT_OK(SendCreateRetryRequest(store_conn_, object_id, request_id));
-  return HandleCreateReply(object_id, metadata, retry_with_request_id, data);
-}
-
-Status Impl::TryCreateImmediately(const ObjectID &object_id,
-                                  const ray::rpc::Address &owner_address,
-                                  int64_t data_size, const uint8_t *metadata,
-                                  int64_t metadata_size, std::shared_ptr<Buffer> *data,
-                                  fb::ObjectSource source, int device_num) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
-                 << data_size << " and metadata size " << metadata_size;
-  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
-                                      metadata_size, source, device_num,
-                                      /*try_immediately=*/true));
-  return HandleCreateReply(object_id, metadata, nullptr, data);
-}
-
 Status Impl::GetBuffers(
     const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
     const std::function<std::shared_ptr<Buffer>(
         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
-    ObjectBuffer *object_buffers, bool is_from_worker) {
+    ObjectBuffer *object_buffers, bool is_from_worker,
+    const std::function<Status(std::vector<MEMFD_TYPE> &store_fds,
+                               std::vector<int64_t> &mmap_sizes,
+                               std::vector<ObjectID> &received_object_ids,
+                               std::vector<PlasmaObject> &object_data)>
+        get_from_store) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -392,19 +348,12 @@ Status Impl::GetBuffers(
     return Status::OK();
   }
 
-  // If we get here, then the objects aren't all currently in use by this
-  // client, so we need to send a request to the plasma store.
-  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms,
-                                   is_from_worker));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
-  std::vector<ObjectID> received_object_ids(num_objects);
-  std::vector<PlasmaObject> object_data(num_objects);
-  PlasmaObject *object;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(), received_object_ids.data(),
-                                 object_data.data(), num_objects, store_fds, mmap_sizes));
+  std::vector<ObjectID> received_object_ids;
+  std::vector<PlasmaObject> object_data(num_objects);
+  RAY_RETURN_NOT_OK(
+      get_from_store(store_fds, mmap_sizes, received_object_ids, object_data));
 
   // We mmap all of the file descriptors here so that we can avoid look them up
   // in the subsequent loop based on just the store file descriptor and without
@@ -413,6 +362,7 @@ Status Impl::GetBuffers(
     GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
   }
 
+  PlasmaObject *object;
   for (int64_t i = 0; i < num_objects; ++i) {
     RAY_DCHECK(received_object_ids[i] == object_ids[i]);
     object = &object_data[i];
@@ -456,7 +406,12 @@ Status Impl::GetBuffers(
 }
 
 Status Impl::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                 std::vector<ObjectBuffer> *out, bool is_from_worker) {
+                 std::vector<ObjectBuffer> *out, bool is_from_worker,
+                 const std::function<Status(std::vector<MEMFD_TYPE> &store_fds,
+                                            std::vector<int64_t> &mmap_sizes,
+                                            std::vector<ObjectID> &received_object_ids,
+                                            std::vector<PlasmaObject> &object_data)>
+                     get_from_store) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   const auto wrap_buffer = [=](const ObjectID &object_id,
@@ -466,7 +421,7 @@ Status Impl::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
   return GetBuffers(&object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0],
-                    is_from_worker);
+                    is_from_worker, get_from_store);
 }
 
 Status Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -686,8 +641,7 @@ Status RemotePlasmaClient::CreateAndSpillIfNeeded(
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
-  Status status =
-      impl_->HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
+  Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
 
   while (retry_with_request_id > 0) {
     guard.unlock();
@@ -697,12 +651,10 @@ Status RemotePlasmaClient::CreateAndSpillIfNeeded(
     guard.lock();
     RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
                    << retry_with_request_id;
-    // status = RetryCreate(object_id, retry_with_request_id, metadata,
-    //                      &retry_with_request_id, data);
     if (!SendCreateRetryRequest(store_conn_, object_id, retry_with_request_id).ok()) {
       continue;
     }
-    impl_->HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
+    HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
   }
 
   return status;
@@ -712,15 +664,38 @@ Status RemotePlasmaClient::TryCreateImmediately(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     fb::ObjectSource source, int device_num) {
-  return impl_->TryCreateImmediately(object_id, owner_address, data_size, metadata,
-                                     metadata_size, data, source, device_num);
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+
+  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
+                 << data_size << " and metadata size " << metadata_size;
+  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
+                                      metadata_size, source, device_num,
+                                      /*try_immediately=*/true));
+  return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 
 Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                                int64_t timeout_ms,
                                std::vector<ObjectBuffer> *object_buffers,
                                bool is_from_worker) {
-  return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+  return impl_->Get(
+      object_ids, timeout_ms, object_buffers, is_from_worker,
+      [&](std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
+          std::vector<ObjectID> &received_object_ids,
+          std::vector<PlasmaObject> &object_data) {
+        // If we get here, then the objects aren't all currently in use by this
+        // client, so we need to send a request to the plasma store.
+        const size_t num_objects = object_ids.size();
+        RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects,
+                                         timeout_ms, is_from_worker));
+        std::vector<uint8_t> buffer;
+        RAY_RETURN_NOT_OK(
+            PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
+        RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(),
+                                       received_object_ids.data(), object_data.data(),
+                                       num_objects, store_fds, mmap_sizes));
+        return Status::OK();
+      });
 }
 
 Status RemotePlasmaClient::Release(const ObjectID &object_id) {
@@ -759,6 +734,36 @@ bool RemotePlasmaClient::IsInUse(const ObjectID &object_id) {
   return impl_->IsInUse(object_id);
 }
 
+Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
+                                             const uint8_t *metadata,
+                                             uint64_t *retry_with_request_id,
+                                             std::shared_ptr<Buffer> *data) {
+  std::vector<uint8_t> buffer;
+  RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
+  ObjectID id;
+  PlasmaObject object;
+  MEMFD_TYPE store_fd;
+  int64_t mmap_size;
+
+  if (retry_with_request_id) {
+    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id,
+                                      retry_with_request_id, &object, &store_fd,
+                                      &mmap_size));
+    if (*retry_with_request_id > 0) {
+      // The client should retry the request.
+      return Status::OK();
+    }
+  } else {
+    uint64_t unused = 0;
+    RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
+                                      &store_fd, &mmap_size));
+    RAY_CHECK(unused == 0);
+  }
+
+  impl_->HandleCreateReply(object_id, metadata, data, object);
+  return Status::OK();
+}
+
 PlasmaClient::PlasmaClient()
     : plasma_store_(plasma::plasma_store_runner->GetPlasmaStore()),
       impl_(std::make_shared<Impl>(nullptr)) {}
@@ -769,6 +774,36 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     plasma::flatbuf::ObjectSource source, int device_num) {
+  /// TODO: Using TryCreateImmediately
+  uint64_t req_id;
+  ray::ObjectInfo object_info;
+  object_info.data_size = data_size;
+  object_info.metadata_size = metadata_size;
+  object_info.object_id = object_id;
+  object_info.owner_raylet_id = NodeID::FromBinary(owner_address.raylet_id());
+  object_info.owner_ip_address = owner_address.ip_address();
+  object_info.owner_port = owner_address.port();
+  object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  plasma_store_.ExecuteInStoreThread([&]() {
+    return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size, true,
+                                      req_id, object_info, source, device_num);
+  });
+  PlasmaObject result = {};
+  PlasmaError error;
+  bool finish = plasma_store_.TryGetObject(req_id, &result, &error);
+
+  while (!finish) {
+    // TODO(sang): Consider using exponential backoff here.
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
+    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
+                   << req_id;
+    plasma_store_.ExecuteInStoreThread([&]() {
+      return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size,
+                                        true, req_id, object_info, source, device_num);
+    });
+    finish = plasma_store_.TryGetObject(req_id, &result, &error);
+  }
   return Status::OK();
 }
 
@@ -785,18 +820,34 @@ Status PlasmaClient::TryCreateImmediately(
   object_info.owner_ip_address = owner_address.ip_address();
   object_info.owner_port = owner_address.port();
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  plasma_store_.ExecuteInStoreThread([&]() {
+  auto result = plasma_store_.ExecuteInStoreThread([&]() {
     return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size, true,
                                       req_id, object_info, source, device_num);
   });
+  PlasmaObject &object = result.first;
 
-  impl_->HandleCreateReply(object_id, metadata, nullptr, data);
+  impl_->HandleCreateReply(object_id, metadata, data, object);
   return Status::OK();
 }
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
-  return Status::OK();
+  return impl_->Get(
+      object_ids, timeout_ms, object_buffers, is_from_worker,
+      [&](std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
+          std::vector<ObjectID> &received_object_ids,
+          std::vector<PlasmaObject> &object_data) {
+        std::promise<void> get_return;
+        plasma_store_.ExecuteInStoreThread([&]() {
+          return plasma_store_.GetObjects(
+              nullptr, object_ids, timeout_ms, is_from_worker,
+              [&](const std::shared_ptr<GetRequest> &get_request,
+                  std::vector<MEMFD_TYPE> &store_fds,
+                  std::vector<int64_t> &mmap_sizes) { get_return.set_value(); });
+        });
+        get_return.get_future().get();
+        return Status::OK();
+      });
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) { return Status::OK(); }

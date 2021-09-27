@@ -208,30 +208,37 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
       }
     }
   }
-  // Send the get reply to the client.
-  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client),
-                          &get_request->object_ids[0], get_request->objects,
-                          get_request->object_ids.size(), store_fds, mmap_sizes);
-  // If we successfully sent the get reply message to the client, then also send
-  // the file descriptors.
-  if (s.ok()) {
-    // Send all of the file descriptors for the present objects.
-    for (MEMFD_TYPE store_fd : store_fds) {
-      Status send_fd_status = get_request->client->SendFd(store_fd);
-      if (!send_fd_status.ok()) {
-        RAY_LOG(ERROR) << "Failed to send mmap results to client on fd "
-                       << get_request->client;
-      }
-    }
-  } else {
-    RAY_LOG(ERROR) << "Failed to send Get reply to client on fd " << get_request->client;
-  }
+
+  get_request->all_objects_satisfied_callback(get_request, store_fds, mmap_sizes);
 }
 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms, bool is_from_worker) {
-  get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
+  get_request_queue_.AddRequest(
+      client, object_ids, timeout_ms, is_from_worker,
+      [this](const std::shared_ptr<GetRequest> &get_request,
+             std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes) {
+        // Send the get reply to the client.
+        Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client),
+                                &get_request->object_ids[0], get_request->objects,
+                                get_request->object_ids.size(), store_fds, mmap_sizes);
+        // If we successfully sent the get reply message to the client, then also send
+        // the file descriptors.
+        if (s.ok()) {
+          // Send all of the file descriptors for the present objects.
+          for (MEMFD_TYPE store_fd : store_fds) {
+            Status send_fd_status = get_request->client->SendFd(store_fd);
+            if (!send_fd_status.ok()) {
+              RAY_LOG(ERROR) << "Failed to send mmap results to client on fd "
+                             << get_request->client;
+            }
+          }
+        } else {
+          RAY_LOG(ERROR) << "Failed to send Get reply to client on fd "
+                         << get_request->client;
+        }
+      });
 }
 
 int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
@@ -344,10 +351,8 @@ std::pair<PlasmaObject, PlasmaError> PlasmaStore::CreateObject(
   };
 
   if (immediately) {
-    auto result_error =
-        create_request_queue_.TryRequestImmediately(object_id, handle_create,
-
-                                                    object_size);
+    auto result_error = create_request_queue_.TryRequestImmediately(
+        object_id, handle_create, object_size);
     return result_error;
   }
 
@@ -517,7 +522,7 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
                                       const ObjectID &object_id, uint64_t req_id) {
   PlasmaObject result = {};
   PlasmaError error;
-  bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
+  bool finished = TryGetObject(req_id, &result, &error);
   if (finished) {
     RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
     if (SendCreateReply(client, object_id, result, error).ok() &&
@@ -527,6 +532,11 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
+}
+
+bool PlasmaStore::TryGetObject(uint64_t req_id, PlasmaObject *result,
+                               PlasmaError *error) {
+  return create_request_queue_.GetRequestResult(req_id, result, error);
 }
 
 int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }
@@ -561,6 +571,14 @@ std::string PlasmaStore::GetDebugDump() const {
          << num_pending_bytes / 1024 / 1024 << "MB\n";
   object_lifecycle_mgr_.GetDebugDump(buffer);
   return buffer.str();
+}
+
+void PlasmaStore::GetObjects(const std::shared_ptr<Client> &client,
+                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             bool is_from_worker,
+                             RequestFinishCallback all_objects_callback) {
+  get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker,
+                                all_objects_callback);
 }
 
 }  // namespace plasma

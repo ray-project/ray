@@ -25,12 +25,16 @@ using ObjectReadyCallback = std::function<void(
     const ObjectID &object_id, const std::shared_ptr<GetRequest> &get_request)>;
 using AllObjectReadyCallback =
     std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
+using RequestFinishCallback = std::function<void(
+    const std::shared_ptr<GetRequest> &get_request, std::vector<MEMFD_TYPE> &store_fds,
+    std::vector<int64_t> &mmap_sizes)>;
 
 struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker,
-             int64_t num_unique_objects_to_wait_for);
+             int64_t num_unique_objects_to_wait_for,
+             RequestFinishCallback all_objects_callback);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -46,6 +50,7 @@ struct GetRequest {
   /// Whether or not the request comes from the core worker. It is used to track the size
   /// of total objects that are consumed by core worker.
   const bool is_from_worker;
+  RequestFinishCallback all_objects_satisfied_callback;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout);
@@ -90,7 +95,7 @@ class GetRequestQueue {
   /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                  bool is_from_worker);
+                  bool is_from_worker, RequestFinishCallback all_objects_callback);
 
   /// Remove all of the GetRequests for a given client.
   ///
