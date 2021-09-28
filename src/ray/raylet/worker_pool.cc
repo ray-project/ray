@@ -999,7 +999,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
-            [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
+            [start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
@@ -1056,7 +1056,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
-            [this, start_worker_process_fn, callback, &state, task_spec](
+            [start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, {}, false,
