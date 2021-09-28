@@ -17,6 +17,7 @@ namespace gcs {
 
 class MockGcsNodeManager : public GcsNodeManager {
  public:
+  MockGcsNodeManager() : GcsNodeManager(nullptr, nullptr) {}
   MOCK_METHOD(void, HandleRegisterNode,
               (const rpc::RegisterNodeRequest &request, rpc::RegisterNodeReply *reply,
                rpc::SendReplyCallback send_reply_callback),

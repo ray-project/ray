@@ -7,8 +7,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
-                    overload)
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
 from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, FastAPI
@@ -312,27 +311,16 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/http-servehandle.html#sync-and-async-handles")
 
-        if endpoint_name in all_endpoints:
-            this_endpoint = all_endpoints[endpoint_name]
-            python_methods: List[str] = this_endpoint["python_methods"]
-        else:
-            # This can happen in the missing_ok=True case.
-            # handle.method_name.remote won't work and user must
-            # use the legacy handle.options(method).remote().
-            python_methods: List[str] = []
-
         if sync:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 

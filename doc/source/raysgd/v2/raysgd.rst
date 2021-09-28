@@ -5,6 +5,8 @@ RaySGD: Deep Learning on Ray
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+
 RaySGD is a lightweight library for distributed deep learning, allowing you
 to scale up and speed up training for your deep learning models.
 
@@ -20,7 +22,6 @@ The main features are:
   future Ray releases. If you encounter any bugs, please file an
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
-
 
 Intro to RaySGD
 ---------------
@@ -146,12 +147,16 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.util.sgd.v2 import Trainer
+        from ray.sgd import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
         results = trainer.run(train_func_distributed)
         trainer.shutdown()
+
+
+    See :ref:`sgd-porting-code` for a more comprehensive example.
+
 
   .. group-tab:: TensorFlow
 
@@ -242,12 +247,15 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.util.sgd.v2 import Trainer
+        from ray.sgd import Trainer
 
         trainer = Trainer(backend="tensorflow", num_workers=4)
         trainer.start()
         results = trainer.run(train_func_distributed)
         trainer.shutdown()
+
+
+    See :ref:`sgd-porting-code` for a more comprehensive example.
 
 
 **Next steps:** Check out the :ref:`User Guide <sgd-user-guide>`!
