@@ -3,6 +3,9 @@
 import copy
 import logging
 import math
+# use cloudpickle instead of pickle to make BOHB obj
+# pickleable
+import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -327,3 +330,13 @@ class TuneBOHB(Searcher):
             cs.add_hyperparameter(value)
 
         return cs
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            cloudpickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = cloudpickle.load(inputFile)
+        self.__dict__.update(save_object)

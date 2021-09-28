@@ -1155,6 +1155,10 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         return ArrowTensorArray
 
+    def __str__(self):
+        return "<ArrowTensorType: shape={}, dtype={}>".format(
+            self.shape, self.storage_type.value_type)
+
 
 @PublicAPI(stability="beta")
 class ArrowTensorArray(pa.ExtensionArray):
