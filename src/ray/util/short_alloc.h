@@ -25,7 +25,6 @@ class arena {
  public:
   ~arena() { ptr_ = nullptr; }
   arena() noexcept : ptr_(buf_) {}
-  arena(const arena &) = delete;
   arena &operator=(const arena &) = delete;
 
   template <std::size_t ReqAlign>
