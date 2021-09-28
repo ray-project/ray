@@ -414,7 +414,6 @@ cc_library(
         ],
     ) + [
         "src/ray/raylet/scheduling/cluster_resource_data.cc",
-        "src/ray/raylet/scheduling/fixed_point.cc",
         "src/ray/raylet/scheduling/scheduling_ids.cc",
     ],
     hdrs = glob(
