@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 import yaml
 
 import ray
@@ -24,11 +25,16 @@ class RuntimeEnvDict:
     """Parses and validates the runtime env dictionary from the user.
 
     Attributes:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or zip file.
+        working_dir (Path | str): Specifies the working directory of the
+            worker. This can be
+                - A local directory
+                - A zip file
+                - A s3 bucket url that contains zipped working_dir files
             Examples:
                 "."  # cwd
                 "local_project.zip"  # archive is unpacked into directory
+                "s3://bucket/local_project.zip" # downloaded then unpacked
+                                                # into directory
         py_modules (List[Path]): Similar to working_dir, but specifies python
             modules to add to the `sys.path`.
             Examples:
@@ -74,7 +80,7 @@ class RuntimeEnvDict:
 
         working_dir = self._handle_working_dir(runtime_env_json, working_dir)
         self._handle_conda(runtime_env_json, working_dir)
-        self._handle_pip(runtime_env_json)
+        self._handle_pip(runtime_env_json, working_dir)
 
         if "uris" in runtime_env_json:
             self._dict["uris"] = runtime_env_json["uris"]
@@ -119,6 +125,9 @@ class RuntimeEnvDict:
             if not isinstance(self._dict["working_dir"], str):
                 raise TypeError("`working_dir` must be a string. Type "
                                 f"{type(self._dict['working_dir'])} received.")
+            parsed = urlparse(self._dict["working_dir"])
+            # parsed.
+
             working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
@@ -217,6 +226,15 @@ class RuntimeEnvDict:
 
     def set_uris(self, uris):
         self._dict["uris"] = uris
+
+    def get(self, key: str, default=None):
+        return self._dict.get(key, default)
+
+    def __getitem__(self, key: str):
+        return self._dict.get(key)
+
+    def __repr__(self):
+        return f"RuntimeEnvDict({self._dict})"
 
 
 def override_task_or_actor_runtime_env(

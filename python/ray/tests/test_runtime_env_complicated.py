@@ -467,7 +467,7 @@ def test_conda_input_filepath(use_working_dir, tmp_path):
     else:
         runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
 
-    output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
+    output_conda_dict = runtime_env_dict.get("conda")
     assert output_conda_dict == conda_dict
 
 

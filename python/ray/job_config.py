@@ -64,7 +64,7 @@ class JobConfig:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
                 runtime_env)
             self.worker_env.update(
-                self._parsed_runtime_env.get_parsed_dict().get("env_vars")
+                self._parsed_runtime_env.get("env_vars")
                 or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
