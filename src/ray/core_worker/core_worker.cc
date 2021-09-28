@@ -933,17 +933,25 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
+  bool should_shutdown = false;
   // When running worker process in container, the worker parent process is not raylet.
   // So we add RAY_RAYLET_PID enviroment to ray worker process.
   if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
     auto pid = static_cast<pid_t>(std::stoi(env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
-      Shutdown();
+      should_shutdown = true;
     }
   } else if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
-    Shutdown();
+    should_shutdown = true;
+  }
+  if (should_shutdown) {
+    if (options_.worker_type == WorkerType::WORKER) {
+      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
+    } else {
+      Shutdown();
+    }
   }
 }
 
