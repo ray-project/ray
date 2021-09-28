@@ -770,12 +770,13 @@ cannot fit into a single training function to be executed in one-shot.
 
         def train_func(config):
             for _ in config["epochs"]:
-                metrics = train()
-                metrics = validate(...)
-                sgd.report(**metrics)
+                sgd.report(epoch=i)
             return model
 
-        sgd_iterator = trainer.run_generator(train_func, config=config)
+        sgd_iterator = trainer.run_generator(train_func, config={"epochs": 3})
+
+        def do_stuff(worker_results):
+            print(worker_results[0])
 
         for result in sgd_iterator:
             do_stuff(result) # Perform custom logic on the intermediate results.
@@ -798,13 +799,17 @@ Stateful Class API
 ~~~~~~~~~~~~~~~~~~
 Ray SGD also provides a lower-level API for distributed execution of a stateful class, rather than just a training function.
 This is useful if you want to provide your own class for training and have more control over execution, but still want to use Ray SGD
-to setup the appropriate backend configurations (PyTorch, Tensorflow, Horovod).
+to setup the appropriate backend configurations (PyTorch, Tensorflow, Horovod), for example if you are building a library on top
+of Ray SGD.
 
 .. code-block:: python
 
-        class Trainer:
+        from ray.sgd import Trainer
+
+        class MyTrainingClass:
             def __init__(self, config):
                 self.config = config
+
 
             def train_epoch(self):
                 ...
@@ -813,7 +818,7 @@ to setup the appropriate backend configurations (PyTorch, Tensorflow, Horovod).
         config = {"lr": 0.1}
 
         trainer = Trainer(num_workers=2, backend="torch")
-        workers = trainer.to_worker_group(train_cls=Trainer, config=config)
+        workers = trainer.to_worker_group(train_cls=MyTrainingClass, config=config)
         futures = [w.train_epoch.remote() for w in workers]
         assert ray.get(futures) == [1, 1]
         assert ray.get(workers[0].train_epoch.remote()) == 1
