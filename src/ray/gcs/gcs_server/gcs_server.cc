@@ -252,18 +252,20 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
-    gcs_actor_scheduler_ = std::make_shared<GcsBasedActorScheduler>(
+    gcs_actor_scheduler_ = std::make_unique<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
         schedule_success_handler, raylet_client_pool_, client_factory);
   } else {
-    gcs_actor_scheduler_ = std::make_shared<RayletBasedActorScheduler>(
+    gcs_actor_scheduler_ = std::make_unique<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
         client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      gcs_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      static_cast<std::shared_ptr<GcsActorSchedulerInterface>>(
+          gcs_actor_scheduler_.get()),
+      gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -484,16 +486,18 @@ void GcsServer::InstallEventListeners() {
       });
     });
 
-    auto gcs_actor_scheduler =
-        std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
-    if (gcs_actor_scheduler) {
-      gcs_actor_scheduler->AddResourcesChangedListener([this] {
-        bool posted = gcs_actor_manager_->GetSchedulePendingActorsPosted();
-        if (!posted) {
-          gcs_actor_manager_->SetSchedulePendingActorsPosted(true);
-          main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
-        }
-      });
+    {
+      GcsBasedActorScheduler *gcs_actor_scheduler =
+          static_cast<GcsBasedActorScheduler *>(gcs_actor_scheduler_.get());
+      if (gcs_actor_scheduler) {
+        gcs_actor_scheduler->AddResourcesChangedListener([this] {
+          bool posted = gcs_actor_manager_->GetSchedulePendingActorsPosted();
+          if (!posted) {
+            gcs_actor_manager_->SetSchedulePendingActorsPosted(true);
+            main_service_.post([this] { gcs_actor_manager_->SchedulePendingActors(); });
+          }
+        });
+      }
     }
   }
 }
