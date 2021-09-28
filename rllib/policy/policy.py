@@ -187,7 +187,6 @@ class Policy(metaclass=ABCMeta):
             info: dict = None,
             input_dict: Optional[SampleBatch] = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_action: Optional[bool] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             # Kwars placeholder for future compatibility.

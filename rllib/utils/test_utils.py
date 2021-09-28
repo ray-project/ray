@@ -6,6 +6,7 @@ import numpy as np
 import random
 import re
 import time
+import tree  # pip install dm_tree
 from typing import Any, Dict, List
 import yaml
 
@@ -338,28 +339,34 @@ def check_compute_single_action(trainer,
         reward_in = 1.0 if include_prev_action_reward else None
 
         if method_to_test == "input_dict":
-            input_dict = {SampleBatch.OBS: [obs]}
-            if include_prev_action_reward:
-                input_dict[SampleBatch.PREV_ACTIONS] = [action_in]
-                input_dict[SampleBatch.PREV_REWARDS] = [reward_in]
-            action = what.compute_actions_from_input_dict(
-                input_dict,
-                explore=explore,
-                timestep=timestep,
-                unsquash_action=unsquash,
-                clip_action=clip,
-                **call_kwargs)
+            assert what is pol
 
             input_dict = {SampleBatch.OBS: obs}
             if include_prev_action_reward:
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
-            action2 = what.compute_single_action(
-                input_dict,
+            if state_in:
+                for i, s in enumerate(state_in):
+                    input_dict[f"state_in_{i}"] = s
+            input_dict = tree.map_structure(lambda s: np.expand_dims(s, 0),
+                                            input_dict)
+            action = pol.compute_actions_from_input_dict(
+                input_dict=input_dict,
                 explore=explore,
                 timestep=timestep,
-                unsquash_action=unsquash,
-                clip_action=clip,
+                **call_kwargs)
+            # Unbatch everything to be able to compare against single
+            # action below.
+            action = tree.map_structure(lambda s: s[0], action)
+
+            input_dict = {SampleBatch.OBS: obs}
+            if include_prev_action_reward:
+                input_dict[SampleBatch.PREV_ACTIONS] = action_in
+                input_dict[SampleBatch.PREV_REWARDS] = reward_in
+            action2 = pol.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
                 **call_kwargs)
             # Make sure these are the same.
             check(action, action2)
@@ -419,7 +426,7 @@ def check_compute_single_action(trainer,
             obs_space = pol.observation_space
 
         for method_to_test in ["single"] + \
-                (["input_dict"] if what is trainer else []):
+                (["input_dict"] if what is pol else []):
             for explore in [True, False]:
                 for full_fetch in ([False, True]
                                    if what is trainer else [False]):
