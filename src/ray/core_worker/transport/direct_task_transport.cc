@@ -20,7 +20,6 @@ namespace ray {
 namespace core {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
@@ -47,6 +46,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               // Copy the actor's reply to the GCS for ref counting purposes.
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              RAY_LOG(ERROR) << "Completing pending task: " << task_id;
               task_finisher_->CompletePendingTask(task_id, push_task_reply,
                                                   reply.actor_address());
             } else {
@@ -75,8 +75,28 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil(),
             task_spec.GetRuntimeEnvHash());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+
+        {
+          std::stringstream stream;
+          for (const auto &task_spec : scheduling_key_entry.task_queue) {
+            stream << "\t" << task_spec.TaskId() << "\n";
+          }
+          RAY_LOG(ERROR) << "[BEFORE] Submitted task " << task_spec.TaskId()
+                         << " queue is now:\n"
+                         << stream.str();
+        }
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
+
+        {
+          std::stringstream stream;
+          for (const auto &task_spec : scheduling_key_entry.task_queue) {
+            stream << "\t" << task_spec.TaskId() << "\n";
+          }
+          RAY_LOG(ERROR) << "[AFTER] Submitted task " << task_spec.TaskId()
+                         << " queue is now:\n"
+                         << stream.str();
+        }
 
         if (!scheduling_key_entry.AllPipelinesToWorkersFull(
                 max_tasks_in_flight_per_worker_)) {
@@ -303,7 +323,7 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
           // Add the task to the queue
-          RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
+          RAY_LOG(ERROR) << "Adding stolen task " << stolen_task_spec.TaskId()
                          << " back to the queue (of current size="
                          << scheduling_key_entry.task_queue.size() << ")!";
           scheduling_key_entry.task_queue.push_front(stolen_task_spec);
@@ -341,6 +361,11 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     while (!current_queue.empty() &&
            !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
       auto task_spec = current_queue.front();
+      current_queue.pop_front();
+      RAY_CHECK(current_queue.empty() ||
+                current_queue.front().TaskId() != task_spec.TaskId())
+          << "Duplicate id: " << task_spec.TaskId();
+
       // Increment the number of tasks in flight to the worker
       lease_entry.tasks_in_flight++;
 
@@ -351,8 +376,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       scheduling_key_entry.total_tasks_in_flight++;
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
+      RAY_LOG(ERROR) << "Pushing task: " << task_spec.TaskId();
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-      current_queue.pop_front();
     }
     // If stealing is not an option, we can cancel the request for new worker leases
     if (max_tasks_in_flight_per_worker_ == 1) {
@@ -571,6 +596,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
+  RAY_LOG(ERROR) << "Task pushed: " << task_id;
   client.PushNormalTask(
       std::move(request),
       [this, task_spec, task_id, is_actor, is_actor_creation, scheduling_key, addr,
@@ -619,11 +645,27 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          if (!task_spec.GetMessage().retry_exceptions() ||
-              !reply.is_application_level_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id)) {
+          if (!(task_spec.GetMessage().retry_exceptions() &&
+                reply.is_application_level_error())) {
+            RAY_LOG(ERROR) << "Completing pending task: " << task_id;
+            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          } else if (!task_finisher_->RetryTaskIfPossible(task_id)) {
+            RAY_LOG(ERROR) << "Completing pending task: " << task_id;
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
+          // if (
+          //     !(task_spec.GetMessage().retry_exceptions() &&
+          //     reply.is_application_level_error()) ||
+          //     !task_finisher_->RetryTaskIfPossible(task_id)) {
+          //   RAY_LOG(ERROR) << "Completing pending task: " << task_id;
+          //   task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          // }
+          // if (!task_spec.GetMessage().retry_exceptions() ||
+          //     !reply.is_application_level_error() ||
+          //     !task_finisher_->RetryTaskIfPossible(task_id)) {
+          //   RAY_LOG(ERROR) << "Completing pending task: " << task_id;
+          //   task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          // }
         }
       });
 }

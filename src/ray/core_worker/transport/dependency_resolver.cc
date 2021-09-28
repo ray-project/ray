@@ -119,7 +119,8 @@ void LocalDependencyResolver::ResolveDependencies(
       {
         absl::MutexLock lock(&mu_);
         state->local_dependencies[obj_id] = std::move(obj);
-        if (--state->obj_dependencies_remaining == 0) {
+        if (--state->obj_dependencies_remaining == 0 &&
+            state->actor_dependencies_remaining == 0) {
           InlineDependencies(state->local_dependencies, state->task,
                              &inlined_dependency_ids, &contained_ids);
           if (state->actor_dependencies_remaining == 0) {
@@ -143,7 +144,8 @@ void LocalDependencyResolver::ResolveDependencies(
           if (!status.ok()) {
             state->status = status;
           }
-          if (--state->actor_dependencies_remaining == 0) {
+          if (--state->actor_dependencies_remaining == 0 &&
+              state->obj_dependencies_remaining == 0) {
             on_complete(state->status);
           }
         });

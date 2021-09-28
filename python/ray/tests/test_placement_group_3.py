@@ -456,7 +456,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def ready(self):
             pass
@@ -470,6 +470,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
     def is_actor_created_number_correct():
         ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
+        print("is actor ready?", len(ready), expected_created_num)
         return len(ready) == expected_created_num
 
     def is_pg_created_number_correct():
@@ -491,6 +492,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
         wait_for_condition(is_pg_created_number_correct, timeout=10)
         # Make sure the node add event will cause a waiting actor
         # to create successfully in time.
+        print("waiting for actors...")
         wait_for_condition(
             is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
 
