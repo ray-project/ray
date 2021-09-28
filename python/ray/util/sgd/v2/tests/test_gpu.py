@@ -22,10 +22,7 @@ def test_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    trainer = Trainer(
-        "tensorflow",
-        num_workers=num_workers,
-        use_gpu=True)
+    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer.start()
     results = trainer.run(tensorflow_mnist_train_func, config)
@@ -47,10 +44,7 @@ def test_torch_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    trainer = Trainer(
-        "torch",
-        num_workers=num_workers,
-        use_gpu=True)
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer.start()
     results = trainer.run(fashion_mnist_train_func, config)
@@ -66,10 +60,7 @@ def test_torch_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
 def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
     num_workers = 2
     num_epochs = 2
-    trainer = Trainer(
-        "horovod",
-        num_workers,
-        use_gpu=True)
+    trainer = Trainer("horovod", num_workers, use_gpu=True)
     trainer.start()
     results = trainer.run(
         horovod_torch_train_func,
@@ -86,17 +77,11 @@ def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
 
 
 def test_tune_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
-    torch_fashion_mnist(
-        num_workers=2,
-        use_gpu=True,
-        num_samples=1)
+    torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 def test_tune_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
-    tune_tensorflow_mnist(
-        num_workers=2,
-        use_gpu=True,
-        num_samples=1)
+    tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 if __name__ == "__main__":
