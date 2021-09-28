@@ -1354,8 +1354,7 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     runtime_env_dict,
-                    runtime_env_uris,
-                    override_environment_variables
+                    runtime_env_uris
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
