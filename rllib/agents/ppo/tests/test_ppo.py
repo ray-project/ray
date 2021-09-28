@@ -313,6 +313,12 @@ class TestPPO(unittest.TestCase):
                 check(pl, np.mean(-pg_loss))
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
+            elif fw == "torch":
+                check(policy.model.tower_stats["mean_kl_loss"], kl)
+                check(policy.model.tower_stats["mean_entropy"], entropy)
+                check(policy.model.tower_stats["mean_policy_loss"], np.mean(-pg_loss))
+                check(policy.model.tower_stats["mean_vf_loss"], np.mean(vf_loss), decimals=4)
+                check(policy.model.tower_stats["total_loss"], overall_loss, decimals=4)
             else:
                 check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)

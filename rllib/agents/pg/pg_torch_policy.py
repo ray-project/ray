@@ -44,9 +44,12 @@ def pg_torch_loss(
     # L = -E[ log(pi(a|s)) * A]
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
-    # Save the loss in the tower for the stats_fn below.
+    # Final policy loss.
     policy_loss = -torch.mean(
         log_probs * train_batch[Postprocessing.ADVANTAGES])
+
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
     model.tower_stats["policy_loss"] = policy_loss
 
     return policy_loss
@@ -65,7 +68,8 @@ def pg_loss_stats(policy: Policy,
     """
 
     return {
-        "policy_loss": torch.mean(policy.get_tower_stats("pi_err")),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("policy_loss"))),
     }
 
 

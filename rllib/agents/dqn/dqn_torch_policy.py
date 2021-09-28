@@ -294,11 +294,12 @@ def build_q_losses(policy: Policy, model, _,
                    config["n_step"], config["num_atoms"], config["v_min"],
                    config["v_max"])
 
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.tower_stats["q_loss"] = q_loss
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
     model.tower_stats["td_error"] = q_loss.td_error
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["q_loss"] = q_loss
 
     return q_loss.loss
 
@@ -319,10 +320,11 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {}
     for stats_key in policy.model_gpu_towers[0].tower_stats[
             "q_loss"].stats.keys():
-        stats[stats_key] = torch.mean([
-            t.tower_stats["q_loss"][stats_key].to(policy.device)
-            for t in policy.model_gpu_towers
-        ])
+        stats[stats_key] = torch.mean(
+            torch.stack([
+                t.tower_stats["q_loss"][stats_key].to(policy.device)
+                for t in policy.model_gpu_towers
+            ]))
     stats["cur_lr"] = policy.cur_lr
     return stats
 

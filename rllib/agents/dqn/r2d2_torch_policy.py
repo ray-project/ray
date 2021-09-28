@@ -171,12 +171,17 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = td_error * seq_mask
         weights = weights.reshape([B, T])[:, :-1]
         total_loss = reduce_mean_valid(weights * huber_loss(td_error))
+
+        # Store values for stats function in model (tower), such that for
+        # multi-GPU, we do not override them during the parallel loss phase.
         model.tower_stats["total_loss"] = total_loss
-        model.tower_stats["td_error"] = td_error.reshape([-1])
         model.tower_stats["mean_q"] = reduce_mean_valid(q_selected)
         model.tower_stats["min_q"] = torch.min(q_selected)
         model.tower_stats["max_q"] = torch.max(q_selected)
         model.tower_stats["mean_td_error"] = reduce_mean_valid(td_error)
+        # TD-error tensor in final stats
+        # will be concatenated and retrieved for each individual batch item.
+        model.tower_stats["td_error"] = td_error.reshape([-1])
 
     return total_loss
 
@@ -241,11 +246,13 @@ def build_q_stats(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
 
     return {
         "cur_lr": policy.cur_lr,
-        "total_loss": torch.mean(policy.get_tower_stats("total_loss")),
-        "mean_q": torch.mean(policy.get_tower_stats("mean_q")),
-        "min_q": torch.mean(policy.get_tower_stats("min_q")),
-        "max_q": torch.mean(policy.get_tower_stats("max_q")),
-        "mean_td_error": torch.mean(policy.get_tower_stats("mean_td_error")),
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "mean_q": torch.mean(torch.stack(policy.get_tower_stats("mean_q"))),
+        "min_q": torch.mean(torch.stack(policy.get_tower_stats("min_q"))),
+        "max_q": torch.mean(torch.stack(policy.get_tower_stats("max_q"))),
+        "mean_td_error": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_td_error"))),
     }
 
 

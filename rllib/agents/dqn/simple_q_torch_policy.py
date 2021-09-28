@@ -112,10 +112,18 @@ def build_q_losses(policy: Policy, model, dist_class,
     td_error = q_t_selected - q_t_selected_target.detach()
     loss = torch.mean(huber_loss(td_error))
 
-    # Save TD error as an attribute for outside access.
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["loss"] = loss
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
     model.tower_stats["td_error"] = td_error
 
     return loss
+
+
+def stats_fn(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
+    return {"loss": torch.mean(torch.stack(policy.get_tower_stats("loss")))}
 
 
 def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
@@ -144,6 +152,7 @@ SimpleQTorchPolicy = build_policy_class(
     framework="torch",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    stats_fn=stats_fn,
     extra_action_out_fn=extra_action_out_fn,
     after_init=setup_late_mixins,
     make_model_and_action_dist=build_q_model_and_distribution,

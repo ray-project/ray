@@ -217,10 +217,12 @@ def apply_gradients_fn(policy: Policy, gradients: GradInfoDict) -> None:
 def build_ddpg_stats(policy: Policy,
                      batch: SampleBatch) -> Dict[str, TensorType]:
 
-    q_t = policy.get_tower_stats("q_t")
+    q_t = torch.stack(policy.get_tower_stats("q_t"))
     stats = {
-        "actor_loss": torch.mean(policy.get_tower_stats("actor_loss")),
-        "critic_loss": torch.mean(policy.get_tower_stats("critic_loss")),
+        "actor_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("actor_loss"))),
+        "critic_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("critic_loss"))),
         "mean_q": torch.mean(q_t),
         "max_q": torch.max(q_t),
         "min_q": torch.min(q_t),

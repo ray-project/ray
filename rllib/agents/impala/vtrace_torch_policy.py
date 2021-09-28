@@ -184,7 +184,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    # Store loss stats.
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
     model.tower_stats["pi_loss"] = loss.pi_loss
     model.tower_stats["vf_loss"] = loss.vf_loss
     model.tower_stats["entropy"] = loss.entropy
@@ -246,14 +247,17 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Any]:
 
     return {
         "cur_lr": policy.cur_lr,
-        "total_loss": torch.mean(policy.get_tower_stats("total_loss")),
-        "policy_loss": torch.mean(policy.get_tower_stats("pi_loss")),
-        "entropy": torch.mean(policy.get_tower_stats("mean_entropy")),
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("pi_loss"))),
+        "entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_entropy"))),
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": torch.mean(policy.get_tower_stats("vf_loss")),
+        "vf_loss": torch.mean(torch.stack(policy.get_tower_stats("vf_loss"))),
         "vf_explained_var": torch.mean(
-            policy.get_tower_stats("vf_explained_var")),
+            torch.stack(policy.get_tower_stats("vf_explained_var"))),
     }
 
 
