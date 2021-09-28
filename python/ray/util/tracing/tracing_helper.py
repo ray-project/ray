@@ -287,7 +287,11 @@ def _tracing_task_invocation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
-        assert "_ray_trace_ctx" not in kwargs
+        if kwargs is None:
+            kwargs = {}
+
+        assert "_ray_trace_ctx" not in _kwargs
+
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
         if not is_tracing_enabled() or self._is_cross_language:
