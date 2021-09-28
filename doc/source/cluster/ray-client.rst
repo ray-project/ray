@@ -99,8 +99,8 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 
    #....
 
-Connect to multiple ray clusters
---------------------------------
+Connect to multiple ray clusters (Experimental)
+-----------------------------------------------
 
 Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
 
