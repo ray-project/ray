@@ -27,7 +27,7 @@ class RequestMetadata:
     http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the backend worker.
+    # and it needs to be deserialized by the deployment worker.
     http_arg_is_pickled: bool = False
 
     def __post_init__(self):
@@ -47,10 +47,10 @@ class ReplicaSet:
 
     def __init__(
             self,
-            backend_tag,
+            deployment_tag,
             event_loop: asyncio.AbstractEventLoop,
     ):
-        self.backend_tag = backend_tag
+        self.deployment_tag = deployment_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
         self.max_concurrent_queries: int = 8
@@ -75,7 +75,7 @@ class ReplicaSet:
                 " to be assigned to a replica."),
             tag_keys=("deployment", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
-            "deployment": self.backend_tag
+            "deployment": self.deployment_tag
         })
 
     def set_max_concurrent_queries(self, deployment_config_bytes: bytes):
@@ -180,30 +180,33 @@ class Router:
     def __init__(
             self,
             controller_handle: ActorHandle,
-            backend_tag: DeploymentTag,
+            deployment_tag: DeploymentTag,
             event_loop: asyncio.BaseEventLoop = None,
     ):
-        """Router process incoming queries: choose backend, and assign replica.
+        """Router process incoming queries: choose deploymeny, and assign
+        replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(backend_tag, event_loop)
+        self._replica_set = ReplicaSet(deployment_tag, event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
             tag_keys=("deployment", ))
-        self.num_router_requests.set_default_tags({"deployment": backend_tag})
+        self.num_router_requests.set_default_tags({
+            "deployment": deployment_tag
+        })
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.DEPLOYMENT_CONFIGS, backend_tag): self.
+                (LongPollNamespace.DEPLOYMENT_CONFIGS, deployment_tag): self.
                 _replica_set.set_max_concurrent_queries,
-                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
+                (LongPollNamespace.REPLICA_HANDLES, deployment_tag): self.
                 _replica_set.update_worker_replicas,
             },
             call_in_event_loop=event_loop,

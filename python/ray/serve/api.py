@@ -189,7 +189,7 @@ class Client:
     def deploy(
             self,
             name: str,
-            backend_def: Union[Callable, Type[Callable], str],
+            deployment_def: Union[Callable, Type[Callable], str],
             *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
             config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
@@ -214,7 +214,7 @@ class Client:
             del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
-            backend_def, *init_args, ray_actor_options=ray_actor_options)
+            deployment_def, *init_args, ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
             deployment_config = DeploymentConfig.parse_obj(config)
@@ -225,8 +225,8 @@ class Client:
                 "config must be a DeploymentConfig or a dictionary.")
 
         python_methods = []
-        if inspect.isclass(backend_def):
-            for method_name, _ in inspect.getmembers(backend_def,
+        if inspect.isclass(deployment_def):
+            for method_name, _ in inspect.getmembers(deployment_def,
                                                      inspect.isfunction):
                 python_methods.append(method_name)
 
@@ -466,8 +466,8 @@ def _connect() -> Client:
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
-    If called from within a backend, this will connect to the same Serve
-    instance that the backend is running in.
+    If called from within a deployment, this will connect to the same Serve
+    instance that the deployment is running in.
     """
 
     # Initialize ray if needed.
@@ -475,7 +475,7 @@ def _connect() -> Client:
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
+    # When running inside of a deployment, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
@@ -540,7 +540,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
     Args:
         app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
-            as ingress for this backend. It can be any ASGI compatible object.
+            as ingress for this deployment. It can be any ASGI compatible
+            object.
 
     Example:
     >>> app = FastAPI()
@@ -1006,20 +1007,20 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        backend_info, route_prefix = _get_global_client().get_deployment_info(
-            name)
+        deployment_info, route_prefix = _get_global_client(
+        ).get_deployment_info(name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
         cloudpickle.loads(
-            backend_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.serialized_deployment_def),
         name,
-        backend_info.deployment_config,
-        version=backend_info.version,
-        init_args=backend_info.replica_config.init_args,
+        deployment_info.deployment_config,
+        version=deployment_info.version,
+        init_args=deployment_info.replica_config.init_args,
         route_prefix=route_prefix,
-        ray_actor_options=backend_info.replica_config.ray_actor_options,
+        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -1033,16 +1034,16 @@ def list_deployments() -> Dict[str, Deployment]:
     infos = _get_global_client().list_deployments()
 
     deployments = {}
-    for name, (backend_info, route_prefix) in infos.items():
+    for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
             cloudpickle.loads(
-                backend_info.replica_config.serialized_deployment_def),
+                deployment_info.replica_config.serialized_deployment_def),
             name,
-            backend_info.deployment_config,
-            version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
+            deployment_info.deployment_config,
+            version=deployment_info.version,
+            init_args=deployment_info.replica_config.init_args,
             route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options,
+            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 

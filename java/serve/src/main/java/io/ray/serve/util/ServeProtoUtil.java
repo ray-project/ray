@@ -51,7 +51,7 @@ public class ServeProtoUtil {
     if (builder.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
-              "Unrecognized backend language {}. Backend language must be in {}.",
+              "Unrecognized deployment language {}. Deployment language must be in {}.",
               builder.getDeploymentLanguageValue(),
               Lists.newArrayList(DeploymentLanguage.values())));
     }

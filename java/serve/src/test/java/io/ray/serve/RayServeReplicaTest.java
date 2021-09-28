@@ -40,7 +40,7 @@ public class RayServeReplicaTest {
 
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
-      ActorHandle<RayServeWrappedReplica> backendHandle =
+      ActorHandle<RayServeWrappedReplica> deploymentHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   DeploymentTag,
@@ -51,7 +51,7 @@ public class RayServeReplicaTest {
                   controllerName)
               .remote();
 
-      backendHandle.task(RayServeWrappedReplica::ready).remote();
+      deploymentHandle.task(RayServeWrappedReplica::ready).remote();
 
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId("RayServeReplicaTest");
@@ -60,7 +60,7 @@ public class RayServeReplicaTest {
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
-          backendHandle
+          deploymentHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
