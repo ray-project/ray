@@ -39,7 +39,7 @@ static inline bool IsDirSep(char ch) {
 
 /// \return The result of joining multiple path components.
 template <class... Paths>
-std::string JoinPaths(std::string base, const Paths &... components) {
+std::string JoinPaths(std::string base, const Paths &...components) {
   ((base = std::filesystem::path(base).append(components)), ...);
   return base;
 }
