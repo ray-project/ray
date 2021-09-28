@@ -42,17 +42,23 @@ This often occurs for data loading and preprocessing.
     # hi there!
     # hi there!
 
-Multi-node synchronization using ``SignalActor``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Multi-node synchronization using an Actor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When you have multiple tasks that need to wait on some condition, you can use a ``SignalActor`` to coordinate.
+When you have multiple tasks that need to wait on some condition or otherwise
+need to synchronize across tasks & actors on a cluster, you can use a central
+actor to coordinate among them. Below is an example of using a ``SignalActor``
+that wraps an ``asyncio.Event`` for basic synchronization.
 
 .. code-block:: python
 
-    # Also available via `from ray._private.test_utils import SignalActor`
-    import ray
     import asyncio
 
+    import ray
+
+    ray.init()
+
+    # We set num_cpus to zero because this actor will mostly just block on I/O.
     @ray.remote(num_cpus=0)
     class SignalActor:
         def __init__(self):
@@ -73,7 +79,6 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
         print("go!")
 
-    ray.init()
     signal = SignalActor.remote()
     tasks = [wait_and_go.remote(signal) for _ in range(4)]
     print("ready...")

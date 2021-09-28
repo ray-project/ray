@@ -318,15 +318,7 @@ class ServeController:
 
             goal_id, updating = self.backend_state_manager.deploy_backend(
                 name, backend_info)
-            backend_def = cloudpickle.loads(
-                replica_config.serialized_backend_def)
-            python_methods = []
-            if inspect.isclass(backend_def):
-                for method_name, _ in inspect.getmembers(
-                        backend_def, inspect.isfunction):
-                    python_methods.append(method_name)
-            endpoint_info = EndpointInfo(
-                route=route_prefix, python_methods=python_methods)
+            endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
             return goal_id, updating
 
