@@ -96,8 +96,8 @@ Status SharedActorInfoAccessor::AsyncSubscribe(
 }
 
 void SharedActorInfoAccessor::OnWorkerShutdown(const WorkerID &worker_id) {
-  absl::MutexLock lock(&mutex_);
   absl::MutexLock shutdown_lock(&worker_shutdown_mutex_);
+  absl::MutexLock lock(&mutex_);
   for (auto &entry : id_to_notification_callbacks_) {
     entry.second.erase(worker_id);
   }
