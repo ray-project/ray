@@ -289,7 +289,8 @@ Traceback (most recent call last):
 RuntimeError: Failed to unpickle serialized exception"""
 
     class NoPickleError(OSError):
-        def __init__(self, arg): ...
+        def __init__(self, arg):
+            pass
 
     def g(a):
         raise NoPickleError("asdf")
