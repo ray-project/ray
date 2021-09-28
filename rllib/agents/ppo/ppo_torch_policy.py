@@ -105,15 +105,14 @@ def ppo_surrogate_loss(
                                    policy.config["vf_loss_coeff"] * vf_loss -
                                    policy.entropy_coeff * curr_entropy)
 
-    # Store stats in policy for stats_fn.
-    policy._total_loss = total_loss
-    policy._mean_policy_loss = mean_policy_loss
-    policy._mean_vf_loss = mean_vf_loss
-    policy._vf_explained_var = explained_variance(
+    # Store stats in tower for stats_fn.
+    model.tower_stats["total_loss"] = total_loss
+    model.tower_stats["mean_policy_loss"] = mean_policy_loss
+    model.tower_stats["mean_vf_loss"] = mean_vf_loss
+    model.tower_stats["vf_explained_var"] = explained_variance(
         train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
-    policy._mean_entropy = mean_entropy
-    # Backward compatibility: Deprecate policy._mean_kl.
-    policy._mean_kl_loss = policy._mean_kl = mean_kl_loss
+    model.tower_stats["mean_entropy"] = mean_entropy
+    model.tower_stats["mean_kl_loss"] = mean_kl_loss
 
     return total_loss
 
@@ -132,12 +131,13 @@ def kl_and_loss_stats(policy: Policy,
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy._total_loss,
-        "policy_loss": policy._mean_policy_loss,
-        "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
-        "kl": policy._mean_kl_loss,
-        "entropy": policy._mean_entropy,
+        "total_loss": torch.mean(policy.get_tower_stats("total_loss")),
+        "policy_loss": torch.mean(policy.get_tower_stats("mean_policy_loss")),
+        "vf_loss": torch.mean(policy.get_tower_stats("mean_vf_loss")),
+        "vf_explained_var": torch.mean(
+            policy.get_tower_stats("vf_explained_var")),
+        "kl": torch.mean(policy.get_tower_stats("mean_kl_loss")),
+        "entropy": torch.mean(policy.get_tower_stats("mean_entropy")),
         "entropy_coeff": policy.entropy_coeff,
     }
 

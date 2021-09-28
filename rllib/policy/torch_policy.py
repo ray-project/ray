@@ -703,6 +703,23 @@ class TorchPolicy(Policy):
 
             self._optimizers[0].step()
 
+    @DeveloperAPI
+    def get_tower_stats(self, stats_name: str) -> TensorType:
+        """Returns list of per-tower stats, copied to this Policy's device.
+
+        Args:
+            stats_name: The name of the stats to average over (this str
+                must exist as a key inside each tower's `tower_stats` dict).
+
+        Returns:
+            The list of stats tensors of all towers, copied to this Policy's
+                device.
+        """
+        data = []
+        for tower in self.model_gpu_towers:
+            data.append(tower.tower_stats[stats_name].to(self.device))
+        return data
+
     @override(Policy)
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:

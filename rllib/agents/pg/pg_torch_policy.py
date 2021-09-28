@@ -44,11 +44,12 @@ def pg_torch_loss(
     # L = -E[ log(pi(a|s)) * A]
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
-    # Save the loss in the policy object for the stats_fn below.
-    policy.pi_err = -torch.mean(
+    # Save the loss in the tower for the stats_fn below.
+    policy_loss = -torch.mean(
         log_probs * train_batch[Postprocessing.ADVANTAGES])
+    model.tower_stats["policy_loss"] = policy_loss
 
-    return policy.pi_err
+    return policy_loss
 
 
 def pg_loss_stats(policy: Policy,
@@ -64,8 +65,7 @@ def pg_loss_stats(policy: Policy,
     """
 
     return {
-        # `pi_err` (the loss) is stored inside `pg_torch_loss()`.
-        "policy_loss": policy.pi_err.item(),
+        "policy_loss": torch.mean(policy.get_tower_stats("pi_err")),
     }
 
 

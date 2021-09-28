@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss
+from ray.rllib.utils.torch_ops import concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -112,8 +112,8 @@ def build_q_losses(policy: Policy, model, dist_class,
     td_error = q_t_selected - q_t_selected_target.detach()
     loss = torch.mean(huber_loss(td_error))
 
-    # save TD error as an attribute for outside access
-    policy.td_error = td_error
+    # Save TD error as an attribute for outside access.
+    model.tower_stats["td_error"] = td_error
 
     return loss
 
@@ -149,5 +149,5 @@ SimpleQTorchPolicy = build_policy_class(
     make_model_and_action_dist=build_q_model_and_distribution,
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
 )
