@@ -611,7 +611,6 @@ def test_object_directory_failure(ray_start_cluster):
         "object_store_memory": 75 * 1024 * 1024,
         "_system_config": {
             "worker_lease_timeout_milliseconds": 0,
-            "object_manager_pull_timeout_ms": 10000
         }
     }],
     indirect=True)
@@ -630,7 +629,7 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
     @ray.remote
     def f(x):
-        print(x)
+        print(f"timestamp={time.time()} pulled {len(x)*8} bytes")
         time.sleep(1)
         return
 
@@ -640,7 +639,6 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
     ray.get(remote_obj_creator.idle.remote())
 
     local_refs = [ray.put(np.random.rand(1 * 1024 * 1024)) for _ in range(8)]
-    print(local_refs, remote_refs)
     remote_tasks = [f.remote(x) for x in local_refs]
 
     start = time.time()

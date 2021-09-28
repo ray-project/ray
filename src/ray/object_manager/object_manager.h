@@ -56,7 +56,7 @@ struct ObjectManagerConfig {
   /// The object manager's global timer frequency.
   unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to node id lookup.
+  /// that failed.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;

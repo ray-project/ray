@@ -43,8 +43,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t redis_db_connect_wait_milliseconds() const
 
-        int object_manager_pull_timeout_ms() const
-
         int object_manager_push_timeout_ms() const
 
         uint64_t object_manager_default_chunk_size() const

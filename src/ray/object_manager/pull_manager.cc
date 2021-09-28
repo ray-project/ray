@@ -565,7 +565,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
     num_retries_total_++;
   }
 
-  // Bound the retry time at 10 * 1024 seconds.
+  // Bound the retry time at 0.1 * 1024 seconds.
   request.num_retries = std::min(request.num_retries + 1, 10);
 }
 

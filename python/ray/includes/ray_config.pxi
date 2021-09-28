@@ -73,10 +73,6 @@ cdef class Config:
         return RayConfig.instance().redis_db_connect_wait_milliseconds()
 
     @staticmethod
-    def object_manager_pull_timeout_ms():
-        return RayConfig.instance().object_manager_pull_timeout_ms()
-
-    @staticmethod
     def object_manager_push_timeout_ms():
         return RayConfig.instance().object_manager_push_timeout_ms()
 
