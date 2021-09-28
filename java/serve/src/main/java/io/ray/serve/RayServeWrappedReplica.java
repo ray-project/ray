@@ -31,7 +31,7 @@ public class RayServeWrappedReplica {
       String backendDef,
       byte[] initArgsbytes,
       byte[] backendConfigBytes,
-      String controllerName)
+      BaseActorHandle controllerHandle)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
