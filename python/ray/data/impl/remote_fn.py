@@ -13,8 +13,9 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     which means ray.remote cannot be used top-level in ray.data).
     """
     if fn not in CACHED_FUNCTIONS:
-        if ray_remote_args:
-            CACHED_FUNCTIONS[fn] = ray.remote(**ray_remote_args)(fn)
-        else:
-            CACHED_FUNCTIONS[fn] = ray.remote(fn)
+        default_ray_remote_args = {"retry_exceptions": True}
+        CACHED_FUNCTIONS[fn] = ray.remote(**{
+            **default_ray_remote_args,
+            **ray_remote_args
+        })(fn)
     return CACHED_FUNCTIONS[fn]

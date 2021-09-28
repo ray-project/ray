@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
+from typing import Any, Callable, Dict, List, Iterator, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
@@ -24,6 +24,7 @@ from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -132,7 +133,7 @@ class SyncSampler(SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            clip_rewards: bool,
+            clip_rewards: Union[bool, float],
             rollout_fragment_length: int,
             count_steps_by: str = "env_steps",
             callbacks: "DefaultCallbacks",
@@ -158,8 +159,9 @@ class SyncSampler(SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool,float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
+            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+                actual float value for +/- value clipping. False for no
+                clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -269,18 +271,18 @@ class AsyncSampler(threading.Thread, SamplerInput):
             *,
             worker: "RolloutWorker",
             env: BaseEnv,
-            clip_rewards: bool,
+            clip_rewards: Union[bool, float],
             rollout_fragment_length: int,
             count_steps_by: str = "env_steps",
             callbacks: "DefaultCallbacks",
-            horizon: int = None,
+            horizon: Optional[int] = None,
             multiple_episodes_in_batch: bool = False,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             blackhole_outputs: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
-            observation_fn: "ObservationFunction" = None,
+            observation_fn: Optional["ObservationFunction"] = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
             # Obsolete.
@@ -296,8 +298,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             worker (RolloutWorker): The RolloutWorker that will use this
                 Sampler for sampling.
             env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool, float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
+            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+                actual float value for +/- value clipping. False for no
+                clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -305,7 +308,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 Refers to the unit of `rollout_fragment_length`.
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
-            horizon (Optional[int]): Hard-reset the Env
+            horizon: Hard-reset the Env after this many timesteps.
             multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
@@ -449,7 +452,7 @@ def _env_runner(
         worker: "RolloutWorker",
         base_env: BaseEnv,
         extra_batch_callback: Callable[[SampleBatchType], None],
-        horizon: int,
+        horizon: Optional[int],
         normalize_actions: bool,
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
@@ -460,14 +463,14 @@ def _env_runner(
         observation_fn: "ObservationFunction",
         sample_collector: Optional[SampleCollector] = None,
         render: bool = None,
-) -> Iterable[SampleBatchType]:
+) -> Iterator[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        horizon (int): Horizon of the episode.
+        horizon: Horizon of the episode.
         multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
@@ -546,7 +549,9 @@ def _env_runner(
             worker.policy_mapping_fn,
             get_batch_builder,
             extra_batch_callback,
-            env_id=env_id)
+            env_id=env_id,
+            worker=worker,
+        )
         # Call each policy's Exploration.on_episode_start method.
         # Note: This may break the exploration (e.g. ParameterNoise) of
         # policies in the `policy_map` that have not been recently used
@@ -569,7 +574,7 @@ def _env_runner(
         )
         return episode
 
-    active_episodes: Dict[str, MultiAgentEpisode] = \
+    active_episodes: Dict[EnvID, MultiAgentEpisode] = \
         NewEpisodeDefaultDict(new_episode)
 
     while True:
@@ -617,7 +622,6 @@ def _env_runner(
         eval_results = _do_policy_eval(
             to_eval=to_eval,
             policies=worker.policy_map,
-            policy_mapping_fn=worker.policy_mapping_fn,
             sample_collector=sample_collector,
             active_episodes=active_episodes,
         )
@@ -678,7 +682,7 @@ def _process_observations(
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
-        active_episodes: Dict[str, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -697,9 +701,7 @@ def _process_observations(
     Args:
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
-        batch_builder_pool (List[SampleBatchBuilder]): List of pooled
-            SampleBatchBuilder object for recycling.
-        active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
+        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
         unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids
             -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
@@ -711,9 +713,6 @@ def _process_observations(
         infos (dict): Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
         horizon (int): Horizon of the episode.
-        rollout_fragment_length (int): Number of episode steps before
-            `SampleBatch` is yielded. Set to infinity to yield complete
-            episodes.
         multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
@@ -810,10 +809,13 @@ def _process_observations(
 
             policy_id: PolicyID = episode.policy_for(agent_id)
 
-            prep_obs: EnvObsType = _get_or_raise(worker.preprocessors,
-                                                 policy_id).transform(raw_obs)
-            if log_once("prep_obs"):
-                logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+            preprocessor = _get_or_raise(worker.preprocessors, policy_id)
+            prep_obs: EnvObsType = raw_obs
+            if preprocessor is not None:
+                prep_obs = preprocessor.transform(raw_obs)
+                if log_once("prep_obs"):
+                    logger.info("Preprocessed obs: {}".format(
+                        summarize(prep_obs)))
             filtered_obs: EnvObsType = _get_or_raise(worker.filters,
                                                      policy_id)(prep_obs)
             if log_once("filtered_obs"):
@@ -953,10 +955,15 @@ def _process_observations(
                 # types: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = new_episode.policy_for(agent_id)
-                    prep_obs: EnvObsType = _get_or_raise(
-                        worker.preprocessors, policy_id).transform(raw_obs)
+                    preproccessor = _get_or_raise(worker.preprocessors,
+                                                  policy_id)
+
+                    prep_obs: EnvObsType = raw_obs
+                    if preproccessor is not None:
+                        prep_obs = preproccessor.transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
                         worker.filters, policy_id)(prep_obs)
+                    new_episode._set_last_raw_obs(agent_id, raw_obs)
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
@@ -983,10 +990,9 @@ def _process_observations(
 def _do_policy_eval(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
-        policies: Dict[PolicyID, Policy],
-        policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"], PolicyID],
+        policies: PolicyMap,
         sample_collector,
-        active_episodes: Dict[str, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -997,6 +1003,7 @@ def _do_policy_eval(
         policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
             obj.
         sample_collector (SampleCollector): The SampleCollector object to use.
+        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping of
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
@@ -1014,8 +1021,13 @@ def _do_policy_eval(
         try:
             policy: Policy = _get_or_raise(policies, policy_id)
         except ValueError:
-            policy_id = policy_mapping_fn(eval_data[0].agent_id,
-                                          active_episodes[eval_data[0].env_id])
+            # Important: Get the policy_mapping_fn from the active
+            # Episode as the policy_mapping_fn from the worker may
+            # have already been changed (mapping fn stay constant
+            # within one episode).
+            episode = active_episodes[eval_data[0].env_id]
+            policy_id = episode.policy_mapping_fn(
+                eval_data[0].agent_id, episode, worker=episode.worker)
             policy: Policy = _get_or_raise(policies, policy_id)
 
         input_dict = sample_collector.get_inference_input_dict(policy_id)
@@ -1037,7 +1049,7 @@ def _process_policy_eval_results(
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
                                            dict]],
-        active_episodes: Dict[str, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
         active_envs: Set[int],
         off_policy_actions: MultiEnvDict,
         policies: Dict[PolicyID, Policy],
@@ -1054,7 +1066,7 @@ def _process_policy_eval_results(
             to lists of PolicyEvalData objects.
         eval_results (Dict[PolicyID, List]): Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
-        active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
+        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
         active_envs (Set[int]): Set of non-terminated env ids.
         off_policy_actions (dict): Doubly keyed dict of env-ids -> agent ids ->

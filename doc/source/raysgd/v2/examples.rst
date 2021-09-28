@@ -1,28 +1,79 @@
-:orphan:
-
 .. _sgd-v2-examples:
 
 RaySGD Examples
 ===============
 
+.. Example .rst files should be organized in the same manner as the
+   .py files in ray/python/ray/util/sgd/v2/examples.
+
 Below are examples for using RaySGD with a variety of models, frameworks, and use cases.
 
+General Examples
+----------------
 
-* Simple example for Pytorch.
-* End-to-end example for Pytorch.
-* End-to-end example for HuggingFace Transformers (Pytorch).
-* Simple example for Tensorflow
-* End-to-end example for Tensorflow
-* Simple example for Horovod (with Tensorflow)
-* End-to-end example for Horovod (with Tensorflow)
+PyTorch
+~~~~~~~
 
-Features
---------
+* :doc:`/raysgd/v2/examples/train_linear_example`:
+  Simple example for PyTorch.
 
-* Example for using a custom callback
-* End-to-end example for running on an elastic cluster (elastic training)
+* :doc:`/raysgd/v2/examples/train_fashion_mnist_example`:
+  End-to-end example for PyTorch.
 
-Models
-------
+* :doc:`/raysgd/v2/examples/transformers/transformers_example`:
+  End-to-end example for HuggingFace Transformers (PyTorch).
 
-* Example training on Vision model.
+TensorFlow
+~~~~~~~~~~
+
+* :doc:`/raysgd/v2/examples/tensorflow_mnist_example`:
+  End-to-end example for TensorFlow
+
+Horovod
+~~~~~~~~~~
+
+* :doc:`/raysgd/v2/examples/horovod/horovod_example`:
+  End-to-end example for Horovod (with PyTorch)
+
+
+..
+  TODO
+
+  * :doc:`/raysgd/v2/examples/TODO`:
+  Simple example for TensorFlow
+
+  * :doc:`/raysgd/v2/examples/TODO`:
+  Simple example for Horovod (with TensorFlow)
+
+
+Iterator API Examples
+---------------------
+
+* :doc:`/raysgd/v2/examples/mlflow_fashion_mnist_example`:
+  Example for using the Iterator API for custom MLFlow integration.
+
+Ray Tune Integration Examples
+-----------------------------
+
+* :doc:`/raysgd/v2/examples/tune_linear_example`:
+  Simple example for tuning a PyTorch model.
+
+* :doc:`/raysgd/v2/examples/tune_tensorflow_mnist_example`:
+  End-to-end example for tuning a TensorFlow model.
+
+* :doc:`/raysgd/v2/examples/tune_cifar_pytorch_pbt_example`:
+  End-to-end example for tuning a PyTorch model with PBT.
+
+..
+    TODO implement these examples!
+
+    Features
+    --------
+
+    * Example for using a custom callback
+    * End-to-end example for running on an elastic cluster (elastic training)
+
+    Models
+    ------
+
+    * Example training on Vision model.

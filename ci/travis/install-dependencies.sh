@@ -266,6 +266,11 @@ install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
     "${ROOT_DIR}"/install-toolchains.sh
   fi
+  if [[ "${OSTYPE}" = linux* ]]; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
+  fi
 }
 
 download_mnist() {
@@ -346,20 +351,29 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch version.
+    pip install mlagents==0.27
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
+
+    # Install Atari ROMs. Previously these have been shipped with atari_py
+    if [[ "${OSTYPE}" = linux* ]]; then
+      bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    else
+      echo "Not installing Atari roms on ${OSTYPE}"
+    fi
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.

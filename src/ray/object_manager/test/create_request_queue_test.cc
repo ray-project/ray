@@ -14,6 +14,7 @@
 
 #include "ray/object_manager/plasma/create_request_queue.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 
@@ -21,7 +22,10 @@ namespace plasma {
 
 class MockClient : public ClientInterface {
  public:
-  MockClient() {}
+  MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
+  MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
+  MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
+  MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \

@@ -469,20 +469,6 @@ def debug(address):
     "span processor, and additional instruments. See docs.ray.io/tracing.html "
     "for more info.")
 @click.option(
-    "--worker-setup-hook",
-    hidden=True,
-    default=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
-    type=str,
-    help="Module path to the Python function that will be used to set up the "
-    "environment for the worker process.")
-@click.option(
-    "--runtime-env-setup-hook",
-    hidden=True,
-    default=ray_constants.DEFAULT_RUNTIME_ENV_SETUP_HOOK,
-    type=str,
-    help="Module path to the Python function that will be used to set up the "
-    "runtime env in agent.")
-@click.option(
     "--ray-debugger-external",
     is_flag=True,
     default=False,
@@ -500,8 +486,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
-          worker_setup_hook, runtime_env_setup_hook, ray_debugger_external,
-          log_style, log_color, verbose):
+          ray_debugger_external, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -561,8 +546,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
-        worker_setup_hook=worker_setup_hook,
-        runtime_env_setup_hook=runtime_env_setup_hook,
         ray_debugger_external=ray_debugger_external)
     if head:
         # Use default if port is none, allocate an available port if port is 0
@@ -1795,7 +1778,7 @@ def healthcheck(address, redis_password, component):
             options = (("grpc.enable_http_proxy", 0), )
             channel = grpc.insecure_channel(gcs_address, options=options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest(seq=0)
+            request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
                 request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
             if reply.status.code == 0:
@@ -1939,7 +1922,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
         cli_logger.print(
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && sh run.sh"))
+                " && bash run.sh"))
 
 
 def add_command_alias(command, name, hidden):

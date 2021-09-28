@@ -27,10 +27,11 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-import ray._private.runtime_env as runtime_env_pkg
+from ray._private.runtime_env import working_dir as working_dir_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
+from ray.util.debug import log_once
 import ray
 import colorama
 import setproctitle
@@ -64,7 +65,6 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
-UTIL_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -495,10 +495,11 @@ def get_gpu_ids():
     worker.check_connected()
 
     if worker.mode != WORKER_MODE:
-        logger.warning(
-            "`ray.get_gpu_ids()` will always return the empty list when "
-            "called from the driver. This is because Ray does not manage "
-            "GPU allocations to the driver process.")
+        if log_once("worker_get_gpu_ids_empty_from_driver"):
+            logger.warning(
+                "`ray.get_gpu_ids()` will always return the empty list when "
+                "called from the driver. This is because Ray does not manage "
+                "GPU allocations to the driver process.")
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
@@ -651,7 +652,7 @@ def init(
             a raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the the cluster, removing the need to
+            tells the driver to detect the cluster, removing the need to
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
@@ -935,8 +936,8 @@ def init(
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
-        # later in the connect
-        runtime_env_pkg.rewrite_runtime_env_uris(job_config)
+        # later in the connect.
+        working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1086,8 +1087,8 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
         if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
-                       "autoscaling status. To disable autoscaler event "
-                       "messages, you can set AUTOSCALER_EVENTS=0.")
+                       "cluster status. To disable these "
+                       "messages, set RAY_SCHEDULER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
@@ -1127,45 +1128,52 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
-        if data["pid"] in ["autoscaler", "raylet"]:
+        if data.get("pid") in ["autoscaler", "raylet"]:
             return ""
         else:
             res = "pid="
-            if data["actor_name"]:
+            if data.get("actor_name"):
                 res = data["actor_name"] + " " + res
-            elif data["task_name"]:
+            elif data.get("task_name"):
                 res = data["task_name"] + " " + res
             return res
 
-    def color_for(data: Dict[str, str]) -> str:
+    def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data["pid"] == "raylet":
+        if data.get("pid") == "raylet":
             return colorama.Fore.YELLOW
-        elif data["pid"] == "autoscaler":
-            return colorama.Style.BRIGHT + colorama.Fore.CYAN
+        elif data.get("pid") == "autoscaler":
+            if "Error:" in line or "Warning:" in line:
+                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+            else:
+                return colorama.Style.BRIGHT + colorama.Fore.CYAN
         else:
             return colorama.Fore.CYAN
 
-    if data["pid"] == "autoscaler":
-        pid = "{} +{}".format(data["pid"], time_string())
-        lines = filter_autoscaler_events(data["lines"])
+    if data.get("pid") == "autoscaler":
+        pid = "scheduler +{}".format(time_string())
+        lines = filter_autoscaler_events(data.get("lines", []))
     else:
-        pid = data["pid"]
-        lines = data["lines"]
+        pid = data.get("pid")
+        lines = data.get("lines", [])
 
-    if data["ip"] == data["localhost"]:
+    if data.get("ip") == data.get("localhost"):
         for line in lines:
             print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
-                                         prefix_for(data), pid,
-                                         colorama.Style.RESET_ALL, line),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM,
+                                         color_for(data,
+                                                   line), prefix_for(data),
+                                         pid, colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
         for line in lines:
             print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
-                    data["ip"], colorama.Style.RESET_ALL, line),
+                "{}{}({}{}, ip={}){} {}".format(colorama.Style.DIM,
+                                                color_for(data, line),
+                                                prefix_for(data), pid,
+                                                data.get("ip"),
+                                                colorama.Style.RESET_ALL,
+                                                line),
                 file=print_file)
 
 
@@ -1251,7 +1259,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            runtime_env_json="{}",
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1294,8 +1301,7 @@ def connect(node,
         node.redis_address, redis_password=node.redis_password)
 
     # Initialize some fields.
-    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE,
-                UTIL_WORKER_MODE):
+    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1392,10 +1398,12 @@ def connect(node,
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environmen will be prepared
+    # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        runtime_env_pkg.upload_runtime_env_package_if_needed(job_config)
+        manager = working_dir_pkg.WorkingDirManager(
+            worker.node.get_runtime_env_dir_path())
+        manager.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1405,7 +1413,7 @@ def connect(node,
                        " and will be removed in the future.")
 
     # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped)
         worker.import_thread.start()
@@ -1924,7 +1932,8 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
-                   worker=None):
+                   worker=None,
+                   retry_exceptions=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1953,11 +1962,18 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, runtime_env)
+                num_returns, max_calls, max_retries, retry_exceptions,
+                runtime_env)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
                 raise TypeError("The keyword 'num_returns' is not "
+                                "allowed for actors.")
+            if max_retries is not None:
+                raise TypeError("The keyword 'max_retries' is not "
+                                "allowed for actors.")
+            if retry_exceptions is not None:
+                raise TypeError("The keyword 'retry_exceptions' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
@@ -2082,6 +2098,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
+        retry_exceptions (bool): Only for *remote functions*. This specifies
+            whether application-level errors should be retried
+            up to max_retries times.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
@@ -2102,7 +2121,7 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2135,6 +2154,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2149,4 +2169,5 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
-        worker=worker)
+        worker=worker,
+        retry_exceptions=retry_exceptions)
