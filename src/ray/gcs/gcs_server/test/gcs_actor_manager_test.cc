@@ -106,8 +106,8 @@ class GcsActorManagerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_mgr_,
-        [](const ActorID &actor_id) {},
+        io_service_, mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_,
+        *runtime_env_mgr_, [](const ActorID &actor_id) {},
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
         [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
           if (skip_delay_) {

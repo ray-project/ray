@@ -107,6 +107,7 @@ void GcsActor::SetActorWorkerAssignment(
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
+    boost::asio::io_context &io_context,
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
@@ -115,7 +116,8 @@ GcsActorManager::GcsActorManager(
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
-    : gcs_actor_scheduler_(std::move(scheduler)),
+    : io_context_(io_context),
+      gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
@@ -126,6 +128,17 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    auto gcs_actor_scheduler =
+        std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
+    gcs_actor_scheduler->AddResourcesChangedListener([this] {
+      bool posted = GetSchedulePendingActorsPosted();
+      if (!posted) {
+        SetSchedulePendingActorsPosted(true);
+        io_context_.post([this] { SchedulePendingActors(); });
+      }
+    });
+  }
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,

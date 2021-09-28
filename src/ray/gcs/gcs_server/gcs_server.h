@@ -16,7 +16,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -175,8 +174,6 @@ class GcsServer {
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
-  /// The gcs actor scheduler.
-  std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group manager.
