@@ -807,7 +807,6 @@ class Node:
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._ray_params.worker_setup_hook,
             self._temp_dir,
             self._session_dir,
             self._runtime_env_dir,
@@ -878,7 +877,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

@@ -51,6 +51,9 @@ extern char **environ;
 int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;
   int rc;
+  // Mutating environ is generally unsafe, but this logic only runs on the
+  // start of a worker process. There should be no concurrent access to the
+  // environment.
   environ = const_cast<char **>(envp);
   rc = execvp(program, argv);
   environ = saved;

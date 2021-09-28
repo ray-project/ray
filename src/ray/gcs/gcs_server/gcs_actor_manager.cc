@@ -175,9 +175,12 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
   RAY_LOG(INFO) << "Creating actor, job id = " << actor_id.JobId()
                 << ", actor id = " << actor_id;
   Status status = CreateActor(request, [reply, send_reply_callback, actor_id](
-                                           const std::shared_ptr<gcs::GcsActor> &actor) {
+                                           const std::shared_ptr<gcs::GcsActor> &actor,
+                                           const rpc::PushTaskReply &task_reply) {
     RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
                   << ", actor id = " << actor_id;
+    reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
+    reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   });
   if (!status.ok()) {
@@ -455,7 +458,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
     // In this case, we can just reply.
-    callback(iter->second);
+    // TODO(swang): Need to pass ref count info.
+    callback(iter->second, rpc::PushTaskReply());
     return Status::OK();
   }
 
@@ -485,6 +489,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   auto actor =
       std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
+  const auto &actor_table_data = actor->GetActorTableData();
+  // Pub this state for dashboard showing.
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                     actor_table_data.SerializeAsString(), nullptr));
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -917,7 +925,8 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
   pending_actors_.emplace_back(std::move(actor));
 }
 
-void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
+void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
+                                             const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
@@ -948,7 +957,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data,
-      [this, actor_id, actor_table_data, actor](Status status) {
+      [this, actor_id, actor_table_data, actor, reply](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(
             ACTOR_CHANNEL, actor_id.Hex(),
             GenActorDataOnlyWithStates(actor_table_data)->SerializeAsString(), nullptr));
@@ -958,7 +967,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         auto iter = actor_to_create_callbacks_.find(actor_id);
         if (iter != actor_to_create_callbacks_.end()) {
           for (auto &callback : iter->second) {
-            callback(actor);
+            callback(actor, reply);
           }
           actor_to_create_callbacks_.erase(iter);
         }

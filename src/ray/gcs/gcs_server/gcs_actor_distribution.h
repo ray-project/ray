@@ -86,7 +86,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+      std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+          schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr);
 

@@ -38,7 +38,8 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+        schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
     : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub,
@@ -93,7 +94,8 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
 NodeID GcsBasedActorScheduler::AllocateResources(const ResourceSet &required_resources) {
   auto selected_nodes =
-      gcs_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD);
+      gcs_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD)
+          .second;
 
   if (selected_nodes.size() == 0) {
     RAY_LOG(INFO)

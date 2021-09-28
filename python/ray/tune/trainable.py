@@ -76,7 +76,8 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        disable_ipython()
+        if self.is_actor():
+            disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -152,6 +153,14 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
+
+    def is_actor(self):
+        try:
+            actor_id = ray.worker.global_worker.actor_id
+            return actor_id != actor_id.nil()
+        except Exception:
+            # If global_worker is not instantiated, we're not in an actor
+            return False
 
     def train_buffered(self,
                        buffer_time_s: float,
@@ -692,7 +701,7 @@ class Trainable:
 
         """
         if self._implements_method("_train") and log_once("_train"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._train is deprecated and is now removed. Override "
                 "Trainable.step instead.")
         raise NotImplementedError
@@ -734,7 +743,7 @@ class Trainable:
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._save is deprecated and is now removed. Override "
                 "Trainable.save_checkpoint instead.")
         raise NotImplementedError
@@ -783,7 +792,7 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
         if self._implements_method("_restore") and log_once("_restore"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._restore is deprecated and is now removed. "
                 "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
@@ -799,7 +808,7 @@ class Trainable:
 
         """
         if self._implements_method("_setup") and log_once("_setup"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._setup is deprecated and is now removed. Override "
                 "Trainable.setup instead.")
         pass
@@ -817,7 +826,7 @@ class Trainable:
             result (dict): Training result returned by step().
         """
         if self._implements_method("_log_result") and log_once("_log_result"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._log_result is deprecated and is now removed. "
                 "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
@@ -834,7 +843,7 @@ class Trainable:
         .. versionadded:: 0.8.7
         """
         if self._implements_method("_stop") and log_once("_stop"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._stop is deprecated and is now removed. Override "
                 "Trainable.cleanup instead.")
         pass
