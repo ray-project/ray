@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
+
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -89,10 +91,10 @@ class GcsPlacementGroup {
   std::string GetRayNamespace() const;
 
   /// Get the bundles of this placement_group (including unplaced).
-  std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
+  std::vector<std::shared_ptr<const BundleSpecification>> &GetBundles() const;
 
   /// Get the unplaced bundles of this placement group.
-  std::vector<std::shared_ptr<BundleSpecification>> GetUnplacedBundles() const;
+  std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
@@ -121,9 +123,14 @@ class GcsPlacementGroup {
   bool IsDetached() const;
 
  private:
+  FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
+  /// Creating bundle specification requires heavy computation because it needs to compute
+  /// formatted strings for all resources (heavy string operations). To optimize the CPU
+  /// usage, we cache bundle specs.
+  mutable std::vector<std::shared_ptr<const BundleSpecification>> cached_bundle_specs_;
 };
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
@@ -363,7 +370,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
     GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
-    CountType_MAX = 6,
+    SCHEDULING_PENDING_PLACEMENT_GROUP = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };
