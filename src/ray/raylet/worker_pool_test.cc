@@ -459,7 +459,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 

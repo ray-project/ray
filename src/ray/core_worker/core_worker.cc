@@ -40,13 +40,15 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, concurrency_group_name);
+      debugger_breakpoint, serialized_runtime_env, runtime_env_uris,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -368,9 +370,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
-      grpc_service_(io_service_, *this) {
+      grpc_service_(io_service_, *this),
+      task_execution_service_work_(task_execution_service_) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -931,17 +933,25 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
+  bool should_shutdown = false;
   // When running worker process in container, the worker parent process is not raylet.
   // So we add RAY_RAYLET_PID enviroment to ray worker process.
   if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
     auto pid = static_cast<pid_t>(std::stoi(env_pid));
     if (!IsProcessAlive(pid)) {
       RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
-      Shutdown();
+      should_shutdown = true;
     }
   } else if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
-    Shutdown();
+    should_shutdown = true;
+  }
+  if (should_shutdown) {
+    if (options_.worker_type == WorkerType::WORKER) {
+      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
+    } else {
+      Shutdown();
+    }
   }
 }
 
@@ -1656,7 +1666,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint,
-                      task_options.serialized_runtime_env);
+                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1712,7 +1722,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
-                      actor_creation_options.serialized_runtime_env);
+                      actor_creation_options.serialized_runtime_env,
+                      actor_creation_options.runtime_env_uris);
 
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
@@ -1896,6 +1907,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
                       "{}", /* serialized_runtime_env */
+                      {},   /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

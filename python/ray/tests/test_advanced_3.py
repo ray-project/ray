@@ -1,5 +1,6 @@
 # coding: utf-8
 import glob
+import json
 import logging
 import os
 import sys
@@ -737,7 +738,8 @@ def test_sync_job_config(shutdown_only):
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert job_config.runtime_env["env_vars"] == runtime_env["env_vars"]
+    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
+    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
 
     @ray.remote
     def get_job_config():
@@ -749,7 +751,8 @@ def test_sync_job_config(shutdown_only):
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert job_config.runtime_env["env_vars"] == runtime_env["env_vars"]
+    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
+    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
 
 
 def test_duplicated_arg(ray_start_cluster):

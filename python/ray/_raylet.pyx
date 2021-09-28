@@ -1354,6 +1354,8 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     runtime_env_dict,
+                    runtime_env_uris,
+                    override_environment_variables
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1362,6 +1364,7 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_string c_serialized_runtime_env
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
@@ -1379,7 +1382,8 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    c_serialized_runtime_env),
+                    c_serialized_runtime_env,
+                    c_runtime_env_uris),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1405,7 +1409,8 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
-                     runtime_env_dict
+                     runtime_env_dict,
+                     runtime_env_uris,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1417,6 +1422,7 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_string c_serialized_runtime_env
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
@@ -1440,7 +1446,8 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
-                        c_serialized_runtime_env),
+                        c_serialized_runtime_env,
+                        c_runtime_env_uris),
                     extension_data,
                     &c_actor_id))
 
@@ -1855,8 +1862,8 @@ cdef class CoreWorker:
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
             if self.is_driver:
-                self.current_runtime_env_dict = \
-                    json.loads(self.get_job_config().serialized_runtime_env)
+                self.current_runtime_env_dict = json.loads(
+                    self.get_job_config().runtime_env.serialized_runtime_env)
             else:
                 self.current_runtime_env_dict = json.loads(
                     CCoreWorkerProcess.GetCoreWorker()
