@@ -287,12 +287,11 @@ def _tracing_task_invocation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
+        assert "_ray_trace_ctx" not in kwargs
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
         if not is_tracing_enabled() or self._is_cross_language:
             return method(self, args, kwargs, *_args, **_kwargs)
-
-        assert "_ray_trace_ctx" not in kwargs
 
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -363,16 +362,14 @@ def _tracing_actor_creation(method):
         if kwargs is None:
             kwargs = {}
 
+        assert "_ray_trace_ctx" not in _kwargs
+
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
-            if not self.__ray_metadata__.is_cross_language:
-                # Remove _ray_trace_ctx from kwargs if tracing disabled
-                kwargs.pop("_ray_trace_ctx", None)
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
         method_name = "__init__"
-        assert "_ray_trace_ctx" not in _kwargs
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 name=_actor_span_producer_name(class_name, method_name),
