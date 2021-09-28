@@ -122,6 +122,9 @@ public class ReplicaSet {
   private ObjectRef<Object> tryAssignReplica(Query query) {
 
     List<ActorHandle<RayServeWrappedReplica>> handles = new ArrayList<>(inFlightQueries.keySet());
+    if (CollectionUtil.isEmpty(handles)) {
+      throw new RayServeException("ReplicaSet found no replica.");
+    }
     int randomIndex = RandomUtils.nextInt(0, handles.size());
     ActorHandle<RayServeWrappedReplica> replica =
         handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries

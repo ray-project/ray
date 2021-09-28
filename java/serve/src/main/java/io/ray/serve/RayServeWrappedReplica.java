@@ -55,6 +55,23 @@ public class RayServeWrappedReplica {
     backend = new RayServeReplica(callable, backendConfig, optional.get());
   }
 
+  public RayServeWrappedReplica(
+      String backendTag,
+      String replicaTag,
+      ReplicaConfig replicaConfig,
+      byte[] backendConfigBytes,
+      String controllerName)
+      throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
+          IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
+    this(
+        backendTag,
+        replicaTag,
+        replicaConfig.getBackendDef(),
+        replicaConfig.getInitArgs(),
+        backendConfigBytes,
+        controllerName);
+  }
+
   private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
       throws IOException {
 

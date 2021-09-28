@@ -14,7 +14,7 @@ public class RayServeHandleTest {
 
   @Test
   public void test() {
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
+
     boolean inited = Ray.isInitialized();
     Ray.init();
 
@@ -25,10 +25,8 @@ public class RayServeHandleTest {
       String actorName = replicaTag;
 
       // Controller
-      ActorHandle<ReplicaContext> controllerHandle =
-          Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
-              .setName(controllerName)
-              .remote();
+      ActorHandle<DummyServeController> controllerHandle =
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
       BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();

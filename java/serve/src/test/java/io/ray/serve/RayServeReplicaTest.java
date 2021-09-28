@@ -27,10 +27,8 @@ public class RayServeReplicaTest {
       String backendTag = "b_tag";
       String replicaTag = "r_tag";
 
-      ActorHandle<ReplicaContext> controllerHandle =
-          Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
-              .setName(controllerName)
-              .remote();
+      ActorHandle<DummyServeController> controllerHandle =
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
       backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);

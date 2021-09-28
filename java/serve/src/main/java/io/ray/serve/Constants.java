@@ -20,4 +20,6 @@ public class Constants {
   public static final String SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR";
 
   public static final String DEFAULT_CALL_METHOD = "call";
+
+  public static final String UTF8 = "UTF-8";
 }

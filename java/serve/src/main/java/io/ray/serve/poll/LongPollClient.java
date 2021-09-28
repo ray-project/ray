@@ -11,7 +11,6 @@ import io.ray.runtime.exception.RayTaskException;
 import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.UpdatedObject;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -50,14 +49,7 @@ public class LongPollClient {
     DESERIALIZERS.put(
         LongPollNamespace.BACKEND_CONFIGS, body -> ServeProtoUtil.parseBackendConfig(body));
     DESERIALIZERS.put(
-        LongPollNamespace.REPLICA_HANDLES,
-        body -> {
-          try {
-            return EndpointSet.parseFrom(body);
-          } catch (InvalidProtocolBufferException e) {
-            throw new RayServeException("Failed to parse EndpointSet from protobuf bytes.", e);
-          }
-        });
+        LongPollNamespace.REPLICA_HANDLES, body -> ServeProtoUtil.parseEndpointSet(body));
     DESERIALIZERS.put(
         LongPollNamespace.REPLICA_HANDLES,
         body -> {
@@ -111,7 +103,7 @@ public class LongPollClient {
   /**
    * Poll the update.
    *
-   * @throws InvalidProtocolBufferException
+   * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
    */
   public void pollNext() throws InvalidProtocolBufferException {
     currentRef =

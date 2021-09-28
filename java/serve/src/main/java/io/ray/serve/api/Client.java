@@ -1,40 +1,30 @@
 package io.ray.serve.api;
 
-import com.google.gson.Gson;
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.RayServeException;
 import io.ray.serve.RayServeHandle;
+import io.ray.serve.ServeController;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.ServeProtoUtil;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Client {
 
-  private static final Gson GSON = new Gson();
+  private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
 
   private BaseActorHandle controller;
-
-  private String controllerName;
-
-  private boolean detached;
-
-  private boolean shutdown = false;
-
-  private Map<String, String> config;
 
   private Map<String, RayServeHandle> handleCache = new ConcurrentHashMap<>();
 
   public Client(BaseActorHandle controller, String controllerName, boolean detached) {
     this.controller = controller;
-    this.controllerName = controllerName;
-    this.detached = detached;
-
-    String configs =
-        (String) ((PyActorHandle) controller).task(PyActorMethod.of("get_config")).remote().get();
-    this.config = GSON.fromJson(configs, Map.class); // TODO
   }
 
   /**
@@ -44,6 +34,7 @@ public class Client {
    * @param missingOk If true, then Serve won't check the endpoint is registered. False by default.
    * @return
    */
+  @SuppressWarnings("unchecked")
   public RayServeHandle getHandle(String endpointName, boolean missingOk) {
 
     String cacheKey = endpointName + "_" + missingOk;
@@ -51,12 +42,26 @@ public class Client {
       return handleCache.get(cacheKey);
     }
 
-    String endpointJson =
-        (String)
-            ((PyActorHandle) controller).task(PyActorMethod.of("get_all_endpoints")).remote().get();
-    Map<String, EndpointInfo> endpoints = GSON.fromJson(endpointJson, Map.class); // TODO
+    Map<String, EndpointInfo> endpoints = null;
+    if (controller instanceof PyActorHandle) {
+      endpoints =
+          ServeProtoUtil.parseEndpointSet(
+              (byte[])
+                  ((PyActorHandle) controller)
+                      .task(PyActorMethod.of("get_all_endpoints"))
+                      .remote()
+                      .get());
+    } else {
+      LOGGER.warn("Client only support Python controller now.");
+      endpoints =
+          ServeProtoUtil.parseEndpointSet(
+              ((ActorHandle<? extends ServeController>) controller)
+                  .task(ServeController::getAllEndpoints)
+                  .remote()
+                  .get());
+    }
 
-    if (!missingOk && !endpoints.containsKey(endpointName)) {
+    if (!missingOk && (endpoints == null || !endpoints.containsKey(endpointName))) {
       throw new RayServeException(LogUtil.format("Endpoint {} does not exist.", endpointName));
     }
 

@@ -8,7 +8,6 @@ import io.ray.serve.RayServeException;
 import io.ray.serve.ReplicaContext;
 import io.ray.serve.util.LogUtil;
 import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
 
 /** Ray Serve global API. TODO: will be riched in the Java SDK/API PR. */
 public class Serve {
@@ -27,9 +26,12 @@ public class Serve {
    */
   public static void setInternalReplicaContext(
       String backendTag, String replicaTag, String controllerName, Object servableObject) {
-    // TODO singleton.
     INTERNAL_REPLICA_CONTEXT =
         new ReplicaContext(backendTag, replicaTag, controllerName, servableObject);
+  }
+
+  public static void setInternalReplicaContext(ReplicaContext replicaContext) {
+    INTERNAL_REPLICA_CONTEXT = replicaContext;
   }
 
   /**
@@ -46,14 +48,22 @@ public class Serve {
   }
 
   public static Client getGlobalClient() {
-    return GLOBAL_CLIENT != null ? GLOBAL_CLIENT : connect(null); // TODO singleton
+    if (GLOBAL_CLIENT != null) {
+      return GLOBAL_CLIENT;
+    }
+    synchronized (Client.class) {
+      if (GLOBAL_CLIENT != null) {
+        return GLOBAL_CLIENT;
+      }
+      return connect();
+    }
   }
 
-  public static void setGlobalClient(Client client) {
+  private static void setGlobalClient(Client client) {
     GLOBAL_CLIENT = client;
   }
 
-  public static Client connect(String serviceName) {
+  public static Client connect() {
 
     if (!Ray.isInitialized()) {
       Ray.init();
@@ -62,18 +72,17 @@ public class Serve {
     String controllerName =
         INTERNAL_REPLICA_CONTEXT != null
             ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
-            : StringUtils.isBlank(serviceName)
-                ? Constants.SERVE_CONTROLLER_NAME
-                : Constants.SERVE_CONTROLLER_NAME + "_" + serviceName;
+            : Constants.SERVE_CONTROLLER_NAME;
 
     Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
     Preconditions.checkState(
         optional.isPresent(),
         LogUtil.format(
-            "There is no instance {} running on this Ray cluster. "
-                + "Please call `serve.start(detached=True) to start one.",
-            controllerName));
+            "There is no instance running on this Ray cluster. "
+                + "Please call `serve.start(detached=True) to start one."));
 
-    return new Client(optional.get(), controllerName, true);
+    Client client = new Client(optional.get(), controllerName, true);
+    setGlobalClient(client);
+    return client;
   }
 }

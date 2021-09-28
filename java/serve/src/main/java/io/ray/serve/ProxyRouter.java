@@ -23,7 +23,7 @@ public class ProxyRouter {
   private Map<String, RayServeHandle> handles = new ConcurrentHashMap<>();
 
   public void updateRoutes(Map<String, EndpointInfo> endpoints) {
-    LOGGER.debug("Got updated endpoints: {}.", endpoints);
+    LOGGER.info("Got updated endpoints: {}.", endpoints);
 
     Set<String> existingHandles = new HashSet<>(handles.keySet());
     Map<String, EndpointInfo> routeInfo = new HashMap<>();
@@ -48,6 +48,7 @@ public class ProxyRouter {
     for (String endpoint : existingHandles) {
       handles.remove(endpoint);
     }
+    LOGGER.info("The final route info: {}.", routeInfo);
   }
 
   /**

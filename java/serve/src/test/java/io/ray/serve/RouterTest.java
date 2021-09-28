@@ -26,10 +26,8 @@ public class RouterTest {
       String actorName = replicaTag;
 
       // Controller
-      ActorHandle<ReplicaContext> controllerHandle =
-          Ray.actor(ReplicaContext::new, backendTag, replicaTag, controllerName, new Object())
-              .setName(controllerName)
-              .remote();
+      ActorHandle<DummyServeController> controllerHandle =
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
       BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();

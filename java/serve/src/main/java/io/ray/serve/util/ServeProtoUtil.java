@@ -9,6 +9,8 @@ import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
@@ -136,5 +138,21 @@ public class ServeProtoUtil {
     updatedObjects.forEach(
         (key, value) -> udpates.put(ServeProtoUtil.GSON.fromJson(key, KeyType.class), value));
     return udpates;
+  }
+
+  public static Map<String, EndpointInfo> parseEndpointSet(byte[] endpointSetBytes) {
+    if (endpointSetBytes == null) {
+      return null;
+    }
+    EndpointSet endpointSet = null;
+    try {
+      endpointSet = EndpointSet.parseFrom(endpointSetBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RayServeException("Failed to parse EndpointSet from protobuf bytes.", e);
+    }
+    if (endpointSet == null) {
+      return null;
+    }
+    return endpointSet.getEndpointsMap();
   }
 }

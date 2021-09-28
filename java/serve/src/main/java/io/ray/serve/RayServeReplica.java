@@ -40,8 +40,6 @@ public class RayServeReplica {
 
   private Object callable;
 
-  private boolean metricsRegistered = false;
-
   private Count requestCounter;
 
   private Count errorCounter;
@@ -72,54 +70,84 @@ public class RayServeReplica {
   }
 
   private void registerMetrics() {
-    if (!Ray.isInitialized() || Ray.getRuntimeContext().isSingleProcess()) {
-      return;
-    }
+    RayServeMetrics.execute(
+        () ->
+            requestCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    requestCounter =
-        Metrics.count()
-            .name("serve_backend_request_counter")
-            .description("The number of queries that have been processed in this replica.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            errorCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    errorCounter =
-        Metrics.count()
-            .name("serve_backend_error_counter")
-            .description("The number of exceptions that have occurred in this replica.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            restartCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    restartCounter =
-        Metrics.count()
-            .name("serve_backend_replica_starts")
-            .description("The number of times this replica has been restarted due to failure.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            processingLatencyTracker =
+                Metrics.histogram()
+                    .name(RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getName())
+                    .description(
+                        RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getDescription())
+                    .unit("")
+                    .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    processingLatencyTracker =
-        Metrics.histogram()
-            .name("serve_backend_processing_latency_ms")
-            .description("The latency for queries to be processed.")
-            .unit("")
-            .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            numProcessingItems =
+                Metrics.gauge()
+                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getName())
+                    .description(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    numProcessingItems =
-        Metrics.gauge()
-            .name("serve_replica_processing_queries")
-            .description("The current number of queries being processed.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
-
-    metricsRegistered = true;
-
-    restartCounter.inc(1.0);
+    RayServeMetrics.execute(() -> restartCounter.inc(1.0));
   }
 
   public Object handleRequest(Query request) {
@@ -128,7 +156,7 @@ public class RayServeReplica {
         "Replica {} received request {}", replicaTag, request.getMetadata().getRequestId());
 
     numOngoingRequests.incrementAndGet();
-    reportMetrics(() -> numProcessingItems.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numProcessingItems.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();
 
@@ -155,10 +183,10 @@ public class RayServeReplica {
       Object[] args = parseRequestItem(requestItem);
       methodToCall = getRunnerMethod(requestItem.getMetadata().getCallMethod(), args);
       Object result = methodToCall.invoke(callable, args);
-      reportMetrics(() -> requestCounter.inc(1.0));
+      RayServeMetrics.execute(() -> requestCounter.inc(1.0));
       return result;
     } catch (Throwable e) {
-      reportMetrics(() -> errorCounter.inc(1.0));
+      RayServeMetrics.execute(() -> errorCounter.inc(1.0));
       throw new RayServeException(
           LogUtil.format(
               "Replica {} failed to invoke method {}",
@@ -166,7 +194,8 @@ public class RayServeReplica {
               methodToCall == null ? "unknown" : methodToCall.getName()),
           e);
     } finally {
-      reportMetrics(() -> processingLatencyTracker.update(System.currentTimeMillis() - start));
+      RayServeMetrics.execute(
+          () -> processingLatencyTracker.update(System.currentTimeMillis() - start));
     }
   }
 
@@ -264,11 +293,5 @@ public class RayServeReplica {
   private void updateBackendConfigs(Object newConfig) {
     backendConfig = (BackendConfig) newConfig;
     reconfigure(backendConfig.getUserConfig());
-  }
-
-  private void reportMetrics(Runnable runnable) {
-    if (metricsRegistered) {
-      runnable.run();
-    }
   }
 }
