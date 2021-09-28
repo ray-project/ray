@@ -68,10 +68,6 @@ class WorkerLeaseInterface {
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
-  virtual void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -363,13 +359,6 @@ class RayletClient : public RayletClientInterface {
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
-    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
-  }
-
-  void RequestWorkerLease(
-      const rpc::TaskSpec &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 
