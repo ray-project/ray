@@ -52,7 +52,8 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
         CFunctionDescriptor BuildPython(const c_string &module_name,
                                         const c_string &class_name,
                                         const c_string &function_name,
-                                        const c_string &function_source_hash)
+                                        const c_string &function_source_hash,
+                                        const c_string &args_name)
 
         @staticmethod
         CFunctionDescriptor Deserialize(const c_string &serialized_binary)
@@ -67,3 +68,4 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
         c_string ClassName()
         c_string FunctionName()
         c_string FunctionHash()
+        c_string ArgsName()

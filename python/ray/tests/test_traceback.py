@@ -270,6 +270,17 @@ def test_actor_repr_in_traceback(ray_start_regular):
         assert label_dict["repr"] == actor_repr
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Clean stacktrace not supported on Windows")
+def test_line_num_stacktrace(ray_start_regular):
+    @ray.remote
+    def some_function(x: int, y: int) -> float:
+        return x / y
+
+    ray.get(some_function.remote(1, 0))
+
+
 if __name__ == "__main__":
     import pytest
     import sys

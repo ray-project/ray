@@ -68,6 +68,7 @@ message PythonFunctionDescriptor {
   string class_name = 2;
   string function_name = 3;
   string function_hash = 4;
+  string args_name = 5;
 }
 
 /// Function descriptor for C/C++.

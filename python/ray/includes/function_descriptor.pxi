@@ -145,9 +145,11 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
                   module_name,
                   function_name,
                   class_name="",
-                  function_source_hash=""):
+                  function_source_hash="",
+                  args_name=""):
         self.descriptor = CFunctionDescriptorBuilder.BuildPython(
-            module_name, class_name, function_name, function_source_hash)
+            module_name, class_name, function_name,
+            function_source_hash, args_name)
         self.typed_descriptor = <CPythonFunctionDescriptor*>(
             self.descriptor.get())
 
@@ -155,7 +157,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         return PythonFunctionDescriptor, (self.typed_descriptor.ModuleName(),
                                           self.typed_descriptor.FunctionName(),
                                           self.typed_descriptor.ClassName(),
-                                          self.typed_descriptor.FunctionHash())
+                                          self.typed_descriptor.FunctionHash(),
+                                          self.typed_descriptor.ArgsName())
 
     @staticmethod
     cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
@@ -164,7 +167,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         return PythonFunctionDescriptor(typed_descriptor.ModuleName(),
                                         typed_descriptor.FunctionName(),
                                         typed_descriptor.ClassName(),
-                                        typed_descriptor.FunctionHash())
+                                        typed_descriptor.FunctionHash(),
+                                        typed_descriptor.ArgsName())
 
     @classmethod
     def from_function(cls, function, function_uuid):
@@ -187,10 +191,13 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             The FunctionDescriptor instance created according to the function.
         """
         module_name = cls._get_module_name(function)
+        args_name = cls._get_args_name(function)
         function_name = function.__qualname__
         class_name = ""
 
-        return cls(module_name, function_name, class_name, function_uuid.hex)
+        return cls(
+            module_name, function_name, class_name,
+            function_uuid.hex, args_name)
 
     @classmethod
     def from_class(cls, target_class):
@@ -205,9 +212,12 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             The FunctionDescriptor instance created according to the class.
         """
         module_name = cls._get_module_name(target_class)
+        args_name = cls._get_args_name(target_class)
         class_name = target_class.__qualname__
         # Use a random uuid as function hash to solve actor name conflict.
-        return cls(module_name, "__init__", class_name, uuid.uuid4().hex)
+        return cls(
+            module_name, "__init__", class_name,
+            uuid.uuid4().hex, args_name)
 
     @property
     def module_name(self):
@@ -258,6 +268,15 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             self._function_id = self._get_function_id()
         return self._function_id
 
+    @property
+    def args_name(self):
+        """Get the regular arguments names from this descriptor.
+
+        Returns:
+            A list of argument names.
+        """
+        return <str>self.typed_descriptor.ArgsName()
+
     def _get_function_id(self):
         """Calculate the function id of current function descriptor.
 
@@ -295,6 +314,29 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             except TypeError:
                 pass
         return module_name
+
+    @staticmethod
+    def _get_args_name(func_or_class):
+        """Get the arg name from the functions or classes.
+
+        This only parses the regular args name, but not the keyword args.
+
+        Returns:
+            A list of arg names.
+        """
+        arg_spec = inspect.getfullargspec(func_or_class)
+        num_kwargs = len(arg_spec.defaults) if arg_spec.defaults else 0
+
+        args = arg_spec.args
+        # TODO(sang): Suppress the # of args to avoid having huge
+        # serialization cost for functions with lots of arguments.
+        # e.g., shuffle.
+        # NOTE: Last N args are kwargs
+        if num_kwargs > 0:
+            regular_args_len = len(args) - num_kwargs
+            args = args[:regular_args_len]
+
+        return ",".join(args)
 
     def is_actor_method(self):
         """Wether this function descriptor is an actor method.

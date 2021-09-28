@@ -417,6 +417,7 @@ cdef execute_task(
         c_bool *is_application_level_error):
 
     is_application_level_error[0] = False
+    args_resolved = False
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
@@ -551,6 +552,7 @@ cdef execute_task(
                     for arg in args:
                         raise_if_dependency_failed(arg)
                     args, kwargs = ray._private.signature.recover_args(args)
+                    args_resolved = True
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
@@ -635,16 +637,44 @@ cdef execute_task(
 
             # Generate the actor repr from the actor class.
             actor_repr = repr(actor) if actor else None
+            args_info = {}
+
+            if args_resolved:
+                args_name = function_descriptor.args_name.split(",")
+                if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK
+                        or <int>task_type == <int>TASK_TYPE_ACTOR_TASK):
+                    # The first element of args_name of
+                    # actor creation / actor tasks is "self", so we pop it.
+                    args_name.pop(0)
+                assert len(args_name) <= len(args)
+                last_named_arg_index = 0
+                # Go through args with the name.
+                # f(a, <- this one b, c)
+                for i, arg_name in enumerate(args_name):
+                    arg = args[i]
+                    args_info[arg_name] = repr(arg)
+                    last_named_arg_index = i
+                # Go through args without the name. e.g., *args
+                # f(a, *args <- this one)
+                for i in range(last_named_arg_index + 1, len(args)):
+                    arg = args[i]
+                    args_info[i] = arg
+                # Go through kwargs.
+                # f(b=3, *, c) <- both of kwargs.
+                for key, arg in kwargs.items():
+                    args_info[key] = repr(arg)
 
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause, proctitle=title,
-                                              actor_repr=actor_repr)
+                                              actor_repr=actor_repr,
+                                              args_info=args_info)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error, proctitle=title,
-                                              actor_repr=actor_repr)
+                                              actor_repr=actor_repr,
+                                              args_info=args_info)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)

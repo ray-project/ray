@@ -84,7 +84,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 0, resources};
     RayFunction func{ray::Language::PYTHON,
-                     ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
+                     ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "", "")};
 
     RAY_UNUSED(driver.SubmitActorTask(self_actor_id, func, args, options));
   }
@@ -99,7 +99,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::unordered_map<std::string, double> resources;
     TaskOptions options("", 0, resources);
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "", test, "execute_test", "")};
+                                                "", test, "execute_test", "", "")};
 
     RAY_UNUSED(driver.SubmitActorTask(actor_id, func, args, options));
   }
@@ -113,8 +113,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         buffer, nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 1, resources};
-    RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "", "", "check_current_test_status", "")};
+    RayFunction func{ray::Language::PYTHON,
+                     ray::FunctionDescriptorBuilder::BuildPython(
+                         "", "", "check_current_test_status", "", "")};
 
     auto return_refs = driver.SubmitActorTask(actor_id, func, args, options);
     auto return_ids = ObjectRefsToIds(return_refs);
@@ -175,7 +176,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "", "", "actor creation task", "")};
+                                                "", "", "actor creation task", "", "")};
     std::vector<std::unique_ptr<TaskArg>> args;
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         buffer, nullptr, std::vector<rpc::ObjectReference>())));

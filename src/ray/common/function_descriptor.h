@@ -211,6 +211,8 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
 
   const std::string &FunctionHash() const { return typed_message_->function_hash(); }
 
+  const std::string &ArgsName() const { return typed_message_->args_name(); }
+
  private:
   const rpc::PythonFunctionDescriptor *typed_message_;
 };
@@ -315,7 +317,8 @@ class FunctionDescriptorBuilder {
   static FunctionDescriptor BuildPython(const std::string &module_name,
                                         const std::string &class_name,
                                         const std::string &function_name,
-                                        const std::string &function_hash);
+                                        const std::string &function_hash,
+                                        const std::string &args_name);
 
   /// Build a CppFunctionDescriptor.
   ///

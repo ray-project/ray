@@ -61,7 +61,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
   RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                         "actor creation task", "", "", ""));
+                                         "actor creation task", "", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
@@ -205,8 +205,8 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources) {
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{"", 1, resources};
-  RayFunction func{Language::PYTHON,
-                   FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
+  RayFunction func{Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                         "GetWorkerPid", "", "", "", "")};
 
   auto return_ids = ObjectRefsToIds(
       CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options));
@@ -246,7 +246,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           new TaskArgByReference(object_id, driver.GetRpcAddress(), /*call_site=*/""));
 
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+                                             "MergeInputArgsAsOutput", "", "", "", ""));
       TaskOptions options;
       auto return_refs = driver.SubmitTask(
           func, args, options, /*max_retries=*/0,
@@ -291,7 +291,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{"", 1, resources};
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+                                             "MergeInputArgsAsOutput", "", "", "", ""));
 
       auto return_ids =
           ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
@@ -335,7 +335,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{"", 1, resources};
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                           "MergeInputArgsAsOutput", "", "", ""));
+                                           "MergeInputArgsAsOutput", "", "", "", ""));
     auto return_ids =
         ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
 
@@ -397,7 +397,7 @@ void CoreWorkerTest::TestActorRestart(
 
       TaskOptions options{"", 1, resources};
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+                                             "MergeInputArgsAsOutput", "", "", "", ""));
 
       auto return_ids =
           ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
@@ -440,7 +440,7 @@ void CoreWorkerTest::TestActorFailure(
 
       TaskOptions options{"", 1, resources};
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+                                             "MergeInputArgsAsOutput", "", "", "", ""));
 
       auto return_ids =
           ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
@@ -492,7 +492,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction function(Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                       FunctionDescriptorBuilder::BuildPython("", "", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
@@ -573,7 +573,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{"", 1, resources};
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                           "MergeInputArgsAsOutput", "", "", ""));
+                                           "MergeInputArgsAsOutput", "", "", "", ""));
 
     auto return_ids =
         ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
@@ -634,7 +634,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
                        TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                        Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
+                       FunctionDescriptorBuilder::BuildPython("", "", "", "", ""), "", 0);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -842,10 +842,10 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Create two functions, each implementing a while(true) loop.
-  RayFunction func1(Language::PYTHON,
-                    FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
-  RayFunction func2(Language::PYTHON,
-                    FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
+  RayFunction func1(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                          "WhileTrueLoop", "", "", "", ""));
+  RayFunction func2(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                          "WhileTrueLoop", "", "", "", ""));
 
   // Create default args and options needed to submit the tasks that encapsulate func1 and
   // func2.

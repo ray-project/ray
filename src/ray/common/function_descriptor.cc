@@ -34,13 +34,15 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
     const std::string &module_name, const std::string &class_name,
-    const std::string &function_name, const std::string &function_hash) {
+    const std::string &function_name, const std::string &function_hash,
+    const std::string &args_name) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_python_function_descriptor();
   typed_descriptor->set_module_name(module_name);
   typed_descriptor->set_class_name(class_name);
   typed_descriptor->set_function_name(function_name);
   typed_descriptor->set_function_hash(function_hash);
+  typed_descriptor->set_args_name(args_name);
   return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
@@ -77,12 +79,13 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
         function_descriptor_list[2]   // signature
     );
   } else if (language == rpc::Language::PYTHON) {
-    RAY_CHECK(function_descriptor_list.size() == 4);
+    RAY_CHECK(function_descriptor_list.size() == 5);
     return FunctionDescriptorBuilder::BuildPython(
         function_descriptor_list[0],  // module name
         function_descriptor_list[1],  // class name
         function_descriptor_list[2],  // function name
-        function_descriptor_list[3]   // function hash
+        function_descriptor_list[3],  // function hash
+        function_descriptor_list[4]   // args_name
     );
   } else if (language == rpc::Language::CPP) {
     RAY_CHECK(function_descriptor_list.size() == 1);

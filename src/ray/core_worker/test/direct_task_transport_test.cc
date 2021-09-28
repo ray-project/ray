@@ -429,7 +429,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;
   FunctionDescriptor empty_descriptor =
-      FunctionDescriptorBuilder::BuildPython("", "", "", "");
+      FunctionDescriptorBuilder::BuildPython("", "", "", "", "");
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
@@ -1070,9 +1070,9 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
   FunctionDescriptor descriptor1 =
-      FunctionDescriptorBuilder::BuildPython("a", "", "", "");
+      FunctionDescriptorBuilder::BuildPython("a", "", "", "", "");
   FunctionDescriptor descriptor2 =
-      FunctionDescriptorBuilder::BuildPython("b", "", "", "");
+      FunctionDescriptorBuilder::BuildPython("b", "", "", "", "");
 
   // Tasks with different resources should request different worker leases.
   RAY_LOG(INFO) << "Test different resources";

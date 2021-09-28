@@ -139,7 +139,7 @@ class ActorManagerTest : public ::testing::Test {
     const auto caller_address = rpc::Address();
     const auto call_site = "";
     RayFunction function(Language::PYTHON,
-                         FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                         FunctionDescriptorBuilder::BuildPython("", "", "", "", ""));
 
     auto actor_handle = absl::make_unique<ActorHandle>(
         actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
@@ -166,7 +166,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   const auto caller_address = rpc::Address();
   const auto call_site = "";
   RayFunction function(Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                       FunctionDescriptorBuilder::BuildPython("", "", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
@@ -219,7 +219,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   const auto caller_address = rpc::Address();
   const auto call_site = "";
   RayFunction function(Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                       FunctionDescriptorBuilder::BuildPython("", "", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);

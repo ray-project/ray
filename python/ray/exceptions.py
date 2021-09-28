@@ -76,7 +76,8 @@ class RayTaskError(RayError):
                  proctitle=None,
                  pid=None,
                  ip=None,
-                 actor_repr=None):
+                 actor_repr=None,
+                 args_info: dict = None):
         """Initialize a RayTaskError."""
         import ray
 
@@ -96,6 +97,7 @@ class RayTaskError(RayError):
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
+        self.args_info = args_info or None
 
     def as_instanceof_cause(self):
         """Returns an exception that is an instance of the cause's class.
@@ -139,6 +141,24 @@ class RayTaskError(RayError):
         lines = self.traceback_str.strip().split("\n")
         out = []
         code_from_internal_file = False
+
+        max_args_to_print = 30
+        args_printed = 0
+        if self.args_info:
+            out.append("Task failed with the following arguments:")
+            # args_info -> {name: repr}
+            # NOTE: Variable args such as `def f(*args)`,
+            # are recorded as the position integer.
+            for arg_key, arg_repr in self.args_info.items():
+                # arg_key is an integer when it is not a kwarg.
+                if isinstance(arg_key, int):
+                    arg_key = f"Arg {arg_key + 1} (variable arg)"
+                out.append(f"{arg_key}: {arg_repr}")
+                args_printed += 1
+                if args_printed > max_args_to_print:
+                    out.append(f"and {len(self.args_info) - max_args_to_print}"
+                               "+ args...")
+                    break
 
         # Format tracebacks.
         # Python stacktrace consists of

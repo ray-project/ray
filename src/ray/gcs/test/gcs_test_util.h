@@ -40,7 +40,7 @@ struct Mocker {
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     FunctionDescriptor function_descriptor;
-    function_descriptor = FunctionDescriptorBuilder::BuildPython("", "", "", "");
+    function_descriptor = FunctionDescriptorBuilder::BuildPython("", "", "", "", "");
     builder.SetCommonTaskSpec(task_id, name + ":" + function_descriptor->CallString(),
                               Language::PYTHON, function_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
