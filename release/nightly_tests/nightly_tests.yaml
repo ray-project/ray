@@ -232,6 +232,24 @@
       timeout: 3600
       script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3 --num-children=3
 
+- name: stress_test_dead_actors_threaded
+  cluster:
+    app_config: stress_tests/stress_tests_app_config.yaml
+    compute_template: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_dead_actors.py --num-threads=5
+
+  smoke_test:
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      compute_template: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3 --num-children=3 --num-threads=2
+
 # Stress tests with placement groups
 - name: stress_test_placement_group
   cluster:

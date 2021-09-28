@@ -30,10 +30,13 @@ class Child(object):
 
 @ray.remote
 class Parent(object):
-    def __init__(self, num_children, death_probability):
+    def __init__(self, num_children, death_probability, num_threads):
         self.death_probability = death_probability
+        self.num_threads = num_threads
         self.children = [
-            Child.remote(death_probability) for _ in range(num_children)
+            Child.options(
+                max_concurrency=num_threads).remote(death_probability)
+            for _ in range(num_children)
         ]
 
     def ping(self, num_pings):
@@ -46,7 +49,8 @@ class Parent(object):
             ray.get(children_outputs)
         except Exception:
             # Replace the children if one of them died.
-            self.__init__(len(self.children), self.death_probability)
+            self.__init__(
+                len(self.children), self.num_threads, self.death_probability)
 
     def kill(self):
         # Clean up children.
@@ -58,6 +62,7 @@ def parse_script_args():
     parser.add_argument("--num-nodes", type=int, default=100)
     parser.add_argument("--num-parents", type=int, default=10)
     parser.add_argument("--num-children", type=int, default=10)
+    parser.add_argument("--num-threads", type=int, default=1)
     parser.add_argument("--death-probability", type=int, default=0.95)
     return parser.parse_known_args()
 
@@ -72,6 +77,7 @@ if __name__ == "__main__":
     num_parents = args.num_parents
     num_children = args.num_children
     death_probability = args.death_probability
+    num_threads = args.num_threads
 
     # Wait until the expected number of nodes have joined the cluster.
     while True:
@@ -85,7 +91,7 @@ if __name__ == "__main__":
                 ray.cluster_resources())
 
     parents = [
-        Parent.remote(num_children, death_probability)
+        Parent.remote(num_children, death_probability, num_threads)
         for _ in range(num_parents)
     ]
 
