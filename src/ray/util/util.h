@@ -319,7 +319,15 @@ class ExponentialBackOff {
   ExponentialBackOff(ExponentialBackOff &&) = default;
   ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
   ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
-  ExponentialBackOff(double initial_value, double multiplier, double max_value = 0.0)
+
+  /// Construct an exponential back off counter.
+  ///
+  /// \param[in] initial_value The start value for this counter
+  /// \param[in] multiplier The multiplier for this counter.
+  /// \param[in] max_value The maximum value for this counter. By default it's
+  ///    infinite double.
+  ExponentialBackOff(double initial_value, double multiplier,
+                     double max_value = std::numeric_limits<double::max())
       : curr_value_(initial_value),
         initial_value_(initial_value),
         max_value_(max_value),
@@ -327,11 +335,9 @@ class ExponentialBackOff {
     RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
   }
 
-  size_t Next() {
+  double Next() {
     curr_value_ = curr_value_ * multiplier_;
-    if (max_value_ != 0.0) {
-      curr_value_ = std::min(curr_value_, max_value_);
-    }
+    curr_value_ = std::min(curr_value_, max_value_);
     return curr_value_;
   }
 
