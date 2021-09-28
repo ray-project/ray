@@ -287,39 +287,38 @@ class ServeController:
         backend_config = BackendConfig.from_proto_bytes(
             backend_config_proto_bytes)
 
-        async with self.write_lock:
-            if prev_version is not None:
-                existing_backend_info = self.backend_state_manager.get_backend(
-                    name)
-                if (existing_backend_info is None
-                        or not existing_backend_info.version):
-                    raise ValueError(
-                        f"prev_version '{prev_version}' is specified but "
-                        "there is no existing deployment.")
-                if existing_backend_info.version != prev_version:
-                    raise ValueError(
-                        f"prev_version '{prev_version}' "
-                        "does not match with the existing "
-                        f"version '{existing_backend_info.version}'.")
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        name, replica_config.serialized_backend_def)),
-                version=version,
-                backend_config=backend_config,
-                replica_config=replica_config,
-                deployer_job_id=deployer_job_id,
-                start_time_ms=int(time.time() * 1000))
-            # TODO(architkulkarni): When a deployment is redeployed, even if
-            # the only change was num_replicas, the start_time_ms is refreshed.
-            # This is probably not the desired behavior for an autoscaling
-            # deployment, which redeploys very often to change num_replicas.
+        if prev_version is not None:
+            existing_backend_info = self.backend_state_manager.get_backend(
+                name)
+            if (existing_backend_info is None
+                    or not existing_backend_info.version):
+                raise ValueError(
+                    f"prev_version '{prev_version}' is specified but "
+                    "there is no existing deployment.")
+            if existing_backend_info.version != prev_version:
+                raise ValueError(
+                    f"prev_version '{prev_version}' "
+                    "does not match with the existing "
+                    f"version '{existing_backend_info.version}'.")
+        backend_info = BackendInfo(
+            actor_def=ray.remote(
+                create_backend_replica(
+                    name, replica_config.serialized_backend_def)),
+            version=version,
+            backend_config=backend_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000))
+        # TODO(architkulkarni): When a deployment is redeployed, even if
+        # the only change was num_replicas, the start_time_ms is refreshed.
+        # This is probably not the desired behavior for an autoscaling
+        # deployment, which redeploys very often to change num_replicas.
 
-            goal_id, updating = self.backend_state_manager.deploy_backend(
-                name, backend_info)
-            endpoint_info = EndpointInfo(route=route_prefix)
-            self.endpoint_state.update_endpoint(name, endpoint_info)
-            return goal_id, updating
+        goal_id, updating = self.backend_state_manager.deploy_backend(
+            name, backend_info)
+        endpoint_info = EndpointInfo(route=route_prefix)
+        self.endpoint_state.update_endpoint(name, endpoint_info)
+        return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
