@@ -2089,6 +2089,18 @@ cc_library(
 )
 
 cc_test(
+    name = "callback_reply_test",
+    size = "small",
+    srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "asio_test",
     size = "small",
     srcs = ["src/ray/gcs/test/asio_test.cc"],
