@@ -117,7 +117,7 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
@@ -389,7 +389,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
