@@ -7,7 +7,7 @@ import pytest
 import ray
 
 
-def test_override_environment_variables_task(ray_start_regular):
+def test_environment_variables_task(ray_start_regular):
     @ray.remote
     def get_env(key):
         return os.environ.get(key)
@@ -20,7 +20,7 @@ def test_override_environment_variables_task(ray_start_regular):
         }).remote("a")) == "b")
 
 
-def test_override_environment_variables_actor(ray_start_regular):
+def test_environment_variables_actor(ray_start_regular):
     @ray.remote
     class EnvGetter:
         def get(self, key):
@@ -37,7 +37,7 @@ def test_override_environment_variables_actor(ray_start_regular):
     assert (ray.get(a.get.remote("c")) == "d")
 
 
-def test_override_environment_variables_nested_task(ray_start_regular):
+def test_environment_variables_nested_task(ray_start_regular):
     @ray.remote
     def get_env(key):
         return os.environ.get(key)
@@ -54,7 +54,7 @@ def test_override_environment_variables_nested_task(ray_start_regular):
         }).remote("a")) == "b")
 
 
-def test_override_environment_variables_multitenancy(shutdown_only):
+def test_environment_variables_multitenancy(shutdown_only):
     ray.init(runtime_env={"env_vars": {
         "foo1": "bar1",
         "foo2": "bar2",
@@ -80,7 +80,7 @@ def test_override_environment_variables_multitenancy(shutdown_only):
         }).remote("foo2")) == "bar2"
 
 
-def test_override_environment_variables_complex(shutdown_only):
+def test_environment_variables_complex(shutdown_only):
     ray.init(
         runtime_env={"env_vars": {
             "a": "job_a",
@@ -147,7 +147,7 @@ def test_override_environment_variables_complex(shutdown_only):
         }).remote("z")) == "job_z")
 
 
-def test_override_environment_variables_reuse(shutdown_only):
+def test_environment_variables_reuse(shutdown_only):
     """Test that new tasks don't incorrectly reuse previous environments."""
     ray.init()
 
@@ -187,7 +187,7 @@ def test_override_environment_variables_reuse(shutdown_only):
 # there aren't enough CPUs (2-4 on Travis CI vs. likely 8 on Buildkite) and
 # worker processes are being killed to adhere to the soft limit.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Travis CI.")
-def test_override_environment_variables_env_caching(shutdown_only):
+def test_environment_variables_env_caching(shutdown_only):
     """Test that workers with specified envs are cached and reused.
 
     When a new task or actor is created with a new runtime env, a
