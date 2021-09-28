@@ -623,6 +623,85 @@ def test_return_nested_ids(shutdown_only, inline_args):
     ray.get(test.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_actor_constructor_borrowed_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Borrower:
+        def __init__(self, borrowed_refs):
+            self.borrowed_refs = borrowed_refs
+
+        def test(self):
+            ray.get(self.borrowed_refs)
+
+    # Actor is the only one with a ref.
+    ref = ray.put(np.random.random(1024 * 1024))
+    b = Borrower.remote([ref])
+    del ref
+    # Check that the actor's ref is usable.
+    for _ in range(3):
+        ray.get(b.test.remote())
+        time.sleep(1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deep_nested_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(x):
+        print(f"=> step {x}")
+        if x > 200:
+            return x
+        return f.remote(x + 1)
+
+    r = f.remote(1)
+    i = 0
+    while isinstance(r, ray.ObjectRef):
+        print(i, r)
+        i += 1
+        r = ray.get(r)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_forward_nested_ref(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def nested_ref():
+        return ray.put(1)
+
+    @ray.remote
+    def nested_nested_ref():
+        return nested_ref.remote()
+
+    @ray.remote
+    class Borrower:
+        def __init__(self):
+            return
+
+        def pass_ref(self, middle_ref):
+            self.inner_ref = ray.get(middle_ref)
+
+        def check_ref(self):
+            ray.get(self.inner_ref)
+
+    @ray.remote
+    def pass_nested_ref(borrower, outer_ref):
+        ray.get(borrower.pass_ref.remote(outer_ref[0]))
+
+    b = Borrower.remote()
+    outer_ref = nested_nested_ref.remote()
+    x = pass_nested_ref.remote(b, [outer_ref])
+    del outer_ref
+    ray.get(x)
+
+    for _ in range(3):
+        ray.get(b.check_ref.remote())
+        time.sleep(1)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

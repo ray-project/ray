@@ -152,6 +152,7 @@ cc_test(
     ]),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so)",
+        "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
     data = [
@@ -194,5 +195,33 @@ cc_binary(
     linkstatic = True,
     deps = [
         "ray_api",
+    ],
+)
+
+cc_test(
+    name = "simple_kv_store",
+    srcs = glob([
+        "src/ray/test/examples/*.cc",
+    ]),
+    data = [
+        "simple_kv_store.so",
+    ],
+    linkstatic = True,
+    tags = ["team:serverless"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
+cc_binary(
+    name = "simple_kv_store.so",
+    testonly = True,
+    srcs = glob([
+        "src/ray/test/examples/*.cc",
+    ]),
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        ":ray_api",
     ],
 )

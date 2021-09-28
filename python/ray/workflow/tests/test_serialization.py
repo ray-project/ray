@@ -3,6 +3,8 @@ import pytest
 import ray
 from ray import workflow
 from ray.workflow import serialization
+from ray.workflow import storage
+from ray.workflow import workflow_storage
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tests.conftest import *  # noqa
 import subprocess
@@ -82,6 +84,26 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
     assert get_num_uploads() == 2
 
 
+def test_same_object_many_workflows(workflow_start_regular_shared):
+    """Ensure that when we dedupe uploads, we upload the object once per workflow,
+    since different workflows shouldn't look in each others object directories.
+    """
+
+    @ray.workflow.step
+    def f(a):
+        return [a[0]]
+
+    x = {0: ray.put(10)}
+
+    result1 = f.step(x).run()
+    result2 = f.step(x).run()
+    print(result1)
+    print(result2)
+
+    assert ray.get(*result1) == 10
+    assert ray.get(*result2) == 10
+
+
 def test_dedupe_cluster_failure(reset_workflow, tmp_path):
     ray.shutdown()
     """
@@ -141,6 +163,36 @@ if __name__ == "__main__":
     assert get_num_uploads() == 1
     workflow.storage.set_global_storage(None)
     ray.shutdown()
+
+
+def test_embedded_objectrefs(workflow_start_regular):
+    workflow_id = test_embedded_objectrefs.__name__
+    base_storage = storage.get_global_storage()
+
+    class ObjectRefsWrapper:
+        def __init__(self, refs):
+            self.refs = refs
+
+    url = base_storage.storage_url
+
+    wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
+
+    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id,
+                                            base_storage)
+    workflow_storage.asyncio_run(promise)
+
+    # Be extremely explicit about shutting down. We want to make sure the
+    # `_get` call deserializes the full object and puts it in the object store.
+    # Shutting down the cluster should guarantee we don't accidently get the
+    # old object and pass the test.
+    ray.shutdown()
+    subprocess.check_output("ray stop --force", shell=True)
+
+    workflow.init(url)
+    storage2 = workflow_storage.get_workflow_storage(workflow_id)
+
+    result = workflow_storage.asyncio_run(storage2._get(["key"]))
+    assert ray.get(result.refs) == [1, 2]
 
 
 if __name__ == "__main__":

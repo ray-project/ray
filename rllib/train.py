@@ -12,7 +12,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
-from ray.rllib.utils import force_list
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -55,9 +54,15 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--ray-ui",
+        action="store_true",
+        help="Whether to enable the Ray web UI.")
+    # Deprecated: Use --ray-ui, instead.
+    parser.add_argument(
         "--no-ray-ui",
         action="store_true",
-        help="Whether to disable the Ray web ui.")
+        help="Deprecated! Ray UI is disabled by default now. "
+        "Use `--ray-ui` to enable.")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -171,29 +176,40 @@ def run(args, parser):
             }
         }
 
+    # Ray UI.
+    if args.no_ray_ui:
+        deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=False)
+        args.ray_ui = False
+
     verbose = 1
     for exp in experiments.values():
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
         input_ = exp.get("config", {}).get("input")
+
         if input_ and input_ != "sampler":
-            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
 
             def patch_path(path):
-                if os.path.exists(path):
-                    return path
+                if isinstance(path, list):
+                    return [patch_path(i) for i in path]
+                elif isinstance(path, dict):
+                    return {
+                        patch_path(k): patch_path(v)
+                        for k, v in path.items()
+                    }
+                elif isinstance(path, str):
+                    if os.path.exists(path):
+                        return path
+                    else:
+                        abs_path = str(rllib_dir.absolute().joinpath(path))
+                        return abs_path if os.path.exists(abs_path) else path
                 else:
-                    abs_path = str(rllib_dir.absolute().joinpath(path))
-                    return abs_path if os.path.exists(abs_path) else path
+                    return path
 
-            abs_inputs = list(map(patch_path, inputs))
-            if not isinstance(input_, list):
-                abs_inputs = abs_inputs[0]
-
-            exp["config"]["input"] = abs_inputs
+            exp["config"]["input"] = patch_path(input_)
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
@@ -234,7 +250,7 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_dashboard=not args.no_ray_ui,
+            include_dashboard=args.ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             num_cpus=args.ray_num_cpus,

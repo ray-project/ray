@@ -82,7 +82,6 @@ class HyperBandScheduler(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "training_iteration",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_t: int = 81,
@@ -91,14 +90,6 @@ class HyperBandScheduler(FIFOScheduler):
         assert max_t > 0, "Max (time_attr) not valid!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._eta = reduction_factor
