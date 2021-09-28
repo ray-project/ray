@@ -283,6 +283,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
                          std::optional<int64_t> rank = std::nullopt,
                          std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+  void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
+                         std::optional<int64_t> rank = std::nullopt,
+                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.

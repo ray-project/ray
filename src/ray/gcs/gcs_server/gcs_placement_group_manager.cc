@@ -241,7 +241,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // NOTE: If a node is dead, the placement group scheduler should try to recover the
       // group by rescheduling the bundles of the dead node. This should have higher
       // priority than trying to place other placement groups.
-      AddToPendingQueue(std::move(placement_group), 0);
+      AddToPendingQueue(std::move(placement_group), /* rank */ 0);
     } else {
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
@@ -291,8 +291,10 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   bool is_new_placement_group_scheduled = false;
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
-    // Nothing to schedule
     if (iter->first > absl::GetCurrentTimeNanos()) {
+      // Here the rank equals the time to schedule, and it's an ordered tree,
+      // it means all the other tasks should be scheduled after this one.
+      // If the first one won't be scheduled, we just skip.
       break;
     }
     auto backoff = iter->second.first;
@@ -597,6 +599,7 @@ void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg
                          pending_placement_groups_.end(), [&pg_id](const auto &val) {
                            return val.second.second->GetPlacementGroupID() == pg_id;
                          });
+  // The placement group was pending scheduling, remove it from the queue.
   if (it != pending_placement_groups_.end()) {
     pending_placement_groups_.erase(it);
   }
