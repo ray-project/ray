@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include <google/protobuf/arena.h>
 #include <grpcpp/grpcpp.h>
 
-#include <google/protobuf/arena.h>
 #include <boost/asio.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
