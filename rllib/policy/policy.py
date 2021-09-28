@@ -223,24 +223,22 @@ class Policy(metaclass=ABCMeta):
         # Build the input-dict used for the call to
         # `self.compute_actions_from_input_dict()`.
         if input_dict is None:
-            input_dict = {
-                SampleBatch.OBS: tree.map_structure(
-                    lambda s: (s.unsqueeze(0) if
-                               torch and isinstance(s, torch.Tensor) else
-                               np.expand_dims(s, 0)),
-                    obs)
-            }
+            input_dict = {SampleBatch.OBS: obs}
             if state is not None:
                 for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s.unsqueeze(0) if \
-                        torch and isinstance(s, torch.Tensor) else \
-                        np.expand_dims(s, 0)
+                    input_dict[f"state_in_{i}"] = s
             if prev_action is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = [prev_action]
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
             if prev_reward is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = [prev_reward]
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
             if info is not None:
-                input_dict[SampleBatch.INFOS] = [info]
+                input_dict[SampleBatch.INFOS] = info
+            # Batch everything in input_dict to B=1.
+            input_dict = tree.map_structure(
+                lambda s: (s.unsqueeze(0) if
+                           torch and isinstance(s, torch.Tensor) else
+                           np.expand_dims(s, 0)),
+                input_dict)
         # Batch all data in input dict.
         else:
             input_dict = tree.map_structure_with_path(

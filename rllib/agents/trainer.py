@@ -1124,7 +1124,7 @@ class Trainer(Trainable):
                 input_dict=input_dict,
                 explore=explore,
                 timestep=timestep,
-                episodes=[episode],
+                episode=episode,
             )
         # Individual args.
         else:
@@ -1135,7 +1135,7 @@ class Trainer(Trainable):
                 info=info,
                 explore=explore,
                 timestep=timestep,
-                episodes=[episode],
+                episode=episode,
             )
 
         # If we work in normalized action space (normalize_actions=True),

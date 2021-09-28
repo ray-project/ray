@@ -342,7 +342,7 @@ def check_compute_single_action(trainer,
             if include_prev_action_reward:
                 input_dict[SampleBatch.PREV_ACTIONS] = [action_in]
                 input_dict[SampleBatch.PREV_REWARDS] = [reward_in]
-            action = what.compute_action_from_input_dict(
+            action = what.compute_actions_from_input_dict(
                 input_dict,
                 explore=explore,
                 timestep=timestep,
