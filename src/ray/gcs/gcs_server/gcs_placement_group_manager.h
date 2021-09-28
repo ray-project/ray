@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #pragma once
-#include <optional>
 #include <gtest/gtest_prod.h>
+#include <optional>
 
 #include <utility>
 #include "absl/container/btree_map.h"
