@@ -305,6 +305,7 @@ RuntimeError: Failed to unpickle serialized exception"""
     try:
         ray.get(f.remote())
     except Exception as ex:
+        print(repr(scrub_traceback(str(ex))))
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
