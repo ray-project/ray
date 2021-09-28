@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private import services
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -185,7 +186,10 @@ time.sleep(5)
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
                              ray_debugger_external):
     redis_substring_prefix = "--address='"
-    cmd = ["ray", "start", "--head", "--num-cpus=1"]
+    cmd = [
+        "ray", "start", "--head", "--num-cpus=1",
+        "--node-ip-address=" + services.get_node_ip_address()
+    ]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
     out = ray._private.utils.decode(
@@ -239,9 +243,13 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         head_node_args={
             "num_cpus": 0,
             "num_gpus": 1,
-            "ray_debugger_external": ray_debugger_external
+            "ray_debugger_external": ray_debugger_external,
+            "node_ip_address": services.get_node_ip_address()
         })
-    c.add_node(num_cpus=1, ray_debugger_external=ray_debugger_external)
+    c.add_node(
+        num_cpus=1,
+        ray_debugger_external=ray_debugger_external,
+        node_ip_address=services.get_node_ip_address())
 
     @ray.remote
     def f():

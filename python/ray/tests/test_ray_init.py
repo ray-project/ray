@@ -216,6 +216,7 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        ray.shutdown()
 
 
 class Credentials(grpc.ChannelCredentials):
