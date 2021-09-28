@@ -46,17 +46,10 @@ class TestBackend(Backend):
         pass
 
 
-def torch_fashion_mnist(num_workers,
-                        use_gpu,
-                        num_samples,
-                        resources_per_worker=None):
+def torch_fashion_mnist(num_workers, use_gpu, num_samples):
     epochs = 2
 
-    trainer = Trainer(
-        "torch",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker)
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
     MnistTrainable = trainer.to_tune_trainable(fashion_mnist_train_func)
 
     analysis = tune.run(
@@ -77,16 +70,9 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
     torch_fashion_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
-def tune_tensorflow_mnist(num_workers,
-                          use_gpu,
-                          num_samples,
-                          resources_per_worker=None):
+def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     epochs = 2
-    trainer = Trainer(
-        "tensorflow",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker)
+    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=use_gpu)
     MnistTrainable = trainer.to_tune_trainable(tensorflow_mnist_train_func)
 
     analysis = tune.run(
