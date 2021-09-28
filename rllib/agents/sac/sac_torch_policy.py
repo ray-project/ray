@@ -329,8 +329,7 @@ def actor_critic_loss(
     model.tower_stats["td_error"] = td_error
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([actor_loss] + critic_loss +
-                 [alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss])
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
