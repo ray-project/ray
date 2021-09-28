@@ -80,35 +80,35 @@ public class RayServeReplica {
     Metrics.init(MetricConfig.DEFAULT_CONFIG);
     requestCounter =
         Metrics.count()
-            .name("serve_backend_request_counter")
+            .name("serve_deployment_request_counter")
             .description("The number of queries that have been processed in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("deployment", deploymentTag, "replica", replicaTag))
             .register();
 
     errorCounter =
         Metrics.count()
-            .name("serve_backend_error_counter")
+            .name("serve_deployment_error_counter")
             .description("The number of exceptions that have occurred in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("deployment", deploymentTag, "replica", replicaTag))
             .register();
 
     restartCounter =
         Metrics.count()
-            .name("serve_backend_replica_starts")
+            .name("serve_deployment_replica_starts")
             .description("The number of times this replica has been restarted due to failure.")
             .unit("")
-            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("deployment", deploymentTag, "replica", replicaTag))
             .register();
 
     processingLatencyTracker =
         Metrics.histogram()
-            .name("serve_backend_processing_latency_ms")
+            .name("serve_deployment_processing_latency_ms")
             .description("The latency for queries to be processed.")
             .unit("")
             .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
-            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("deployment", deploymentTag, "replica", replicaTag))
             .register();
 
     numProcessingItems =
@@ -116,7 +116,7 @@ public class RayServeReplica {
             .name("serve_replica_processing_queries")
             .description("The current number of queries being processed.")
             .unit("")
-            .tags(ImmutableMap.of("backend", deploymentTag, "replica", replicaTag))
+            .tags(ImmutableMap.of("deployment", deploymentTag, "replica", replicaTag))
             .register();
 
     metricsRegistered = true;
@@ -248,21 +248,21 @@ public class RayServeReplica {
     } catch (NoSuchMethodException e) {
       throw new RayServeException(
           LogUtil.format(
-              "user_config specified but backend {} missing {} method",
+              "user_config specified but deployment {} missing {} method",
               deploymentTag,
               Constants.DEPLOYMENT_RECONFIGURE_METHOD));
     } catch (Throwable e) {
       throw new RayServeException(
           LogUtil.format(
-              "Backend {} failed to reconfigure user_config {}", deploymentTag, userConfig),
+              "Deployment {} failed to reconfigure user_config {}", deploymentTag, userConfig),
           e);
     }
   }
 
   /**
-   * Update backend configs.
+   * Update deployment configs.
    *
-   * @param newConfig the new configuration of backend
+   * @param newConfig the new configuration of deployment
    */
   private void updateDeploymentConfigs(Object newConfig) {
     config = (DeploymentConfig) newConfig;
