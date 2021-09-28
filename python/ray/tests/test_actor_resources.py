@@ -643,16 +643,15 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 def test_cpu_instruction(shutdown_only):
     os.environ["CPU_INSTRUCTION_SET"] = "avx2"
+    os.environ["EXTEND_CPU_INSTRUCTIONS"] = "avx2"
     ray.init()
-
     @ray.remote
     class ResourceActor():
         def check_resource(self, res):
             cpu_info = get_cpu_info()
             return res in cpu_info["flags"]
-
     driver_cpu_info = get_cpu_info()
-    required_cpu_instruction_str = os.getenv("CPU_INSTRUCTION_SET", "")
+    required_cpu_instruction_str = os.getenv("EXTEND_CPU_INSTRUCTIONS", "")
     required_instruction_set = \
         [x.strip() for x in required_cpu_instruction_str.split(",")]
     logging.info(driver_cpu_info)
@@ -670,8 +669,7 @@ def test_cpu_instruction(shutdown_only):
             actor = ResourceActor.remote()
             result = actor.check_resource.remote(required_ins)
             assert not ray.get(result)
-    os.environ["CPU_INSTRUCTION_SET"] = ""
-
+    del os.environ["CPU_INSTRUCTION_SET"]
 
 if __name__ == "__main__":
     import pytest
