@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 import time
 from collections import defaultdict
@@ -7,7 +6,6 @@ import os
 from typing import Dict, List, Optional, Tuple, Any
 
 import ray
-from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
