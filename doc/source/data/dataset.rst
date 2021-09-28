@@ -145,7 +145,7 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
-.. tip
+.. tip::
 
    Run `pip install ray[data]` to get started!
 
