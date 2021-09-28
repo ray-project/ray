@@ -429,23 +429,35 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
   }
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  int64_t backlog_size;
+  int64_t scheduling_key_backlog_size;
   if (scheduling_key_entry.task_queue.size() <
       scheduling_key_entry.pending_lease_requests.size()) {
     // During work stealing we may have more pending lease requests than the number of
     // queued tasks
-    backlog_size = 0;
+    scheduling_key_backlog_size = 0;
   } else {
     // Subtract tasks with pending lesae requests so we don't double count them.
-    backlog_size = scheduling_key_entry.task_queue.size() -
-                   scheduling_key_entry.pending_lease_requests.size();
+    scheduling_key_backlog_size = scheduling_key_entry.task_queue.size() -
+                                  scheduling_key_entry.pending_lease_requests.size();
   }
 
-  if (scheduling_key_entry.last_reported_backlog_size != backlog_size) {
-    scheduling_key_entry.last_reported_backlog_size = backlog_size;
+  if (scheduling_key_entry.last_reported_backlog_size != scheduling_key_backlog_size) {
+    scheduling_key_entry.last_reported_backlog_size = scheduling_key_backlog_size;
+
+    int64_t scheduling_class_backlog_size = 0;
+    // We report backlog size per scheduling class not per scheduling key
+    // so we need to aggregate backlog sizes of different scheduling keys
+    // with the same scheduling class
+    for (const auto &scheduling_key_and_entry : scheduling_key_entries_) {
+      if (std::get<0>(scheduling_key_and_entry.first) == std::get<0>(scheduling_key)) {
+        scheduling_class_backlog_size +=
+            scheduling_key_and_entry.second.last_reported_backlog_size;
+      }
+    }
+
     local_lease_client_->ReportWorkerBacklog(
         WorkerID::FromBinary(rpc_address_.worker_id()),
-        scheduling_key_entry.resource_spec, backlog_size);
+        scheduling_key_entry.resource_spec, scheduling_class_backlog_size);
   }
 }
 

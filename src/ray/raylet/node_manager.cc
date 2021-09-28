@@ -1507,6 +1507,7 @@ void NodeManager::HandleReportWorkerBacklog(
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   cluster_task_manager_->SetWorkerBacklog(scheduling_class, worker_id,
                                           request.backlog_size());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,

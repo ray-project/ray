@@ -89,9 +89,18 @@ class ClusterTaskManagerInterface {
   virtual bool CancelTask(const TaskID &task_id,
                           bool runtime_env_setup_failed = false) = 0;
 
+  /// Set the worker backlog size for a particular scheduling class.
+  ///
+  /// \param scheduling_class: The scheduling class this backlog is for.
+  /// \param worker_id: The ID of the worker that owns the backlog information.
+  /// \param backlog_size: The size of the backlog.
   virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
                                 const WorkerID &worker_id, int64_t backlog_size) = 0;
 
+  /// Remove all backlog information about the given worker.
+  ///
+  /// \param worker_id: The ID of the worker owning the backlog information
+  /// that we want to remove.
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.

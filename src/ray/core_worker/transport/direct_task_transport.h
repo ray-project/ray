@@ -246,9 +246,10 @@ class CoreWorkerDirectTaskSubmitter {
   // worker using a single lease.
   const uint32_t max_tasks_in_flight_per_worker_;
 
-  // Max number of pending lease requests per SchedulingKey
+  // Max number of pending lease requests per SchedulingKey.
   const uint64_t max_pending_lease_requests_per_scheduling_category_;
 
+  // Report worker backlog size to the local raylet if it's true.
   const bool report_worker_backlog_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
