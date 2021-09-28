@@ -844,6 +844,18 @@ cc_test(
 )
 
 cc_test(
+    name = "direct_actor_transport_mock_test",
+    srcs = ["src/ray/core_worker/test/direct_actor_transport_mock_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "direct_task_transport_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
@@ -851,6 +863,20 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "direct_task_transport_mock_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/direct_task_transport_mock_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -898,6 +924,19 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "actor_creator_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2031,6 +2070,18 @@ cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "@boost//:asio",
+    ],
+)
+
+cc_test(
+    name = "callback_reply_test",
+    size = "small",
+    srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

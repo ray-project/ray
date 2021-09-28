@@ -17,8 +17,6 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.horovod.horovod_stateful_example import \
-    TrainClass as HorovodTrainClass
 from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
     as \
     fashion_mnist_train_func
@@ -26,7 +24,7 @@ from ray.util.sgd.v2.examples.train_linear_example import train_func as \
     linear_train_func
 
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
+    horovod_torch_train_func, HorovodTrainClass
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -90,7 +88,7 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i]._BaseWorkerMixin__execute.remote(
+        return self.workers[i].actor._BaseWorkerMixin__execute.remote(
             f, *args, **kwargs)
 
     return execute_single_async_special
@@ -128,7 +126,7 @@ class KillCallback(SGDCallback):
         print(results)
         assert all(r["loss"] == 1 for r in results)
         if self.counter == self.fail_on:
-            ray.kill(self.worker_group.workers[0])
+            ray.kill(self.worker_group.workers[0].actor)
             time.sleep(3)
         self.counter += 1
 
@@ -752,6 +750,27 @@ def test_worker_failure_2(ray_start_2_cpus):
         trainer.start()
         results = trainer.run(train)
         assert results == [1, 1]
+
+
+def test_worker_failure_local_rank(ray_start_2_cpus):
+    test_config = TestConfig()
+
+    def train():
+        return sgd.local_rank()
+
+    def train_actor_failure():
+        import sys
+        sys.exit(0)
+        return sgd.local_rank()
+
+    new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
+
+    with patch.object(ray.util.sgd.v2.trainer, "BackendExecutor",
+                      new_backend_executor_cls):
+        trainer = Trainer(test_config, num_workers=2)
+        trainer.start()
+        results = trainer.run(train)
+        assert set(results) == {0, 1}
 
 
 def test_worker_start_failure(ray_start_2_cpus):

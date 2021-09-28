@@ -90,6 +90,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                                            backend_config.user_config, version,
                                            is_function, controller_handle)
 
+            # asyncio.Event used to signal that the replica is shutting down.
+            self.shutdown_event = asyncio.Event()
+
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
@@ -111,12 +114,12 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         def get_version(self) -> BackendVersion:
             return self.backend.version
 
-        async def drain_pending_queries(self):
-            return await self.backend.drain_pending_queries()
+        async def prepare_for_shutdown(self):
+            self.shutdown_event.set()
+            return await self.backend.prepare_for_shutdown()
 
         async def run_forever(self):
-            while True:
-                await asyncio.sleep(10000)
+            await self.shutdown_event.wait()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
@@ -332,7 +335,7 @@ class RayServeReplica:
         # Returns a small object for router to track request status.
         return b"", result
 
-    async def drain_pending_queries(self):
+    async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
 
         Trigger a graceful shutdown protocol that will wait for all the queued
@@ -350,3 +353,14 @@ class RayServeReplica:
                     f"Waiting for an additional {sleep_time}s to shut down "
                     f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
+
+        # Explicitly call the del method to trigger clean up.
+        # We set the del method to noop after succssifully calling it so the
+        # destructor is called only once.
+        try:
+            if hasattr(self.callable, "__del__"):
+                self.callable.__del__()
+        except Exception:
+            logger.exception("Exception during graceful shutdown of replica.")
+        finally:
+            self.callable.__del__ = lambda _self: None
