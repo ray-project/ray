@@ -199,11 +199,29 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
 def test_job_eager_install(shutdown_only):
+    # Test enable eager install
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": True}
     env_count = len(get_conda_env_list())
     ray.init(runtime_env=runtime_env)
     wait_for_condition(
         lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
+    ray.shutdown()
+    # Test disable eager install
+    runtime_env = {
+        "conda": {
+            "dependencies": ["toolz"]
+        },
+        "eager_install": False
+    }
+    ray.init(runtime_env=runtime_env)
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(get_conda_env_list()) == env_count + 2, timeout=60)
+    ray.shutdown()
+    # Test unavailable type
+    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    with pytest.raises(AssertionError):
+        ray.init(runtime_env=runtime_env)
     ray.shutdown()
 
 

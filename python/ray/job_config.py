@@ -72,6 +72,10 @@ class JobConfig:
         if runtime_env and "eager_install" in runtime_env:
             eager_install = runtime_env["eager_install"]
         self.runtime_env_eager_install = eager_install
+        assert isinstance(self.runtime_env_eager_install, bool), \
+            f"The type of eager_install is incorrect: " \
+            f"{type(self.runtime_env_eager_install)}" \
+            f", the bool type is needed."
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 

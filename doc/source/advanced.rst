@@ -512,7 +512,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
-- ``eager_install`` (bool): A boolean indicates whether to prepare runtime env eagerly before the workers are leased. This flag is set to false by default.
+- ``eager_install`` (bool): A boolean indicates whether to install runtime env eagerly before the workers are leased. This flag is set to false by default.
 
   - Example: ``{"eager_install": True}``
 
