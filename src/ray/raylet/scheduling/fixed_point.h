@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
-#include <cmath>
 
 #define RESOURCE_UNIT_SCALING 10000
 
@@ -26,7 +26,7 @@ class FixedPoint {
   int64_t i_ = 0;
 
  public:
-  FixedPoint(): FixedPoint(0.0) {}
+  FixedPoint() : FixedPoint(0.0) {}
   FixedPoint(double d) { i_ = (uint64_t)(d * RESOURCE_UNIT_SCALING); }
 
   FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }
@@ -41,10 +41,9 @@ class FixedPoint {
     FixedPoint res;
     res.i_ = i_ + ru.i_;
     return res;
-
   }
 
-  FixedPoint& operator+=(FixedPoint const &ru) {
+  FixedPoint &operator+=(FixedPoint const &ru) {
     i_ += ru.i_;
     return *this;
   }
@@ -55,7 +54,7 @@ class FixedPoint {
     return res;
   }
 
-  FixedPoint& operator-=(FixedPoint const &ru) {
+  FixedPoint &operator-=(FixedPoint const &ru) {
     i_ -= ru.i_;
     return *this;
   }
@@ -102,10 +101,10 @@ class FixedPoint {
 
   double Double() const { return round(i_) / RESOURCE_UNIT_SCALING; };
 
-  friend std::ostream& operator<<(std::ostream &out, FixedPoint const &ru1);
+  friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };
 
 inline std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
-    out << ru1.i_;
-    return out;
+  out << ru1.i_;
+  return out;
 }
