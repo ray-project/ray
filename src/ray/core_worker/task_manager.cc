@@ -284,7 +284,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // Pin the task spec if it may be retried again.
       release_lineage = false;
     } else {
-      RAY_LOG(ERROR) << "Removing task with id: " << task_id;
       submissible_tasks_.erase(it);
     }
   }
@@ -353,7 +352,6 @@ bool TaskManager::PendingTaskFailed(
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     if (!will_retry) {
-      RAY_LOG(ERROR) << "Removing task with id: " << task_id;
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
     }
@@ -480,7 +478,6 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
 
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
-    RAY_LOG(ERROR) << "Removing task with id: " << task_id;
     submissible_tasks_.erase(it);
   }
 }

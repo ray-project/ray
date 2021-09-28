@@ -420,8 +420,8 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<Work> &work,
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "Queuing and scheduling task "
-                 << task.GetTaskSpecification().DebugString();
+  RAY_LOG(DEBUG) << "Queuing and scheduling task "
+                 << task.GetTaskSpecification().TaskId();
   metric_tasks_queued_++;
   auto work = std::make_shared<Work>(task, reply, [send_reply_callback] {
     send_reply_callback(Status::OK(), nullptr, nullptr);
