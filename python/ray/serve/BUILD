@@ -338,11 +338,3 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
-
-py_test(
-    name = "conda_env",
-    size = "medium",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve"],
-    deps = [":serve_lib"]
-)

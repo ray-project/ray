@@ -370,9 +370,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
-      grpc_service_(io_service_, *this) {
+      grpc_service_(io_service_, *this),
+      task_execution_service_work_(task_execution_service_) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.

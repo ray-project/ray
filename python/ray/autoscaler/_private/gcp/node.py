@@ -437,8 +437,26 @@ class GCPCompute(GCPResource):
             "name": name
         })
 
+        # Allow Google Compute Engine instance templates.
+        #
+        # Config example:
+        #
+        #     ...
+        #     node_config:
+        #         sourceInstanceTemplate: global/instanceTemplates/worker-16
+        #         machineType: e2-standard-16
+        #     ...
+        #
+        # node_config parameters override matching template parameters, if any.
+        #
+        # https://cloud.google.com/compute/docs/instance-templates
+        # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+        source_instance_template = config.pop("sourceInstanceTemplate", None)
+
         operation = self.resource.instances().insert(
-            project=self.project_id, zone=self.availability_zone,
+            project=self.project_id,
+            zone=self.availability_zone,
+            sourceInstanceTemplate=source_instance_template,
             body=config).execute()
 
         if wait_for_operation:
