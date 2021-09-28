@@ -62,7 +62,7 @@ class CallbackReply {
   const std::string &ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
-  const std::vector<std::string> &ReadAsStringArray() const;
+  [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
 
   /// Read this reply data as a scan array.
   ///
@@ -95,7 +95,7 @@ class CallbackReply {
 
   /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
   /// Represent the reply of StringArray or ScanArray.
-  std::vector<std::string> string_array_reply_;
+  std::vector<std::optional<std::string>> string_array_reply_;
 
   bool is_subscribe_callback_ = false;
   bool is_unsubscribe_callback_ = false;

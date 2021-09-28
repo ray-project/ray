@@ -452,7 +452,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
         print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
-        assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]

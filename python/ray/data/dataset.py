@@ -51,8 +51,7 @@ class Dataset(Generic[T]):
 
     Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Tensor objects are held in ``np.ndarray`` blocks,
-    and other Arrow-incompatible objects are held in ``list`` blocks.
+    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -169,7 +168,7 @@ class Dataset(Generic[T]):
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
                 "pandas" to select ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table/Tensor``.
+                or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -205,19 +204,15 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if (isinstance(applied, list) or isinstance(applied, pa.Table)
-                        or isinstance(applied, np.ndarray)):
+                if isinstance(applied, list) or isinstance(applied, pa.Table):
                     applied = applied
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
-                elif isinstance(applied, pa.Tensor):
-                    applied = applied.to_numpy()
                 else:
                     raise ValueError("The map batches UDF returned a type "
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
-                                     "pandas.DataFrame, np.ndarray, "
-                                     "pyarrow.Tensor, or pyarrow.Table")
+                                     "pandas.DataFrame, or pyarrow.Table")
                 builder.add_block(applied)
 
             return builder.build()
@@ -655,6 +650,57 @@ class Dataset(Generic[T]):
         """
         return Dataset(sort_impl(self._blocks, key, descending))
 
+    def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
+        """Zip this dataset with the elements of another.
+
+        The datasets must have identical num rows, block types, and block sizes
+        (e.g., one was produced from a ``.map()`` of another). For Arrow
+        blocks, the schema will be concatenated, and any duplicate column
+        names disambiguated with _1, _2, etc. suffixes.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            other: The dataset to zip with on the right hand side.
+
+        Examples:
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
+            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+
+        Returns:
+            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
+            comes from the first dataset and v comes from the second.
+        """
+
+        blocks1 = self.get_blocks()
+        blocks2 = other.get_blocks()
+
+        if len(blocks1) != len(blocks2):
+            # TODO(ekl) consider supporting if num_rows are equal.
+            raise ValueError(
+                "Cannot zip dataset of different num blocks: {} vs {}".format(
+                    len(blocks1), len(blocks2)))
+
+        def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            b1 = BlockAccessor.for_block(block1)
+            result = b1.zip(block2)
+            br = BlockAccessor.for_block(result)
+            return result, br.get_metadata(input_files=[])
+
+        do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
+
+        blocks = []
+        metadata = []
+        for b1, b2 in zip(blocks1, blocks2):
+            res, meta = do_zip_fn.remote(b1, b2)
+            blocks.append(res)
+            metadata.append(meta)
+
+        # TODO(ekl) it might be nice to have a progress bar here.
+        metadata = ray.get(metadata)
+        return Dataset(BlockList(blocks, metadata))
+
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
 
@@ -896,11 +942,13 @@ class Dataset(Generic[T]):
             self,
             path: str,
             *,
+            column: str = "value",
             filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
-        """Write the dataset to npy files.
+        """Write a tensor column of the dataset to npy files.
 
-        This is only supported for datasets of Tensor records.
-        To control the number of files, use ``.repartition()``.
+        This is only supported for datasets convertible to Arrow records that
+        contain a TensorArray column. To control the number of files, use
+        ``.repartition()``.
 
         The format of the output files will be {self._uuid}_{block_idx}.npy,
         where ``uuid`` is an unique id for the dataset.
@@ -913,12 +961,15 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where npy
                 files will be written to.
+            column: The name of the table column that contains the tensor to
+                be written. This defaults to "value".
             filesystem: The filesystem implementation to write to.
         """
         self.write_datasource(
             NumpyDatasource(),
             path=path,
             dataset_uuid=self._uuid,
+            column=column,
             filesystem=filesystem)
 
     def write_datasource(self, datasource: Datasource[T],
@@ -991,7 +1042,7 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format, "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table/Tensor``. Default is "native".
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -1313,7 +1364,8 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
 
-    def to_numpy(self) -> List[ObjectRef[np.ndarray]]:
+    def to_numpy(self, *,
+                 column: Optional[str] = None) -> List[ObjectRef[np.ndarray]]:
         """Convert this dataset into a distributed set of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
@@ -1322,12 +1374,19 @@ class Dataset(Generic[T]):
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            column: The name of the column to convert to numpy, or None to
+                specify the entire row. Required for Arrow tables.
+
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
         """
 
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
-        return [block_to_ndarray.remote(block) for block in self._blocks]
+        return [
+            block_to_ndarray.remote(block, column=column)
+            for block in self._blocks
+        ]
 
     def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
@@ -1534,9 +1593,6 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif isinstance(schema, dict):
-            schema_str = "<Tensor: shape={}, dtype={}>".format(
-                schema["shape"], schema["dtype"])
         elif isinstance(schema, type):
             schema_str = str(schema)
         else:
@@ -1589,9 +1645,9 @@ def _block_to_df(block: Block):
     return block.to_pandas()
 
 
-def _block_to_ndarray(block: Block):
+def _block_to_ndarray(block: Block, column: Optional[str]):
     block = BlockAccessor.for_block(block)
-    return block.to_numpy()
+    return block.to_numpy(column)
 
 
 def _block_to_arrow(block: Block):
