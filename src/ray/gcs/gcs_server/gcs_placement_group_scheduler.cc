@@ -675,13 +675,13 @@ LeaseStatusTracker::LeaseStatusTracker(
 }
 
 bool LeaseStatusTracker::MarkPreparePhaseStarted(
-    const NodeID &node_id, std::shared_ptr<const BundleSpecification> bundle) {
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle) {
   const auto &bundle_id = bundle->BundleId();
   return node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second;
 }
 
 void LeaseStatusTracker::MarkPrepareRequestReturned(
-    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> bundle,
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   RAY_CHECK(prepare_request_returned_count_ <= bundles_to_schedule_.size());
   auto leasing_bundles = node_to_bundles_when_preparing_.find(node_id);
@@ -715,7 +715,7 @@ bool LeaseStatusTracker::AllPrepareRequestsSuccessful() const {
 }
 
 void LeaseStatusTracker::MarkCommitRequestReturned(
-    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> bundle,
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
   // If the request succeeds, record it.

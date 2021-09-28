@@ -201,7 +201,7 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node is supposed to prepare.
   /// \return False if the prepare phase was already started. True otherwise.
   bool MarkPreparePhaseStarted(const NodeID &node_id,
-                               std::shared_ptr<const BundleSpecification> bundle);
+                               const std::shared_ptr<const BundleSpecification> &bundle);
 
   /// Indicate the tracker that all prepare requests are returned.
   ///
@@ -209,9 +209,9 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node was supposed to schedule.
   /// \param status Status of the prepare response.
   /// \param void
-  void MarkPrepareRequestReturned(const NodeID &node_id,
-                                  std::shared_ptr<const BundleSpecification> bundle,
-                                  const Status &status);
+  void MarkPrepareRequestReturned(
+      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
+      const Status &status);
 
   /// Used to know if all prepare requests are returned.
   ///
@@ -229,7 +229,7 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node was supposed to schedule.
   /// \param status Status of the returned commit request.
   void MarkCommitRequestReturned(const NodeID &node_id,
-                                 const std::shared_ptr<const BundleSpecification> bundle,
+                                 const std::shared_ptr<const BundleSpecification> &bundle,
                                  const Status &status);
 
   /// Used to know if all commit requests are returend.
