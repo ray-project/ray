@@ -402,24 +402,116 @@ class Dataset(Generic[T]):
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
 
-        if n > self.num_blocks() and equal:
-            raise NotImplementedError(
-                f"The number of splits {n} > the number of dataset blocks "
-                f"{self.num_blocks()}, yet an equal split was requested.")
-
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
 
-        # TODO(ekl) we could do better than truncation here. This could be a
-        # problem if block sizes are very skewed.
-        def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
+        def equalize(splits: List[Dataset[T]], n: int) -> List[Dataset[T]]:
             if not equal:
                 return splits
-            lower_bound = min([s.count() for s in splits])
-            assert lower_bound > 0, splits
-            return [s.limit(lower_bound) for s in splits]
+            new_splits = []
+            counts = {s._get_uuid(): s.count() for s in splits}
+            total_rows = sum(counts.values())
+            # Number of rows for each split.
+            target_size = total_rows // n
+            # Partition splits into two sets: splits that are smaller than the
+            # target size and splits that are larger than the target size.
+            splits = sorted(splits, key=lambda s: counts[s._get_uuid()])
+            idx = next(i for i, split in enumerate(splits)
+                       if counts[split._get_uuid()] >= target_size)
+            if idx == 0:
+                # All splits are already equal.
+                return splits
+            smaller_splits, larger_splits = splits[:idx], splits[idx:]
+
+            # Split larger splits.
+            leftovers = []
+            for split in larger_splits:
+                # Split each split into one or more subsplits that are each the
+                # target size, with at most one leftover split that's smaller
+                # than the target size.
+                size = counts[split._get_uuid()]
+                if size == target_size:
+                    new_splits.append(split)
+                    continue
+                split_indices = list(range(target_size, size, target_size))
+                split_splits = split.split_at_indices(split_indices)
+                last_split_size = split_splits[-1].count()
+                if last_split_size < target_size:
+                    # Last split is smaller than the target size, save it for
+                    # our unioning of small splits.
+                    leftover = split_splits.pop()
+                    leftovers.append(leftover)
+                    counts[leftover._get_uuid()] = leftover.count()
+                if len(new_splits) + len(split_splits) >= n:
+                    # Short-circuit if the new splits will make us reach the
+                    # desired number of splits.
+                    new_splits.extend(split_splits[:n - len(new_splits)])
+                    break
+                new_splits.extend(split_splits)
+            # Short-circuit if we've already reached the desired number of
+            # splits.
+            if len(new_splits) == n:
+                return new_splits
+            # Add leftovers to small splits and re-sort.
+            smaller_splits += leftovers
+            smaller_splits = sorted(
+                smaller_splits, key=lambda s: counts[s._get_uuid()])
+
+            # Union smaller splits.
+            union_buffer = []
+            union_buffer_size = 0
+            low = 0
+            high = len(smaller_splits) - 1
+            while low <= high:
+                # Union small splits up to the target split size.
+                low_split = smaller_splits[low]
+                low_count = counts[low_split._get_uuid()]
+                high_split = smaller_splits[high]
+                high_count = counts[high_split._get_uuid()]
+                if union_buffer_size + high_count <= target_size:
+                    # Try to add the larger split to the union buffer first.
+                    union_buffer.append(high_split)
+                    union_buffer_size += high_count
+                    high -= 1
+                elif union_buffer_size + low_count <= target_size:
+                    union_buffer.append(low_split)
+                    union_buffer_size += low_count
+                    low += 1
+                else:
+                    # Neither the larger nor smaller split fit in the union
+                    # buffer, so we split the smaller split into a subsplit
+                    # that will fit into the union buffer and a leftover
+                    # subsplit that we add back into the candidate split list.
+                    diff = target_size - union_buffer_size
+                    diff_split, new_low_split = low_split.split_at_indices(
+                        [diff])
+                    union_buffer.append(diff_split)
+                    union_buffer_size += diff
+                    # We overwrite the old low split and don't advance the low
+                    # pointer since (1) the old low split can be discarded,
+                    # (2) the leftover subsplit is guaranteed to be smaller
+                    # than the old low split, and (3) the low split should be
+                    # the smallest split in the candidate split list, which is
+                    # this subsplit.
+                    splits[low] = new_low_split
+                    counts[new_low_split._get_uuid()] = low_count - diff
+                if union_buffer_size == target_size:
+                    # Once the union buffer is full, we union together the
+                    # splits.
+                    assert len(union_buffer) > 1, union_buffer
+                    first_ds = union_buffer[0]
+                    new_split = first_ds.union(*union_buffer[1:])
+                    new_splits.append(new_split)
+                    # Clear the union buffer.
+                    union_buffer = []
+                    union_buffer_size = 0
+                    if len(new_splits) == n:
+                        # Short-circuit if we've reached the desired number of
+                        # splits.
+                        break
+            return new_splits
 
         block_refs = list(self._blocks)
         metadata_mapping = {
@@ -432,8 +524,8 @@ class Dataset(Generic[T]):
                 Dataset(
                     BlockList(
                         list(blocks), [metadata_mapping[b] for b in blocks]))
-                for blocks in np.array_split(block_refs, n)
-            ])
+                for blocks in np.array_split(block_refs, n) if len(blocks) > 0
+            ], n)
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block

@@ -17,9 +17,11 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
+from ray.data.dataset import Dataset
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
+from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
@@ -84,6 +86,54 @@ def test_equal_split(shutdown_only, pipelined):
     r2 = counts(range2x(10).split(3, equal=False))
     assert all(c >= 6 for c in r2), r2
     assert not all(c == 6 for c in r2), r2
+
+
+@pytest.mark.parametrize(
+    "block_sizes,num_splits",
+    [
+        (  # Test baseline.
+            [3, 6, 3], 3),
+        (  # Already balanced.
+            [3, 3, 3], 3),
+        (  # Row truncation.
+            [3, 6, 4], 3),
+        (  # Row truncation, smaller number of blocks.
+            [3, 6, 2, 3], 3),
+        (  # Row truncation, larger number of blocks.
+            [5, 6, 2, 5], 5),
+        (  # All smaller but one.
+            [1, 1, 1, 1, 6], 5),
+        (  # All larger but one.
+            [4, 4, 4, 4, 1], 5),
+    ])
+def test_equal_split_balanced(shutdown_only, block_sizes, num_splits):
+    ray.init(num_cpus=2)
+
+    blocks = []
+    metadata = []
+    for block_size in block_sizes:
+        block = list(range(block_size))
+        blocks.append(ray.put(block))
+        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+    block_list = BlockList(blocks, metadata)
+    ds = Dataset(block_list)
+
+    def counts(shards):
+        @ray.remote(num_cpus=0)
+        def count(s):
+            return s.count()
+
+        return ray.get([count.remote(s) for s in shards])
+
+    split_counts = counts(ds.split(num_splits, equal=True))
+    assert len(split_counts) == num_splits
+    total_rows = sum(block_sizes)
+    expected_block_size = total_rows // num_splits
+    # Check that all splits are the expected size.
+    assert all([count == expected_block_size for count in split_counts])
+    expected_total_rows = sum(split_counts)
+    # Check that the expected number of rows were dropped.
+    assert total_rows - expected_total_rows == total_rows % num_splits
 
 
 def test_callable_classes(shutdown_only):
