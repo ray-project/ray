@@ -327,7 +327,7 @@ class ExponentialBackOff {
   /// \param[in] max_value The maximum value for this counter. By default it's
   ///    infinite double.
   ExponentialBackOff(double initial_value, double multiplier,
-                     double max_value = std::numeric_limits < double ::max())
+                     double max_value = std::numeric_limits<double>::max())
       : curr_value_(initial_value),
         initial_value_(initial_value),
         max_value_(max_value),

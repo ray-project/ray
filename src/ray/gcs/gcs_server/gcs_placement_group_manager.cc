@@ -295,6 +295,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       // Here the rank equals the time to schedule, and it's an ordered tree,
       // it means all the other tasks should be scheduled after this one.
       // If the first one won't be scheduled, we just skip.
+      // Tick will cover the next time retry.
       break;
     }
     auto backoff = iter->second.first;
@@ -591,7 +592,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
   }
   auto val = std::make_pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>(
       std::move(*exp_backer), std::move(pg));
-  pending_placement_groups_.emplace(*rank, val);
+  pending_placement_groups_.emplace(*rank, std::move(val));
 }
 
 void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg_id) {
