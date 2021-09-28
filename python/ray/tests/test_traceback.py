@@ -285,7 +285,7 @@ Traceback (most recent call last):
   File "FILE", line ZZ, in _deserialize_object
     return RayError.from_bytes(obj)
   File "FILE", line ZZ, in from_bytes
-    raise RuntimeError(
+    raise RuntimeError(msg) from e
 RuntimeError: Failed to unpickle serialized exception"""
 
     class NoPickleError(OSError):
