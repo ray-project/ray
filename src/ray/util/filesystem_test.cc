@@ -19,11 +19,22 @@
 namespace ray {
 
 TEST(FileSystemTest, PathParseTest) {
-  ASSERT_EQ(GetFileName("."), ".");
-  ASSERT_EQ(GetFileName(".."), "..");
-  ASSERT_EQ(GetFileName("foo/bar"), "bar");
-  ASSERT_EQ(GetFileName("///bar"), "bar");
-  ASSERT_EQ(GetFileName("///bar/"), "");
+  ASSERT_EQ(std::filesystem::path("///bar").filename(), "bar");
+  ASSERT_EQ(std::filesystem::path(".").filename(), ".");
+  ASSERT_EQ(std::filesystem::path("..").filename(), "..");
+  ASSERT_EQ(std::filesystem::path("foo/bar").filename(), "bar");
+  ASSERT_EQ(std::filesystem::path("///bar").filename(), "bar");
+  ASSERT_EQ(std::filesystem::path("///bar/").filename(), "");
+  ASSERT_EQ(std::filesystem::path::preferred_separator, '/');
+
+  std::string tmp_file =
+      ray::JoinPaths(ray::GetUserTempDir(), "spilled_object_test", "test");
+  std::cout << tmp_file << std::endl;
+  auto path = std::filesystem::path(ray::GetUserTempDir())
+                  .append("spilled_object_test")
+                  .append("test");
+  std::cout << "path " << path << std::endl;
+  std::cout << "Temp directory is " << std::filesystem::temp_directory_path() << '\n';
 #ifdef _WIN32
   ASSERT_EQ(GetFileName("C:"), "");
   ASSERT_EQ(GetFileName("C::"), ":");  // just to match Python behavior
