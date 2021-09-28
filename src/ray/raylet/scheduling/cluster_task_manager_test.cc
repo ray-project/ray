@@ -116,8 +116,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
-                   std::string serialized_runtime_env = "{}",
-                   std::vector<std::string> runtime_env_uris = {}) {
+                   const std::string &serialized_runtime_env = "{}",
+                   const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
