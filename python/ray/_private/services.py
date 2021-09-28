@@ -356,10 +356,8 @@ def address_to_ip(address):
     """
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
-    # Due to the mac osx firewall, we only listen to loopback ip
-    # to prevent security alerts,
-    # otherwise we make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1" and sys.platform != "darwin":
+    # Make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1":
         ip_address = get_node_ip_address()
     return ":".join([ip_address] + address_parts[1:])
 
@@ -400,6 +398,11 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
+    if sys.platform == "darwin":
+        # Due to the mac osx firewall,
+        # we use loopback ip as the ip address
+        # to prevent security popups.
+        return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 
 

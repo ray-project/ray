@@ -186,10 +186,7 @@ time.sleep(5)
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
                              ray_debugger_external):
     redis_substring_prefix = "--address='"
-    cmd = [
-        "ray", "start", "--head", "--num-cpus=1",
-        "--node-ip-address=" + services.get_node_ip_address()
-    ]
+    cmd = ["ray", "start", "--head", "--num-cpus=1"]
     if ray_debugger_external:
         cmd.append("--ray-debugger-external")
     out = ray._private.utils.decode(
@@ -221,7 +218,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
 
     host, port = session["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host not in ["localhost", "127.0.0.1"], host
+        assert host == services.get_node_ip_address(), host
     else:
         assert host == "localhost", host
 
@@ -243,13 +240,9 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         head_node_args={
             "num_cpus": 0,
             "num_gpus": 1,
-            "ray_debugger_external": ray_debugger_external,
-            "node_ip_address": services.get_node_ip_address()
+            "ray_debugger_external": ray_debugger_external
         })
-    c.add_node(
-        num_cpus=1,
-        ray_debugger_external=ray_debugger_external,
-        node_ip_address=services.get_node_ip_address())
+    c.add_node(num_cpus=1, ray_debugger_external=ray_debugger_external)
 
     @ray.remote
     def f():
@@ -275,13 +268,13 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
 
     host1, port1 = session1["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host1 not in ["localhost", "127.0.0.1"], host1
+        assert host1 == services.get_node_ip_address(), host1
     else:
         assert host1 == "localhost", host1
 
     host2, port2 = session2["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host2 not in ["localhost", "127.0.0.1"], host2
+        assert host2 == services.get_node_ip_address(), host2
     else:
         assert host2 == "localhost", host2
 
