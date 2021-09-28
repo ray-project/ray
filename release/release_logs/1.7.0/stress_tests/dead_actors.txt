@@ -1,50 +1,8 @@
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 561, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 568, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 572, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 522, in ray._raylet.execute_task.function_executor
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 579, in actor_method_executor
-[2m[36m(pid=3700, ip=172.31.49.215)[0m     return method(__ray_actor, *args, **kwargs)
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/util/tracing/tracing_helper.py", line 448, in _resume_span
-[2m[36m(pid=3700, ip=172.31.49.215)[0m     return method(self, *_args, **_kwargs)
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
-[2m[36m(pid=3700, ip=172.31.49.215)[0m SystemExit: -1
-[2m[36m(pid=3700, ip=172.31.49.215)[0m 2021-09-25 09:42:51,916	ERROR worker.py:428 -- SystemExit was raised from the worker
-[2m[36m(pid=3700, ip=172.31.49.215)[0m Traceback (most recent call last):
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 684, in ray._raylet.task_execution_handler
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 524, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 561, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 568, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 572, in ray._raylet.execute_task
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "python/ray/_raylet.pyx", line 522, in ray._raylet.execute_task.function_executor
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 579, in actor_method_executor
-[2m[36m(pid=3700, ip=172.31.49.215)[0m     return method(__ray_actor, *args, **kwargs)
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/util/tracing/tracing_helper.py", line 448, in _resume_span
-[2m[36m(pid=3700, ip=172.31.49.215)[0m     return method(self, *_args, **_kwargs)
-[2m[36m(pid=3700, ip=172.31.49.215)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
-[2m[36m(pid=3700, ip=172.31.49.215)[0m SystemExit: -1
 INFO:__main__:Finished trial 97
 INFO:__main__:Finished trial 98
-2021-09-25 09:42:53,709	WARNING worker.py:1227 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: fffffffffffffffffdd5f0d047dd8c5b97540be901000000 Worker ID: c8a05914a5f98d4d16305baffba2cce13710eb749e91197fc951931d Node ID: f9e07c32cf90482e96122ab90de8e70e8c5478fcc4a59bb61b6709c9 Worker IP address: 172.31.38.35 Worker port: 10143 Worker PID: 3560
 INFO:__main__:Finished trial 99
-[2m[1m[36m(autoscaler +9m11s)[0m Tip: use `ray status` to view detailed autoscaling status. To disable autoscaler event messages, you can set AUTOSCALER_EVENTS=0.
-[2m[1m[36m(autoscaler +9m11s)[0m Resized to 16 CPUs.
-[2m[1m[36m(autoscaler +9m11s)[0m Resized to 24 CPUs.
 Finished in: 145.7729992866516s
 Average iteration time: 1.4577267694473266s
 Max iteration time: 5.186963081359863s
 Min iteration time: 0.023714303970336914s
 PASSED.
-[2m[36m(pid=3560, ip=172.31.38.35)[0m 2021-09-25 09:42:53,698	ERROR worker.py:428 -- SystemExit was raised from the worker
-[2m[36m(pid=3560, ip=172.31.38.35)[0m Traceback (most recent call last):
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 684, in ray._raylet.task_execution_handler
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 524, in ray._raylet.execute_task
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 561, in ray._raylet.execute_task
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 568, in ray._raylet.execute_task
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 572, in ray._raylet.execute_task
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "python/ray/_raylet.pyx", line 522, in ray._raylet.execute_task.function_executor
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 579, in actor_method_executor
-[2m[36m(pid=3560, ip=172.31.38.35)[0m     return method(__ray_actor, *args, **kwargs)
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/util/tracing/tracing_helper.py", line 448, in _resume_span
-[2m[36m(pid=3560, ip=172.31.38.35)[0m     return method(self, *_args, **_kwargs)
-[2m[36m(pid=3560, ip=172.31.38.35)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
-[2m[36m(pid=3560, ip=172.31.38.35)[0m SystemExit: -1
