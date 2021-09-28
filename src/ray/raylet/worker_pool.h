@@ -595,7 +595,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::string GetCreatedRuntimeEnvContext(const std::string &serialized_runtime_env);
 
   void CreateRuntimeEnv(const std::string &serialized_runtime_env, const JobID &job_id,
-                        std::function<void(bool, const std::string &)> callback);
+                        std::function<void(bool, const std::string &)> &callback);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
