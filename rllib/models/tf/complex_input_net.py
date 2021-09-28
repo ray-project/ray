@@ -38,10 +38,10 @@ class ComplexInputNetwork(TFModelV2):
         assert isinstance(self.original_space, (Dict, Tuple)), \
             "`obs_space.original_space` must be [Dict|Tuple]!"
 
-        super_space = self.original_space if \
+        self.processed_obs_space = self.original_space if \
             model_config.get("_disable_preprocessor_api") else obs_space
-        super().__init__(super_space, action_space, num_outputs, model_config,
-                         name)
+        super().__init__(self.original_space, action_space, num_outputs,
+                         model_config, name)
 
         self.flattened_input_space = flatten_space(self.original_space)
 
@@ -126,8 +126,8 @@ class ComplexInputNetwork(TFModelV2):
         if SampleBatch.OBS in input_dict and "obs_flat" in input_dict:
             orig_obs = input_dict[SampleBatch.OBS]
         else:
-            orig_obs = restore_original_dimensions(input_dict[SampleBatch.OBS],
-                                                   self.obs_space, "tf")
+            orig_obs = restore_original_dimensions(
+                input_dict[SampleBatch.OBS], self.processed_obs_space, "tf")
         # Push image observations through our CNNs.
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):

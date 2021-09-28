@@ -69,6 +69,11 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 
         try:
             a = get_trainer_class(alg)(config=config, env=RandomEnv)
+        except ray.exceptions.RayActorError as e:
+            if isinstance(e.args[2], UnsupportedSpaceException):
+                stat = "unsupported"
+            else:
+                raise
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
