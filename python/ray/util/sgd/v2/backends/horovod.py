@@ -33,6 +33,9 @@ class HorovodConfig(BackendConfig):
     nics: Optional[Set[str]] = None
     verbose: int = 1
 
+    # Parent configs
+    share_cuda_visible_devices: bool = True
+
     def __post_init__(self):
         if Coordinator is None:
             raise ValueError(

@@ -41,6 +41,9 @@ class TorchConfig(BackendConfig):
     init_method: str = "env"
     timeout_s: int = 1800
 
+    # Parent configs
+    share_cuda_visible_devices: bool = True
+
     def __post_init__(self):
         if torch is None:
             raise ValueError("`torch` is not installed. "

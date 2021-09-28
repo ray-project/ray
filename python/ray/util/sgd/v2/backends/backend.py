@@ -29,7 +29,17 @@ logger = logging.getLogger(__name__)
 
 
 class BackendConfig:
-    """Parent class for configurations of training backend."""
+    """Parent class for configurations of training backend.
+
+    Args:
+        share_cuda_visible_devices (Optional[Set[str]): If True, each worker
+            process will have CUDA_VISIBLE_DEVICES set as the visible device
+            IDs of all workers on the same node for this training instance.
+            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
+            device IDs allocated by Ray for that worker.
+    """
+
+    share_cuda_visible_devices: bool = False
 
     @property
     def backend_cls(self):
@@ -275,15 +285,16 @@ class BackendExecutor:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
-            if self._num_gpus_per_worker > 0:
-                self._setup_gpus()
+            if (self._num_gpus_per_worker > 0
+                    and self._backend_config.share_cuda_visible_devices):
+                self._share_cuda_visible_devices()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
             self._increment_failures()
             self._restart()
 
-    def _setup_gpus(self):
+    def _share_cuda_visible_devices(self):
         """Sets CUDA_VISIBLE_DEVICES on all workers.
 
         For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
