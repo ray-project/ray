@@ -755,6 +755,7 @@ class ActorClass:
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             runtime_env_dict=runtime_env_dict,
+            runtime_env_uris=runtime_env_dict.get("uris") or [],
             override_environment_variables=override_environment_variables
             or dict())
 
