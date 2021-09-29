@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 import _thread
+from unittest.mock import patch
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -24,11 +25,11 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
     with connect_to_client_or_not(connect_to_client):
         if connect_to_client:
             # Client mode is on.
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             # We're connected to Ray client.
             assert ray.util.client.ray.is_connected()
         else:
-            assert not client_mode_should_convert()
+            assert not client_mode_should_convert(auto_init=True)
             assert not ray.util.client.ray.is_connected()
 
 
@@ -70,20 +71,20 @@ def test_client_thread_safe(call_ray_stop_only):
 def test_client_mode_hook_thread_safe(ray_start_regular_shared):
     with ray_start_client_server():
         with enable_client_mode():
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             lock = threading.Lock()
             lock.acquire()
             q = queue.Queue()
 
             def disable():
                 with disable_client_hook():
-                    q.put(client_mode_should_convert())
+                    q.put(client_mode_should_convert(auto_init=True))
                     lock.acquire()
-                q.put(client_mode_should_convert())
+                q.put(client_mode_should_convert(auto_init=True))
 
             t = threading.Thread(target=disable)
             t.start()
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             lock.release()
             t.join()
             assert q.get(
@@ -648,6 +649,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
