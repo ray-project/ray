@@ -64,7 +64,7 @@ namespace gcs {
 class MockGcsScheduleStrategy : public GcsScheduleStrategy {
  public:
   MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<ray::BundleSpecification>> & bundles,
+              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
                const std::unique_ptr<ScheduleContext> &context,
                GcsResourceScheduler &gcs_resource_scheduler),
               (override));
@@ -79,7 +79,7 @@ namespace gcs {
 class MockGcsPackStrategy : public GcsPackStrategy {
  public:
   MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<ray::BundleSpecification>> & bundles,
+              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
                const std::unique_ptr<ScheduleContext> &context,
                GcsResourceScheduler &gcs_resource_scheduler),
               (override));
@@ -94,7 +94,7 @@ namespace gcs {
 class MockGcsSpreadStrategy : public GcsSpreadStrategy {
  public:
   MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<ray::BundleSpecification>> & bundles,
+              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
                const std::unique_ptr<ScheduleContext> &context,
                GcsResourceScheduler &gcs_resource_scheduler),
               (override));
@@ -109,7 +109,7 @@ namespace gcs {
 class MockGcsStrictPackStrategy : public GcsStrictPackStrategy {
  public:
   MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<ray::BundleSpecification>> & bundles,
+              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
                const std::unique_ptr<ScheduleContext> &context,
                GcsResourceScheduler &gcs_resource_scheduler),
               (override));
@@ -124,7 +124,7 @@ namespace gcs {
 class MockGcsStrictSpreadStrategy : public GcsStrictSpreadStrategy {
  public:
   MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<ray::BundleSpecification>> & bundles,
+              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
                const std::unique_ptr<ScheduleContext> &context,
                GcsResourceScheduler &gcs_resource_scheduler),
               (override));

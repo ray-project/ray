@@ -51,8 +51,8 @@ using rpc::WorkerTableData;
 template <typename Key, typename Data>
 class GcsTable {
  public:
-  explicit GcsTable(std::shared_ptr<StoreClient> &store_client)
-      : store_client_(store_client) {}
+  explicit GcsTable(std::shared_ptr<StoreClient> store_client)
+      : store_client_(std::move(store_client)) {}
 
   virtual ~GcsTable() = default;
 
@@ -106,8 +106,8 @@ class GcsTable {
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
-  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable<Key, Data>(store_client) {}
+  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> store_client)
+      : GcsTable<Key, Data>(std::move(store_client)) {}
 
   /// Write data to the table asynchronously.
   ///
@@ -152,16 +152,16 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
-  explicit GcsJobTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::JOB);
   }
 };
 
 class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
-  explicit GcsActorTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
 
@@ -172,16 +172,16 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
 class GcsPlacementGroupTable
     : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
-  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
   }
 };
 
 class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
  public:
-  explicit GcsTaskTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsTaskTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK);
   }
 
@@ -191,8 +191,8 @@ class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
 
 class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
  public:
-  explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
   }
 
@@ -203,8 +203,8 @@ class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
 class GcsTaskReconstructionTable
     : public GcsTableWithJobId<TaskID, TaskReconstructionData> {
  public:
-  explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
   }
 
@@ -214,8 +214,8 @@ class GcsTaskReconstructionTable
 
 class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
  public:
-  explicit GcsObjectTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsObjectTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTableWithJobId(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
   }
 
@@ -225,56 +225,56 @@ class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
 
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
-  explicit GcsNodeTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE);
   }
 };
 
 class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
  public:
-  explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE_RESOURCE);
   }
 };
 
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
-  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
   }
 };
 
 class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchData> {
  public:
-  explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
   }
 };
 
 class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
-  explicit GcsProfileTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsProfileTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::PROFILE);
   }
 };
 
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
-  explicit GcsWorkerTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
   }
 };
 
 class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
  public:
-  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
+  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
     table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
   }
 };

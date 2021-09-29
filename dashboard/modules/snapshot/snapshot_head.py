@@ -77,7 +77,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": dict(job_table_entry.config.metadata),
                 "runtime_env": json.loads(
-                    job_table_entry.config.serialized_runtime_env),
+                    job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             entry = {
                 "is_dead": job_table_entry.is_dead,
