@@ -229,14 +229,6 @@ class ServiceBasedNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
   Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
                                    const StatusCallback &done) override;
 
-  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-                                  const StatusCallback &callback) override;
-
-  void AsyncReReportResourceUsage() override;
-
-  /// Fill resource fields with cached resources. Used by light resource usage report.
-  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
-
   Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
 

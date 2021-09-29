@@ -574,23 +574,6 @@ class NodeResourceInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
-  /// Report resource usage of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The data that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual Status AsyncReportResourceUsage(
-      const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-      const StatusCallback &callback) = 0;
-
-  /// Resend resource usage when GCS restarts from a failure.
-  virtual void AsyncReReportResourceUsage() = 0;
-
-  /// Return resources in last report. Used by light heartbeat.
-  const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
-    return last_resource_usage_;
-  }
-
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
@@ -610,11 +593,6 @@ class NodeResourceInfoAccessor {
 
  protected:
   NodeResourceInfoAccessor() = default;
-
-  /// Cache which stores resource usage in last report used to check if they are changed.
-  /// Used by light resource usage report.
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
 };
 
 /// \class ErrorInfoAccessor

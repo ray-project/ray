@@ -226,11 +226,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
                const StatusCallback &done),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
-  MOCK_METHOD(Status, AsyncReportResourceUsage,
-              (const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void, AsyncReReportResourceUsage, (), (override));
   MOCK_METHOD(Status, AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback), (override));
   MOCK_METHOD(Status, AsyncSubscribeBatchedResourceUsage,

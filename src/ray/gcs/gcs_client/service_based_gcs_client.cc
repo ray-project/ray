@@ -197,8 +197,6 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     // because we use the same Redis server for both GCS storage and pub-sub. So the
     // following flag is always false.
     resubscribe_func_(false);
-    // Resend resource usage after reconnected, needed by resource view in GCS.
-    node_resource_accessor_->AsyncReReportResourceUsage();
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
