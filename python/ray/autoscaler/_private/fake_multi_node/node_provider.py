@@ -10,7 +10,6 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  STATUS_UP_TO_DATE)
 from ray.autoscaler._private.util import format_readonly_node_type
 
-
 logger = logging.getLogger(__name__)
 
 # RAY_OVERRIDE_NODE_ID_FOR_TESTING=fffffffffffffffffffffffffffffffffffffffffffffffffff00000
@@ -83,11 +82,14 @@ class FakeMultiNodeProvider(NodeProvider):
         }
         try:
             output = subprocess.check_output(
-                cmd, stderr=subprocess.STDOUT, shell=True, env=env,
+                cmd,
+                stderr=subprocess.STDOUT,
+                shell=True,
+                env=env,
                 universal_newlines=True)
         except subprocess.CalledProcessError as e:
-            logger.exception(
-                "Failed: exit={}, output={}".format(e.returncode, e.output))
+            logger.exception("Failed: exit={}, output={}".format(
+                e.returncode, e.output))
         else:
             logger.info("Output: \n{}".format(output))
 

@@ -66,8 +66,8 @@ class NodeLauncher(threading.Thread):
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node_with_resources(
-            node_config, node_tags, count, resources)
+        self.provider.create_node_with_resources(node_config, node_tags, count,
+                                                 resources)
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
