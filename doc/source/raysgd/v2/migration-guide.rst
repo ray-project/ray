@@ -45,9 +45,9 @@ There are 3 primary API differences between Ray SGD v1 and v2.
         results = trainer.run(train_func_distributed)
         trainer.shutdown()
 
-    Currently, this means that you are now responsible for modifying your code to support distributed training (specifying `DistributedDataParallel` for `torch` or `MultiWorkerMirroredStrategy` for `tensorflow`) as opposed to having this be automatically handled internally. However, we have plans to provide utilities that you can use to automatically handle these recipes for you.
+Currently, this means that you are now responsible for modifying your code to support distributed training (specifying ``DistributedDataParallel`` for ``torch`` or ``MultiWorkerMirroredStrategy`` for ``tensorflow``) as opposed to having this be automatically handled internally. However, we have plans to provide utilities that you can use to automatically handle these recipes for you.
 
-3. Rather than iteratively calling `trainer.train()` or `trainer.validate()` for each epoch, in Ray SGD v2 the training function defines the full training execution and is run via `trainer.run(train_func)`.
+3. Rather than iteratively calling ``trainer.train()`` or ``trainer.validate()`` for each epoch, in Ray SGD v2 the training function defines the full training execution and is run via ``trainer.run(train_func)``.
 
 In the following sections, we will guide you through the steps to migrate:
 
