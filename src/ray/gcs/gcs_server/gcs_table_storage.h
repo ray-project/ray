@@ -285,6 +285,27 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
+  GcsTableStorage(std::shared_ptr<StoreClient> store_client)
+      : store_client_(std::move(store_client)) {
+    job_table_.reset(new GcsJobTable(store_client_));
+    actor_table_.reset(new GcsActorTable(store_client_));
+    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
+    task_table_.reset(new GcsTaskTable(store_client_));
+    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
+    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
+    object_table_.reset(new GcsObjectTable(store_client_));
+    node_table_.reset(new GcsNodeTable(store_client_));
+    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
+    placement_group_schedule_table_.reset(
+        new GcsPlacementGroupScheduleTable(store_client_));
+    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
+    profile_table_.reset(new GcsProfileTable(store_client_));
+    worker_table_.reset(new GcsWorkerTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
+  }
+
   GcsJobTable &JobTable() {
     RAY_CHECK(job_table_ != nullptr);
     return *job_table_;
@@ -383,25 +404,8 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client) {
-    store_client_ = std::make_shared<RedisStoreClient>(redis_client);
-    job_table_.reset(new GcsJobTable(store_client_));
-    actor_table_.reset(new GcsActorTable(store_client_));
-    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    task_table_.reset(new GcsTaskTable(store_client_));
-    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
-    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
-    object_table_.reset(new GcsObjectTable(store_client_));
-    node_table_.reset(new GcsNodeTable(store_client_));
-    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
-    profile_table_.reset(new GcsProfileTable(store_client_));
-    worker_table_.reset(new GcsWorkerTable(store_client_));
-    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client)) {
   }
 };
 
@@ -410,23 +414,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service) {
-    store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
-    job_table_.reset(new GcsJobTable(store_client_));
-    actor_table_.reset(new GcsActorTable(store_client_));
-    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    task_table_.reset(new GcsTaskTable(store_client_));
-    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
-    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
-    object_table_.reset(new GcsObjectTable(store_client_));
-    node_table_.reset(new GcsNodeTable(store_client_));
-    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
-    profile_table_.reset(new GcsProfileTable(store_client_));
-    worker_table_.reset(new GcsWorkerTable(store_client_));
-    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
+  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {
   }
 };
 
