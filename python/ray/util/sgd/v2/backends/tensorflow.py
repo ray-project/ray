@@ -72,7 +72,7 @@ class TensorflowBackend(Backend):
         """Failure handling for Tensorflow.
 
         Instead of restarting all workers, the failed workers are
-        removed from the ``ActorGroup``. The backend and session are
+        removed from the ``WorkerGroup``. The backend and session are
         shutdown on the remaining workers. Then new workers are added back in.
         """
         worker_group.remove_workers(failed_worker_indexes)
