@@ -512,27 +512,28 @@ class Dataset(Generic[T]):
                         break
             return new_splits
 
-        def equalize(splits: List[Dataset[T]], n: int) -> List[Dataset[T]]:
+        def equalize(splits: List[Dataset[T]],
+                     num_splits: int) -> List[Dataset[T]]:
             if not equal:
                 return splits
             counts = {s._get_uuid(): s.count() for s in splits}
             total_rows = sum(counts.values())
             # Number of rows for each split.
-            target_size = total_rows // n
+            target_size = total_rows // num_splits
 
             # Partition splits.
             smaller_splits, larger_splits = _partition_splits(
                 splits, target_size, counts)
-            if len(smaller_splits) == 0:
+            if len(smaller_splits) == 0 and num_splits < len(splits):
                 # All splits are already equal.
                 return splits
 
             # Split larger splits.
             new_splits, leftovers = _equalize_larger_splits(
-                larger_splits, target_size, counts, n)
+                larger_splits, target_size, counts, num_splits)
             # Short-circuit if we've already reached the desired number of
             # splits.
-            if len(new_splits) == n:
+            if len(new_splits) == num_splits:
                 return new_splits
             # Add leftovers to small splits and re-sort.
             smaller_splits += leftovers
@@ -541,7 +542,8 @@ class Dataset(Generic[T]):
 
             # Union smaller splits.
             new_splits_small = _equalize_smaller_splits(
-                smaller_splits, target_size, counts, n - len(new_splits))
+                smaller_splits, target_size, counts,
+                num_splits - len(new_splits))
             new_splits.extend(new_splits_small)
             return new_splits
 
@@ -556,7 +558,8 @@ class Dataset(Generic[T]):
                 Dataset(
                     BlockList(
                         list(blocks), [metadata_mapping[b] for b in blocks]))
-                for blocks in np.array_split(block_refs, n) if len(blocks) > 0
+                for blocks in np.array_split(block_refs, n)
+                if not equal or len(blocks) > 0
             ], n)
 
         # If the locality_hints is set, we use a two-round greedy algorithm
@@ -656,7 +659,7 @@ class Dataset(Generic[T]):
                     [metadata_mapping[b]
                      for b in allocation_per_actor[actor]]))
             for actor in locality_hints
-        ])
+        ], n)
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
