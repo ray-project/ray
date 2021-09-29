@@ -14,7 +14,6 @@
 
 #include "ray/object_manager/object_buffer_pool.h"
 
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
@@ -23,36 +22,30 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size)
-    : default_chunk_size_(chunk_size) {
-  store_socket_name_ = store_socket_name;
+    : store_socket_name_(store_socket_name), default_chunk_size_(chunk_size) {
   RAY_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
 }
 
 ObjectBufferPool::~ObjectBufferPool() {
-  std::unique_lock<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
+  auto inflight_ops = create_buffer_ops_;
+  pool_mutex_.Unlock();
 
-  // Assume no request would arrive and most likely no inflight requests during
-  // destruction.
-  int count = 0;
-  while (!create_buffer_ops_.empty() && count < 5) {
-    ++count;
+  for (const auto &[id, cond_var] : inflight_ops) {
+    cond_var->SignalAll();
+  }
+  auto no_inflight = [this]() {
+    pool_mutex_.AssertReaderHeld();
+    return create_buffer_ops_.empty();
+  };
+  // Assume no request would arrive, acquire pool_mutex_ when there is no inflight
+  // operation. Otherwise print an error.
+  if (!pool_mutex_.LockWhenWithTimeout(absl::Condition(&no_inflight), absl::Seconds(5))) {
     RAY_LOG(ERROR)
-        << create_buffer_ops_.size() << " inflight create buffer operations found "
-        << "during ObjectBufferPool shutdown. Either abort these requests before "
+        << create_buffer_ops_.size() << " remaining inflight create buffer operations "
+        << "during ObjectBufferPool destruction. Either abort these operations before "
         << "destroying ObjectBufferPool, or refactor ObjectBufferPool to make it "
            "unnecessary to wait for the operations' completion.";
-    auto inflight_ops = create_buffer_ops_;
-    lock.unlock();
-    for (const auto &[obj_id, cond_var] : inflight_ops) {
-      cond_var->notify_all();
-    }
-    absl::SleepFor(absl::Seconds(1));
-    lock.lock();
-  }
-  if (count == 5) {
-    RAY_LOG(ERROR)
-      << create_buffer_ops_.size() << " remaining inflight create buffer operations "
-      << "during ObjectBufferPool destruction.";
   }
 
   // Abort unfinished buffers in progress.
@@ -66,11 +59,12 @@ ObjectBufferPool::~ObjectBufferPool() {
   RAY_CHECK_OK(store_client_.Disconnect());
 }
 
-uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
+uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
   return (data_size + default_chunk_size_ - 1) / default_chunk_size_;
 }
 
-uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size) {
+uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index,
+                                           uint64_t data_size) const {
   return (chunk_index + 1) * default_chunk_size_ > data_size
              ? data_size % default_chunk_size_
              : default_chunk_size_;
@@ -79,7 +73,7 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_s
 std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
 ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
                                      rpc::Address owner_address) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
 
   std::vector<ObjectID> object_ids{object_id};
   std::vector<plasma::ObjectBuffer> object_buffers(1);
@@ -106,9 +100,9 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
                                           const rpc::Address &owner_address,
                                           uint64_t data_size, uint64_t metadata_size,
                                           uint64_t chunk_index) {
-  std::unique_lock<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
   RAY_RETURN_NOT_OK(EnsureBufferExists(object_id, owner_address, data_size, metadata_size,
-                                       chunk_index, lock));
+                                       chunk_index));
   auto &state = create_buffer_state_.at(object_id);
   if (state.chunk_state[chunk_index] != CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
@@ -120,7 +114,7 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
 
 void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chunk_index,
                                   const std::string &data) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it == create_buffer_state_.end() ||
       it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
@@ -146,7 +140,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chun
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it != create_buffer_state_.end()) {
     RAY_LOG(INFO) << "Not enough memory to create requested object " << object_id
@@ -177,36 +171,42 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
-ray::Status ObjectBufferPool::EnsureBufferExists(
-    const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index, std::unique_lock<std::mutex> &lock) {
-  RAY_CHECK(lock.owns_lock());
-
+ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
+                                                 const rpc::Address &owner_address,
+                                                 uint64_t data_size,
+                                                 uint64_t metadata_size,
+                                                 uint64_t chunk_index) {
   // Buffer for object_id already exists.
-  if (create_buffer_state_.contains(object_id)) return ray::Status::OK();
+  if (create_buffer_state_.contains(object_id)) {
+    return ray::Status::OK();
+  }
 
   auto it = create_buffer_ops_.find(object_id);
   if (it != create_buffer_ops_.end()) {
     auto cond_var = it->second;
-    // Release lock while waiting, until there is no inflight create buffer operation.
-    cond_var->wait(
-        lock, [this, object_id]() { return !create_buffer_ops_.contains(object_id); });
+    // Release pool_mutex_ while waiting, until there is no inflight create buffer
+    // operation for the object.
+    while (create_buffer_ops_.contains(object_id)) {
+      cond_var->Wait(&pool_mutex_);
+    }
     // Buffer already created.
-    if (create_buffer_state_.contains(object_id)) return ray::Status::OK();
+    if (create_buffer_state_.contains(object_id)) {
+      return ray::Status::OK();
+    }
     // Otherwise, previous create operation failed.
   }
 
   // Start another create operation.
-  create_buffer_ops_[object_id] = std::make_shared<std::condition_variable>();
+  create_buffer_ops_[object_id] = std::make_shared<absl::CondVar>();
   const int64_t object_size = data_size - metadata_size;
   std::shared_ptr<Buffer> data;
 
-  // Release the buffer pool lock during the blocking create call.
-  lock.unlock();
+  // Release pool_mutex_ during the blocking create call.
+  pool_mutex_.Unlock();
   Status s = store_client_.CreateAndSpillIfNeeded(
       object_id, owner_address, object_size, nullptr, metadata_size, &data,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
-  lock.lock();
+  pool_mutex_.Lock();
 
   // No other thread could have created the buffer.
   RAY_CHECK(!create_buffer_state_.contains(object_id));
@@ -218,7 +218,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(
   if (!s.ok()) {
     // Create failed. Buffer creation will be tried by another chunk.
     // And this chunk will eventually make it here via retried pull requests.
-    cond_var->notify_all();
+    cond_var->SignalAll();
     return ray::Status::IOError(s.message());
   }
 
@@ -233,17 +233,17 @@ ray::Status ObjectBufferPool::EnsureBufferExists(
                  << " in plasma store, number of chunks: " << num_chunks
                  << ", chunk index: " << chunk_index;
 
-  cond_var->notify_all();
+  cond_var->SignalAll();
   return ray::Status::OK();
 }
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
   RAY_CHECK_OK(store_client_.Delete(object_ids));
 }
 
 std::string ObjectBufferPool::DebugString() const {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+  absl::MutexLock lock(&pool_mutex_);
   std::stringstream result;
   result << "BufferPool:";
   result << "\n- create buffer state map size: " << create_buffer_state_.size();
