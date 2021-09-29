@@ -287,13 +287,15 @@ def _tracing_task_invocation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
-        if kwargs is not None:
-            assert "_ray_trace_ctx" not in _kwargs
 
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
         if not is_tracing_enabled() or self._is_cross_language:
+            if kwargs is not None:
+                assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
+
+        assert "_ray_trace_ctx" not in kwargs
 
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -364,14 +366,14 @@ def _tracing_actor_creation(method):
         if kwargs is None:
             kwargs = {}
 
-        assert "_ray_trace_ctx" not in _kwargs
-
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
+            assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
         method_name = "__init__"
+        assert "_ray_trace_ctx" not in _kwargs
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 name=_actor_span_producer_name(class_name, method_name),
@@ -401,17 +403,18 @@ def _tracing_actor_method_invocation(method):
             *_args: Any,
             **_kwargs: Any,
     ) -> Any:
-        if kwargs is not None:
-            assert "_ray_trace_ctx" not in _kwargs
 
         # If tracing feature flag is not on, perform a no-op
         if (not is_tracing_enabled()
                 or self._actor_ref()._ray_is_cross_language):
+            if kwargs is not None:
+                assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = (self._actor_ref()
                       ._ray_actor_creation_function_descriptor.class_name)
         method_name = self._method_name
+        assert "_ray_trace_ctx" not in _kwargs
 
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
