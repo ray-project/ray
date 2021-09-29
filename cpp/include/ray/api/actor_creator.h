@@ -35,6 +35,13 @@ class ActorCreator {
   ray::ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
   ActorCreator &SetGlobalName(std::string name) {
+    create_options_.global = true;
+    create_options_.name = std::move(name);
+    return *this;
+  }
+
+  ActorCreator &SetName(std::string name) {
+    create_options_.global = false;
     create_options_.name = std::move(name);
     return *this;
   }
@@ -56,6 +63,12 @@ class ActorCreator {
 
   ActorCreator &SetMaxConcurrency(int max_concurrency) {
     create_options_.max_concurrency = max_concurrency;
+    return *this;
+  }
+
+  ActorCreator &SetPlacementGroup(PlacementGroup group, int bundle_index) {
+    create_options_.group = group;
+    create_options_.bundle_index = bundle_index;
     return *this;
   }
 

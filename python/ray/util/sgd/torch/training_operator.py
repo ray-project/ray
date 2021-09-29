@@ -2,11 +2,13 @@ import inspect
 import logging
 import os
 import tempfile
+import warnings
 
 import torch
 import torch.nn as nn
 from filelock import FileLock
 
+from ray.util.annotations import PublicAPI
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (
@@ -55,6 +57,7 @@ def _is_multiple(component):
     return isinstance(component, Iterable) and len(component) > 1
 
 
+@PublicAPI(stability="beta")
 class TrainingOperator:
     """Abstract class to define training and validation state and logic.
 
@@ -835,6 +838,13 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
+        warnings.warn(
+            "Ray SGD `LightningOperator` is no longer maintained. "
+            "Check out the Ray Lightning library "
+            "(https://github.com/ray-project/ray_lightning)"
+            "instead for distributed PyTorch Lightning Training on"
+            "Ray!",
+            category=FutureWarning)
         from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):

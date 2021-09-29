@@ -113,19 +113,16 @@ class IObjectDirectory {
   /// \param object_id The object id that was put into the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
-                                        const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                 const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                          const NodeID &node_id,
-                                          const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+                                   const ObjectInfo &object_info) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;

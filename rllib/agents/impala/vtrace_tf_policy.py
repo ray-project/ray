@@ -13,6 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
+from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 
@@ -138,7 +139,9 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tf.shape(tensor)[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = policy.config["rollout_fragment_length"]
         B = tf.shape(tensor)[0] // T
     rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
@@ -249,27 +252,62 @@ def grad_stats(policy, train_batch, grads):
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
         if policy.config["framework"] in ["tf2", "tfe"]:
-            return tf.keras.optimizers.Adam(policy.cur_lr)
+            optim = tf.keras.optimizers.Adam(policy.cur_lr)
+            if policy.config["_separate_vf_optimizer"]:
+                return optim, tf.keras.optimizers.Adam(policy.config["_lr_vf"])
         else:
-            return tf1.train.AdamOptimizer(policy.cur_lr)
+            optim = tf1.train.AdamOptimizer(policy.cur_lr)
+            if policy.config["_separate_vf_optimizer"]:
+                return optim, tf1.train.AdamOptimizer(policy.config["_lr_vf"])
     else:
+        if policy.config["_separate_vf_optimizer"]:
+            raise ValueError("RMSProp optimizer not supported for separate"
+                             "vf- and policy losses yet! Set `opt_type=adam`")
+
         if tfv == 2:
-            return tf.keras.optimizers.RMSprop(policy.cur_lr, config["decay"],
+            optim = tf.keras.optimizers.RMSprop(policy.cur_lr, config["decay"],
+                                                config["momentum"],
+                                                config["epsilon"])
+        else:
+            optim = tf1.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
                                                config["momentum"],
                                                config["epsilon"])
-        else:
-            return tf1.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
-                                              config["momentum"],
-                                              config["epsilon"])
+
+    return optim
 
 
 def clip_gradients(policy, optimizer, loss):
-    grads_and_vars = optimizer.compute_gradients(
-        loss, policy.model.trainable_variables())
-    grads = [g for (g, v) in grads_and_vars]
-    policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-    clipped_grads = list(zip(policy.grads, policy.model.trainable_variables()))
-    return clipped_grads
+    # Supporting more than one loss/optimizer.
+    if policy.config["_tf_policy_handles_more_than_one_loss"]:
+        optimizers = force_list(optimizer)
+        losses = force_list(loss)
+        assert len(optimizers) == len(losses)
+        clipped_grads_and_vars = []
+        for optim, loss_ in zip(optimizers, losses):
+            grads_and_vars = optim.compute_gradients(
+                loss_, policy.model.trainable_variables())
+            clipped_g_and_v = []
+            for g, v in grads_and_vars:
+                if g is not None:
+                    clipped_g, _ = tf.clip_by_global_norm(
+                        [g], policy.config["grad_clip"])
+                    clipped_g_and_v.append((clipped_g[0], v))
+            clipped_grads_and_vars.append(clipped_g_and_v)
+
+        policy.grads = [
+            g for g_and_v in clipped_grads_and_vars for (g, v) in g_and_v
+        ]
+    # Only one optimizer and and loss term.
+    else:
+        grads_and_vars = optimizer.compute_gradients(
+            loss, policy.model.trainable_variables())
+        grads = [g for (g, v) in grads_and_vars]
+        policy.grads, _ = tf.clip_by_global_norm(grads,
+                                                 policy.config["grad_clip"])
+        clipped_grads_and_vars = list(
+            zip(policy.grads, policy.model.trainable_variables()))
+
+    return clipped_grads_and_vars
 
 
 def setup_mixins(policy, obs_space, action_space, config):

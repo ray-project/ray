@@ -161,6 +161,7 @@ test_python() {
       -python/ray/tests:test_failure
       -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
+      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -174,8 +175,12 @@ test_python() {
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
+      -python/ray/tests:test_placement_group_2
+      -python/ray/tests:test_placement_group_3
+      -python/ray/tests:test_placement_group_mini_integration
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
+      -python/ray/tests:test_reference_counting  # too flaky 9/25/21
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
@@ -198,6 +203,9 @@ test_python() {
 }
 
 test_cpp() {
+  # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
+  # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
+  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
@@ -206,7 +214,9 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
 
   # run the cpp example
-  cd cpp/example && sh run.sh
+  rm -rf ray-template && mkdir ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  pushd ray-template && bash run.sh
 }
 
 test_wheels() {
@@ -239,7 +249,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/new_dashboard/client
+      cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
@@ -383,7 +393,7 @@ lint_readme() {
 }
 
 lint_scripts() {
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all-scripts
 }
 
 lint_bazel() {
@@ -402,7 +412,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
     if [ -z "${BUILDKITE-}" ]; then
@@ -436,6 +446,15 @@ _lint() {
     "${ROOT_DIR}"/check-git-clang-format-output.sh
   else
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
+  fi
+
+  if command -v clang-tidy > /dev/null; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
+    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+  else
+    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi
 
   # Run script linting

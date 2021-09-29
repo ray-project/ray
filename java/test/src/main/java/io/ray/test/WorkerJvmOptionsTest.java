@@ -13,10 +13,6 @@ public class WorkerJvmOptionsTest extends BaseTest {
     String getOptions() {
       return System.getProperty("test.suffix");
     }
-
-    String getEnv(String key) {
-      return System.getProperty(key);
-    }
   }
 
   @Test(groups = {"cluster"})
@@ -29,8 +25,5 @@ public class WorkerJvmOptionsTest extends BaseTest {
             .remote();
     ObjectRef<String> obj = actor.task(Echo::getOptions).remote();
     Assert.assertEquals(obj.get(), "suffix");
-    // Auto injected by setup_runtime_env.py
-    ObjectRef<String> env = actor.task(Echo::getEnv, "serialized-runtime-env").remote();
-    Assert.assertEquals(env.get(), "{}");
   }
 }

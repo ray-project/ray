@@ -105,7 +105,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     strategy = "STRICT_PACK"
     pg = placement_group(pg_demands, strategy=strategy)
     pg.ready()
-    time.sleep(2)  # wait for placemnt groups to propogate.
+    time.sleep(2)  # wait for placement groups to propagate.
 
     # Disable event clearing for test.
     monitor.event_summarizer.clear = lambda *a: None
@@ -291,7 +291,7 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     ray.get(main_actor.ping.remote())
 
     ray.shutdown()
-    ray.init(address=cluster.address, namespace="")
+    ray.init(address=cluster.address, namespace="default_test_namespace")
 
     main_actor = ray.get_actor("main")
     num_to_start = int(ray.available_resources().get("CPU", 0) + 1)

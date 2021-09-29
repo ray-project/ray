@@ -152,12 +152,15 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
         void ParseFromString(const c_string &serialized)
         void CopyFrom(const CAddress& address)
         const c_string &worker_id()
     cdef cppclass CObjectReference "ray::rpc::ObjectReference":
         CObjectReference()
+        CAddress owner_address() const
+        const c_string &object_id() const
+        const c_string &call_site() const
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -243,7 +246,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
-                            const CAddress &owner_address)
+                            const CAddress &owner_address,
+                            const c_string &call_site)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -256,6 +260,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      c_string serialized_runtime_env,
+                     c_vector[c_string] runtime_env_uris,
                      const unordered_map[c_string, c_string]
                      &override_environment_variables)
 
@@ -273,6 +278,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
+            c_vector[c_string] runtime_env_uris,
             const unordered_map[c_string, c_string]
             &override_environment_variables)
 

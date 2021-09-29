@@ -10,6 +10,7 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
 
@@ -248,6 +249,34 @@ def test_config_change(serve_instance, use_handle):
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconfigure_with_exception(serve_instance):
+    @serve.deployment
+    class A:
+        def __init__(self):
+            self.config = "yoo"
+
+        def reconfigure(self, config):
+            if config == "hi":
+                raise Exception("oops")
+
+            self.config = config
+
+        def __call__(self, *args):
+            return self.config
+
+    A.options(user_config="not_hi").deploy()
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
+
+    with pytest.raises(RuntimeError):
+        A.options(user_config="hi").deploy()
+
+    # Ensure we should be able to rollback to "hi" config
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -648,8 +677,8 @@ def test_deploy_handle_validation(serve_instance):
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
     # New code path
     assert ray.get(handle.b.remote()) == "hello"
-    with pytest.raises(AttributeError):
-        handle.c.remote()
+    with pytest.raises(RayServeException):
+        ray.get(handle.c.remote())
 
 
 def test_init_args(serve_instance):
