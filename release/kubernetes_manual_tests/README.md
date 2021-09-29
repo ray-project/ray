@@ -1,14 +1,14 @@
 # ray-k8s-tests
 
-These tests are not automated and must be run manually for each release.
-If you have issues running them, harass the code owner(s) for OSS Kubernetes support.
+These tests are not automated and thus **must be run manually** for each release.
+If you have issues running them, bug the code owner(s) for OSS Kubernetes support.
 
 How to run
 1. Configure kubectl and Helm 3 to access a K8s cluster.
 2. `git checkout releases/<release version>`
 3. You might have to locally pip install the Ray wheel for the relevant commit (or pip install -e) in a conda env, see Ray client note below.
 4. cd to this directory
-3. `IMAGE=rayproject/ray:<release version> bash k8s_ci.sh`
+3. `IMAGE=rayproject/ray:<release version> bash k8s_release_tests.sh`
 
 This runs three tests and does the necessary resource creation/teardown. The tests typically take about 15 minutes to finish.
 Notes:
