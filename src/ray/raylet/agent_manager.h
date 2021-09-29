@@ -80,6 +80,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
+  /// The number of times the agent is restarted.
+  std::atomic<uint32_t> agent_restart_count_ = 0;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
