@@ -291,21 +291,21 @@ py_test(
     deps = [":serve_lib"]
 )
 
-py_test(
-    name = "tutorial_tensorflow",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
-)
+# py_test(
+#     name = "tutorial_tensorflow",
+#     size = "small",
+#     srcs = glob(["examples/doc/*.py"]),
+#     tags = ["exclusive", "team:serve"],
+#     deps = [":serve_lib"]
+# )
 
-py_test(
-    name = "tutorial_pytorch",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
-)
+# py_test(
+#     name = "tutorial_pytorch",
+#     size = "small",
+#     srcs = glob(["examples/doc/*.py"]),
+#     tags = ["exclusive", "team:serve"],
+#     deps = [":serve_lib"]
+# )
 
 py_test(
     name = "tutorial_sklearn",

@@ -49,9 +49,6 @@ if not os.path.exists(TRAINED_MODEL_PATH):
 class TFMnistModel:
     def __init__(self, model_path):
         import tensorflow as tf
-        # Deal with tf 2.0 tensor to numpy issue
-        # https://stackoverflow.com/questions/34097281/convert-a-tensor-to-numpy-array-in-tensorflow # noqa: E501
-        tf.compat.v1.enable_eager_execution()
         self.model_path = model_path
         self.model = tf.keras.models.load_model(model_path)
 
