@@ -14,7 +14,7 @@ from ray.util.sgd.v2.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
 from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.worker_group import WorkerGroup
 
 try:
     from tensorflow.python.summary.summary_iterator \

@@ -2,7 +2,7 @@ import pytest
 import time
 
 import ray
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.worker_group import WorkerGroup
 
 
 @pytest.fixture

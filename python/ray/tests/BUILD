@@ -91,6 +91,7 @@ py_test_module_list(
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_ray_debugger.py",
+    "test_worker_group.py"
   ],
   size = "medium",
   extra_srcs = SRCS,

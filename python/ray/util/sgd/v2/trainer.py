@@ -19,7 +19,7 @@ from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 
 # Ray SGD should be usable even if Tune is not installed.
 from ray.util.sgd.v2.utils import construct_path
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
     from ray import tune

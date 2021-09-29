@@ -6,7 +6,7 @@ from typing import Optional, Set
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.utils import update_env_vars
-from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.worker_group import WorkerGroup
 
 try:
     from horovod.ray.runner import Coordinator
