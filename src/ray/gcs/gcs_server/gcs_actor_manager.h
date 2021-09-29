@@ -87,7 +87,8 @@ class GcsActor {
       break;
     }
 
-    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
+    actor_table_data_.set_serialized_runtime_env(
+        task_spec.runtime_env().serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
