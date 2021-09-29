@@ -263,7 +263,7 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
 
     # Wait for worker capping. worker capping should be triggered
     # every 10 ms, but we wait long enough to avoid a flaky test.
-    time.sleep(1)
+    time.sleep(5)
     ref2 = ray.get(nested.remote(0))
 
     # New workers shouldn't be registered because we reused the
