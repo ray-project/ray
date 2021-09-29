@@ -1,7 +1,8 @@
-import uuid
-import logging
-import inspect
 from functools import wraps
+import inspect
+import json
+import logging
+import uuid
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
@@ -14,7 +15,8 @@ from ray.util.placement_group import (
     get_current_placement_group,
 )
 import ray._private.signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env import (override_task_or_actor_runtime_env,
+                                      validate_runtime_env)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
@@ -288,12 +290,15 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        if runtime_env is None:
-            runtime_env = self._runtime_env
+        # Validate user-passed runtime_env and translate it to an internal
+        # runtime_env (e.g., read local 'requirements.txt' file).
+        runtime_env = runtime_env or self._runtime_env or {}
+        internal_runtime_env = validate_runtime_env(
+            runtime_env, is_task_or_actor=True)
 
-        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_runtime_env)
+        parent_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        internal_runtime_env = override_task_or_actor_runtime_env(
+            internal_runtime_env, parent_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
@@ -327,8 +332,8 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
-                runtime_env_dict,
-                runtime_env_dict.get("uris") or [],
+                json.dumps(internal_runtime_env, sort_keys=True),
+                internal_runtime_env.get("uris") or [],
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

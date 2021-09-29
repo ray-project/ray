@@ -1,7 +1,9 @@
+import json
 from typing import Any, Dict, Optional
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
+from ray._private.runtime_env.validation import validate_runtime_env
 
 
 class JobConfig:
@@ -55,16 +57,7 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
-        # Lazily import this to avoid circular dependencies.
-        import ray._private.runtime_env as runtime_support
-        if runtime_env:
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
-                runtime_env)
-            self.worker_env.update(
-                self._parsed_runtime_env.get_parsed_dict().get("env_vars")
-                or {})
-        else:
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+        self._parsed_runtime_env = validate_runtime_env(runtime_env or {})
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 
@@ -96,14 +89,12 @@ class JobConfig:
 
     def get_runtime_env_uris(self):
         """Get the uris of runtime environment"""
-        if self.runtime_env.get("uris"):
-            return self.runtime_env.get("uris")
-        return []
+        return self._parsed_runtime_env.get("uris") or []
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
-        return self._parsed_runtime_env.serialize()
+        return json.dumps(self._parsed_runtime_env, sort_keys=True)
 
     def set_runtime_env_uris(self, uris):
         self.runtime_env["uris"] = uris
-        self._parsed_runtime_env.set_uris(uris)
+        self._parsed_runtime_env["uris"] = uris

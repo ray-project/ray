@@ -1,11 +1,13 @@
 import inspect
+import json
 import logging
 import weakref
 
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env import (override_task_or_actor_runtime_env,
+                                      validate_runtime_env)
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import (
@@ -723,12 +725,15 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        if runtime_env is None:
-            runtime_env = meta.runtime_env
+        # Validate user-passed runtime_env and translate it to an internal
+        # runtime_env (e.g., read local 'requirements.txt' file).
+        runtime_env = runtime_env or meta.runtime_env or {}
+        internal_runtime_env = validate_runtime_env(
+            runtime_env, is_task_or_actor=True)
 
-        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_runtime_env)
+        parent_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        internal_runtime_env = override_task_or_actor_runtime_env(
+            runtime_env, parent_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
@@ -754,8 +759,9 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env_dict=runtime_env_dict,
-            runtime_env_uris=runtime_env_dict.get("uris") or [],
+            serialized_runtime_env=json.dumps(
+                internal_runtime_env, sort_keys=True),
+            runtime_env_uris=internal_runtime_env.get("uris") or [],
             override_environment_variables=override_environment_variables
             or dict())
 
