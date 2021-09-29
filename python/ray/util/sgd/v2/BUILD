@@ -81,6 +81,15 @@ py_test(
     deps = [":sgd_v2_lib"]
 )
 
+py_test(
+    name = "test_worker_group",
+    size = "medium",
+    srcs = ["tests/test_worker_group.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

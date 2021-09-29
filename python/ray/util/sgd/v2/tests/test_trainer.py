@@ -25,7 +25,7 @@ from ray.util.sgd.v2.examples.train_linear_example import train_func as \
 
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func, HorovodTrainClass
-from ray.util.worker_group import WorkerGroup
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
 @pytest.fixture

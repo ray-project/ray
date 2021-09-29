@@ -7,7 +7,7 @@ from typing import Optional
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
-from ray.util.worker_group import WorkerGroup
+from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
 
 try:
