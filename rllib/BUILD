@@ -876,24 +876,12 @@ py_test(
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
-# DQNTrainer/SimpleQTrainer
+# DQNTrainer
 py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
     srcs = ["agents/dqn/tests/test_dqn.py"]
-)
-py_test(
-    name = "test_r2d2",
-    tags = ["team:ml", "trainers_dir"],
-    size = "large",
-    srcs = ["agents/dqn/tests/test_r2d2.py"]
-)
-py_test(
-    name = "test_simple_q",
-    tags = ["team:ml", "trainers_dir"],
-    size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # Dreamer
@@ -1002,12 +990,36 @@ py_test(
     srcs = ["agents/qmix/tests/test_qmix.py"]
 )
 
+# R2D2Trainer
+py_test(
+    name = "test_r2d2",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/dqn/tests/test_r2d2.py"]
+)
+
+# RNNSACTrainer
+py_test(
+    name = "test_rnnsac",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/sac/tests/test_rnnsac.py"]
+)
+
 # SACTrainer
 py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
+)
+
+# SimpleQTrainer
+py_test(
+    name = "test_simple_q",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # TD3Trainer
@@ -1406,6 +1418,12 @@ py_test(
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
 
 # --------------------------------------------------------------------
 # Optimizers and Memories

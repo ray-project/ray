@@ -62,9 +62,9 @@ Step 1: set up your Ray cluster
 
 First, you'll want to create a remote Ray cluster. Follow the directions in :ref:`ref-cluster-quick-start` to do this.
 
-If using the `Ray cluster launcher <cluster-cloud>`_, the remote cluster will be listening on port ``10001`` of the head node. If necessary, you can modify this port by setting ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
+If using the :doc:`Ray cluster launcher <cloud>`, the remote cluster will be listening on port ``10001`` of the head node. If necessary, you can modify this port by setting ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
 
-If not using the `Ray cluster launcher <cluster-cloud>`_, you can start the "Ray Client Server" manually on the head node of your remote cluster by running the following:
+If not using the :doc:`Ray cluster launcher <cloud>`, you can start the "Ray Client Server" manually on the head node of your remote cluster by running the following:
 
 .. code-block:: bash
 
@@ -76,6 +76,32 @@ Step 2: Check ports
 Ensure that the Ray Client port on the head node is reachable from your local machine.
 This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
+
+.. tabs::
+    .. group-tab:: AWS
+
+        With the Ray cluster launcher, you can configure the security group
+        to allow inbound access by defining :ref:`cluster-configuration-security-group`
+        in your `cluster.yaml`.
+
+        .. code-block:: yaml
+
+            # An unique identifier for the head node and workers of this cluster.
+            cluster_name: minimal_security_group
+
+            # Cloud-provider specific configuration.
+            provider:
+                type: aws
+                region: us-west-2
+                security_group:
+                    GroupName: ray_client_security_group
+                    IpPermissions:
+                          - FromPort: 10001
+                            ToPort: 10001
+                            IpProtocol: TCP
+                            IpRanges:
+                                # This will enable inbound access from ALL IPv4 addresses.
+                                - CidrIp: 0.0.0.0/0
 
 Step 3: Run Ray code
 ~~~~~~~~~~~~~~~~~~~~
@@ -99,7 +125,88 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
 
    #....
 
+Alternative Approach: SSH Port Forwarding
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+As an alternative to configuring inbound traffic rules, you can also set up
+Ray Client via port forwarding. While this approach does require an open SSH
+connection, it can be useful in a test environment where the
+``head_node_host`` often changes.
+
+First, open up an SSH connection with your Ray cluster and forward the
+listening port (``10001``).
+
+.. code-block:: bash
+
+  $ ray up cluster.yaml
+  $ ray attach cluster.yaml -p 10001
+
+Then, you can connect to the Ray cluster using  ``localhost`` as the
+``head_node_host``.
+
+.. code-block:: python
+
+   import ray
+
+   # This will connect to the cluster via the open SSH session.
+   ray.init("ray://localhost:10001")
+
+   # Normal Ray code follows
+   @ray.remote
+   def do_work(x):
+       return x ** x
+
+   do_work.remote(2)
+
+   #....
+
+Connect to multiple ray clusters (Experimental)
+-----------------------------------------------
+
+Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+
+.. code-block:: python
+
+    import ray
+    # Create a default client.
+    ray.init("ray://<head_node_host_cluster>:10001")
+
+    # Connect to other clusters.
+    cli1 = ray.init("ray://<head_node_host_cluster_1>:10001", allow_multiple=True)
+    cli2 = ray.init("ray://<head_node_host_cluster_2>:10001", allow_multiple=True)
+
+    # Data is put into the default cluster.
+    obj = ray.put("obj")
+
+    with cli1:
+        obj1 = ray.put("obj1")
+
+    with cli2:
+        obj2 = ray.put("obj2")
+
+    with cli1:
+        assert ray.get(obj1) == "obj1"
+        try:
+            ray.get(obj2)  # Cross-cluster ops not allowed.
+        except:
+            print("Failed to get object which doesn't belong to this cluster")
+
+    with cli2:
+        assert ray.get(obj2) == "obj2"
+        try:
+            ray.get(obj1)  # Cross-cluster ops not allowed.
+        except:
+            print("Failed to get object which doesn't belong to this cluster")
+    assert "obj" == ray.get(obj)
+    cli1.disconnect()
+    cli2.disconnect()
+
+
+When using ray multi-client, there are some different behaviors to pay attention to:
+
+* The client won't be disconnected automatically. Call ``disconnect`` explicitly to close the connection.
+* Object references can only be used by the client from which it was obtained.
+* ``ray.init`` without ``allow_multiple`` will create a default global ray client.
 
 Things to know
 --------------

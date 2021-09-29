@@ -126,16 +126,18 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
-                   std::string serialized_runtime_env = "{}") {
+                   const std::string &serialized_runtime_env = "{}",
+                   const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = JobID::Nil();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(
-      id, "dummy_task", Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), job_id, TaskID::Nil(), 0,
-      TaskID::Nil(), address, 0, required_resources, {},
-      std::make_pair(PlacementGroupID::Nil(), -1), true, "", serialized_runtime_env);
+  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
+                                 required_resources, {},
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                                 serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {
     for (auto &arg : args) {
@@ -194,32 +196,33 @@ class ClusterTaskManagerTest : public ::testing::Test {
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
-        task_manager_(id_, scheduler_, dependency_manager_,
-                      /* is_owner_alive= */
-                      [this](const WorkerID &worker_id, const NodeID &node_id) {
-                        return is_owner_alive_;
-                      },
-                      /* get_node_info= */
-                      [this](const NodeID &node_id) {
-                        node_info_calls_++;
-                        return node_info_[node_id];
-                      },
-                      /* announce_infeasible_task= */
-                      [this](const RayTask &task) { announce_infeasible_task_calls_++; },
-                      pool_, leased_workers_,
-                      /* get_task_arguments= */
-                      [this](const std::vector<ObjectID> &object_ids,
-                             std::vector<std::unique_ptr<RayObject>> *results) {
-                        for (auto &obj_id : object_ids) {
-                          if (missing_objects_.count(obj_id) == 0) {
-                            results->emplace_back(MakeDummyArg());
-                          } else {
-                            results->emplace_back(nullptr);
-                          }
-                        }
-                        return true;
-                      },
-                      /*max_pinned_task_arguments_bytes=*/1000) {}
+        task_manager_(
+            id_, scheduler_, dependency_manager_,
+            /* is_owner_alive= */
+            [this](const WorkerID &worker_id, const NodeID &node_id) {
+              return is_owner_alive_;
+            },
+            /* get_node_info= */
+            [this](const NodeID &node_id) {
+              node_info_calls_++;
+              return node_info_[node_id];
+            },
+            /* announce_infeasible_task= */
+            [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
+            leased_workers_,
+            /* get_task_arguments= */
+            [this](const std::vector<ObjectID> &object_ids,
+                   std::vector<std::unique_ptr<RayObject>> *results) {
+              for (auto &obj_id : object_ids) {
+                if (missing_objects_.count(obj_id) == 0) {
+                  results->emplace_back(MakeDummyArg());
+                } else {
+                  results->emplace_back(nullptr);
+                }
+              }
+              return true;
+            },
+            /*max_pinned_task_arguments_bytes=*/1000) {}
 
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
