@@ -51,9 +51,11 @@ Currently, this means that you are now responsible for modifying your code to su
 
 In the following sections, we will guide you through the steps to migrate:
 
-1. Training Logic
-2. Interacting with Trainer state (intermediate metrics, checkpointing)
-3. Hyperparameter Tuning with Ray Tune
+1. :ref:`sgd-migration-logic`
+2. :ref:`Interacting with Trainer state (intermediate metrics, checkpointing) <sgd-migration-trainer>`
+3. :ref:`Hyperparameter Tuning with Ray Tune <sgd-migration-tune>`
+
+.. _sgd-migration-logic:
 
 Training Logic
 --------------
@@ -160,6 +162,9 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
    trainer.start()
    model = trainer.run(train_func)[0]
 
+
+.. _sgd-migration-trainer:
+
 Interacting with the ``Trainer``
 --------------------------------
 
@@ -231,6 +236,8 @@ Checkpointing
 Finally, you can also use ``sgd.save_checkpoint()`` and ``sgd.load_checkpoint()`` to write checkpoints to disk during the training process, and to load from the most recently saved checkpoint in the case of node failures.
 
 See the :ref:`Checkpointing <sgd-checkpointing>` and :ref:`Fault Tolerance & Elastic Training <sgd-fault-tolerance>` sections on the user guide for more info.
+
+.. _sgd-migration-tune:
 
 Hyperparameter Tuning with Ray Tune
 -----------------------------------
