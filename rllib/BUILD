@@ -1002,6 +1002,14 @@ py_test(
     srcs = ["agents/qmix/tests/test_qmix.py"]
 )
 
+# RNNSACTrainer
+py_test(
+    name = "test_rnnsac",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/sac/tests/test_rnnsac.py"]
+)
+
 # SACTrainer
 py_test(
     name = "test_sac",
