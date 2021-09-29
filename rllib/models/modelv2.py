@@ -217,12 +217,12 @@ class ModelV2:
         else:
             restored = input_dict.copy()
 
-        # No Preprocessor used: `config.preprocessor_pref`=None.
+        # No Preprocessor used: `config._disable_preprocessor_api`=True.
         # TODO: This is unnecessary for when no preprocessor is used.
         #  Obs are not flat then anymore. However, we'll keep this
         #  here for backward-compatibility until Preprocessors have
         #  been fully deprecated.
-        if self.model_config.get("_no_preprocessing"):
+        if self.model_config.get("_disable_preprocessor_api"):
             restored["obs_flat"] = input_dict["obs"]
         # Input to this Model went through a Preprocessor.
         # Generate extra keys: "obs_flat" (vs "obs", which will hold the

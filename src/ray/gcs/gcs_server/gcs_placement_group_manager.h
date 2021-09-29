@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
+
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -89,10 +91,10 @@ class GcsPlacementGroup {
   std::string GetRayNamespace() const;
 
   /// Get the bundles of this placement_group (including unplaced).
-  std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
+  std::vector<std::shared_ptr<const BundleSpecification>> &GetBundles() const;
 
   /// Get the unplaced bundles of this placement group.
-  std::vector<std::shared_ptr<BundleSpecification>> GetUnplacedBundles() const;
+  std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
@@ -121,9 +123,14 @@ class GcsPlacementGroup {
   bool IsDetached() const;
 
  private:
+  FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
+  /// Creating bundle specification requires heavy computation because it needs to compute
+  /// formatted strings for all resources (heavy string operations). To optimize the CPU
+  /// usage, we cache bundle specs.
+  mutable std::vector<std::shared_ptr<const BundleSpecification>> cached_bundle_specs_;
 };
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
@@ -207,7 +214,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// an placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
-  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group);
+  /// \param is_feasible whether the scheduler can be retry or not currently.
+  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
+                                      bool is_feasible = true);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -225,6 +234,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  /// Handle a node register. This will try to reschedule all the infeasible
+  /// placement groups.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeAdd(const NodeID &node_id);
 
   /// Clean placement group that belongs to the job id if necessary.
   ///
@@ -321,6 +336,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `std::priority_queue`.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
 
+  /// The infeasible placement_groups that can't be scheduled currently.
+  std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
+
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
       gcs_placement_group_scheduler_;
@@ -352,7 +370,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
     GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
-    CountType_MAX = 6,
+    SCHEDULING_PENDING_PLACEMENT_GROUP = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

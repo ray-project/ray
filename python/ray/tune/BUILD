@@ -228,14 +228,6 @@ py_test(
 )
 
 py_test(
-    name = "test_track",
-    size = "small",
-    srcs = ["tests/test_track.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
