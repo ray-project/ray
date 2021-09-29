@@ -21,5 +21,5 @@ This runs three tests and does the necessary resource creation/teardown. The tes
 4. There are some errors that will appear on the screen during the run -- that's normal, error recovery is being tested.
 
 ## Running individual tests
-To run any of the three individual tests, substitute in step 5 of *How to Run*  `k8s-test.sh` or `helm-test.sh` or `k8s-test-scale.sh`.
+To run any of the three individual tests, substitute in step 5 of **How to Run** `k8s-test.sh` or `helm-test.sh` or `k8s-test-scale.sh`.
 It's the last of these that needs 30 1-cpu pods. 10 is enough for either of the other two. The scale test is currently somewhat flaky. Rerun it if it fails.
