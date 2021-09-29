@@ -2196,6 +2196,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
+  // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   {
     absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
@@ -2299,6 +2300,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
+  // Modify the worker's per function counters.
   {
     absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
     task_counter_.Add(TaskCounter::kExectuing, func_name, -1);
@@ -2473,7 +2475,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  // Increment the task_queue_length
+  // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())

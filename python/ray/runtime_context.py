@@ -1,7 +1,7 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -173,8 +173,15 @@ class RuntimeContext(object):
         return worker.core_worker.get_actor_handle(self.actor_id)
 
     @property
+    @DeveloperAPI
     def _current_inflight_tasks_count(self):
-        """DOC"""
+        """Get the current worker's task counters.
+
+        Returns:
+            A dictionary keyed by the function name. The values are
+            dictionaries with form ``{"received": 0, "executing": 1,
+            "exectued": 2}``.
+        """
         worker = self.worker
         worker.check_connected()
         return worker.core_worker.get_inflight_tasks_count()

@@ -1425,9 +1425,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::unique_ptr<rpc::JobConfig> job_config_;
 
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
   struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
     enum TaskStatusType { kReceived, kExectuing, kExecuted };
 
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
     mutable absl::Mutex tasks_counter_mutex_;
     absl::flat_hash_map<std::string, int> received_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
@@ -1444,6 +1450,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
         executing_tasks_counter_map_[func_name] += value;
       } else if (type == kExecuted) {
         executed_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
       }
     }
   };
