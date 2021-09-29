@@ -45,22 +45,26 @@ std::string GcsPlacementGroup::GetRayNamespace() const {
   return placement_group_table_data_.ray_namespace();
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
-  const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
-  for (const auto &bundle : bundles) {
-    ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetBundles()
+    const {
+  // Fill the cache if it wasn't.
+  if (cached_bundle_specs_.empty()) {
+    const auto &bundles = placement_group_table_data_.bundles();
+    for (const auto &bundle : bundles) {
+      cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
+    }
   }
-  return ret_bundles;
+  return cached_bundle_specs_;
 }
 
-std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
-    const {
-  const auto &bundles = placement_group_table_data_.bundles();
-  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
-  for (const auto &bundle : bundles) {
-    if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
-      unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+std::vector<std::shared_ptr<const BundleSpecification>>
+GcsPlacementGroup::GetUnplacedBundles() const {
+  const auto &bundle_specs = GetBundles();
+
+  std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
+  for (const auto &bundle : bundle_specs) {
+    if (bundle->NodeId().IsNil()) {
+      unplaced_bundles.push_back(bundle);
     }
   }
   return unplaced_bundles;
@@ -83,6 +87,8 @@ std::string GcsPlacementGroup::DebugString() const {
 }
 
 rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
+  // Invalidate the cache.
+  cached_bundle_specs_.clear();
   return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 
@@ -312,6 +318,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     }
     // If the placement group is not registered == removed.
   }
+  ++counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP];
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
@@ -574,8 +581,9 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
-  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
-                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+  execute_after(
+      io_context_, [this] { SchedulePendingPlacementGroups(); },
+      RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
@@ -667,7 +675,8 @@ void GcsPlacementGroupManager::Tick() {
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
-  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(
+      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
@@ -749,6 +758,8 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
          << ", GetNamedPlacementGroup request count: "
          << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
+         << ", Scheduling pending placement group count: "
+         << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
          << ", Named placement group count: " << num_pgs
          << ", Pending placement groups count: " << pending_placement_groups_.size()

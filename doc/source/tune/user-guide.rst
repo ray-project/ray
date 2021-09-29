@@ -903,6 +903,9 @@ These are the environment variables Ray Tune currently considers:
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
   continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
   if used with ``checkpoint_at_end``.
+* **TUNE_RESULT_DELIM**: Delimiter used for nested entries in
+  :class:`ExperimentAnalysis <ray.tune.ExperimentAnalysis>` dataframes. Defaults to ``.`` (but will be
+  changed to ``/`` in future versions of Ray).
 * **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
