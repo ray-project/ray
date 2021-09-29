@@ -62,7 +62,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         workers = []
         for part in partitions:
             workers.append(worker_cls.options(resources={"node:{}".format(part["location"]): 0.01}) \
-                               .remote(get(part["data"]), False))
+                               .remote(lambda: get(part["data"]), False))
         return cls.from_actors(workers)
 
     @staticmethod
