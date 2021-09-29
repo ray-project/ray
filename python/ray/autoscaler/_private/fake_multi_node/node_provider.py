@@ -98,8 +98,8 @@ class FakeMultiNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         # TODO(ekl) implement this, somehow we need to find the PID started
         # and terminate specifically that raylet
-        raise AssertionError("Readonly node provider cannot be updated")
         del self._nodes[node_id]
+        raise NotImplementedError
 
     @staticmethod
     def bootstrap_config(cluster_config):
