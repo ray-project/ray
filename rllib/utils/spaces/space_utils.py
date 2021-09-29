@@ -167,15 +167,27 @@ def flatten_to_single_ndarray(input_):
 def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 
-    Input: Struct of different batches (each batch has size=3):
-        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
-    Output: Batch (list) of structs (each of these structs representing a
-        single action):
-        [
-            {"a": 1, "b": (4, 7.0)},  <- action 1
-            {"a": 2, "b": (5, 8.0)},  <- action 2
-            {"a": 3, "b": (6, 9.0)},  <- action 3
-        ]
+    Note that lists inside the (nested) input structure are interpreted
+    as part of the structure, NOT as lists of batched items. Therefore,
+    make sure that the batch dimension is properly represented by numpy
+    arrays.
+
+    Examples:
+        Input: Struct of different batches (each batch has size=3):
+            {
+                "a": np.array([1, 2, 3]),  <- batch of 3 (don't use list)
+                "b": (
+                    np.array([4, 5, 6]),  <- batch of 3 (don't use list)
+                    np.array([7.0, 8.0, 9.0]),  <- batch of 3 (don't use list)
+                )
+            }
+        Output: Batch (list) of structs (each of these structs representing a
+            single action):
+            [
+                {"a": 1, "b": (4, 7.0)},  <- action 1
+                {"a": 2, "b": (5, 8.0)},  <- action 2
+                {"a": 3, "b": (6, 9.0)},  <- action 3
+            ]
 
     Args:
         batches_struct (any): The struct of component batches. Each leaf item
@@ -186,7 +198,8 @@ def unbatch(batches_struct):
 
     Returns:
         List[struct[components]]: The list of rows. Each item
-            in the returned list represents a single (maybe complex) struct.
+            in the returned list is a single (maybe complex) struct and
+            represents a single item in the batch.
     """
     flat_batches = tree.flatten(batches_struct)
 
