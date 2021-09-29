@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <ctype.h>
+#include <cctype>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
