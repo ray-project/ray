@@ -222,7 +222,6 @@ class ServeController:
                      name: str,
                      backend_config_proto_bytes: bytes,
                      replica_config: ReplicaConfig,
-                     python_methods: List[str],
                      version: Optional[str],
                      prev_version: Optional[str],
                      route_prefix: Optional[str],
@@ -260,8 +259,7 @@ class ServeController:
 
             goal_id, updating = self.backend_state_manager.deploy_backend(
                 name, backend_info)
-            endpoint_info = EndpointInfo(
-                route=route_prefix, python_methods=python_methods)
+            endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
             return goal_id, updating
 
