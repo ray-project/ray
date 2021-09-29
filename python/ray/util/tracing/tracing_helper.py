@@ -287,7 +287,6 @@ def _tracing_task_invocation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
-
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
         if not is_tracing_enabled() or self._is_cross_language:
@@ -403,7 +402,6 @@ def _tracing_actor_method_invocation(method):
             *_args: Any,
             **_kwargs: Any,
     ) -> Any:
-
         # If tracing feature flag is not on, perform a no-op
         if (not is_tracing_enabled()
                 or self._actor_ref()._ray_is_cross_language):
