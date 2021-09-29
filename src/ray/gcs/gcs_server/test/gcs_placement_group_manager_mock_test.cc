@@ -73,9 +73,11 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
       .WillOnce(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
       .WillOnce(DoAll(SaveArg<1>(&failure_callback), SaveArg<2>(&success_callback)));
+  auto now = absl::GetCurrentTimeNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto& pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
+  ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
   put_cb(Status::OK());
   pg->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
@@ -97,15 +99,18 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _))
       .WillOnce(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
-      .WillOnce(DoAll(SaveArg<1>(&failure_callback), SaveArg<2>(&success_callback)));
+      .Times(2)
+      .WillRepeatedly(DoAll(SaveArg<1>(&failure_callback), SaveArg<2>(&success_callback)));
+  auto now = absl::GetCurrentTimeNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto& pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
+  ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
   put_cb(Status::OK());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
-  auto now = absl::GetCurrentTimeNanos();
-  failure_callback(pg, false);
+  now = absl::GetCurrentTimeNanos();
+  failure_callback(pg, true);
   auto exp_backer = ExponentialBackOff(
       RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
@@ -115,6 +120,16 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   EXPECT_DOUBLE_EQ(next, RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LT(now + next, pending_queue.begin()->first);
+
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
+  now = absl::GetCurrentTimeNanos();
+  failure_callback(pg, true);
+  next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
+  EXPECT_DOUBLE_EQ(next, RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
+  ASSERT_EQ(1, pending_queue.size());
+  ASSERT_LT(now + next, pending_queue.begin()->first);
 }
+
 }
 }
