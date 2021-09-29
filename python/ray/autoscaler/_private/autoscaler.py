@@ -231,8 +231,8 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
-        if not self.provider.is_readonly():
-            self.terminate_nodes_to_enforce_config_constraints(now)
+#        if not self.provider.is_readonly():
+#            self.terminate_nodes_to_enforce_config_constraints(now)
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
