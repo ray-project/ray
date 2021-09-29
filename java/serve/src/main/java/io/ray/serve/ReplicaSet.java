@@ -137,15 +137,11 @@ public class ReplicaSet {
   public synchronized int
       drainCompletedObjectRefs() { // TODO when using maxConcurrentQueries, change it to private.
     List<ObjectRef<Object>> refs =
-        inFlightQueries
-            .values()
-            .stream()
+        inFlightQueries.values().stream()
             .flatMap(value -> value.stream())
             .collect(Collectors.toList());
     WaitResult<Object> waitResult = Ray.wait(refs, refs.size(), 0);
-    inFlightQueries
-        .values()
-        .stream()
+    inFlightQueries.values().stream()
         .forEach(replicaInFlightQueries -> replicaInFlightQueries.removeAll(waitResult.getReady()));
 
     return waitResult.getReady().size();

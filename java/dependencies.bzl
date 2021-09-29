@@ -24,6 +24,7 @@ def gen_java_deps():
             "com.lmax:disruptor:3.3.4",
             "org.yaml:snakeyaml:1.26",
             "net.java.dev.jna:jna:5.5.0",
+            "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

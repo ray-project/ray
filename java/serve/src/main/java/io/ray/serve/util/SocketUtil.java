@@ -15,9 +15,10 @@ public class SocketUtil {
     while (!isPortAvailable(candidatePort)) {
       candidatePort++;
       if (++searchCounter > portRange) {
-        throw new IllegalStateException(String.format(
-            "Could not find an available tcp port in the range [%d, %d] after %d attempts.",
-            minPort, PORT_RANGE_MAX, searchCounter));
+        throw new IllegalStateException(
+            String.format(
+                "Could not find an available tcp port in the range [%d, %d] after %d attempts.",
+                minPort, PORT_RANGE_MAX, searchCounter));
       }
     }
     return candidatePort;
@@ -41,7 +42,7 @@ public class SocketUtil {
       try {
         socket.close();
       } catch (IOException ex) {
-        //ignore this exception for now
+        // ignore this exception for now
       }
     }
   }

@@ -15,7 +15,6 @@ public class ClientTest {
   @Test
   public void getHandleTest() {
 
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     boolean inited = Ray.isInitialized();
     Ray.init();
 

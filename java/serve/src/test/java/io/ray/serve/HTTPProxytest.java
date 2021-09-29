@@ -19,7 +19,6 @@ public class HttpProxyTest {
   @Test
   public void test() throws IOException {
 
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     boolean inited = Ray.isInitialized();
     Ray.init();
 
