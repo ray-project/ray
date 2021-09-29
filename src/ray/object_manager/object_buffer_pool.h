@@ -17,11 +17,13 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
+#include <condition_variable>
 #include <list>
 #include <memory>
 #include <mutex>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/memory_object_reader.h"
@@ -143,10 +145,19 @@ class ObjectBufferPool {
                                      uint64_t data_size,
                                      std::shared_ptr<Buffer> buffer_ref);
 
+  /// Ensures buffer for the object exists, and creates the buffer if needed.
+  /// Returns OK if buffer exists.
+  /// Must hold pool_mutex_ when calling this function. pool_mutex_ can be released
+  /// during the call.
+  ray::Status EnsureBufferExists(const ObjectID &object_id,
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index,
+                                 std::unique_lock<std::mutex> &lock);
+
   /// The state of a chunk associated with a create operation.
   enum class CreateChunkState : unsigned int { AVAILABLE = 0, REFERENCED, SEALED };
 
-  /// Holds the state of a create buffer.
+  /// Holds the state of creating chunks. Members are protected by pool_mutex_.
   struct CreateBufferState {
     CreateBufferState() {}
     CreateBufferState(std::vector<ChunkInfo> chunk_info)
@@ -166,13 +177,19 @@ class ObjectBufferPool {
   /// Returned when GetChunk or CreateChunk fails.
   const ChunkInfo errored_chunk_ = {0, nullptr, 0, nullptr};
 
-  /// Mutex on public methods for thread-safe operations on
-  /// get_buffer_state_, create_buffer_state_, and store_client_.
-  mutable std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
+
+  /// Mutex to protect create_buffer_ops_ and create_buffer_state_.
+  mutable std::mutex pool_mutex_;
+  /// Makes sure each object has at most one inflight create buffer operation.
+  /// Other operations can wait on the std::condition_variable for the operation
+  /// to complete. If successful, the corresponding entry in create_buffer_state_
+  /// will be created.
+  absl::flat_hash_map<ray::ObjectID, std::shared_ptr<std::condition_variable>>
+      create_buffer_ops_;
   /// The state of a buffer that's currently being used.
-  std::unordered_map<ray::ObjectID, CreateBufferState> create_buffer_state_;
+  absl::flat_hash_map<ray::ObjectID, CreateBufferState> create_buffer_state_;
 
   /// Plasma client pool.
   plasma::PlasmaClient store_client_;
