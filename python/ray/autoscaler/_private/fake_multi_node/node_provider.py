@@ -76,7 +76,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
         }
-        # TODO(ekl) why is it not finding the local path?
+        # TODO(ekl) why is it not finding the local ray binary?
         cmd = "/home/eric/.local/bin/ray start --address=localhost:6379"
         env = {
             "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
@@ -96,8 +96,10 @@ class FakeMultiNodeProvider(NodeProvider):
             logger.info("Output: \n{}".format(output))
 
     def terminate_node(self, node_id):
-        # TODO(ekl) implement this
+        # TODO(ekl) implement this, somehow we need to find the PID started
+        # and terminate specifically that raylet
         raise AssertionError("Readonly node provider cannot be updated")
+        del self._nodes[node_id]
 
     @staticmethod
     def bootstrap_config(cluster_config):
