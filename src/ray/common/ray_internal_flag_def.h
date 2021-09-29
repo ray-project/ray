@@ -28,5 +28,5 @@ RAY_INTERNAL_FLAG(std::string, JOB_ID, "")
 /// Raylet process ID.
 RAY_INTERNAL_FLAG(std::string, RAYLET_PID, "")
 
-/// Raylet process ID.
+/// Override the random node ID for testing.
 RAY_INTERNAL_FLAG(std::string, OVERRIDE_NODE_ID_FOR_TESTING, "")
