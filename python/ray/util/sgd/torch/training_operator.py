@@ -1161,13 +1161,13 @@ class CreatorOperator(TrainingOperator):
 
 def get_test_operator(operator_cls):
     class _TestingOperator(operator_cls):
-        def train_epoch(self, iterator, info):
+        def train_epoch(self, iterator, info, **kwargs):
             func = self.config.get("custom_func")
             if callable(func):
                 return func(self, iterator, info)
             return {"done": 1}
 
-        def validate(self, iterator, info):
+        def validate(self, iterator, info, **kwargs):
             return self.train_epoch(iterator, info)
 
     return _TestingOperator
