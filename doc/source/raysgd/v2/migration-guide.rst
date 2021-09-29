@@ -1,7 +1,7 @@
 .. _sgd-migration:
 
-Ray SGD: v1 to v2 migration guide
-=================================
+Migrating from Ray SGD v1
+=========================
 
 In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features.
 
@@ -73,6 +73,7 @@ You can see a full example on how to port over regular PyTorch DDP code to Ray S
 Alternatively, if you liked having the `TrainingOperator`, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
 
 So instead of
+
 .. code-block:: python
 
     class MyTrainingOperator(TrainingOperator):
@@ -82,10 +83,11 @@ So instead of
 
     num_epochs=10
     for _ in range(num_epochs):
-       trainer.train()
-       trainer.validate()
+        trainer.train()
+        trainer.validate()
 
     final_model = trainer.get_model()
+
 
 you would do
 
