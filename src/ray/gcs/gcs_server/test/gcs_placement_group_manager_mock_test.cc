@@ -120,7 +120,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_EQ(rank, pending_queue.begin()->first);
 
-  absl::SleepFor(absl::Nanoseconds(next));
+  absl::SleepFor(absl::Nanoseconds(rank - absl::GetCurrentTimeNanos()));
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(0, pending_queue.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
