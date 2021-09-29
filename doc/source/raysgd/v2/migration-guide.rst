@@ -5,11 +5,11 @@ Migrating from Ray SGD v1
 
 In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features.
 
-This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with Ray SGD v2 directly: https://docs.ray.io/en/master/raysgd/v2/raysgd.html.
+This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray SGD v2 directly <sgd-v2-docs>`
 
-For a full list of features that Ray SGD v2 provides, please check out the user guide: https://docs.ray.io/en/master/raysgd/v2/user_guide.html.
+For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`
 
-If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a Github issue on the Ray repo: https://github.com/ray-project/ray/issues!
+If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
 
 What are the API differences?
 -----------------------------
@@ -50,6 +50,7 @@ There are 3 primary API differences between Ray SGD v1 and v2.
 3. Rather than iteratively calling `trainer.train()` or `trainer.validate()` for each epoch, in Ray SGD v2 the training function defines the full training execution and is run via `trainer.run(train_func)`.
 
 In the following sections, we will guide you through the steps to migrate:
+
 1. Training Logic
 2. Interacting with Trainer state (intermediate metrics, checkpointing)
 3. Hyperparameter Tuning with Ray Tune
@@ -60,17 +61,17 @@ The main change you will have to make is how you define your training logic. In 
 
 PyTorch
 ~~~~~~~
-In v1, the training logic is defined through the `train_epoch` and `train_batch` methods of a `TrainingOperator` class which is passed into the `TorchTrainer`. To migrate to Ray SGD v2, there are 2 options:
-1. If you felt the `TrainingOperator` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
-2. If you liked having your training logic in the `TrainingOperator`, you can continue to use the `TrainingOperator` with Ray SGD v2.
+In v1, the training logic is defined through the ``train_epoch`` and ``train_batch`` methods of a ``TrainingOperator`` class which is passed into the ``TorchTrainer``. To migrate to Ray SGD v2, there are 2 options:
+1. If you felt the ``TrainingOperator`` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
+2. If you liked having your training logic in the ``TrainingOperator``, you can continue to use the ``TrainingOperator`` with Ray SGD v2.
 
 **Alternative 1: Custom Training Function**
-You can define your own custom training function, and use only the parts from `TrainingOperator.train_epoch`, `TrainingOperator.setup`, and `TrainingOperator.validate` that are necessary for your application.
+You can define your own custom training function, and use only the parts from ``TrainingOperator.train_epoch``, ``TrainingOperator.setup``, and ``TrainingOperator.validate`` that are necessary for your application.
 
-You can see a full example on how to port over regular PyTorch DDP code to Ray SGD here: https://docs.ray.io/en/master/raysgd/v2/user_guide.html#update-training-function
+You can see a full example on how to :ref:`port over regular PyTorch DDP code to Ray SGD here <sgd-porting-code>`
 
-**Alternative 2: Continue to use `TrainingOperator`**
-Alternatively, if you liked having the `TrainingOperator`, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
+**Alternative 2: Continue to use ``TrainingOperator``**
+Alternatively, if you liked having the ``TrainingOperator``, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
 
 So instead of
 
@@ -222,14 +223,14 @@ If you want to access any values *during* the training process, you can do so vi
    # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
    trainer.shutdown()
 
-See the `v2 User Guide <https://docs.ray.io/en/master/raysgd/v2/user_guide.html#logging-monitoring-and-callbacks>`_ for more details.
+See the :ref:`v2 User Guide <sgd-user-guide>` for more details.
 
 Checkpointing
 ~~~~~~~~~~~~~
 
 Finally, you can also use ``sgd.save_checkpoint()`` and ``sgd.load_checkpoint()`` to write checkpoints to disk during the training process, and to load from the most recently saved checkpoint in the case of node failures.
 
-See the `Checkpointing <https://docs.ray.io/en/master/raysgd/v2/user_guide.html#logging-monitoring-and-callbacks>`_ and `Fault Tolerance & Elastic Training <https://docs.ray.io/en/master/raysgd/v2/user_guide.html#logging-monitoring-and-callbacks>`_ sections on the user guide for more info.
+See the :ref:`Checkpointing <sgd-checkpointing>` and :ref:`Fault Tolerance & Elastic Training <sgd-fault-tolerance>` sections on the user guide for more info.
 
 Hyperparameter Tuning with Ray Tune
 -----------------------------------
