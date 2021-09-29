@@ -8,11 +8,11 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer
+from ray.ray_constants import env_integer, env_bool
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
-    TUNE_CHECKPOINT_ID
+    TUNE_CHECKPOINT_ID, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, check_for_failure
@@ -29,17 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class BackendConfig:
-    """Parent class for configurations of training backend.
-
-    Args:
-        share_cuda_visible_devices (Optional[Set[str]): If True, each worker
-            process will have CUDA_VISIBLE_DEVICES set as the visible device
-            IDs of all workers on the same node for this training instance.
-            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
-            device IDs allocated by Ray for that worker.
-    """
-
-    share_cuda_visible_devices: bool = False
+    """Parent class for configurations of training backend."""
 
     @property
     def backend_cls(self):
@@ -285,8 +275,13 @@ class BackendExecutor:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+
+            share_cuda_visible_devices_enabled = env_bool(
+                ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+                self._backend.share_cuda_visible_devices)
+
             if (self._num_gpus_per_worker > 0
-                    and self._backend_config.share_cuda_visible_devices):
+                    and share_cuda_visible_devices_enabled):
                 self._share_cuda_visible_devices()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
@@ -696,6 +691,18 @@ class BackendExecutor:
 
 
 class Backend(metaclass=abc.ABCMeta):
+    """Metaclass for distributed communication backend.
+
+    Attributes:
+        share_cuda_visible_devices (bool): If True, each worker
+            process will have CUDA_VISIBLE_DEVICES set as the visible device
+            IDs of all workers on the same node for this training instance.
+            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
+            device IDs allocated by Ray for that worker.
+    """
+
+    share_cuda_visible_devices: bool = False
+
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
         """Logic for starting this backend."""
