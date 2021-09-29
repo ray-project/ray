@@ -196,7 +196,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
     // Otherwise, previous create operation failed.
   }
 
-  // Start another create operation.
+  // Indicate the inflight create buffer operation, by inserting into create_buffer_ops_.
   create_buffer_ops_[object_id] = std::make_shared<absl::CondVar>();
   const int64_t object_size = data_size - metadata_size;
   std::shared_ptr<Buffer> data;
@@ -211,6 +211,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   // No other thread could have created the buffer.
   RAY_CHECK(!create_buffer_state_.contains(object_id));
 
+  // Indicate the create operation for create_buffer_ops_ has finished.
   it = create_buffer_ops_.find(object_id);
   auto cond_var = it->second;
   create_buffer_ops_.erase(it);

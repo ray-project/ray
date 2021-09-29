@@ -87,8 +87,7 @@ class ObjectBufferPool {
   /// this method. An IOError status is returned if the Get call on the plasma store
   /// fails, and the MemoryObjectReader will be empty.
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> CreateObjectReader(
-      const ObjectID &object_id, rpc::Address owner_address)
-      ABSL_LOCKS_EXCLUDED(pool_mutex_);
+      const ObjectID &object_id, rpc::Address owner_address) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
   /// serves as the buffer that is to be written to by a connection receiving an
@@ -109,7 +108,7 @@ class ObjectBufferPool {
   /// (with no intermediate AbortCreateChunk).
   ray::Status CreateChunk(const ObjectID &object_id, const rpc::Address &owner_address,
                           uint64_t data_size, uint64_t metadata_size,
-                          uint64_t chunk_index) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+                          uint64_t chunk_index) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Write to a Chunk of an object. If all chunks of an object is written,
   /// it seals the object.
@@ -122,23 +121,22 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
   void WriteChunk(const ObjectID &object_id, uint64_t chunk_index,
-                  const std::string &data) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+                  const std::string &data) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
   /// \return Void.
-  void FreeObjects(const std::vector<ObjectID> &object_ids)
-      ABSL_LOCKS_EXCLUDED(pool_mutex_);
+  void FreeObjects(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
-  void AbortCreate(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+  void AbortCreate(const ObjectID &object_id) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const ABSL_LOCKS_EXCLUDED(pool_mutex_);
+  std::string DebugString() const LOCKS_EXCLUDED(pool_mutex_);
 
  private:
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
@@ -146,7 +144,7 @@ class ObjectBufferPool {
   std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
                                      uint64_t data_size,
                                      std::shared_ptr<Buffer> buffer_ref)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
   /// Ensures buffer for the object exists, and creates the buffer if needed.
   /// Returns OK if buffer exists.
@@ -155,7 +153,7 @@ class ObjectBufferPool {
   ray::Status EnsureBufferExists(const ObjectID &object_id,
                                  const rpc::Address &owner_address, uint64_t data_size,
                                  uint64_t metadata_size, uint64_t chunk_index)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
   /// The state of a chunk associated with a create operation.
   enum class CreateChunkState : unsigned int { AVAILABLE = 0, REFERENCED, SEALED };
@@ -186,17 +184,20 @@ class ObjectBufferPool {
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
 
-  /// Mutex to protect create_buffer_ops_ and create_buffer_state_.
+  /// Mutex to protect create_buffer_ops_, create_buffer_state_ and following invariants:
+  /// - create_buffer_ops_ contains an object_id iff there is an inflight operation to
+  ///   create the buffer for the object.
+  /// - An object_id cannot appear in both create_buffer_ops_ and create_buffer_state_.
   mutable absl::Mutex pool_mutex_;
   /// Makes sure each object has at most one inflight create buffer operation.
   /// Other operations can wait on the std::condition_variable for the operation
   /// to complete. If successful, the corresponding entry in create_buffer_state_
   /// will be created.
   absl::flat_hash_map<ray::ObjectID, std::shared_ptr<absl::CondVar>> create_buffer_ops_
-      ABSL_GUARDED_BY(pool_mutex_);
+      GUARDED_BY(pool_mutex_);
   /// The state of a buffer that's currently being used.
   absl::flat_hash_map<ray::ObjectID, CreateBufferState> create_buffer_state_
-      ABSL_GUARDED_BY(pool_mutex_);
+      GUARDED_BY(pool_mutex_);
 
   /// Plasma client pool.
   plasma::PlasmaClient store_client_;

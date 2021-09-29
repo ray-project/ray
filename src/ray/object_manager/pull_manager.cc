@@ -553,7 +553,6 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
                                    const ObjectID &object_id) {
   const auto time = get_time_();
-  // Double retry interval for each retry.
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
   if (retry_timeout_len > max_timeout_) {
