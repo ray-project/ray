@@ -81,7 +81,8 @@ void GcsInternalKVManager::HandleInternalKVKeys(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         const auto &results = redis_reply->ReadAsStringArray();
         for (const auto &result : results) {
-          reply->add_results(result);
+          RAY_CHECK(result.has_value());
+          reply->add_results(*result);
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       }));

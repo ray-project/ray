@@ -7,30 +7,30 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
-                    overload)
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
 from weakref import WeakValueDictionary
 
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
-from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
 
-import ray
-from ray import cloudpickle
 from ray.actor import ActorHandle
-from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
                               ReplicaConfig)
-from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
+from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
+                                 SERVE_CONTROLLER_NAME)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.utils import (ensure_serialization_context, format_actor_name,
-                             get_current_node_resource_key, get_random_letters,
-                             logger, LoggingContext)
+from ray.serve.utils import (LoggingContext, ensure_serialization_context,
+                             format_actor_name, get_current_node_resource_key,
+                             get_random_letters, logger)
+from ray.util.annotations import PublicAPI
+import ray
+from ray import cloudpickle
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
@@ -221,16 +221,10 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        python_methods = []
-        if inspect.isclass(backend_def):
-            for method_name, _ in inspect.getmembers(backend_def,
-                                                     inspect.isfunction):
-                python_methods.append(method_name)
-
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config,
-                python_methods, version, prev_version, route_prefix,
+                name, backend_config.to_proto_bytes(), replica_config, version,
+                prev_version, route_prefix,
                 ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
@@ -317,27 +311,16 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/http-servehandle.html#sync-and-async-handles")
 
-        if endpoint_name in all_endpoints:
-            this_endpoint = all_endpoints[endpoint_name]
-            python_methods: List[str] = this_endpoint["python_methods"]
-        else:
-            # This can happen in the missing_ok=True case.
-            # handle.method_name.remote won't work and user must
-            # use the legacy handle.options(method).remote().
-            python_methods: List[str] = []
-
         if sync:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -350,6 +333,7 @@ def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,
         dedicated_cpu: bool = False,
+        _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
         **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -433,6 +417,7 @@ def start(
     ).remote(
         controller_name,
         http_options,
+        _checkpoint_path,
         detached=detached,
     )
 

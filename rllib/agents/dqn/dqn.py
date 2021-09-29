@@ -200,8 +200,17 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
                 samples.policy_batches[policy_id].set_get_interceptor(None)
-                prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .get("batch_indexes"), td_error)
+                batch_indices = samples.policy_batches[policy_id].get(
+                    "batch_indexes")
+                # In case the buffer stores sequences, TD-error could already
+                # be calculated per sequence chunk.
+                if len(batch_indices) != len(td_error):
+                    T = local_replay_buffer.replay_sequence_length
+                    assert len(batch_indices) > len(
+                        td_error) and len(batch_indices) % T == 0
+                    batch_indices = batch_indices.reshape([-1, T])[:, 0]
+                    assert len(batch_indices) == len(td_error)
+                prio_dict[policy_id] = (batch_indices, td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 

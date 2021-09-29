@@ -100,6 +100,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+
   std::string SerializedRuntimeEnv() const;
 
   bool HasRuntimeEnv() const;
@@ -114,7 +116,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
-  rpc::ObjectReference ArgRef(size_t arg_index) const;
+  const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 

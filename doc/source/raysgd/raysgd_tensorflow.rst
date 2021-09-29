@@ -8,7 +8,7 @@ Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled b
 .. image:: raysgd-actors.svg
     :align: center
 
-.. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 ----------
 

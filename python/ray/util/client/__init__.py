@@ -5,7 +5,6 @@ from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
 import os
 import sys
 import logging
-import json
 import threading
 import grpc
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-08-26"
+CURRENT_PROTOCOL_VERSION = "2021-09-22"
 
 
 class _ClientContext:
@@ -66,7 +65,7 @@ class _ClientContext:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
         if job_config is not None:
-            runtime_env = json.loads(job_config.get_serialized_runtime_env())
+            runtime_env = job_config.runtime_env
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "

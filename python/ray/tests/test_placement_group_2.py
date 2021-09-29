@@ -46,28 +46,18 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
                 "CPU": 2
             }])
 
-        error_count = 0
-        try:
+        with pytest.raises(ValueError, match="bundle index 3 is invalid"):
             Actor.options(
                 placement_group=placement_group,
                 placement_group_bundle_index=3).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 1
 
-        try:
+        with pytest.raises(ValueError, match="bundle index -2 is invalid"):
             Actor.options(
                 placement_group=placement_group,
                 placement_group_bundle_index=-2).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 2
 
-        try:
+        with pytest.raises(ValueError, match="bundle index must be -1"):
             Actor.options(placement_group_bundle_index=0).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 3
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
