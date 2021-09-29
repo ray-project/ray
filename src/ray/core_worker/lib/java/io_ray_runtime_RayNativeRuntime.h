@@ -60,12 +60,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIE
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeGetActorIdOfNamedActor
- * Signature: (Ljava/lang/String;ZLjava/lang/String;)[B
+ * Signature: (Ljava/lang/String;Z)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jclass,
-                                                                  jstring, jboolean,
-                                                                  jstring);
+                                                                  jstring, jboolean);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

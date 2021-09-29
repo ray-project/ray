@@ -102,4 +102,7 @@ message ReplicaConfig {
   bytes serialized_backend_def = 2;
   bytes serialized_init_args = 3;
   string ray_actor_options_json = 4;
+
+  string backend_tag = 5;
+  string replica_tag = 6;
 }

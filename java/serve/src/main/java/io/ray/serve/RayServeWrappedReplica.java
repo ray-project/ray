@@ -7,11 +7,13 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.ReplicaConfig;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -26,38 +28,32 @@ public class RayServeWrappedReplica {
 
   @SuppressWarnings("rawtypes")
   public RayServeWrappedReplica(
-      String backendTag,
-      String replicaTag,
-      String backendDef,
-      byte[] initArgsbytes,
-      byte[] backendConfigBytes,
+    byte[] backendConfigProtoBytes,
+    byte[] replicaConfigProtoBytes,
+    byte[] initArgsbytes,
       BaseActorHandle controllerHandle)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
     // Parse BackendConfig.
-    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigBytes);
+    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigProtoBytes);
 
     // Parse init args.
     Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
     LOGGER.error("init Args length "+initArgs.length);
 
-    // Instantiate the object defined by backendDef.
-    Class backendClass = Class.forName(backendDef);
-    Object callable = ReflectUtil.getConstructor(backendClass, initArgs).newInstance(initArgs);
+    ReplicaConfig replicaConfig = ReplicaConfig.parseFrom(replicaConfigProtoBytes);
 
-    // Get the controller by controllerName.
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(controllerName), "Must provide a valid controllerName");
-    Optional<BaseActorHandle> optional = Ray.getGlobalActor(controllerName, "serve");
-    Preconditions.checkState(optional.isPresent(), "Controller does not exist");
+    // Instantiate the object defined by backendDef.
+    Class backendClass = Class.forName(replicaConfig.getFuncOrClassName());
+    Object callable = ReflectUtil.getConstructor(backendClass, initArgs).newInstance(initArgs);
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
     // the instance that this backend is running in.
-    Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, callable);
+    Serve.setInternalReplicaContext(replicaConfig.getBackendTag(), replicaConfig.getReplicaTag(), "dummy controller name", callable);
 
     // Construct worker replica.
-    backend = new RayServeReplica(callable, backendConfig, optional.get());
+    backend = new RayServeReplica(callable, backendConfig, controllerHandle);
     LOGGER.error("Finish init!");
   }
 
