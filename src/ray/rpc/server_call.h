@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include <ctype.h>
 #include <grpcpp/grpcpp.h>
 
-#include <ctype.h>
 #include <boost/asio.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
