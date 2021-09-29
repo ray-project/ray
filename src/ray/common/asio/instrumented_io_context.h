@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
@@ -105,16 +106,18 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
-      LOCKS_EXCLUDED(mutex_);
+  /// \param callback A callback function called when the handler been executed.
+  void post(std::function<void()> handler, const std::string name = "UNKNOWN",
+            std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function where the operation start is manually recorded. For example,
   /// this is useful for tracking the number of active outbound RPC calls.
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
-      LOCKS_EXCLUDED(mutex_);
+  /// \param callback A callback function called when the handler been executed.
+  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle,
+            std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -122,8 +125,9 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
-      LOCKS_EXCLUDED(mutex_);
+  /// \param callback A callback function called when the handler been executed.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN",
+                std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
@@ -146,8 +150,10 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
+  /// \param callback A callback function called when the handler been executed.
   static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+                              std::shared_ptr<StatsHandle> handle,
+                              const std::function<void()> &callback = nullptr);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

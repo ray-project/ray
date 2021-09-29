@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "ray/common/asio/instrumented_io_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
+
 #include "ray/stats/metric.h"
 
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -63,8 +65,8 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
-void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name) {
+void instrumented_io_context::post(std::function<void()> handler, const std::string name,
+                                   std::function<void()> callback) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -74,14 +76,16 @@ void instrumented_io_context::post(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  boost::asio::io_context::post([handler = std::move(handler),
+                                 stats_handle = std::move(stats_handle),
+                                 callback = std::move(callback)]() {
+    RecordExecution(handler, std::move(stats_handle), callback);
+  });
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   std::shared_ptr<StatsHandle> stats_handle) {
+                                   std::shared_ptr<StatsHandle> stats_handle,
+                                   std::function<void()> callback) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -89,14 +93,16 @@ void instrumented_io_context::post(std::function<void()> handler,
   // time only and not the time delay from RecordStart().
   // TODO(ekl) it would be nice to track this delay too,.
   stats_handle->ZeroAccumulatedQueuingDelay();
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  boost::asio::io_context::post([handler = std::move(handler),
+                                 stats_handle = std::move(stats_handle),
+                                 callback = std::move(callback)]() {
+    RecordExecution(handler, std::move(stats_handle), callback);
+  });
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,
-                                       const std::string name) {
+                                       const std::string name,
+                                       std::function<void()> callback) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -106,10 +112,11 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::io_context::dispatch(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  boost::asio::io_context::dispatch([handler = std::move(handler),
+                                     stats_handle = std::move(stats_handle),
+                                     callback = std::move(callback)]() {
+    RecordExecution(handler, std::move(stats_handle), callback);
+  });
 }
 
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
@@ -129,7 +136,8 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
 }
 
 void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
-                                              std::shared_ptr<StatsHandle> handle) {
+                                              std::shared_ptr<StatsHandle> handle,
+                                              const std::function<void()> &callback) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
   {
@@ -169,6 +177,9 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     if (global_stats->stats.max_queue_time < queue_time_ns) {
       global_stats->stats.max_queue_time = queue_time_ns;
     }
+  }
+  if (callback) {
+    callback();
   }
   handle->execution_recorded = true;
 }
