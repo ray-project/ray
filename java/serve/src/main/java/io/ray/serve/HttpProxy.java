@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.hc.core5.http.ClassicHttpRequest;
@@ -59,7 +60,7 @@ public class HttpProxy implements ServeProxy {
                 Metrics.count()
                     .name("serve_num_http_requests")
                     .description("The number of HTTP requests processed.")
-                    .unit("")
+                    .unit("").tags(new HashMap<>())
                     .register());
     startupHttpServer(port);
     LOGGER.info("Proxy {} has been started with port:{}", getName(), this.port);
