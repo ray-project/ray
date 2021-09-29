@@ -127,7 +127,9 @@ class ComplexInputNetwork(TFModelV2):
             orig_obs = input_dict[SampleBatch.OBS]
         else:
             orig_obs = restore_original_dimensions(
-                input_dict[SampleBatch.OBS], self.processed_obs_space, "tf")
+                input_dict[SampleBatch.OBS],
+                self.processed_obs_space,
+                tensorlib="tf")
         # Push image observations through our CNNs.
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):
