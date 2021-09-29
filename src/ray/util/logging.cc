@@ -203,7 +203,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
     if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
-      dir_ends_with_slash += ray::GetDirSep();
+      dir_ends_with_slash += std::filesystem::path::preferred_separator;
     }
     std::string app_name_without_path = app_name;
     if (app_name.empty()) {

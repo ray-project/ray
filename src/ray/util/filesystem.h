@@ -23,8 +23,8 @@
 
 namespace ray {
 
-/// \return The platform directory separator (backslash on Windows, slash on other OSes).
-static inline char GetDirSep() { return std::filesystem::path::preferred_separator; }
+/// \return The portable directory separator (slash on all OSes).
+static inline char GetAltDirSep() { return '/'; }
 
 /// Equivalent to Python's os.path.basename() for file system paths.
 std::string GetFileName(const std::string &path);
@@ -34,13 +34,26 @@ std::string GetUserTempDir();
 
 /// \return Whether or not the given character is a directory separator on this platform.
 static inline bool IsDirSep(char ch) {
-  return ch == std::filesystem::path::preferred_separator;
+  bool result = ch == std::filesystem::path::preferred_separator;
+#ifdef _WIN32
+  result |= ch == GetAltDirSep();
+#endif
+  return result;
 }
 
 /// \return The result of joining multiple path components.
 template <class... Paths>
 std::string JoinPaths(std::string base, const Paths &...components) {
-  ((base = std::filesystem::path(base).append(components)), ...);
+  auto join = [](auto &joined_path, const auto &component) {
+    // if the components begin with "/" or "////", just get the path name.
+    if (component.front() == std::filesystem::path::preferred_separator) {
+      joined_path = std::filesystem::path(joined_path)
+                        .append(std::filesystem::path(component).filename().string());
+    } else {
+      joined_path = std::filesystem::path(joined_path).append(component);
+    }
+  };
+  (join(base, std::string_view(components)), ...);
   return base;
 }
 }  // namespace ray
