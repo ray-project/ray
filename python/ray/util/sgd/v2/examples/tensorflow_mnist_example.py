@@ -72,7 +72,7 @@ def train_func(config):
     return results
 
 
-def train_tensorflow_mnist(num_workers=1, use_gpu=False):
+def train_tensorflow_mnist(num_workers=2, use_gpu=False):
     trainer = Trainer(
         backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=1,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",

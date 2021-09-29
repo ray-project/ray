@@ -195,30 +195,15 @@ def test_batch_tensors(ray_start_regular_shared):
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
-    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
-                       "schema=<Tensor: shape=(None, 3, 5), dtype=int64>)")
-
-    # Transform.
-    ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
-    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
-                       "schema=<Tensor: shape=(None, 3, 5, 1), dtype=int64>)")
+    assert str(ds) == (
+        "Dataset(num_blocks=5, num_rows=5, "
+        "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})")
 
     # Pandas conversion.
     res = ray.data.range_tensor(10).map_batches(
         lambda t: t + 2, batch_format="pandas").take(2)
-    assert str(res) == "[ArrowRow({'0': 2}), ArrowRow({'0': 3})]", res
-
-    # From other formats.
-    ds = ray.data.range(10).map_batches(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
-                       "schema=<Tensor: shape=(None,), dtype=int64>)")
-    ds = ray.data.range(10).map(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
-                       "schema=<Tensor: shape=(None,), dtype=int64>)")
-    ds = ray.data.from_items([np.zeros(shape=(2, 2, 2)) for _ in range(4)])
-    assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=4, "
-        "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
+    assert str(res) == \
+        "[ArrowRow({'value': array([2])}), ArrowRow({'value': array([3])})]"
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -639,13 +624,11 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
-    assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
-                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
-
-    assert str(
-        ds.take()) == ("[array([0]), array([1]), array([2]), "
-                       "array([3]), array([4]), array([5]), array([6]), "
-                       "array([7]), array([8]), array([9])]"), ds.take()
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=?, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
+    assert str(ds.take(2)) == \
+        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -654,13 +637,11 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
-    assert str(ds) == ("Dataset(num_blocks=1, num_rows=?, "
-                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
-
-    assert str(
-        ds.take()) == ("[array([0]), array([1]), array([2]), "
-                       "array([3]), array([4]), array([5]), array([6]), "
-                       "array([7]), array([8]), array([9])]"), ds.take()
+    assert str(ds) == (
+        "Dataset(num_blocks=1, num_rows=?, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
+    assert str(ds.take(2)) == \
+        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -682,7 +663,12 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
         arr1 = np.load(s3.open(file_path1))
         arr2 = np.load(s3.open(file_path2))
-    np.testing.assert_equal(np.concatenate((arr1, arr2)), ds.take())
+    assert ds.count() == 10
+    assert len(arr1) == 5
+    assert len(arr2) == 5
+    assert arr1.sum() == 10
+    assert arr2.sum() == 35
+    assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -845,7 +831,10 @@ def test_from_numpy(ray_start_regular_shared):
     arr2 = np.expand_dims(np.arange(4, 8), 1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
     values = np.array(ds.take(8))
-    np.testing.assert_equal(np.concatenate((arr1, arr2)), values)
+    for i in range(4):
+        assert values[i]["value"] == arr1[i]
+    for i in range(4, 8):
+        assert values[i]["value"] == arr2[i - 4]
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -871,13 +860,13 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_numpy(ray_start_regular_shared):
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
+    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
-    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Simple Dataset
     ds = ray.data.range(10)
