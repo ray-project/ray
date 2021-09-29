@@ -407,31 +407,29 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
 
-        def equalize(splits: List[Dataset[T]], n: int) -> List[Dataset[T]]:
-            if not equal:
-                return splits
-            new_splits = []
-            counts = {s._get_uuid(): s.count() for s in splits}
-            total_rows = sum(counts.values())
-            # Number of rows for each split.
-            target_size = total_rows // n
-            # Partition splits into two sets: splits that are smaller than the
-            # target size and splits that are larger than the target size.
-            splits = sorted(splits, key=lambda s: counts[s._get_uuid()])
+        def _partition_splits(splits: List[Dataset[T]], part_size: int,
+                              counts_cache: Dict[str, int]):
+            """Partition splits into two sets: splits that are smaller than the
+            target size and splits that are larger than the target size.
+            """
+            splits = sorted(splits, key=lambda s: counts_cache[s._get_uuid()])
             idx = next(i for i, split in enumerate(splits)
-                       if counts[split._get_uuid()] >= target_size)
-            if idx == 0:
-                # All splits are already equal.
-                return splits
-            smaller_splits, larger_splits = splits[:idx], splits[idx:]
+                       if counts_cache[split._get_uuid()] >= part_size)
+            return splits[:idx], splits[idx:]
 
-            # Split larger splits.
+        def _equalize_larger_splits(splits: List[Dataset[T]], target_size: int,
+                                    counts_cache: Dict[str, int],
+                                    num_splits_required: int):
+            """Split each split into one or more subsplits that are each the
+            target size, with at most one leftover split that's smaller
+            than the target size.
+
+            This assume that the given splits are sorted in ascending order.
+            """
+            new_splits = []
             leftovers = []
-            for split in larger_splits:
-                # Split each split into one or more subsplits that are each the
-                # target size, with at most one leftover split that's smaller
-                # than the target size.
-                size = counts[split._get_uuid()]
+            for split in splits:
+                size = counts_cache[split._get_uuid()]
                 if size == target_size:
                     new_splits.append(split)
                     continue
@@ -443,33 +441,34 @@ class Dataset(Generic[T]):
                     # our unioning of small splits.
                     leftover = split_splits.pop()
                     leftovers.append(leftover)
-                    counts[leftover._get_uuid()] = leftover.count()
-                if len(new_splits) + len(split_splits) >= n:
+                    counts_cache[leftover._get_uuid()] = leftover.count()
+                if len(new_splits) + len(split_splits) >= num_splits_required:
                     # Short-circuit if the new splits will make us reach the
                     # desired number of splits.
-                    new_splits.extend(split_splits[:n - len(new_splits)])
+                    new_splits.extend(
+                        split_splits[:num_splits_required - len(new_splits)])
                     break
                 new_splits.extend(split_splits)
-            # Short-circuit if we've already reached the desired number of
-            # splits.
-            if len(new_splits) == n:
-                return new_splits
-            # Add leftovers to small splits and re-sort.
-            smaller_splits += leftovers
-            smaller_splits = sorted(
-                smaller_splits, key=lambda s: counts[s._get_uuid()])
+            return new_splits, leftovers
 
-            # Union smaller splits.
+        def _equalize_smaller_splits(
+                splits: List[Dataset[T]], target_size: int,
+                counts_cache: Dict[str, int], num_splits_required: int):
+            """Union small splits up to the target split size.
+
+            This assume that the given splits are sorted in ascending order.
+            """
+            new_splits = []
             union_buffer = []
             union_buffer_size = 0
             low = 0
-            high = len(smaller_splits) - 1
+            high = len(splits) - 1
             while low <= high:
                 # Union small splits up to the target split size.
-                low_split = smaller_splits[low]
-                low_count = counts[low_split._get_uuid()]
-                high_split = smaller_splits[high]
-                high_count = counts[high_split._get_uuid()]
+                low_split = splits[low]
+                low_count = counts_cache[low_split._get_uuid()]
+                high_split = splits[high]
+                high_count = counts_cache[high_split._get_uuid()]
                 if union_buffer_size + high_count <= target_size:
                     # Try to add the larger split to the union buffer first.
                     union_buffer.append(high_split)
@@ -496,7 +495,7 @@ class Dataset(Generic[T]):
                     # the smallest split in the candidate split list, which is
                     # this subsplit.
                     splits[low] = new_low_split
-                    counts[new_low_split._get_uuid()] = low_count - diff
+                    counts_cache[new_low_split._get_uuid()] = low_count - diff
                 if union_buffer_size == target_size:
                     # Once the union buffer is full, we union together the
                     # splits.
@@ -507,10 +506,43 @@ class Dataset(Generic[T]):
                     # Clear the union buffer.
                     union_buffer = []
                     union_buffer_size = 0
-                    if len(new_splits) == n:
+                    if len(new_splits) == num_splits_required:
                         # Short-circuit if we've reached the desired number of
                         # splits.
                         break
+            return new_splits
+
+        def equalize(splits: List[Dataset[T]], n: int) -> List[Dataset[T]]:
+            if not equal:
+                return splits
+            counts = {s._get_uuid(): s.count() for s in splits}
+            total_rows = sum(counts.values())
+            # Number of rows for each split.
+            target_size = total_rows // n
+
+            # Partition splits.
+            smaller_splits, larger_splits = _partition_splits(
+                splits, target_size, counts)
+            if len(smaller_splits) == 0:
+                # All splits are already equal.
+                return splits
+
+            # Split larger splits.
+            new_splits, leftovers = _equalize_larger_splits(
+                larger_splits, target_size, counts, n)
+            # Short-circuit if we've already reached the desired number of
+            # splits.
+            if len(new_splits) == n:
+                return new_splits
+            # Add leftovers to small splits and re-sort.
+            smaller_splits += leftovers
+            smaller_splits = sorted(
+                smaller_splits, key=lambda s: counts[s._get_uuid()])
+
+            # Union smaller splits.
+            new_splits_small = _equalize_smaller_splits(
+                smaller_splits, target_size, counts, n - len(new_splits))
+            new_splits.extend(new_splits_small)
             return new_splits
 
         block_refs = list(self._blocks)
