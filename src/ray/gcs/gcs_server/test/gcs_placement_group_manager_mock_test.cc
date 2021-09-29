@@ -112,23 +112,29 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   now = absl::GetCurrentTimeNanos();
   failure_callback(pg, true);
   auto exp_backer = ExponentialBackOff(
+      1000000 *
       RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
       1000000 *
       RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
   auto next = exp_backer.Next();
-  EXPECT_DOUBLE_EQ(next, RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
+  EXPECT_DOUBLE_EQ(next, 1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
   ASSERT_EQ(1, pending_queue.size());
-  ASSERT_LT(now + next, pending_queue.begin()->first);
-
+  auto rank = pending_queue.begin()->first;
+  ASSERT_LT(now + next, rank);
+  // ScheduleUnplacedBundles is not called here
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(1, pending_queue.size());
+  ASSERT_EQ(rank, pending_queue.begin()->first);
+
+  absl::SleepFor(absl::Nanoseconds(next));
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(0, pending_queue.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
   now = absl::GetCurrentTimeNanos();
   failure_callback(pg, true);
   next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
-  EXPECT_DOUBLE_EQ(next, RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
-  ASSERT_EQ(1, pending_queue.size());
-  ASSERT_LT(now + next, pending_queue.begin()->first);
+
 }
 
 }
