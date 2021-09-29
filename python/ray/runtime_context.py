@@ -172,6 +172,13 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_handle(self.actor_id)
 
+    @property
+    def _current_inflight_tasks_count(self):
+        """DOC"""
+        worker = self.worker
+        worker.check_connected()
+        return worker.core_worker.get_inflight_tasks_count()
+
 
 _runtime_context = None
 

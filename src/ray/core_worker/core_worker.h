@@ -1044,6 +1044,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Retrieve the current statistics about tasks being received and executing.
+  /// \return an unordered_map mapping function name to list of (num_received,
+  /// num_executing, num_executed).
+  std::unordered_map<std::string, std::vector<size_t>> GetInflightTasksCount() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1419,6 +1424,30 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  struct TaskCounter {
+    enum TaskStatusType { kReceived, kExectuing, kExecuted };
+
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> received_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> executing_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> executed_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, std::string func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kReceived) {
+        received_tasks_counter_map_[func_name] += value;
+      } else if (type == kExectuing) {
+        executing_tasks_counter_map_[func_name] += value;
+      } else if (type == kExecuted) {
+        executed_tasks_counter_map_[func_name] += value;
+      }
+    }
+  };
+  TaskCounter task_counter_;
 };
 
 }  // namespace core
