@@ -152,7 +152,7 @@ class RuntimeContext(object):
 
     @property
     def runtime_env(self):
-        """Get the runtime env passed to job_config
+        """Get the runtime env used for the current driver or worker.
 
         Returns:
             The runtime env currently using by this worker.

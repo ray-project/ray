@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include <google/protobuf/arena.h>
 #include <grpcpp/grpcpp.h>
 
-#include <ctype.h>
 #include <boost/asio.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -145,6 +146,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)) {
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     STATS_grpc_server_req_new.Record(1.0, call_name_);
@@ -187,7 +189,7 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
+        request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -222,8 +224,12 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  /// The memory pool for this request. It's used for reply.
+  /// With arena, we'll be able to setup the reply without copying some field.
+  google::protobuf::Arena arena_;
 
   /// State of this call.
   ServerCallState state_;
@@ -250,8 +256,9 @@ class ServerCallImpl : public ServerCall {
   /// The request message.
   Request request_;
 
-  /// The reply message.
-  Reply reply_;
+  /// The reply message. This one is owned by arena. It's not valid beyond
+  /// the life-cycle of this call.
+  Reply *reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
