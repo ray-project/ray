@@ -1,4 +1,5 @@
 import unittest
+import pytest
 
 import ray
 import ray.rllib.agents.ppo as ppo
@@ -53,8 +54,20 @@ class TestDDPPO(unittest.TestCase):
             trainer.stop()
             assert lr == 0.0, "lr should anneal to 0.0"
 
+    def test_validate_config(self):
+        """Test if DDPPO will raise errors after invalid configs are passed."""
+        config = ppo.ddppo.DEFAULT_CONFIG.copy()
+        config["kl_coeff"] = 1.
+        msg = "DDPPO doesn't support KL penalties like PPO-1"
+        # import ipdb; ipdb.set_trace()
+        with pytest.raises(ValueError, match=msg):
+            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
+        config["kl_coeff"] = 0.
+        config["kl_target"] = 1.
+        with pytest.raises(ValueError, match=msg):
+            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

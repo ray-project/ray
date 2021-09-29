@@ -75,6 +75,11 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         "truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
+        # Kl divergence penalty should be fixed to 0 in DDPPO because in order
+        # for it to be used as a penalty, we would have to un-decentralize
+        # DDPPO
+        "kl_coeff": 0.0,
+        "kl_target": 0.0
     },
     _allow_unknown_configs=True,
 )
@@ -131,6 +136,15 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
+    if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
+        # DDPPO doesn't support KL penalties like PPO-1.
+        # In order to support KL penalties, DDPPO would need to
+        # become undecentralized, which defeats the purpose of the
+        # algorithm. Users can still tune the entropy coefficient to
+        # control the policy entropy (similar to controlling the KL
+        # penalty.)
+
+        raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
 def execution_plan(workers: WorkerSet,
