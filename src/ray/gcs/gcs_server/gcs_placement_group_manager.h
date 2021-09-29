@@ -14,13 +14,13 @@
 
 #pragma once
 #include <gtest/gtest_prod.h>
-#include <optional>
 
+#include <optional>
 #include <utility>
+
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
