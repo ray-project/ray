@@ -3,6 +3,7 @@ import socket
 import subprocess
 import sys
 import time
+import os
 
 import pytest
 import requests
@@ -90,8 +91,6 @@ def test_port_conflict(call_ray_stop_only, shutdown_only):
     sock.close()
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 5, 3), reason="requires python3.5.3 or higher")
 def test_dashboard(shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     dashboard_url = addresses["webui_url"]
@@ -119,6 +118,14 @@ def test_dashboard(shutdown_only):
                 raise Exception(
                     "Timed out while waiting for dashboard to start. "
                     f"Dashboard output log: {out_log}\n")
+
+
+def test_dashboard_agent_restart(shutdown_only):
+    agent_port = 6380
+    os.environ["RAY_AGENT_PORT_OVERRIDE"] = str(agent_port)
+    addresses = ray.init(num_cpus=0)
+    import time
+    time.sleep(10)
 
 
 if __name__ == "__main__":
