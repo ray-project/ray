@@ -1,8 +1,8 @@
 # Ray SGD: v1 to v2 migration guide
 
-In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability- it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features. 
+In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features. 
 
-This guide will cover to easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with Ray SGD v2 directly: https://docs.ray.io/en/master/raysgd/v2/raysgd.html. 
+This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with Ray SGD v2 directly: https://docs.ray.io/en/master/raysgd/v2/raysgd.html. 
 
 For a full list of features that Ray SGD v2 provides, please check out the user guide: https://docs.ray.io/en/master/raysgd/v2/user_guide.html. 
 
@@ -12,7 +12,7 @@ If there are any issues or anything missing with this guide or any feedback on R
 There are 2 primary API differences between Ray SGD v1 and v2.
 
 1. There is a single `Trainer` interface for all backends (torch, tensorflow, horovod), and the backend is simply specified via an argument: `Trainer(backend="torch")`, `Trainer(backend="horovod")`, etc. Any features that we add to Ray SGD will be supported for all backends, and there won't be any API divergence like there was with a separate `TorchTrainer` and `TFTrainer`.
-2. The `TrainingOperator` and creator functions are replaced by a generic user-defined training function. You no longer have to make your training logic fit into a restrictive interface. In Ray SGD v2, you simply have to provide a training function that describes the full logic for your training execution and this will be distributed by Ray SGD. 
+2. The `TrainingOperator` and creator functions are replaced by a more natural user-defined training function. You no longer have to make your training logic fit into a restrictive interface. In Ray SGD v2, you simply have to provide a training function that describes the full logic for your training execution and this will be distributed by Ray SGD. 
 ```python
 # Torch Example
 def train_func_distributed():
@@ -37,18 +37,30 @@ trainer.start()
 results = trainer.run(train_func_distributed)
 trainer.shutdown()
 ```
-Currently, this means that the user is now responsible for modifying their code to support distributed training (specifying `DistributedDataParallel` for `torch` or `MultiWorkerMirroredStrategy` for `tensorflow`) as opposed to having this be automatically handled internally. However, we have plans to provide utilities that you can use to automatically handle these recipes for you.
+3. Rather than iteratively calling `trainer.train()` or `trainer.validate()` for each epoch, in Ray SGD v2 the training function defines the full training execution and is run via `trainer.run(train_func)`.
+
+Currently, this means that you are now responsible for modifying your code to support distributed training (specifying `DistributedDataParallel` for `torch` or `MultiWorkerMirroredStrategy` for `tensorflow`) as opposed to having this be automatically handled internally. However, we have plans to provide utilities that you can use to automatically handle these recipes for you.
+
+In the following sections, we will guide you through the steps to migrate:
+1. Training Logic
+2. Interacting with Trainer state (intermediate metrics, checkpointing)
+3. Hyperparameter Tuning with Ray Tune
 
 ## Training Logic
 The main change you will have to make is how you define your training logic. In Ray SGD v1, the API for defining training logic differed for `TorchTrainer` vs. `TFTrainer`, so the steps to migrate will be different for each of these.
 
 ### PyTorch
 In v1, the training logic is defined through the `train_epoch` and `train_batch` methods of a `TrainingOperator` class which is passed into the `TorchTrainer`. To migrate to Ray SGD v2, there are 2 options: 
-1. If you liked having your training logic in the `TrainingOperator`, you can continue to use the `TrainingOperator` with Ray SGD v2.
-2. If you felt the `TrainingOperator` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
+1. If you felt the `TrainingOperator` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
+2. If you liked having your training logic in the `TrainingOperator`, you can continue to use the `TrainingOperator` with Ray SGD v2.
 
-#### Alternative 1: Continue to use `TrainingOperator`
-You can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
+#### Alternative 1: Custom Training Function
+You can define your own custom training function, and use only the parts from `TrainingOperator.train_epoch`, `TrainingOperator.setup`, and `TrainingOperator.validate` that are necessary for your application.
+
+You can see a full example on how to port over regular PyTorch DDP code to Ray SGD here: https://docs.ray.io/en/master/raysgd/v2/user_guide.html#update-training-function
+
+#### Alternative 2: Continue to use `TrainingOperator`
+Alternatively, if you liked having the `TrainingOperator`, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
 
 So instead of 
 ```python
@@ -76,10 +88,8 @@ def train_func(config):
 	if torch.cuda.is_available():
 		torch.cuda.set_device(device)
 	
-	operator_cls = config["operator_cls"]
-	
 	# Set the args to whatever values you want.
-	training_operator = operator_cls(
+	training_operator = MyTrainingOperator(
 		config=config, 
 		world_rank=sgd.world_rank(), 
 		local_rank=sgd.local_rank(), 
@@ -107,14 +117,9 @@ def train_func(config):
 
 trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
 trainer.start()
-results = trainer.run(train_func, config={"operator_cls": MyTrainingOperator, "num_epochs": 10})
+results = trainer.run(train_func, config={"num_epochs": 10})
 final_model = results[0]			
 ```
-
-#### Alternative 2: Custom Training Function
-If you want to no longer use the `TrainingOperator`, you can define your own custom training function, and use only the parts from `TrainingOperator.train_epoch`, `TrainingOperator.setup`, and `TrainingOperator.validate` that are necessary for your application.
-
-You can see a full example on how to port over regular PyTorch DDP code to Ray SGD here: https://docs.ray.io/en/master/raysgd/v2/user_guide.html#update-training-function
 
 ### Tensorflow
 The API for `TFTrainer` uses creator functions instead of a `TrainingOperator` to define the training logic. To port over Ray SGD v1 Tensorflow code to v2 you can do the following:
@@ -135,11 +140,13 @@ def train_func(config):
 
 trainer = Trainer(backend="tensorflow", num_workers=4, config={"num_epochs": 3, ...})
 trainer.start()
-model = trainer.run(train_func)
+model = trainer.run(train_func)[0]
 ```
 
 ## Interacting with the `Trainer`
-In Ray SGD v1, the user can iteratively call `trainer.train()` or `trainer.validate()` for each epoch, and can then interact with the trainer to get certain state (model, checkpoints, results, etc.). In Ray SGD v2, this is replaced by a single training function that defines the full training & validation loop for all epochs. There are 3 ways to get state during or after the training execution:
+In Ray SGD v1, you can iteratively call `trainer.train()` or `trainer.validate()` for each epoch, and can then interact with the trainer to get certain state (model, checkpoints, results, etc.). In Ray SGD v2, this is replaced by a single training function that defines the full training & validation loop for all epochs. 
+
+There are 3 ways to get state during or after the training execution:
 1. Return values from your training function
 2. Intermediate results via `sgd.report()`
 3. Saving & loading checkpoints via `sgd.save_checkpoint()` and `sgd.load_checkpoint()`
